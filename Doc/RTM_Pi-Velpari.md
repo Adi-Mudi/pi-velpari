@@ -1,7 +1,7 @@
 # Pi-Velpari Requirements Traceability Matrix (RTM)
 
 - **Project:** Pi-Velpari
-- **Source PRD:** `Doc/PRD.md` (v1.4)
+- **Source PRD:** `Doc/PRD.md` (v1.5)
 - **Status:** All requirements **Planned** — v1.3 includes the post-pipeline atomic-function and development-order stages. Implementation is Phase A–E of `pi_velpari_commands_plan_20260824_0924_v1.3.md`.
 - **Format:** industry-standard RTM with `Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status`.
 
@@ -121,6 +121,22 @@ All seven view commands share a single helper function, parameterized by stage n
 
 ---
 
+## 5f. Framework + web search + uniform subagent pattern (FR-49..FR-57, added in v1.5)
+
+| Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
+|---|---|---|---|---|---|---|
+| FR-49 | Framework is one-time setup in `/velpari-configure-inputs`; stored in `.pi/velpari/files.json` under `framework`; injected into every stage prompt | PRD §4.4 | Design §3.8 (Framework handling) | `pi-extension/src/config.ts:runFilesDiscovery()` extended; `pi-extension/src/prompt.ts:buildStagePrompt()` injects framework | TC-189..TC-190 | Planned |
+| FR-50 | Discussion stage has 4 scout agents: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT | PRD §4.4 | Design §2.9 + Pseudocode §13 | `pi-extension/src/discuss.ts:runDiscuss()` coordinates 4 scouts | TC-191 | Planned |
+| FR-51 | DECISION AGENT logic (helper function dedup, classification) moves to main handler | PRD §4.4 | Design §7.8 (Architecture decisions) | `pi-extension/src/discuss.ts:mergeAndClassify()` runs in main handler after scouts | TC-192 | Planned |
+| FR-52 | WEB SEARCH AGENT is user-prompted (yes/no after interview) | PRD §4.4 | Pseudocode §13.2 | `pi-extension/src/discuss.ts:promptForWebSearch()` | TC-193 | Planned |
+| FR-53 | WEB SEARCH AGENT scope: community + official docs + similar projects | PRD §4.4 | Pseudocode §13.2 | Skill markdown `skills/scouts/web-search.md` defines scope | TC-194 | Planned |
+| FR-54 | All 12 scout agents follow the `ScoutContract` (same spawn, JSON envelope, timeout, picker UI) | PRD §4.4 | Design §2.20 (contracts.ts) | `pi-extension/src/contracts.ts:ScoutContract`; `pi-extension/src/scout.ts:spawnScout()` | TC-195..TC-197 | Planned |
+| FR-55 | Velpari does NOT depend on Senai at runtime | PRD §4.4 (constraint) | Design §3.9 (TUI independence) | `package.json` does not list Senai; TUI re-implemented in `pi-extension/src/ui/` | TC-198 | Planned |
+| FR-56 | `ScoutContract` interface defined in `pi-extension/src/contracts.ts`; all scout modules import it; scout files at `skills/scouts/{scoutId}.md` | PRD §4.4 | Design §2.20 | New file `pi-extension/src/contracts.ts` | TC-195 | Planned |
+| FR-57 | `framework` field in `files.json` validated by `config.ts:validateFilesConfig` | PRD §4.4 | Design §3.8 | `pi-extension/src/config.ts:validateFilesConfig()` extended | TC-189 | Planned |
+
+---
+
 ## 6. Non-functional requirements (NFR-01 through NFR-11)
 
 | Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
@@ -137,6 +153,7 @@ All seven view commands share a single helper function, parameterized by stage n
 | NFR-10 | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `Doc/velpari-sequence.md`, `Doc/step-by-step-guide.md` exist and accurately describe behavior | PRD §5 | Design §7.10 (Documentation) | Documents written in Phase 0 of v1.1 plan | TC-109..TC-110 | Planned |
 | NFR-11 | Subagents permitted only in 3 stages: discuss (4 agents), atomic-function (4 scouts), development-order (4 scouts); total 12 scout agents; stages 2–7 and handoff MUST NOT spawn subagents | PRD §5 | Design §7.11 (Subagent exception) | Each scout agent lives in its own module function: `discuss.ts` (4 subagents), `atomic-function.ts` (4 AF scouts), `development-order.ts` (4 DO scouts) | TC-161..TC-163 | Planned |
 | NFR-12 | Doc scope is the source of truth for command behavior; the PRD per-command section, sequence doc §11, design.md pseudocode, and test cases must all agree | PRD §5 | Design §3.7 (Doc scope) | `pi-extension/src/commands.ts:checkDocScope()` (deterministic gate function) | TC-164..TC-166 | Planned |
+| NFR-13 | Uniform subagent pattern: all 12 scouts follow the `ScoutContract` (same spawn helper, JSON envelope, 30s timeout, picker UI); drift is a defect | PRD §5 | Design §2.20 + §7.8 | `pi-extension/src/contracts.ts:ScoutContract`; `pi-extension/src/scout.ts:spawnScout()` | TC-195..TC-198 | Planned |
 
 ---
 
@@ -151,8 +168,9 @@ All seven view commands share a single helper function, parameterized by stage n
 | Cross-cutting v1.2 (FR-26..FR-30) | 5 | 18 (TC-111..TC-128) |
 | Cross-cutting v1.3 (FR-33..FR-36) | 4 | 18 (TC-143..TC-160) |
 | Cross-cutting v1.4 (FR-43..FR-48) | 6 | 17 (TC-167..TC-183) |
-| Non-functional (NFR-01..NFR-12) | 12 | 24 (TC-092..TC-110, TC-161..TC-166) |
-| **Total** | **54** | **183** |
+| Cross-cutting v1.5 (FR-49..FR-57) | 9 | 10 (TC-189..TC-198) |
+| Non-functional (NFR-01..NFR-13) | 13 | 27 (TC-092..TC-110, TC-161..TC-166, TC-195..TC-198) |
+| **Total** | **64** | **193** |
 
 Every requirement has at least one test case. Every test case traces back to a requirement. No requirement is un-traced; no test case is orphan.
 

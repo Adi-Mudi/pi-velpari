@@ -35,6 +35,10 @@ The following are tested by automated tests (`node --test` under `pi-extension/t
 17. **Per-command gate** (v1.4) — `checkDocScope` is called before any LLM call; fails with specific error when required input docs are missing or empty; passes when all required input docs are non-empty.
 18. **Per-command doc scope** (v1.4) — `COMMAND_SCOPE` table declares per-command reads/writes; matches sequence doc §11; matches design.md §3.7; matches test cases.
 19. **Architecture decisions** (v1.4) — `architecture-discussion.md` exists and has pending decisions list with no recommendations; no `/velpari-architect` command in `commands.ts`; PRD and RTM are separate stages.
+20. **Framework as one-time setup** (v1.5) — `/velpari-configure-inputs` captures framework/language/libraries/runtime; persisted in `files.json`; injected into every stage prompt.
+21. **Web search agent** (v1.5) — `WEB SEARCH AGENT` is the 4th discussion scout; user-prompted (yes/no after interview); collects community + official docs + similar projects.
+22. **Uniform subagent pattern** (v1.5) — all 12 scouts follow `ScoutContract` (defined in `contracts.ts`); same `spawnScout()` helper; same JSON envelope; same 30s timeout; same picker UI.
+23. **TUI independence** (v1.5) — Velpari does not depend on Senai at runtime; TUI patterns re-implemented in `pi-extension/src/ui/`.
 
 ### 1.2 Out of scope
 
@@ -105,10 +109,12 @@ Per file/module:
 | `atomic-function.test.ts` | `atomic-function.ts` | Unit (mocked) | 4 AF scouts; merge/dedup; picker; working copy; bidirectional atomic refs |
 | `development-order.test.ts` | `development-order.ts` | Unit (mocked) | 4 DO scouts; ranking merge; order picker; working copy |
 | `gate.test.ts` | `commands.ts:checkDocScope`, `COMMAND_SCOPE` | Unit | Per-command gate success and failure; COMMAND_SCOPE matches docs |
+| `framework.test.ts` | `config.ts`, `prompt.ts` | Unit | Framework is captured, validated, and injected into prompts |
+| `scout.test.ts` | `contracts.ts`, `scout.ts`, all 12 scout modules | Unit | ScoutContract shape; spawnScout timeout + JSON envelope; picker UI |
 | `handoff.test.ts` | `handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip |
 | `show.test.ts` | `show.ts` | Unit | All 7 stages; missing-artifact path; testplan concatenation |
 
-**Total: 20 test files.**
+**Total: 22 test files.**
 
 ### 2.7 Integration tests
 

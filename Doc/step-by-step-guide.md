@@ -65,6 +65,19 @@ For a brand-new project with no existing PRDs, the defaults are fine. For a proj
 
 **After this step**, `/velpari-doctor` should report "Setup progress: 1 of 7 steps done."
 
+### 1a. Configure framework (one-time, in the same command)
+
+`/velpari-configure-inputs` also captures your framework/tech stack (v1.5). The command prompts for:
+
+- **Framework** — e.g., Next.js, Django, Spring Boot, Express, Fastify
+- **Language** — e.g., TypeScript, JavaScript, Python, Go, Rust
+- **Key libraries** — free-form list (e.g., react, tailwindcss, prisma)
+- **Runtime** — e.g., Node.js 20+, Python 3.12+
+
+The selection is persisted in `.pi/velpari/files.json` under `framework`. Every subsequent stage prompt injects this info, so the LLM produces artifacts in your chosen framework's style (TypeScript signatures if your language is TypeScript; Python docstrings if Python).
+
+**This is one-time setup.** You don't re-pick the framework per run. If you need to change it, re-run `/velpari-configure-inputs`.
+
 ---
 
 ## 2. Start the discussion
@@ -82,14 +95,23 @@ What happens:
 
 Each Q&A pair is recorded in the working copy. Velpari generates a question based on what you've already said — so the interview adapts. You don't have to think of every angle upfront; the LLM helps you surface things you hadn't considered.
 
-When you say "no more points", Velpari **spawns 4 parallel subagents** to process your input:
+When you say "no more points", Velpari first **asks if you want a web search**:
 
-- **NEW EXTRACTOR** — extracts raw statements from your Q&A.
-- **PRD CHECKER** — reads existing `Doc/PRD_Pi-Velpari.md` (if any) to find related requirements.
-- **RTM CHECKER** — reads existing `Doc/RTM_Pi-Velpari.md` (if any) to find related helper functions and TCs.
-- **DECISION AGENT** — merges the three outputs and classifies each statement as **new FR-N**, **update existing FR-N**, **helper function update**, or **new helper function**.
+> "Do you want me to search the web for community resources, official documentation, and similar projects related to your input? This adds ~15 seconds and uses ~1 LLM call."
 
-The DECISION AGENT's verdict is rendered as a **preview** showing what will be added or updated in the PRD. Read it. If it captured what you said, **confirm**. The working copy is saved to `.IDE_Plans/velpari/runs/<run-id>/discuss/discussion-notes.md`.
+- **Yes**: WEB SEARCH AGENT runs in parallel with the others.
+- **No**: WEB SEARCH AGENT is skipped.
+
+Then Velpari spawns **4 parallel scouts** (or 3 if web search declined):
+
+- **NEW EXTRACTOR** — extracts raw statements from your Q&A. *Always runs.*
+- **PRD CHECKER** — reads existing `Doc/PRD_Pi-Velpari.md` (if any) to find related requirements. *Always runs.*
+- **RTM CHECKER** — reads existing `Doc/RTM_Pi-Velpari.md` (if any) to find related helper functions and TCs. *Always runs.*
+- **WEB SEARCH AGENT** — searches community resources (Stack Overflow, Reddit, blogs), official docs (language, framework, library), and similar OSS projects. *User-prompted.*
+
+After all scouts complete, the **main handler** performs the DECISION AGENT logic as deterministic post-processing: merges all proposals, dedupes helper functions by `name + file path`, and classifies each statement as **new FR-N**, **update existing FR-N**, **helper function update**, or **new helper function**.
+
+The verdict is rendered as a **preview** showing what will be added or updated in the PRD. Read it. If it captured what you said, **confirm**. The working copy is saved to `.IDE_Plans/velpari/runs/<run-id>/discuss/discussion-notes.md`.
 
 If the preview missed something or the verdict is wrong, **cancel** and rerun `/velpari-discuss`. The new run overwrites the working copy.
 

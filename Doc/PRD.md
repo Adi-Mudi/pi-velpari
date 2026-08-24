@@ -145,6 +145,15 @@ These apply across multiple commands and are the architectural backbone.
 | **FR-46** | **Architecture discussion document exists.** `Doc/architecture-discussion.md` is a study-only document that catalogs pi, senai, and community architecture patterns and lists pending decisions. No recommendations are made. |
 | **FR-47** | **No architecture command in Velpari.** Velpari produces inputs only; Senai's `/senai-generate-architect` consumes them. Documented explicitly in `Doc/design.md` §7 and `Doc/README.md`. Rationale: Velpari is pre-production (requirements capture); Senai is production (implementation). Architecture is the boundary between them and belongs to Senai. |
 | **FR-48** | **PRD and RTM remain separate stages.** Documented with rationale: PRD is a stakeholder-facing deliverable; RTM is an engineering-facing traceability tool. Different audiences, different review cycles. Merging would lose this separation. |
+| **FR-49** | **Framework is captured as one-time setup** in `/velpari-configure-inputs`. The user is prompted for framework, language, key libraries, and runtime. Stored under `framework` in `.pi/velpari/files.json` (version 2). Injected into every stage prompt via `prompt.ts:buildStagePrompt`. Not a pipeline stage. |
+| **FR-50** | **Discussion stage has 4 scout agents** (v1.5): NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT. WEB SEARCH AGENT replaces the v1.4 DECISION AGENT. |
+| **FR-51** | **DECISION AGENT logic** (helper function dedup, classification as new FR / update / helper function update / new helper) **moves to the main discussion handler as deterministic post-scout processing**. Not a 5th subagent. |
+| **FR-52** | **WEB SEARCH AGENT is user-prompted.** After the multi-turn interview, the user is asked: "Do you want me to search the web for community resources, official documentation, and similar projects related to your input?" (yes/no). Only runs on yes. |
+| **FR-53** | **WEB SEARCH AGENT scope** (when invoked): (a) community resources (Stack Overflow, Reddit, blog posts, GitHub issues); (b) official documentation (language docs, framework docs, library docs); (c) similar projects (existing OSS that solve similar problems). |
+| **FR-54** | **All 12 scout agents follow the `ScoutContract`** (v1.5): same `spawnScout()` helper from `pi-extension/src/contracts.ts`; same JSON output envelope `{ proposals: [...], source: ScoutId }`; same 30-second timeout; same picker UI. |
+| **FR-55** | **Velpari does NOT depend on Senai at runtime.** `package.json` does not list Senai as a dependency. Velpari re-implements picker patterns (`simple-picker`, `list-editor`, `role-picker`) using Pi's TUI primitives. Both extensions work standalone. |
+| **FR-56** | **`ScoutContract` interface defined in `pi-extension/src/contracts.ts`**. All scout modules import it. Scout files live at `skills/scouts/{scoutId}.md`. |
+| **FR-57** | **`framework` field in `files.json` is validated** by `config.ts:validateFilesConfig`. Missing or malformed → error from `/velpari-configure-inputs`. |
 
 ---
 
@@ -164,6 +173,7 @@ These apply across multiple commands and are the architectural backbone.
 | **NFR-10** | Documentation | `AGENTS.md` describes the project layout, command inventory, stage workflow, artifact layout, design principles, coding conventions, and the development symlink. `README.md` is the user-facing entry point. `CHANGELOG.md` follows Keep a Changelog format. |
 | **NFR-11** | Subagent exception | Subagents are permitted in the discussion stage (4 agents: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT), the atomic-function stage (4 scout agents), and the development-order stage (4 scout agents) — total 12 scout agents. Stages 2–7 and handoff MUST NOT spawn subagents. The scout pattern mirrors Senai's plan-stage scouts. |
 | **NFR-12** | Doc scope is the source of truth for command behavior | The PRD section per command lists reads/writes; design.md pseudocode enforces it; tests assert it. The sequence doc renders each command's scope as a row in a sub-sequence table (`Doc/velpari-sequence.md` §11). Drift between the PRD and the sequence doc is a defect caught by doctor. |
+| **NFR-13** | Uniform subagent pattern | All 12 scout agents (3 in discuss + 4 AF-SCOUT + 4 DO-SCOUT + 1 optional WEB SEARCH) follow the same `ScoutContract` (per `pi-extension/src/contracts.ts`). Same spawn helper, same JSON output envelope, same 30-second timeout, same picker UI. Drift between any two scouts is a defect caught by tests TC-189..TC-198. |
 
 ---
 
@@ -180,6 +190,8 @@ These apply across multiple commands and are the architectural backbone.
 9. **Helper function dedup keys.** Dedup is by `name + file path` (lowercase, normalized to forward slashes). Same name in different paths is considered distinct; same name + same path is considered the same helper function.
 10. **Per-command gate is deterministic and pre-LLM.** Every stage command's gate check uses only file existence and `fs.statSync().size > 0`. No LLM involvement. The gate runs before any LLM call. On failure, the user sees a specific error naming the missing artifact.
 11. **No `/velpari-architect` command in v1.x.** Velpari does not generate architecture; Senai does. If a future version adds one, it must be documented as an exception to this constraint with explicit rationale.
+12. **No runtime dependency on Senai.** Velpari's `package.json` does not list Senai. TUI patterns (pickers, list editors) are re-implemented in `pi-extension/src/ui/`. Both extensions work standalone.
+13. **Framework is one-time setup, not a pipeline stage.** Framework/tech-stack is captured in `/velpari-configure-inputs` and persisted in `.pi/velpari/files.json`. It is NOT a stage that runs in the discussion → PRD pipeline. Per user direction.
 
 ---
 
@@ -206,8 +218,8 @@ The following are explicitly NOT part of Velpari v1.x:
 | **Published copy** | An artifact file written under `Doc/`. Read-only after publication. The artifact of record that downstream tools and view commands read. |
 | **Run** | A single end-to-end execution of the Velpari pipeline from `/velpari-discuss` through `/velpari-handoff`. Identified by run id `YYYY-MM-DD-HH-MM-<mission-slug>`. |
 | **Stage** | One of seven discrete states in the pipeline (discuss, prd, rtm, feasibility, design, pseudocode, testplan), each with `pending` and `approved` sub-states. |
-| **FR-N** | Functional Requirement identifier (`FR-01` through `FR-48`). Stable across all Velpari artifacts and used in the RTM, design, and test docs. |
-| **NFR-N** | Non-Functional Requirement identifier (`NFR-01` through `NFR-12`). Stable, referenced from the test plan. |
+| **FR-N** | Functional Requirement identifier (`FR-01` through `FR-57`). Stable across all Velpari artifacts and used in the RTM, design, and test docs. |
+| **NFR-N** | Non-Functional Requirement identifier (`NFR-01` through `NFR-13`). Stable, referenced from the test plan. |
 | **HF-NN** | Helper Function identifier (`HF-01`, `HF-02`, ...). Identifies a helper function in the PRD's `## Helper Functions` section. Referenced by FR-Ns that depend on the helper. |
 | **AF-NN** | Atomic Function identifier (`AF-01`, `AF-02`, ...). Identifies an atomic function in `Doc/atomic-functions.md`. Strictly a leaf node — does not call other atomic functions. May be called by helper functions. |
 | **Atomic function** | The smallest single-purpose unit of reusable logic. Distinct from a helper function: atomic functions do not call other atomic functions; helper functions may call atomic functions. |
@@ -258,6 +270,7 @@ Velpari v1.3 is considered complete when ALL of the following are true:
 - **v1.2** — added FR-26..FR-30 (4-agent discussion stage + auto-update PRD + helper functions in PRD) and NFR-11 (subagent exception for discussion). Extended NFR-02 scope to stages 2–7. Updated Constraints with helper↔atomic rules. Expanded Glossary with HF-NN, AF-NN, DECISION AGENT.
 - **v1.3** — added FR-31..FR-36 (post-pipeline atomic-function and development-order stages with 8 additional scout agents, helper↔atomic dependency rule, extended handoff schema). Extended NFR-11 to cover all 12 scout agents. Updated Constraints with post-pipeline stage rules. Expanded Glossary with scout agent, suggestion picker, atomic-function stage, development-order stage terms. Updated Acceptance Criteria to v1.3 (22 commands, optional stages, scout pattern, helper↔atomic traceability).
 - **v1.4** — added FR-43..FR-48 (per-command doc scope, gate enforcement, sub-agent inventory documented, architecture discussion doc exists, no architecture command in Velpari, PRD/RTM separate). Added NFR-12 (doc scope is source of truth). Added constraints: per-command gate is deterministic and pre-LLM; no `/velpari-architect` command in v1.x. Added Acceptance Criteria: per-command gates enforced, doc scope table consistent across docs, architecture-discussion.md is current.
+- **v1.5** — added FR-49..FR-57 (framework as one-time setup in `/velpari-configure-inputs`; discussion stage 4 agents NEW EXTRACTOR + PRD CHECKER + RTM CHECKER + WEB SEARCH AGENT replacing DECISION AGENT; DECISION logic moved to main handler; WEB SEARCH is user-prompted and collects community + official docs + similar projects; all 12 scouts follow `ScoutContract`; no runtime dependency on Senai; `ScoutContract` defined in `pi-extension/src/contracts.ts`; `framework` field validated). Added NFR-13 (uniform subagent pattern). Added constraints: no runtime dependency on Senai (TUI re-implemented); framework is one-time setup, not a pipeline stage.
 
 ---
 

@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (docs-first scope — v1.4 plan)
+### Added (docs-first scope — v1.5 plan)
+
+**v1.5 changes (framework as one-time setup + WEB SEARCH AGENT + uniform subagent pattern + TUI independence):**
+
+- **Framework as one-time setup (FR-49, FR-57).** `/velpari-configure-inputs` now captures framework/language/libraries/runtime, persisted in `.pi/velpari/files.json:framework` (version 2). Injected into every stage prompt via `prompt.ts:buildStagePrompt()`. Not a pipeline stage.
+- **WEB SEARCH AGENT replaces DECISION AGENT (FR-50..FR-53).** Discussion stage has 4 scouts: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT. The web search agent is user-prompted (yes/no after interview) and collects (a) community resources (Stack Overflow, Reddit, blogs, GitHub issues), (b) official documentation (language, framework, library), (c) similar OSS projects. DECISION AGENT logic moved to the main handler as deterministic post-scout processing.
+- **Uniform subagent pattern (FR-54, FR-56, NFR-13).** All 12 scout agents follow the `ScoutContract` defined in `pi-extension/src/contracts.ts`. `spawnScout()` helper enforces 30-second timeout, JSON output envelope, and error handling uniformly. Scout files live at `skills/scouts/{scoutId}.md`. Same picker UI used across all stages.
+- **TUI independence (FR-55).** Velpari does NOT depend on Senai at runtime. TUI patterns (simple-picker, list-editor, role-picker) are re-implemented in `pi-extension/src/ui/` using Pi's TUI primitives. Both extensions work standalone. TC-199 verifies `package.json` has no Senai dependency; TC-200 verifies zero imports from Senai's source.
+- **Sequence doc §10.4** — new section documenting the discussion scout pattern with WEB SEARCH AGENT activation flow.
+- **Pseudocode §13, §18** — rewritten discussion pseudocode (4 scouts + main-handler merge); new §18 with `ScoutContract`, `spawnScout()`, `FrameworkInfo`, and prompt injection.
+- **Design §2.20, §2.21, §2.22** — `contracts.ts`, `scout.ts`, `ui/` modules documented. §3.8 framework handling. §3.9 TUI independence. §7.8 + §7.9 architecture decisions (DECISION → main handler; TUI re-implementation rationale).
+- **Test cases §36** — 12 new TCs (TC-189..TC-200) covering framework, web search, uniform subagent pattern, TUI independence.
+- **Test plan** — 22 test files now (added `framework.test.ts`, `scout.test.ts`).
+- **Step-by-step guide §1a** — framework setup section; §2 updated for web search prompt.
 
 **v1.4 changes (per-command doc scope + gates + architecture discussion):**
 

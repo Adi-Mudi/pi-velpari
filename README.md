@@ -92,11 +92,15 @@ npm test
    /velpari-configure-inputs
    ```
 
+   This captures: input documents, output paths, **and your framework/tech stack** (e.g., Next.js + TypeScript). The framework is persisted in `.pi/velpari/files.json` and injected into every stage prompt.
+
 2. **Start the discussion**:
 
    ```
    /velpari-discuss Build a CLI that lists TODOs from a markdown file
    ```
+
+   After the multi-turn interview, you'll be asked: "Do you want me to search the web for community resources, official docs, and similar projects?" (yes/no). The 4 scouts (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, optional WEB SEARCH AGENT) run in parallel; the main handler merges their output and renders a verdict.
 
 3. **Approve each stage**:
 
@@ -179,6 +183,9 @@ npm test
 7. **Mirrors Senai's discipline.** Same state-gated runs, same working/published copy separation, same doctor audit, same single-source-of-truth state file, same scout-pattern UI.
 8. **No architecture command in Velpari.** Velpari produces inputs only; Senai's `/senai-generate-architect` consumes them. Documented explicitly; rationale in `Doc/design.md` §7.7.
 9. **Per-command doc scope and gate.** Every stage command declares which `Doc/` artifacts it reads (the doc scope) and a gate check runs before any LLM call to verify those artifacts exist and are non-empty. See `Doc/velpari-sequence.md` §11.
+10. **Framework as one-time setup.** Framework/tech-stack is captured in `/velpari-configure-inputs` and persisted in `.pi/velpari/files.json`. Injected into every stage prompt. Not a pipeline stage.
+11. **WEB SEARCH AGENT** (discussion stage only, user-prompted). Collects community resources, official documentation, and similar OSS projects. User chooses per-discussion whether to invoke.
+12. **Uniform subagent pattern.** All 12 scout agents follow the `ScoutContract` (same spawn helper, same JSON envelope, same 30-second timeout, same picker UI).
 
 ## Project layout
 

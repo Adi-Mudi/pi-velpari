@@ -113,6 +113,16 @@ This is the actionable list. Each pending decision should be resolved before it 
 11. **How should we handle Senai schema drift long-term?** The handoff test reads Senai's source at test time. Is that robust enough, or should we pin to specific Senai versions? — **pending**
 12. **Should Velpari ship its own doctor rules for cross-extension consistency?** (e.g., detect when Senai has changed but Velpari's handoff schema hasn't been updated.) — **pending**
 
+### v1.5 decisions (added with the framework + web-search scope changes)
+
+13. **Where should framework/tech-stack selection live?** Currently in `/velpari-configure-inputs` as a one-time setup field. Should it become its own command (`/velpari-configure-framework`) or stay co-located with input configuration? — **pending**
+14. **How should framework info be injected into stage prompts?** Currently as part of the prompt context block. Should it be a separate "framework constraints" block that skill markdown can reference, or stay inline? — **pending**
+15. **Should WEB SEARCH AGENT be available in atomic-function and development-order too?** Currently only in discussion. If the post-pipeline stages would also benefit from community/similar-project context, the user would prompt there too. — **pending**
+16. **Should the web search cache results?** Currently each scout call re-searches. A cache could reduce latency and tokens but adds state to manage. — **pending**
+17. **Should the DECISION AGENT logic (now in the main handler) be extracted into a separate `mergeDecisions()` helper function, or stay inline in the discussion handler?** Tradeoff between testability and locality. — **pending**
+18. **Should `ScoutContract` be extensible with custom scout types per project?** (e.g., a project might want a "compliance-checker" scout.) — **pending**
+19. **Should TUI re-implementations live in `pi-extension/src/ui/` mirroring Senai's structure exactly?** Currently planned as separate `pi-extension/src/ui/{simple-picker,list-editor,role-picker}.ts`. Drift from Senai over time is a risk. — **pending**
+
 ---
 
 ## 6. How to use this document

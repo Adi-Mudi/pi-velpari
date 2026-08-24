@@ -1098,9 +1098,9 @@ The `buildDocScopeFor` helper assembles the truth/comparison documents for the c
 
 ---
 
-## 13. Module: `discuss.ts` — updated for v1.2 (4-agent pattern)
+## 13. Module: `discuss.ts` — updated for v1.5 (4-agent: DECISION → WEB SEARCH + main-handler merge)
 
-### 13.1 `runDiscuss` — coordinates 4 subagents
+### 13.1 `runDiscuss` — coordinates 4 scouts + main-handler merge
 
 ```ts
 async function runDiscuss(args: RunArgs): Promise<void>
@@ -1110,7 +1110,7 @@ state is null or currentStage === "discussing"
 
 // Postconditions
 - discussion-notes.md written to working dir
-- decision verdict rendered to user
+- verdict (new FR / update / helper function update / new helper) rendered to user
 - on /velpari-approve, Doc/discussion-notes.md published AND PRD auto-updated per verdict
 
 // Logic
@@ -1127,95 +1127,114 @@ while (more) {
   more = await api.ui.confirm("Add another point?");
 }
 
-// Spawn 4 subagents in parallel
-const [extractResult, prdCheckResult, rtmCheckResult] = await Promise.all([
-  spawnSubagent("extractor", { mission: state.mission, answers }, api),
-  spawnSubagent("prd-checker", { rootDir, runId: state.runId }, api),
-  spawnSubagent("rtm-checker", { rootDir, runId: state.runId }, api),
-]);
+// User-prompted web search activation (v1.5)
+let useWebSearch = false;
+if (answers.length > 0) {
+  useWebSearch = await api.ui.confirm(
+    "Do you want me to search the web for community resources, " +
+    "official documentation, and similar projects related to your input? " +
+    "This adds ~15 seconds and uses ~1 LLM call."
+  );
+}
 
-// DECISION AGENT (4th) merges and classifies
-const verdict = await spawnSubagent("decision-agent", {
-  extraction: extractResult,
-  existingPRD: prdCheckResult,
-  existingRTM: rtmCheckResult,
-  userAnswers: answers,
-}, api);
+// Spawn 4 scouts in parallel (3 always + 1 optional)
+const scoutPromises: Promise<ScoutOutput>[] = [
+  spawnScout("extractor", { mission: state.mission, answers }, api),
+  spawnScout("prd-checker", { rootDir, runId: state.runId }, api),
+  spawnScout("rtm-checker", { rootDir, runId: state.runId }, api),
+];
+if (useWebSearch) {
+  scoutPromises.push(spawnScout("web-search", { mission: state.mission, answers }, api));
+}
+
+const scoutResults = await Promise.all(scoutPromises);
+
+// Main handler performs DECISION AGENT logic (v1.5 — deterministic post-scout processing)
+const verdict = mergeAndClassify(scoutResults, answers, rootDir);
 
 // Render verdict for user preview
-const previewText = renderVerdictForPreview(verdict);
+const previewText = renderVerdictForPreview(verdict, useWebSearch);
 
 // Write working copy
 const stageDir = getStageDir(rootDir, state.runId, "discussing");
 fs.mkdirSync(stageDir, { recursive: true });
 const workingPath = path.join(stageDir, "discussion-notes.md");
-fs.writeFileSync(workingPath, renderDiscussionNotes(state.mission, answers, verdict), "utf-8");
+fs.writeFileSync(workingPath, renderDiscussionNotes(state.mission, answers, verdict, useWebSearch), "utf-8");
 
 // Preview + confirm
 const confirmed = await api.ui.previewAndConfirm(previewText, "Save discussion notes?");
 if (!confirmed) return;
 
-// Mark working copy ready for approve
 api.ui.notify("Discussion ready. Run /velpari-approve to publish and auto-update PRD.");
 ```
 
-### 13.2 `spawnSubagent`
+### 13.2 `mergeAndClassify` — DECISION AGENT logic in main handler (v1.5)
 
 ```ts
-async function spawnSubagent(name: string, args: object, api: ExtensionAPI): Promise<object>
+function mergeAndClassify(
+  scoutResults: ScoutOutput[],
+  userAnswers: Array<{ question: string; answer: string }>,
+  rootDir: string
+): DecisionVerdict
 
 // Preconditions
-name is one of: "extractor", "prd-checker", "rtm-checker", "decision-agent"
+scoutResults is non-empty; userAnswers is non-empty
 
 // Postconditions
-returns parsed JSON object; throws on timeout or invalid response
+returns a DecisionVerdict with all user statements classified
 
 // Logic
-const skillPath = path.join(EXTENSION_DIR, "skills", "discuss-subagents", `${name}.md`);
-const skill = fs.readFileSync(skillPath, "utf-8");
-const prompt = skill + "\n\nInput:\n" + JSON.stringify(args, null, 2) + "\n\nOutput ONLY valid JSON.";
+// 1. Collect all proposals from all scouts
+const allProposals: Proposal[] = scoutResults.flatMap(r => r.proposals);
 
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 30_000);  // 30-second timeout
-try {
-  const raw = await api.llm.complete(prompt, { signal: controller.signal });
-  return JSON.parse(raw);
-} catch (err) {
-  throw new Error(`Subagent '${name}' failed: ${err.message}`);
-} finally {
-  clearTimeout(timeout);
+// 2. Extract candidate helper-function mentions from user answers
+const candidateHelpers = extractHelperMentions(userAnswers);
+
+// 3. Dedup helper functions by name + filePath (case-insensitive, forward slashes)
+const existingHelpers = readExistingHelpers(path.join(rootDir, DOC_DIR, "PRD_Pi-Velpari.md"));
+const dedupedHelpers = dedupHelpers(candidateHelpers, existingHelpers);
+
+// 4. For each user statement, classify into one of:
+//    - new FR-N: new requirement, no existing match
+//    - update existing FR-N: modifies an existing FR
+//    - helper function update: modifies existing helper
+//    - new helper function: adds a new helper
+const newFRs: NewFR[] = [];
+const updatedFRs: UpdatedFR[] = [];
+const newHelpers: NewHelper[] = [];
+const updatedHelpers: UpdatedHelper[] = [];
+
+for (const statement of extractStatements(userAnswers)) {
+  const matchedFR = findMatchingFR(statement, existingPRD);
+  const matchedHelper = findMatchingHelper(statement, existingHelpers);
+
+  if (matchedHelper) {
+    updatedHelpers.push({ id: matchedHelper.id, newPurpose: statement.text, callsAtomic: [] });
+  } else if (matchedFR) {
+    updatedFRs.push({ id: matchedFR.id, newDescription: statement.text });
+  } else if (isHelperMention(statement)) {
+    newHelpers.push(extractHelperEntry(statement));
+  } else {
+    newFRs.push({ description: statement.text, traceTo: sourceQuestion(statement) });
+  }
 }
+
+// 5. Include web search proposals as "context" entries (advisory, not classified)
+const webSearchProposals = scoutResults.find(r => r.source === "web-search")?.proposals ?? [];
+
+return {
+  newFRs,
+  updatedFRs,
+  newHelpers: dedupedHelpers.new,
+  updatedHelpers: dedupedHelpers.updated,
+  webSearchContext: webSearchProposals,  // advisory
+};
 ```
 
-### 13.3 `decisionAgent`
+### 13.3 `applyVerdict` — applies verdict to PRD on `/velpari-approve`
 
 ```ts
-async function decisionAgent(input: {
-  extraction: object;
-  existingPRD: object | null;
-  existingRTM: object | null;
-  userAnswers: Array<{ question: string; answer: string }>;
-}, api: ExtensionAPI): Promise<DecisionVerdict>
-
-// Logic
-// LLM call with decision-agent skill. Produces structured verdict:
-// {
-//   newFRs: [{ id, description, traceTo }],
-//   updatedFRs: [{ id, newDescription }],
-//   newHelpers: [{ id: HF-NN, name, filePath, signature, purpose, dependsOn }],
-//   updatedHelpers: [{ id: HF-NN, newPurpose, callsAtomic: AF-NN[] }],
-//   newAtomics: [{ id: AF-NN, name, filePath, signature, purpose }]
-// }
-
-// Dedup helper functions by name + filePath
-// If a new helper has the same name + filePath as an existing one, classify as updatedHelpers instead.
-// If a new atomic function has the same name + filePath as an existing one, classify as updated atomic.
-```
-
-### 13.4 `applyDecisionVerdict`
-
-```ts
-async function applyDecisionVerdict(verdict: DecisionVerdict, rootDir: string, runId: string): Promise<void>
+async function applyVerdict(verdict: DecisionVerdict, rootDir: string, runId: string): Promise<void>
 
 // Preconditions
 verdict has been confirmed by user (via /velpari-approve)
@@ -1226,42 +1245,15 @@ verdict has been confirmed by user (via /velpari-approve)
 //   - updated FR-Ns replace existing entries
 //   - new HF-NNs added to ## Helper Functions
 //   - updated HF-NNs replace existing entries
-//   - new AF-NNs added to ## Atomic Functions (if Doc/atomic-functions.md exists; else stored in PRD's pending-atomic-functions section for later reconciliation)
 
 // Logic
 const prdPath = path.join(rootDir, DOC_DIR, "PRD_Pi-Velpari.md");
 let prd = fs.readFileSync(prdPath, "utf-8");
 
-// 1. Apply new FR-Ns
-for (const fr of verdict.newFRs) {
-  prd = insertFRRow(prd, fr);
-}
-
-// 2. Apply updated FR-Ns
-for (const fr of verdict.updatedFRs) {
-  prd = replaceFRRow(prd, fr);
-}
-
-// 3. Apply new helpers
-for (const hf of verdict.newHelpers) {
-  prd = appendHelperEntry(prd, hf);
-}
-
-// 4. Apply updated helpers
-for (const hf of verdict.updatedHelpers) {
-  prd = replaceHelperEntry(prd, hf);
-}
-
-// 5. Atomic functions: store in PRD pending section OR in Doc/atomic-functions.md if it exists
-const atomicPath = path.join(rootDir, DOC_DIR, "atomic-functions.md");
-if (fs.existsSync(atomicPath)) {
-  let atomic = fs.readFileSync(atomicPath, "utf-8");
-  for (const af of verdict.newAtomics) atomic = appendAtomicEntry(atomic, af);
-  for (const af of verdict.updatedAtomics ?? []) atomic = replaceAtomicEntry(atomic, af);
-  fs.writeFileSync(atomicPath, atomic, "utf-8");
-} else {
-  for (const af of verdict.newAtomics) prd = appendPendingAtomic(prd, af);
-}
+for (const fr of verdict.newFRs) prd = insertFRRow(prd, fr);
+for (const fr of verdict.updatedFRs) prd = replaceFRRow(prd, fr);
+for (const hf of verdict.newHelpers) prd = appendHelperEntry(prd, hf);
+for (const hf of verdict.updatedHelpers) prd = replaceHelperEntry(prd, hf);
 
 // Atomic write
 fs.writeFileSync(`${prdPath}.tmp`, prd, "utf-8");
@@ -1842,6 +1834,150 @@ function assertFileNonEmpty(filePath: string): void {
   if (stat.size === 0) {
     throw new Error(`Required file is empty: ${filePath}`);
   }
+}
+```
+
+---
+
+## 18. Module: `contracts.ts` and `scout.ts` (v1.5)
+
+### 18.1 `ScoutContract`
+
+```ts
+// pi-extension/src/contracts.ts
+export interface ScoutContract {
+  scoutId: string;             // "extractor", "prd-checker", "web-search", "af-scout-1", "do-scout-3", etc.
+  stageName: Stage;            // which stage owns this scout
+  inputSchema: object;         // what the scout reads
+  outputSchema: object;        // JSON envelope the scout returns
+  timeoutMs: number;           // default 30_000
+}
+
+export interface ScoutInput {
+  skillPath: string;           // path to skill markdown
+  payload: object;             // stage-specific structured input
+}
+
+export interface ScoutOutput {
+  proposals: Array<{
+    id?: string;                // optional stable id (e.g., "HF-NN" or "AF-NN")
+    payload: object;            // stage-specific
+    source: string;             // always set to scoutId
+  }>;
+  warnings: string[];
+}
+
+export interface AcceptedProposal {
+  proposal: ScoutOutput["proposals"][number];
+  accepted: boolean;            // false if user rejected
+  edits?: { payload: object };   // user-edited payload if any
+}
+```
+
+### 18.2 `spawnScout` — uniform scout spawn helper
+
+```ts
+// pi-extension/src/scout.ts
+export async function spawnScout(
+  scoutId: string,
+  input: object,
+  api: ExtensionAPI
+): Promise<ScoutOutput>
+
+// Preconditions
+scoutId is one of the 12 registered scout ids
+input matches ScoutInput shape
+
+// Postconditions
+returns parsed ScoutOutput; throws on timeout or invalid response
+
+// Logic
+const skillPath = path.join(EXTENSION_DIR, "skills", "scouts", `${scoutId}.md`);
+if (!fs.existsSync(skillPath)) {
+  throw new Error(`Scout skill not found: ${skillPath}`);
+}
+const skill = fs.readFileSync(skillPath, "utf-8");
+const prompt =
+  skill +
+  "\n\n# Input\n" + JSON.stringify(input, null, 2) +
+  "\n\n# Output\nProduce JSON matching the ScoutOutput envelope. No preamble, no markdown, just JSON.";
+
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), 30_000);  // 30-second timeout (uniform across all scouts)
+try {
+  const raw = await api.llm.complete(prompt, { signal: controller.signal });
+  const parsed = JSON.parse(raw);
+  // Validate output envelope
+  if (!parsed.proposals || !Array.isArray(parsed.proposals)) {
+    throw new Error(`Scout '${scoutId}' returned invalid output envelope`);
+  }
+  // Stamp source on each proposal
+  for (const p of parsed.proposals) p.source = scoutId;
+  return parsed as ScoutOutput;
+} catch (err) {
+  throw new Error(`Scout '${scoutId}' failed: ${err.message}`);
+} finally {
+  clearTimeout(timer);
+}
+```
+
+### 18.3 `renderScoutPicker` — uniform picker UI
+
+```ts
+// pi-extension/src/ui/simple-picker.ts (re-implementation of Senai's pattern)
+export async function renderScoutPicker(
+  scoutId: string,
+  output: ScoutOutput,
+  api: ExtensionAPI
+): Promise<AcceptedProposal[]>
+
+// Preconditions
+output has at least one proposal
+
+// Postconditions
+returns the list of accepted proposals (with edits if any)
+
+// Logic
+// For each proposal, show user:
+//   - proposal.payload (formatted)
+//   - source: scoutId
+//   - accept / reject / edit buttons
+// Default action: accept.
+// After all proposals processed, return the accepted list.
+```
+
+### 18.4 `FrameworkInfo` and injection
+
+```ts
+// pi-extension/src/contracts.ts (continued)
+export interface FrameworkInfo {
+  framework: string;        // e.g., "Next.js"
+  language: string;         // e.g., "TypeScript"
+  libraries: string[];      // e.g., ["react", "tailwindcss"]
+  runtime: string;          // e.g., "Node.js 20+"
+}
+
+// pi-extension/src/prompt.ts (extended)
+export function buildStagePrompt(args: BuildPromptArgs & { framework?: FrameworkInfo }): string {
+  const skill = loadStageSkill(args.stage);
+  const frameworkBlock = args.framework
+    ? `\n\n## Framework\n\n- Language: ${args.framework.language}\n- Framework: ${args.framework.framework}\n- Libraries: ${args.framework.libraries.join(", ")}\n- Runtime: ${args.framework.runtime}\n`
+    : "";
+  // ... existing logic + frameworkBlock appended to the prompt
+  return [skill, scopeBlock, pathBlock, frameworkBlock, rulesBlock].join("\n\n");
+}
+```
+
+### 18.5 Discussion web-search activation
+
+```ts
+// pi-extension/src/discuss.ts (v1.5)
+export async function promptForWebSearch(api: ExtensionAPI): Promise<boolean> {
+  return await api.ui.confirm(
+    "Do you want me to search the web for community resources, " +
+    "official documentation, and similar projects related to your input? " +
+    "This adds ~15 seconds and uses ~1 LLM call."
+  );
 }
 ```
 

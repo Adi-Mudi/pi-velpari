@@ -212,7 +212,7 @@ Doc/                                       (published copies, written only by /v
 10. `/velpari-approve` — publish working copy to `Doc/`, advance state.
 11. `/velpari-status` — show current run state.
 12. `/velpari-reset` — discard current run.
-13. `/velpari-configure-inputs` — set input documents and output paths.
+13. `/velpari-configure-inputs` — set input documents, output paths, **and framework/tech-stack** (v1.5). One-time setup. Writes `.pi/velpari/files.json`.
 14. `/velpari-doctor` — audit setup.
 15. `/velpari-handoff` — bridge to Senai.
 
@@ -291,8 +291,8 @@ Mission: *"Build a CLI that lists TODOs from a markdown file."*
 **Core pipeline (required):**
 
 1. `/velpari-configure-inputs` → set `Doc/` as output dir; nothing to read.
-2. `/velpari-discuss "Build a CLI that lists TODOs from a markdown file"` → 4-agent discussion: NEW EXTRACTOR captures user input; PRD CHECKER reads existing PRD (empty on first run); RTM CHECKER reads existing RTM (empty on first run); DECISION AGENT merges and decides — for the first run, all input is "new FR-N". Preview shows proposed additions; user confirms. Working copy at `.IDE_Plans/velpari/runs/.../discuss/discussion-notes.md`.
-3. `/velpari-approve` → `Doc/discussion-notes.md` published; **DECISION AGENT verdict auto-applied** to `Doc/PRD_Pi-Velpari.md` (new FR-Ns added).
+2. `/velpari-discuss "Build a CLI that lists TODOs from a markdown file"` → multi-turn interview; then 4-agent discussion: NEW EXTRACTOR captures user input; PRD CHECKER reads existing PRD (empty on first run); RTM CHECKER reads existing RTM (empty on first run); **WEB SEARCH AGENT** (user-prompted, default off) collects community resources, official docs, similar projects. Main handler merges all proposals and classifies each statement as new FR / update / helper function update / new helper. Preview shows proposed additions; user confirms. Working copy at `.IDE_Plans/velpari/runs/.../discuss/discussion-notes.md`.
+3. `/velpari-approve` → `Doc/discussion-notes.md` published; **handler verdict auto-applied** to `Doc/PRD_Pi-Velpari.md` (new FR-Ns added).
 4. `/velpari-rtm` → produces `Doc/RTM_Pi-Velpari.md` (after preview + confirm).
 5. `/velpari-approve` → published.
 6. `/velpari-feasibility` → produces `Doc/feasibility-study.md` (Go — small CLI, no unknowns).
@@ -387,6 +387,44 @@ Atomic functions are smaller than helper functions and do not call other atomic 
 ```
 
 Both lists are kept in `Doc/`: helper functions live in `Doc/PRD_Pi-Velpari.md` (under `## Helper Functions`), atomic functions live in `Doc/atomic-functions.md`. The dependency `helper → atomic` is recorded in both places.
+
+### 10.4 Discussion scouts (v1.5)
+
+The discussion stage (`/velpari-discuss`) uses 4 scout agents:
+
+| Scout | Always runs? | Reads | Proposes |
+|---|---|---|---|
+| **NEW EXTRACTOR** | Yes | User Q&A | Raw user input normalized into statements |
+| **PRD CHECKER** | Yes | Existing `Doc/PRD_Pi-Velpari.md` (if any) | Related FR-Ns already in the PRD |
+| **RTM CHECKER** | Yes | Existing `Doc/RTM_Pi-Velpari.md` (if any) | Related helper functions and TCs already in the RTM |
+| **WEB SEARCH AGENT** | **No — user-prompted** | User input as search query | Community resources, official documentation, similar OSS projects |
+
+After all scouts complete, the **main discussion handler** performs the DECISION AGENT logic as deterministic post-processing:
+
+1. Merge proposals from all scouts.
+2. For each user statement, classify as one of:
+   - **new FR-N** — entirely new requirement.
+   - **update existing FR-N** — modifies an existing PRD entry.
+   - **helper function update** — modifies an existing helper function entry.
+   - **new helper function** — adds a new helper function entry.
+3. Dedup helper functions by `name + file path` (case-insensitive, forward slashes).
+4. Render verdict for user preview.
+
+#### Web search activation
+
+After the user finishes the multi-turn interview and says "no more points", the discussion handler asks:
+
+> "Do you want me to search the web for community resources, official documentation, and similar projects related to your input? This adds ~15 seconds and uses ~1 LLM call. (yes/no)"
+
+If **yes**: WEB SEARCH AGENT runs in parallel with the other 3 scouts. If **no**: skipped. Web search results appear in the preview alongside the verdict.
+
+#### Why DECISION AGENT is no longer a subagent
+
+The DECISION AGENT's logic (merge + classify + dedup) is deterministic post-processing. It does not benefit from a separate LLM call — it can run in the main handler. This frees the 4th agent slot for WEB SEARCH AGENT, which adds genuine value (community context).
+
+#### Why web search is optional
+
+Web search adds latency (~15s) and tokens (~1 LLM call). For small projects, it's not worth it. For projects with non-trivial tech-stack choices or unfamiliar domains, it provides valuable context. The user chooses per-discussion whether to invoke it.
 
 ---
 

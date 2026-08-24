@@ -209,6 +209,10 @@ Total: 22 commands.
 - Notifications should be concise and tell the user the next command to run.
 - **Per-command doc scope is the source of truth.** Every stage command's reads and writes are declared in `commands.ts:COMMAND_SCOPE`. Before any LLM call, `checkDocScope` validates that every required input exists and is non-empty. The PRD row for the command, sequence doc §11, design §3.7, pseudocode §17, and test cases §35 must all agree. Drift is a defect.
 - **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. Do not add architecture-related commands to Velpari in v1.x. The rationale is in `Doc/design.md` §7.7 and `Doc/PRD.md` (FR-47).
+- **No runtime dependency on Senai.** `package.json` does not list Senai. TUI patterns are re-implemented in `pi-extension/src/ui/` using Pi's TUI primitives. Either extension can be removed or refactored without breaking the other. (FR-55)
+- **Uniform subagent pattern.** All 12 scout agents follow the `ScoutContract` defined in `pi-extension/src/contracts.ts`. Use `pi-extension/src/scout.ts:spawnScout()` to spawn any scout — do not write bespoke spawn logic per scout. Same 30-second timeout, same JSON output envelope, same picker UI. (FR-54, NFR-13)
+- **Framework is one-time setup.** Framework/tech-stack is captured in `/velpari-configure-inputs`, persisted in `.pi/velpari/files.json:framework`, and injected into every stage prompt. It is NOT a pipeline stage. Do not add a `/velpari-framework` command. (FR-49)
+- **WEB SEARCH AGENT is user-prompted.** After the multi-turn interview, the user is asked "do you want a web search?" (yes/no). Do not auto-invoke the web search. The decision is per-discussion. (FR-52)
 - No subagent-spawning code anywhere. If you find yourself reaching for a subagent API, re-read the design principles.
 
 ## Testing

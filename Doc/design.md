@@ -192,6 +192,38 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function renderOrderPicker(ranked: OrderEntry[], api: ExtensionAPI): OrderEntry[]` — lets the user reorder and accept.
   - `function writeDevelopmentOrder(accepted: OrderEntry[], rootDir: string): void` — writes to working copy and (on approve) published copy.
 
+### 2.20 `contracts.ts` — shared types (v1.5)
+
+- **Purpose:** Centralize shared types so all scout modules follow the same shape. Avoids drift between the 12 scouts.
+- **Implements:** FR-54, FR-56, NFR-13.
+- **Key exports:**
+  - `interface ScoutContract` — input/output shapes for any scout.
+  - `interface ScoutOutput` — standard envelope `{ proposals: [...], source: ScoutId, warnings?: string[] }`.
+  - `interface ScoutInput` — stage-specific input with skill markdown path.
+  - `interface AcceptedProposal` — what the picker returns.
+  - `interface FrameworkInfo` — shape of `.pi/velpari/files.json:framework` field.
+  - `function spawnScout(scoutId, input, api)` — standard spawn helper with 30s timeout, JSON parsing, error handling. Used by all 12 scouts.
+
+### 2.21 `scout.ts` — scout coordinator (v1.5)
+
+- **Purpose:** Single point of entry for spawning any scout. Wraps `contracts.ts:spawnScout()` with stage-specific helpers.
+- **Implements:** FR-54.
+- **Key exports:**
+  - `function spawnDiscussionScout(name, mission, answers, api)` — for the 4 discussion scouts.
+  - `function spawnAfScout(name, rootDir, api)` — for the 4 AF-SCOUTs.
+  - `function spawnDoScout(name, rootDir, api)` — for the 4 DO-SCOUTs.
+  - `function spawnWebSearchScout(input, api)` — for the WEB SEARCH AGENT (only in discussion).
+
+### 2.22 `ui/` — re-implemented TUI patterns (v1.5)
+
+- **Purpose:** Velpari does NOT depend on Senai. TUI patterns (pickers, list editors) are re-implemented here using Pi's TUI primitives.
+- **Implements:** FR-55.
+- **Key exports:**
+  - `pi-extension/src/ui/simple-picker.ts` — re-implementation of Senai's simple-picker (single-select).
+  - `pi-extension/src/ui/list-editor.ts` — re-implementation of Senai's list-editor (multi-select with toggling).
+  - `pi-extension/src/ui/role-picker.ts` — re-implementation of Senai's role-picker.
+- **Note:** These are independent of Senai's source. They may share UX patterns but the implementations are separate. Drift over time is a known risk; tests in `pi-extension/test/ui/` lock the contract.
+
 ---
 
 ## 3. Data Model
@@ -386,6 +418,76 @@ function checkDocScope(commandName: CommandName, rootDir: string): void {
 The gate is called at the top of every stage command handler — before any LLM call, before any UI prompt. It throws on failure; the command handler catches the throw and surfaces the message to the user via `api.ui.error()`. State is unchanged. No LLM tokens are spent.
 
 The gate is **deterministic** — it uses only `fs.existsSync` and `fs.statSync().size`. No LLM involvement. No race conditions within a single command invocation.
+
+### 3.8 Framework handling (v1.5)
+
+Framework/tech-stack selection happens **once per project** in `/velpari-configure-inputs`. It is not a pipeline stage. The selection is stored in `.pi/velpari/files.json` under `framework` and injected into every stage prompt.
+
+#### 3.8.1 `FrameworkInfo` shape
+
+```ts
+interface FrameworkInfo {
+  framework: string;        // e.g., "Next.js", "Django", "Spring Boot"
+  language: string;         // e.g., "TypeScript", "Python", "Java"
+  libraries: string[];      // e.g., ["react", "tailwindcss", "prisma"]
+  runtime: string;          // e.g., "Node.js 20+", "Python 3.12+"
+}
+```
+
+#### 3.8.2 `files.json` extended shape (version 2)
+
+```ts
+interface FilesConfig {
+  version: 2;                // bumped from 1 to add framework
+  framework?: FrameworkInfo; // optional but recommended
+  codePaths: string[];
+  inputDocuments: string[];
+  outputPaths: { ... };
+  excludedPaths: string[];
+}
+```
+
+When `framework` is missing or malformed, `/velpari-configure-inputs` rejects with a clear error. Subsequent stage commands refuse to run with a different error: "Framework not configured. Run /velpari-configure-inputs first."
+
+#### 3.8.3 Prompt injection
+
+`prompt.ts:buildStagePrompt` includes the framework info in the prompt context block:
+
+```
+## Framework
+
+- Language: TypeScript
+- Framework: Next.js
+- Libraries: react, tailwindcss, prisma
+- Runtime: Node.js 20+
+
+[existing prompt content follows]
+```
+
+Skill markdown for each stage references the framework in its instructions. Example: if language is TypeScript, the skill says "produce TypeScript helper function signatures"; if Python, "produce Python helper function signatures".
+
+### 3.9 TUI independence (v1.5)
+
+Velpari does NOT depend on Senai at runtime. The picker UI patterns used by Velpari are re-implementations of Senai's patterns, using Pi's TUI primitives.
+
+#### 3.9.1 Why
+
+- **Independent lifecycles.** Velpari and Senai evolve separately. A change in one should not break the other.
+- **Different audiences.** Velpari is pre-production (developer captures requirements). Senai is production (LLM implements). They have different UX needs.
+- **No circular dependency.** Both extensions live in the same monorepo but neither imports the other.
+
+#### 3.9.2 Implementation
+
+`pi-extension/src/ui/` contains:
+
+- `simple-picker.ts` — single-select picker. Pattern mirrors Senai's but is independently implemented using Pi's `truncate-toWidth` and component API.
+- `list-editor.ts` — multi-select with toggling. Same approach.
+- `role-picker.ts` — role selector. Same approach.
+
+#### 3.9.3 Verification
+
+- `package.json` does not list Senai as a dependency. TC-198 verifies this.
+- A grep for `from ".*Pi-Orchestra_v4.*"` in `pi-extension/src/` returns zero matches.
 
 ---
 
@@ -761,6 +863,31 @@ Neither is desirable. The clean separation is:
 
 If a future version needs to add pre-architecture steps (e.g., a "design review" stage before Senai's architecture generation), they go in Senai, not Velpari. This is documented as `FR-47` (no architecture command in Velpari) and tracked as a constraint (PRD §6 item 11).
 
+### 7.8 Why DECISION AGENT moved into the main handler (v1.5)
+
+In v1.4, the discussion stage had 4 scouts: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT. The DECISION AGENT's job was to merge the other 3 scouts' outputs and classify each user statement as new FR / update / helper function update / new helper.
+
+This work is **deterministic** post-processing, not LLM reasoning. It doesn't benefit from a separate LLM call — it can run in the main discussion handler after all scouts complete. Moving it:
+
+- Frees the 4th scout slot for WEB SEARCH AGENT, which adds genuine value (community context).
+- Reduces LLM round-trips (4 calls instead of 5).
+- Reduces latency (one fewer parallel call to wait for).
+
+The DECISION AGENT's logic is preserved as `discuss.ts:mergeAndClassify()`. It runs synchronously after all scouts return.
+
+### 7.9 Why Velpari re-implements Senai's TUI patterns (v1.5)
+
+Both extensions share UX patterns because they share a design philosophy (Senai-scout + picker). But Velpari does NOT import Senai's source. The pickers (`simple-picker`, `list-editor`, `role-picker`) are re-implemented in `pi-extension/src/ui/`.
+
+**Why:**
+
+- **Independent lifecycles.** Either extension can be removed or refactored without breaking the other.
+- **No circular dependency.** Both extensions live in the same monorepo but neither depends on the other at runtime.
+- **Different UX needs.** Velpari's pickers emphasize configuration (project setup), Senai's pickers emphasize agent orchestration (multi-agent). The shared pattern is the "spirit"; the implementations diverge.
+- **Testability.** Each picker has its own test file. Drift between them is caught by tests, not by shared source.
+
+This is documented as `FR-55` and tracked as a constraint (PRD §6 item 12). TC-198 verifies that `package.json` does not list Senai.
+
 ---
 
 ## 8. Cross-Reference Index
@@ -771,11 +898,11 @@ If a future version needs to add pre-architecture steps (e.g., a "design review"
 | `constants.ts` | FR-24 | — |
 | `state.ts` | FR-21, FR-23, FR-25, FR-28, FR-30, FR-33 | NFR-06 |
 | `prompt.ts` | FR-22, FR-23 | — |
-| `commands.ts` | FR-01..FR-32, FR-43, FR-44 (delegation, 22 commands total; COMMAND_SCOPE and checkDocScope) | — |
+| `commands.ts` | FR-01..FR-32, FR-43, FR-44, FR-49, FR-57 (delegation, 22 commands total; COMMAND_SCOPE and checkDocScope; framework handling) | — |
 | `compaction.ts` | — | NFR-01 |
 | `config.ts` | FR-11 | — |
 | `doctor.ts` | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
-| `discuss.ts` | FR-01, FR-22, FR-23, FR-26, FR-27, FR-28 | NFR-11 (4 subagents) |
+| `discuss.ts` | FR-01, FR-22, FR-23, FR-26, FR-28, FR-50, FR-51, FR-52, FR-53 | NFR-11 (4 scouts incl. WEB SEARCH) |
 | `prd.ts` | FR-02, FR-22, FR-23, FR-29 | — |
 | `rtm.ts` | FR-03, FR-22, FR-23, FR-30 | — |
 | `feasibility.ts` | FR-04, FR-22, FR-23 | — |
@@ -786,6 +913,9 @@ If a future version needs to add pre-architecture steps (e.g., a "design review"
 | `development-order.ts` | FR-32, FR-36 | NFR-11 (4 DO scouts) |
 | `handoff.ts` | FR-13, FR-34 | NFR-08 |
 | `show.ts` | FR-14..FR-20 | — |
+| `contracts.ts` | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
+| `scout.ts` | FR-54 | NFR-13 |
+| `ui/{simple-picker,list-editor,role-picker}.ts` | FR-55 | — |
 
 Every requirement in the RTM is implemented by at least one module. No module is orphan (every module implements at least one FR-N or NFR-N).
 

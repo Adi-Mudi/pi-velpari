@@ -528,4 +528,42 @@ Every requirement in `Doc/RTM_Pi-Velpari.md` has at least one TC. Every TC refer
 
 ---
 
+## 36. v1.5: Framework + web search + uniform subagent pattern
+
+**Test file:** `pi-extension/test/framework.test.ts` (new), `pi-extension/test/scout.test.ts` (new)
+
+### Framework handling (FR-49, FR-57)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-189 | `/velpari-configure-inputs` prompts for framework/language/libraries/runtime | Fresh project | Run command | Picker UI shows framework options; user can select or type custom | FR-49 | P1 |
+| TC-190 | `framework` field in `files.json` is validated; missing → error | Files written without `framework` | Run any stage command | Error: "Framework not configured. Run /velpari-configure-inputs." | FR-57 | P1 |
+
+### Discussion 4-agent pattern (FR-50..FR-53)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-191 | Discussion spawns 3 always-on scouts (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER) | New run, web search declined | Call runDiscuss | 3 spawnScout calls; no web-search call | FR-50, FR-52 | P1 |
+| TC-192 | Main handler performs DECISION AGENT logic after scouts return | TC-191 setup | Inspect mergeAndClassify output | Verdict has newFRs/updatedFRs/newHelpers/updatedHelpers | FR-51 | P1 |
+| TC-193 | Web search activation prompt is shown to user | Multi-turn interview completed | Inspect UI flow | "Do you want me to search the web?" prompt is shown | FR-52 | P1 |
+| TC-194 | WEB SEARCH AGENT scope includes community, official docs, similar projects | User opted in | Inspect skill markdown or output | Output references community/official/similar | FR-53 | P1 |
+
+### Uniform subagent pattern (FR-54, FR-56, NFR-13)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-195 | `ScoutContract` interface defined in `pi-extension/src/contracts.ts` | Read source | Inspect | Interface has scoutId, stageName, inputSchema, outputSchema, timeoutMs | FR-56, NFR-13 | P1 |
+| TC-196 | All 12 scout files exist at `skills/scouts/{scoutId}.md` | Read filesystem | List files | 12 files: extractor, prd-checker, rtm-checker, web-search, af-scout-1..4, do-scout-1..4 | FR-54, FR-56 | P1 |
+| TC-197 | `spawnScout()` enforces 30-second timeout uniformly | Mock LLM with slow response | Call spawnScout | Throws after 30s; no scout can exceed timeout | FR-54, NFR-13 | P1 |
+| TC-198 | All scout outputs follow the `{ proposals: [...], source: ScoutId }` envelope | Mock LLM returns various shapes | Call spawnScout | Output is normalized to envelope; missing fields throw | FR-54, NFR-13 | P1 |
+
+### TUI independence (FR-55)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-199 | `package.json` does not list Senai as a dependency | Read package.json | Inspect | Zero matches for `Pi-Orchestra_v4` in dependencies/peerDependencies | FR-55 | P1 |
+| TC-200 | Velpari's `pi-extension/src/` has no `import` from Senai's source | Grep source files | Match `from ".*Pi-Orchestra_v4"` | Zero matches | FR-55 | P1 |
+
+---
+
 *This document is consumed by Phase A–E implementation (each test is written alongside its module) and by `pi-extension/src/doctor.ts` (audit-time verification that every RTM row has at least one test case).*
