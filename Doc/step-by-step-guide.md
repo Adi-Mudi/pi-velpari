@@ -14,6 +14,38 @@ A hands-on walkthrough for running a full Velpari cycle, from `/velpari-discuss`
   You should see `/velpari-*` commands in the list.
 - You have a clear idea of what you want to build. The clearer the mission, the cleaner the discussion.
 
+## 0a. How per-command gates work (v1.4)
+
+Before any stage command runs, it performs a **gate check**: it verifies that every required `Doc/` artifact exists and is non-empty. If any required artifact is missing or empty, the command fails with a specific error message naming the missing file. No LLM call is made. The state is unchanged.
+
+**Why this matters:** you can't accidentally run `/velpari-pseudocode` before `/velpari-design`. The LLM won't be asked to invent a design. The pipeline becomes a true DAG.
+
+**Example:** if you run `/velpari-rtm` before `/velpari-prd` (or before approving the PRD), you'll see:
+
+```
+/velpari-rtm requires Doc/PRD_Pi-Velpari.md to exist and be non-empty.
+Run /velpari-discuss and /velpari-approve, or /velpari-prd and /velpari-approve.
+```
+
+The command stops. State is unchanged. No LLM tokens spent.
+
+**Per-command doc scope** (which `Doc/` artifacts each command reads):
+
+| Command | Reads | Writes (after approve) |
+|---|---|---|
+| `/velpari-discuss` | (none — entry point) | `Doc/discussion-notes.md` |
+| `/velpari-prd` | `Doc/discussion-notes.md` | `Doc/PRD_Pi-Velpari.md` |
+| `/velpari-rtm` | `Doc/PRD_Pi-Velpari.md` | `Doc/RTM_Pi-Velpari.md` |
+| `/velpari-feasibility` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/feasibility-study.md` |
+| `/velpari-design` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/design.md` |
+| `/velpari-pseudocode` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md` | `Doc/pseudocode.md` |
+| `/velpari-testplan` | all 4 of: PRD, RTM, design, pseudocode | `Doc/test-plan.md`, `Doc/test-cases.md` |
+| `/velpari-atomic-function` (optional) | all 6 of: PRD, RTM, design, pseudocode, test-plan, test-cases | `Doc/atomic-functions.md` |
+| `/velpari-development-order` (optional) | all 6 of: PRD, RTM, design, pseudocode, test-plan, test-cases | `Doc/development-order.md` |
+| `/velpari-handoff` | all `Doc/*` (wildcard) | `.pi/senai/architect-inputs.json` |
+
+Discipline commands (`/velpari-approve`, `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-doctor`) and view commands (`/velpari-show-*`) have no doc scope — they operate on `state.json` or read a single artifact.
+
 ---
 
 ## 1. Configure inputs (one-time per project)

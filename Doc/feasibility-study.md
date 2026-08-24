@@ -14,6 +14,12 @@ Pi-Velpari is feasible to build as a single-developer, open-source Pi extension.
 
 **Verdict: GO.** All five dimensions rate High or Medium. No dimension rates Low. Conditional approval is not required, but the operational caveat (upstream API stability) should be revisited at every minor Pi release.
 
+**v1.4 additions** (per-command doc scope + gate, architecture discussion doc, no architecture command in Velpari):
+
+- Per-command gates add a few hundred lines of code (declarative `COMMAND_SCOPE` table + `checkDocScope` helper + 22 handler call sites). All deterministic, no LLM involvement. Low implementation cost.
+- The new `Doc/architecture-discussion.md` is a study-only doc. No implementation cost. It's a single markdown file with references to Pi's layered monorepo, Senai's 16 architecture patterns, and a pending decisions list.
+- Sub-agent inventory is documented but not generated. No additional code; the inventory is a paragraph in the sequence doc.
+
 ---
 
 ## 2. Technical Feasibility — **HIGH**
@@ -209,6 +215,7 @@ Schedule fits comfortably in a 5–7 week solo window. Phases are independent ch
 5. **Document the upstream API assumption list** in `AGENTS.md` so future maintainers know which Pi APIs Velpari depends on.
 6. **Centralize scout orchestration.** All 12 scout agents should share a single spawn helper with timeout handling and JSON parsing — already designed this way in `pseudocode.md:spawnSubagent`.
 7. **Make optional stages truly optional.** Both `/velpari-atomic-function` and `/velpari-development-order` must work without being required for handoff. Doctor should remind the user at the `planned-tests → handoff-ready` transition that the optional stages exist.
+8. **Maintain per-command doc scope consistency.** The `COMMAND_SCOPE` table (in `commands.ts`) is the source of truth for what each command reads. The sequence doc §11, design §3.7, pseudocode §17, and test cases §35 must all match. Drift between them is a defect caught by doctor.
 
 ---
 

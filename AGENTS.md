@@ -207,6 +207,8 @@ Total: 22 commands.
 - Keep command handlers thin. State logic belongs in `state.ts`; prompt logic belongs in `prompt.ts`.
 - Do not mutate loaded state objects in place. Use `advanceStage()` and `saveState()` helpers.
 - Notifications should be concise and tell the user the next command to run.
+- **Per-command doc scope is the source of truth.** Every stage command's reads and writes are declared in `commands.ts:COMMAND_SCOPE`. Before any LLM call, `checkDocScope` validates that every required input exists and is non-empty. The PRD row for the command, sequence doc §11, design §3.7, pseudocode §17, and test cases §35 must all agree. Drift is a defect.
+- **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. Do not add architecture-related commands to Velpari in v1.x. The rationale is in `Doc/design.md` §7.7 and `Doc/PRD.md` (FR-47).
 - No subagent-spawning code anywhere. If you find yourself reaching for a subagent API, re-read the design principles.
 
 ## Testing
@@ -247,15 +249,16 @@ When changing behavior, update both code-facing docs (`README.md`, `CHANGELOG.md
 
 ### Doc map
 
-- `Doc/PRD.md` — source PRD with stable FR-N identifiers.
-- `Doc/RTM_Pi-Velpari.md` — requirements traceability matrix.
+- `Doc/PRD.md` — source PRD with stable FR-N identifiers (FR-01..FR-48, NFR-01..NFR-12).
+- `Doc/RTM_Pi-Velpari.md` — requirements traceability matrix (54 requirements, 183 test cases).
 - `Doc/feasibility-study.md` — 5-dimension feasibility analysis.
-- `Doc/design.md` — high-level design (modules, data model, contracts, data flow).
-- `Doc/pseudocode.md` — algorithm pseudocode per module.
-- `Doc/test-plan.md` — test strategy.
-- `Doc/test-cases.md` — specific test cases.
-- `Doc/velpari-sequence.md` — sequence flow + state machine.
-- `Doc/step-by-step-guide.md` — hands-on walkthrough.
+- `Doc/design.md` — high-level design (19 source modules, plus §3.7 per-command doc scope).
+- `Doc/pseudocode.md` — algorithm pseudocode (includes §17 per-command gate pseudocode).
+- `Doc/test-plan.md` — test strategy (20 test files).
+- `Doc/test-cases.md` — test cases (TC-001..TC-188).
+- `Doc/velpari-sequence.md` — 9-stage sequence flow + scout pattern + §11 sub-sequence table.
+- `Doc/step-by-step-guide.md` — hands-on walkthrough (includes §0a on gates).
+- `Doc/architecture-discussion.md` — study-only architecture doc with pending decisions list (v1.4).
 
 ## Branches
 

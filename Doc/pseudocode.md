@@ -1660,4 +1660,191 @@ return { written: true, targetPath: HANDOFF_TARGET, documentCount: target.docume
 
 ---
 
+## 17. Module: `commands.ts` — per-command gate (v1.4)
+
+### 17.1 `COMMAND_SCOPE` (declarative table)
+
+```ts
+// pi-extension/src/commands.ts
+const COMMAND_SCOPE: Record<string, { reads: string[]; writes: string[] }> = {
+  "velpari-discuss":          { reads: [],                writes: ["Doc/discussion-notes.md"] },
+  "velpari-prd":              { reads: ["Doc/discussion-notes.md"], writes: ["Doc/PRD_Pi-Velpari.md"] },
+  "velpari-rtm":              { reads: ["Doc/PRD_Pi-Velpari.md"], writes: ["Doc/RTM_Pi-Velpari.md"] },
+  "velpari-feasibility":      { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md"], writes: ["Doc/feasibility-study.md"] },
+  "velpari-design":           { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md"], writes: ["Doc/design.md"] },
+  "velpari-pseudocode":       { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md", "Doc/design.md"], writes: ["Doc/pseudocode.md"] },
+  "velpari-testplan":         { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md", "Doc/design.md", "Doc/pseudocode.md"], writes: ["Doc/test-plan.md", "Doc/test-cases.md"] },
+  "velpari-atomic-function":  { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md", "Doc/design.md", "Doc/pseudocode.md", "Doc/test-plan.md", "Doc/test-cases.md"], writes: ["Doc/atomic-functions.md"] },
+  "velpari-development-order": { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md", "Doc/design.md", "Doc/pseudocode.md", "Doc/test-plan.md", "Doc/test-cases.md"], writes: ["Doc/development-order.md"] },
+  "velpari-handoff":          { reads: ["Doc/*"], writes: [".pi/senai/architect-inputs.json"] },
+  // Discipline commands have no doc scope (no LLM, no inputs).
+  // View commands have no doc scope (they read the published artifact directly).
+};
+```
+
+### 17.2 `checkDocScope` (gate function)
+
+```ts
+// pi-extension/src/commands.ts
+function checkDocScope(commandName: string, rootDir: string): void {
+  const scope = COMMAND_SCOPE[commandName];
+  if (!scope) {
+    // Unknown command — should never happen if commands are registered correctly.
+    throw new Error(`Unknown command: ${commandName}`);
+  }
+  for (const artifact of scope.reads) {
+    if (artifact === "Doc/*") continue;  // wildcard — handled by handoff command itself
+    const fullPath = path.join(rootDir, artifact);
+    if (!fs.existsSync(fullPath)) {
+      throw new Error(
+        `/${commandName} requires ${artifact} to exist. ` +
+        `Run the previous stage first, or check /velpari-status.`
+      );
+    }
+    const stat = fs.statSync(fullPath);
+    if (stat.size === 0) {
+      throw new Error(
+        `/${commandName} requires ${artifact} to be non-empty. ` +
+        `The file exists but is empty. Re-run the stage that produces it.`
+      );
+    }
+  }
+}
+```
+
+### 17.3 Per-stage gate usage
+
+Every stage command handler calls `checkDocScope` at the top, before delegating to the stage module.
+
+```ts
+// pi-extension/src/commands.ts (handler template)
+async function stageHandler(args: CommandArgs, api: ExtensionAPI): Promise<void> {
+  try {
+    checkDocScope("velpari-<stage>", rootDir);
+  } catch (err) {
+    api.ui.error(err.message);
+    return;
+  }
+  // Delegate to the stage module
+  await stageModule.runXxx({ state, rootDir, api });
+}
+```
+
+### 17.4 Per-command gate behavior (one block per command)
+
+#### `/velpari-discuss` gate
+```ts
+// No inputs — entry point. Always passes.
+function gate_discuss(rootDir: string): void {
+  // No-op. Discussion creates the first artifact.
+}
+```
+
+#### `/velpari-prd` gate
+```ts
+function gate_prd(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/discussion-notes.md"));
+  // On failure: "/velpari-prd requires Doc/discussion-notes.md to exist and be non-empty.
+  //             Run /velpari-discuss first."
+}
+```
+
+#### `/velpari-rtm` gate
+```ts
+function gate_rtm(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  // On failure: "/velpari-rtm requires Doc/PRD_Pi-Velpari.md to exist and be non-empty.
+  //             Run /velpari-discuss and /velpari-approve, or /velpari-prd and /velpari-approve."
+}
+```
+
+#### `/velpari-feasibility` gate
+```ts
+function gate_feasibility(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+}
+```
+
+#### `/velpari-design` gate
+```ts
+function gate_design(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+}
+```
+
+#### `/velpari-pseudocode` gate
+```ts
+function gate_pseudocode(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/design.md"));
+}
+```
+
+#### `/velpari-testplan` gate
+```ts
+function gate_testplan(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/design.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/pseudocode.md"));
+}
+```
+
+#### `/velpari-atomic-function` gate
+```ts
+function gate_atomic_function(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/design.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/pseudocode.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/test-plan.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/test-cases.md"));
+}
+```
+
+#### `/velpari-development-order` gate
+```ts
+function gate_development_order(rootDir: string): void {
+  assertFileNonEmpty(path.join(rootDir, "Doc/PRD_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/RTM_Pi-Velpari.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/design.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/pseudocode.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/test-plan.md"));
+  assertFileNonEmpty(path.join(rootDir, "Doc/test-cases.md"));
+}
+```
+
+#### `/velpari-handoff` gate
+```ts
+function gate_handoff(rootDir: string): void {
+  // Wildcard check: at least one Doc/ artifact must exist.
+  const docDir = path.join(rootDir, "Doc");
+  if (!fs.existsSync(docDir) || fs.readdirSync(docDir).length === 0) {
+    throw new Error(
+      "/velpari-handoff requires at least one published artifact in Doc/. " +
+      "Run at least one stage and /velpari-approve before handoff."
+    );
+  }
+}
+```
+
+#### `assertFileNonEmpty` (helper)
+
+```ts
+function assertFileNonEmpty(filePath: string): void {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Required file missing: ${filePath}`);
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size === 0) {
+    throw new Error(`Required file is empty: ${filePath}`);
+  }
+}
+```
+
+---
+
 *This pseudocode is the algorithm specification consumed by Phase A–E implementation. Every exported function in `Doc/design.md` §4 has a corresponding block here. No pseudocode block introduces logic that is not already documented in the design.*

@@ -177,6 +177,8 @@ npm test
 5. **Helper ↔ atomic relationship.** Helper functions are tracked in the PRD's `## Helper Functions` section. Atomic functions are tracked in `Doc/atomic-functions.md`. Atomic functions are strictly leaf nodes; helper functions may call atomic functions. The dependency is bidirectional.
 6. **Optional stages stay optional.** `/velpari-atomic-function` and `/velpari-development-order` can be invoked in any order or skipped entirely. `/velpari-handoff` works with or without their output.
 7. **Mirrors Senai's discipline.** Same state-gated runs, same working/published copy separation, same doctor audit, same single-source-of-truth state file, same scout-pattern UI.
+8. **No architecture command in Velpari.** Velpari produces inputs only; Senai's `/senai-generate-architect` consumes them. Documented explicitly; rationale in `Doc/design.md` §7.7.
+9. **Per-command doc scope and gate.** Every stage command declares which `Doc/` artifacts it reads (the doc scope) and a gate check runs before any LLM call to verify those artifacts exist and are non-empty. See `Doc/velpari-sequence.md` §11.
 
 ## Project layout
 
@@ -220,15 +222,16 @@ Tests are in `pi-extension/test/` and use Node's built-in test runner.
 
 ## Documentation
 
-- [`Doc/PRD.md`](Doc/PRD.md) — source PRD with FR-N identifiers.
+- [`Doc/PRD.md`](Doc/PRD.md) — source PRD with FR-N identifiers (FR-01..FR-48, NFR-01..NFR-12).
 - [`Doc/RTM_Pi-Velpari.md`](Doc/RTM_Pi-Velpari.md) — requirements traceability matrix.
 - [`Doc/feasibility-study.md`](Doc/feasibility-study.md) — 5-dimension feasibility analysis.
 - [`Doc/design.md`](Doc/design.md) — high-level design.
 - [`Doc/pseudocode.md`](Doc/pseudocode.md) — algorithm pseudocode.
 - [`Doc/test-plan.md`](Doc/test-plan.md) — test strategy.
 - [`Doc/test-cases.md`](Doc/test-cases.md) — specific test cases.
-- [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) — sequence flow + state machine.
+- [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) — sequence flow + state machine + per-command sub-sequence (§11).
 - [`Doc/step-by-step-guide.md`](Doc/step-by-step-guide.md) — hands-on walkthrough.
+- [`Doc/architecture-discussion.md`](Doc/architecture-discussion.md) — architecture patterns study + pending decisions (v1.4).
 - [`AGENTS.md`](AGENTS.md) — contributor / agent notes.
 
 ## See also

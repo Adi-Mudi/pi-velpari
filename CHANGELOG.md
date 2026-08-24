@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (docs-first scope — v1.3 plan)
+### Added (docs-first scope — v1.4 plan)
+
+**v1.4 changes (per-command doc scope + gates + architecture discussion):**
+
+- **`Doc/architecture-discussion.md`** — NEW FILE. Study-only doc cataloging Pi's layered monorepo, Senai's 16 architecture patterns, and 12+ community patterns. Includes 12 pending decisions; makes no recommendations.
+- **Per-command doc scope definition (FR-43).** Every stage command declares its **reads** (Doc/ artifacts required) and **writes** (artifact produced). The full table is in `Doc/velpari-sequence.md` §11.
+- **Per-command gate enforcement (FR-44).** Before any LLM call, the gate checks that all required input docs exist and are non-empty. Failure → clear error message, no LLM call, state unchanged. Implemented as `commands.ts:checkDocScope()`.
+- **Sub-agent inventory documented (FR-45).** `Doc/velpari-sequence.md` §10 lists which commands spawn sub-agents today (3 commands, 12 scouts total) and which might in the future. No automatic sub-agent generation is performed.
+- **No architecture command in Velpari (FR-47).** Velpari produces inputs; Senai generates architecture. Rationale: Velpari is pre-production; Senai is production. Documented in `Doc/design.md` §7.7.
+- **PRD and RTM remain separate (FR-48).** Different audiences (stakeholder vs engineering), different review cycles. Merging would lose this separation.
+- **Doc scope is the source of truth (NFR-12).** `Doc/PRD.md`, `Doc/velpari-sequence.md` §11, `Doc/design.md` §3.7, `Doc/pseudocode.md` §17, and `Doc/test-cases.md` §35 must all agree on per-command doc scope. Drift is a defect caught by doctor.
+- **Sequence doc §11** — new "Sub-sequence: per-command doc scope and gate" section with the full table for all 10 stage commands + discipline commands + view commands + the gate enforcement contract.
+- **Pseudocode §17** — gate function pseudocode (`COMMAND_SCOPE`, `checkDocScope`) plus per-command gate behavior for all 10 stage commands.
+- **Test cases §35** — 22 new TCs (TC-167..TC-188) covering gate failure paths, gate success paths, empty-file detection, `COMMAND_SCOPE` consistency, sub-agent inventory, architecture decisions.
+- **Test plan updated** to 20 test files (added `gate.test.ts`).
 
 **v1.3 changes (post-pipeline stages + helper↔atomic model):**
 

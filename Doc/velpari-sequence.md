@@ -220,6 +220,8 @@ Doc/                                       (published copies, written only by /v
 
 16–22. `/velpari-show-{discussion,prd,rtm,feasibility,design,pseudocode,testplan}` — print published artifact.
 
+Total: 22 commands. Each command's **doc scope** (which `Doc/` artifacts it reads) and **gate** (prerequisite check) is documented in §11 below.
+
 ---
 
 ## 7. Parallels with Senai
@@ -388,7 +390,78 @@ Both lists are kept in `Doc/`: helper functions live in `Doc/PRD_Pi-Velpari.md` 
 
 ---
 
-## 11. Why this design
+## 11. Sub-sequence: per-command doc scope and gate (v1.4)
+
+Each stage command declares what it reads and what it writes. Before the command runs, a **gate** check verifies that every required input artifact exists and is non-empty. Failure → clear error message, no LLM call, state unchanged. This is the per-command sub-sequence — the unit of "what each command needs to do its job."
+
+### 11.1 Stage commands
+
+| Command | Reads (gate check) | Writes (working copy) |
+|---|---|---|
+| `/velpari-discuss` | (none — entry point) | `Doc/discussion-notes.md` (after approve) |
+| `/velpari-prd` | `Doc/discussion-notes.md` | `Doc/PRD_Pi-Velpari.md` (after approve) |
+| `/velpari-rtm` | `Doc/PRD_Pi-Velpari.md` | `Doc/RTM_Pi-Velpari.md` (after approve) |
+| `/velpari-feasibility` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/feasibility-study.md` (after approve) |
+| `/velpari-design` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/design.md` (after approve) |
+| `/velpari-pseudocode` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md` | `Doc/pseudocode.md` (after approve) |
+| `/velpari-testplan` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md` | `Doc/test-plan.md`, `Doc/test-cases.md` (after approve) |
+| `/velpari-atomic-function` *(optional)* | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md` | `Doc/atomic-functions.md` (after approve) |
+| `/velpari-development-order` *(optional)* | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md` | `Doc/development-order.md` (after approve) |
+| `/velpari-handoff` | all published `Doc/*` artifacts | `.pi/senai/architect-inputs.json` |
+
+### 11.2 Discipline commands (no Doc scope)
+
+| Command | Reads | Notes |
+|---|---|---|
+| `/velpari-approve` | working copy in run dir | Promotes working copy to `Doc/`. No Doc scope; operates on the run dir. |
+| `/velpari-status` | `state.json` | Pure read. |
+| `/velpari-reset` | `state.json`, run dir | Destructive. Confirms before deleting. |
+| `/velpari-configure-inputs` | project tree | Scans for inputs; writes `.pi/velpari/files.json`. |
+| `/velpari-doctor` | `state.json`, run dir, `Doc/` | Reads everything for audit. |
+
+### 11.3 View commands
+
+| Command | Reads (single artifact) |
+|---|---|
+| `/velpari-show-discussion` | `Doc/discussion-notes.md` |
+| `/velpari-show-prd` | `Doc/PRD_Pi-Velpari.md` |
+| `/velpari-show-rtm` | `Doc/RTM_Pi-Velpari.md` |
+| `/velpari-show-feasibility` | `Doc/feasibility-study.md` |
+| `/velpari-show-design` | `Doc/design.md` |
+| `/velpari-show-pseudocode` | `Doc/pseudocode.md` |
+| `/velpari-show-testplan` | `Doc/test-plan.md`, `Doc/test-cases.md` (concatenated) |
+
+### 11.4 Gate enforcement contract
+
+Every stage command follows this contract:
+
+1. **Gate check (synchronous, no LLM call):** verify every required input artifact exists at the path under `Doc/` and is non-empty. If any is missing, fail with: `"/velpari-<stage> requires Doc/<artifact> to exist and be non-empty. Run <previous stage> first or check /velpari-status."` State unchanged, no working copy written, no LLM call.
+
+2. **Build prompt:** construct the prompt with the verified input artifacts as scope.
+
+3. **Run the command body:** (LLM call, multi-turn interview, scout agents, etc.).
+
+4. **Write working copy:** under `runs/<run-id>/<stage>/<artifact>`.
+
+5. **Preview + confirm:** user reviews the draft.
+
+6. **Mark ready:** state advances to the "ready-to-approve" state. The published copy is written only on `/velpari-approve`.
+
+The gate is enforced at the command-handler level. Each handler in `commands.ts` checks its doc scope before delegating to the stage module. The check is deterministic — no LLM involvement.
+
+### 11.5 Why this matters
+
+Without per-command doc scope and gates:
+
+- A user could run `/velpari-rtm` before `/velpari-prd`, leaving the RTM without a source PRD. The LLM would have nothing to trace. The error would surface mid-generation, wasting tokens and user time.
+- A user could run `/velpari-pseudocode` before `/velpari-design`, and the LLM would invent a design on the fly — violating the zero-hallucination rule.
+- The "PRD is the source of truth" principle would be advisory, not enforced.
+
+With gates, the contract is enforced by code: a command cannot run without its inputs. The pipeline becomes a true DAG, where each stage's outputs are the next stage's verified inputs.
+
+---
+
+## 12. Why this design
 
 The pre-production phase has different failure modes than the production phase:
 

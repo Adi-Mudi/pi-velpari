@@ -328,6 +328,65 @@ interface AtomicFunctionEntry {
 
 Published copies live in `Doc/` (top-level) and are written only by `state.ts:publishToDoc()` or by the optional post-pipeline stages after user accepts scout suggestions.
 
+### 3.7 Per-command doc scope and gate (v1.4)
+
+Every stage command declares its **doc scope** (the `Doc/` artifacts it reads) and **writes** (the artifact it produces). Before any LLM call, a **gate** checks that every required input artifact exists and is non-empty. Failure → clear error, no LLM call, state unchanged.
+
+#### 3.7.1 `COMMAND_SCOPE` (declarative table)
+
+```ts
+// pi-extension/src/commands.ts
+const COMMAND_SCOPE: Record<CommandName, { reads: string[]; writes: string[] }> = {
+  "velpari-discuss":          { reads: [],                writes: ["Doc/discussion-notes.md"] },
+  "velpari-prd":              { reads: ["Doc/discussion-notes.md"],
+                                  writes: ["Doc/PRD_Pi-Velpari.md"] },
+  "velpari-rtm":              { reads: ["Doc/PRD_Pi-Velpari.md"],
+                                  writes: ["Doc/RTM_Pi-Velpari.md"] },
+  "velpari-feasibility":      { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md"],
+                                  writes: ["Doc/feasibility-study.md"] },
+  "velpari-design":           { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md"],
+                                  writes: ["Doc/design.md"] },
+  "velpari-pseudocode":       { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md", "Doc/design.md"],
+                                  writes: ["Doc/pseudocode.md"] },
+  "velpari-testplan":         { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md",
+                                        "Doc/design.md", "Doc/pseudocode.md"],
+                                  writes: ["Doc/test-plan.md", "Doc/test-cases.md"] },
+  "velpari-atomic-function":  { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md",
+                                        "Doc/design.md", "Doc/pseudocode.md",
+                                        "Doc/test-plan.md", "Doc/test-cases.md"],
+                                  writes: ["Doc/atomic-functions.md"] },
+  "velpari-development-order": { reads: ["Doc/PRD_Pi-Velpari.md", "Doc/RTM_Pi-Velpari.md",
+                                        "Doc/design.md", "Doc/pseudocode.md",
+                                        "Doc/test-plan.md", "Doc/test-cases.md"],
+                                  writes: ["Doc/development-order.md"] },
+  "velpari-handoff":          { reads: ["Doc/*"],
+                                  writes: [".pi/senai/architect-inputs.json"] },
+  // Discipline and view commands have no Doc scope.
+};
+```
+
+#### 3.7.2 `checkDocScope` (gate function)
+
+```ts
+// pi-extension/src/commands.ts
+function checkDocScope(commandName: CommandName, rootDir: string): void {
+  const scope = COMMAND_SCOPE[commandName];
+  for (const artifact of scope.reads) {
+    const fullPath = path.join(rootDir, artifact);
+    if (!fs.existsSync(fullPath) || fs.statSync(fullPath).size === 0) {
+      throw new Error(
+        `/velpari-${commandName.replace("velpari-", "")} requires ${artifact} to exist and be non-empty. ` +
+        `Run the previous stage first, or check /velpari-status.`
+      );
+    }
+  }
+}
+```
+
+The gate is called at the top of every stage command handler — before any LLM call, before any UI prompt. It throws on failure; the command handler catches the throw and surfaces the message to the user via `api.ui.error()`. State is unchanged. No LLM tokens are spent.
+
+The gate is **deterministic** — it uses only `fs.existsSync` and `fs.statSync().size`. No LLM involvement. No race conditions within a single command invocation.
+
 ---
 
 ## 4. Interface Contracts
@@ -677,6 +736,31 @@ Pi-Senai's `/senai-configure-architect-inputs` accepts a single `.pi/senai/archi
 
 Changing `state.json` or `files.json` mid-version would silently break existing runs. Per PRD §6, schemas are stable within v1.x. New versions add optional fields only.
 
+### 7.6 Why per-command doc scope and gate (v1.4)
+
+Without explicit doc scope, a user can run a command out of order or against missing inputs. The LLM is then asked to produce something it cannot, and either invents (violating zero-hallucination) or returns a confused draft. The gate prevents this:
+
+1. **Pre-LLM check is fast.** A single `fs.existsSync` and `fs.statSync().size > 0` per required input is microseconds.
+2. **Errors are specific.** "Missing Doc/RTM_Pi-Velpari.md — run /velpari-rtm first" is better than "the LLM produced an empty table".
+3. **State integrity is preserved.** A failed gate does not advance the state machine or write any working copy.
+4. **The DAG becomes a true DAG.** Each stage's outputs are the next stage's verified inputs. No silent skips.
+
+The gate is enforced by `commands.ts:checkDocScope`, called at the top of every stage command handler. The scope is declared in `COMMAND_SCOPE` (per-command reads/writes) and is the single source of truth — design, pseudocode, and tests all derive from it.
+
+### 7.7 Why no `/velpari-architect` command (v1.4)
+
+Architecture is the boundary between Velpari (pre-production) and Senai (production). Velpari captures requirements and produces design documents; Senai consumes them and generates the architecture. Adding a `/velpari-architect` command to Velpari would either:
+
+- Duplicate Senai's `/senai-generate-architect` work (Senai already does this well, with 16 architecture patterns in its library), or
+- Produce an output that doesn't match Senai's architecture factory's expected format, forcing a translation step.
+
+Neither is desirable. The clean separation is:
+
+- **Velpari** produces `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, etc.
+- **Senai** consumes those via `/senai-configure-architect-inputs` + `/senai-generate-architect`.
+
+If a future version needs to add pre-architecture steps (e.g., a "design review" stage before Senai's architecture generation), they go in Senai, not Velpari. This is documented as `FR-47` (no architecture command in Velpari) and tracked as a constraint (PRD §6 item 11).
+
 ---
 
 ## 8. Cross-Reference Index
@@ -687,7 +771,7 @@ Changing `state.json` or `files.json` mid-version would silently break existing 
 | `constants.ts` | FR-24 | — |
 | `state.ts` | FR-21, FR-23, FR-25, FR-28, FR-30, FR-33 | NFR-06 |
 | `prompt.ts` | FR-22, FR-23 | — |
-| `commands.ts` | FR-01..FR-32 (delegation, 22 commands total) | — |
+| `commands.ts` | FR-01..FR-32, FR-43, FR-44 (delegation, 22 commands total; COMMAND_SCOPE and checkDocScope) | — |
 | `compaction.ts` | — | NFR-01 |
 | `config.ts` | FR-11 | — |
 | `doctor.ts` | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |

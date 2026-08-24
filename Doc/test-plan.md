@@ -32,6 +32,9 @@ The following are tested by automated tests (`node --test` under `pi-extension/t
 14. **Helper ↔ atomic dependency** — bidirectional references maintained between helper functions and atomic functions; doctor flags unidirectional or orphan references; atomic functions cannot call other atomic functions.
 15. **Optional artifact handoff** — handoff includes `atomic-functions.md` and `development-order.md` when present; proceeds without them when missing; warns when Senai doesn't recognize new document types.
 16. **Scout agent architecture** — stages 2–7 do not spawn subagents; the 12 scout agents (4 in discuss + 4 in atomic-function + 4 in development-order) are spawned with correct names.
+17. **Per-command gate** (v1.4) — `checkDocScope` is called before any LLM call; fails with specific error when required input docs are missing or empty; passes when all required input docs are non-empty.
+18. **Per-command doc scope** (v1.4) — `COMMAND_SCOPE` table declares per-command reads/writes; matches sequence doc §11; matches design.md §3.7; matches test cases.
+19. **Architecture decisions** (v1.4) — `architecture-discussion.md` exists and has pending decisions list with no recommendations; no `/velpari-architect` command in `commands.ts`; PRD and RTM are separate stages.
 
 ### 1.2 Out of scope
 
@@ -101,10 +104,11 @@ Per file/module:
 | `testplan.test.ts` | `testplan.ts` | Unit (mocked) | Two files written (test-plan + test-cases); TC table columns |
 | `atomic-function.test.ts` | `atomic-function.ts` | Unit (mocked) | 4 AF scouts; merge/dedup; picker; working copy; bidirectional atomic refs |
 | `development-order.test.ts` | `development-order.ts` | Unit (mocked) | 4 DO scouts; ranking merge; order picker; working copy |
+| `gate.test.ts` | `commands.ts:checkDocScope`, `COMMAND_SCOPE` | Unit | Per-command gate success and failure; COMMAND_SCOPE matches docs |
 | `handoff.test.ts` | `handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip |
 | `show.test.ts` | `show.ts` | Unit | All 7 stages; missing-artifact path; testplan concatenation |
 
-**Total: 19 test files.**
+**Total: 20 test files.**
 
 ### 2.7 Integration tests
 

@@ -470,4 +470,62 @@ Every requirement in `Doc/RTM_Pi-Velpari.md` has at least one TC. Every TC refer
 
 ---
 
+## 35. Per-command gate and doc scope (FR-43, FR-44, NFR-12, FR-45..FR-48)
+
+**Test file:** `pi-extension/test/commands.test.ts` (extended) + `pi-extension/test/gate.test.ts` (new)
+
+### Gate failure tests (one per stage command)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-167 | `/velpari-prd` gate fails when `Doc/discussion-notes.md` missing | Fresh project, no Doc/ | Run handler | Error thrown; specific message names the missing file; no LLM call | FR-44 | P1 |
+| TC-168 | `/velpari-rtm` gate fails when `Doc/PRD_Pi-Velpari.md` missing | Only discussion-notes exists | Run handler | Error thrown; message names PRD | FR-44 | P1 |
+| TC-169 | `/velpari-feasibility` gate fails when either PRD or RTM missing | One of two exists | Run handler | Error thrown; message names the missing one | FR-44 | P1 |
+| TC-170 | `/velpari-design` gate fails when RTM missing | Only PRD exists | Run handler | Error thrown | FR-44 | P1 |
+| TC-171 | `/velpari-pseudocode` gate fails when design missing | PRD + RTM exist, no design | Run handler | Error thrown | FR-44 | P1 |
+| TC-172 | `/velpari-testplan` gate fails when pseudocode missing | PRD + RTM + design exist, no pseudocode | Run handler | Error thrown | FR-44 | P1 |
+| TC-173 | `/velpari-atomic-function` gate fails when test-cases missing | All others exist | Run handler | Error thrown | FR-44 | P1 |
+| TC-174 | `/velpari-development-order` gate fails when any required input missing | All except RTM exist | Run handler | Error thrown | FR-44 | P1 |
+| TC-175 | `/velpari-handoff` gate fails when Doc/ is empty | No published artifacts | Run handler | Error thrown | FR-44 | P1 |
+
+### Gate success tests
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-176 | `/velpari-prd` gate passes when `Doc/discussion-notes.md` exists and non-empty | Discussion published | Run handler | No error; stage module runs | FR-43, FR-44 | P1 |
+| TC-177 | `/velpari-rtm` gate passes when PRD exists and non-empty | PRD published | Run handler | No error | FR-43, FR-44 | P1 |
+| TC-178 | `/velpari-testplan` gate passes when all 4 inputs exist | All published | Run handler | No error | FR-43, FR-44 | P1 |
+
+### Gate empty-file behavior
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-179 | Gate fails when required file is empty (0 bytes) | PRD exists but is 0 bytes | Run `/velpari-rtm` | Error thrown; message says "file is empty" | FR-44 | P1 |
+| TC-180 | Gate fails when required file is whitespace-only | PRD exists but only `\n` | Run `/velpari-rtm` | Error thrown; file is non-empty by stat but whitespace by content | FR-44 | P2 |
+
+### COMMAND_SCOPE declarative table
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-181 | `COMMAND_SCOPE` exists and contains all 22 commands | Read commands.ts | Inspect table | All 22 commands have a scope entry | FR-43, NFR-12 | P1 |
+| TC-182 | `COMMAND_SCOPE` matches the sequence doc §11 table | Both exist | Diff | No drift between docs | NFR-12 | P1 |
+
+### Sub-agent inventory (FR-45)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-183 | Sequence doc §10 lists 3 commands that use sub-agents | Read sequence doc | Inspect | Discuss, atomic-function, development-order are listed; stages 2–7 are NOT listed | FR-45 | P1 |
+
+### Architecture decisions (FR-46, FR-47, FR-48)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-184 | `Doc/architecture-discussion.md` exists | Check filesystem | `fs.existsSync` | File exists | FR-46 | P1 |
+| TC-185 | `architecture-discussion.md` has a "Pending decisions" section | TC-184 | Read doc | Section exists with at least 5 pending items | FR-46 | P1 |
+| TC-186 | `architecture-discussion.md` makes no recommendations | TC-184 | Read doc | No "we recommend" or "should use" sentences | FR-46 | P1 |
+| TC-187 | No `/velpari-architect` command registered | Read `commands.ts` | grep | Zero matches | FR-47 | P1 |
+| TC-188 | `commands.ts` exports `velpari-prd` and `velpari-rtm` as separate commands | Read `commands.ts` | Inspect | Both registered separately | FR-48 | P1 |
+
+---
+
 *This document is consumed by Phase A–E implementation (each test is written alongside its module) and by `pi-extension/src/doctor.ts` (audit-time verification that every RTM row has at least one test case).*
