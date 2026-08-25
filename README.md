@@ -92,7 +92,7 @@ npm test
    /velpari-configure-inputs
    ```
 
-   This captures: input documents, output paths, **and your framework/tech stack** (e.g., Next.js + TypeScript). The framework is persisted in `.pi/velpari/files.json` and injected into every stage prompt.
+   This captures: **your project name** (e.g., "TodoApp"), framework/tech stack, input documents, and output paths. The project name is used in all output file names (`Doc/PRD_TodoApp.md` etc.). Framework is injected into every stage prompt.
 
 2. **Start the discussion**:
 
@@ -104,11 +104,17 @@ npm test
 
 3. **Approve each stage**:
 
+   For discussion (uses dedicated command):
+   ```
+   /velpari-approve-discuss
+   ```
+
+   For stages 2–7:
    ```
    /velpari-approve
    ```
 
-   Run this after every `/velpari-*` stage command completes. It publishes the working copy to `Doc/` and advances the state.
+   Run `/velpari-approve-discuss` once after discussion. It publishes the working copy to `Doc/` and **auto-invokes `/velpari-prd`** to chain into the PRD stage. Then run `/velpari-approve` after every subsequent stage command to advance the state.
 
 4. **Run the stages**:
 
@@ -186,6 +192,8 @@ npm test
 10. **Framework as one-time setup.** Framework/tech-stack is captured in `/velpari-configure-inputs` and persisted in `.pi/velpari/files.json`. Injected into every stage prompt. Not a pipeline stage.
 11. **WEB SEARCH AGENT** (discussion stage only, user-prompted). Collects community resources, official documentation, and similar OSS projects. User chooses per-discussion whether to invoke.
 12. **Uniform subagent pattern.** All 12 scout agents follow the `ScoutContract` (same spawn helper, same JSON envelope, same 30-second timeout, same picker UI).
+13. **Discussion-approve chain (v1.6).** Discussion has its own dedicated approve command, `/velpari-approve-discuss`, which publishes `Doc/discussion-notes.md` and **auto-invokes `/velpari-prd`** to materialize the PRD. The normal `/velpari-approve` works for stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan) and errors when used on the discussion stage.
+14. **Project-name output documents (v1.7).** Output document names use your `projectName` (captured in `/velpari-configure-inputs`), not the extension name. Example: a "TodoApp" project produces `Doc/PRD_TodoApp.md`, `Doc/RTM_TodoApp.md`, etc. Discussion is per-topic: `Doc/discussion-{topic-slug}.md`. Subsequent runs of the same topic get timestamp suffixes.
 
 ## Project layout
 

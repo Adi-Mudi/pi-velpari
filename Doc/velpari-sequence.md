@@ -79,8 +79,9 @@ The full state machine has 19 states (per `constants.ts:STAGE_TRANSITIONS`):
 | Current stage | Allowed next | Trigger |
 |---|---|---|
 | `none` | `discussing` | `/velpari-discuss <mission>` (creates new run) |
-| `discussing` | `discussed` | `/velpari-approve` (after discussion working copy is confirmed) |
-| `discussed` | `drafting-prd` | `/velpari-prd` |
+| `discussing` | `discussed` | `/velpari-approve-discuss` (publishes discussion, then **auto-invokes `/velpari-prd`**) |
+| `discussed` | `drafting-prd` | `/velpari-prd` (auto-invoked by `/velpari-approve-discuss`) |
+| `drafting-prd` | `drafted-prd` | `/velpari-prd` (preview/confirm gate; publishes PRD) |
 | `drafting-prd` | `drafted-prd` | `/velpari-approve` |
 | `drafted-prd` | `building-rtm` | `/velpari-rtm` |
 | `building-rtm` | `built-rtm` | `/velpari-approve` |
@@ -162,65 +163,75 @@ Manual override is not supported. The transition table in `constants.ts` is the 
 ├── doctor-report.md                        (latest /velpari-doctor output)
 └── runs/
     └── YYYY-MM-DD-HH-MM-<mission-slug>/
-        ├── discuss/discussion-notes.md     (working copy)
-        ├── prd/PRD_Pi-Velpari.md           (working copy)
-        ├── rtm/RTM_Pi-Velpari.md           (working copy)
-        ├── feasibility/feasibility-study.md (working copy)
-        ├── design/design.md                (working copy)
-        ├── pseudocode/pseudocode.md        (working copy)
+        ├── discuss/discussion-{topic-slug}.md      (working copy)
+        ├── discuss/discussion-{topic-slug}-{timestamp}.md  (working copy; subsequent runs)
+        ├── prd/PRD_{projectName}.md                (working copy)
+        ├── rtm/RTM_{projectName}.md                (working copy)
+        ├── feasibility/feasibility-study_{projectName}.md (working copy)
+        ├── design/design_{projectName}.md          (working copy)
+        ├── pseudocode/pseudocode_{projectName}.md  (working copy)
         ├── testplan/
-        │   ├── test-plan.md                (working copy)
-        │   └── test-cases.md               (working copy)
-        ├── atomic-function/atomic-functions.md  (working copy; optional stage)
-        └── development-order/development-order.md (working copy; optional stage)
+        │   ├── test-plan_{projectName}.md          (working copy)
+        │   └── test-cases_{projectName}.md         (working copy)
+        ├── atomic-function/atomic-functions_{projectName}.md  (working copy; optional stage)
+        └── development-order/development-order_{projectName}.md (working copy; optional stage)
 
 Doc/                                       (published copies, written only by /velpari-approve or /velpari-atomic-function/-development-order)
-├── discussion-notes.md
-├── PRD_Pi-Velpari.md
-├── RTM_Pi-Velpari.md
-├── feasibility-study.md
-├── design.md
-├── pseudocode.md
-├── test-plan.md
-├── test-cases.md
-├── atomic-functions.md                     (only if /velpari-atomic-function was run)
-└── development-order.md                    (only if /velpari-development-order was run)
+├── discussion-{topic-slug}.md                              (or with timestamp suffix if multiple)
+├── PRD_{projectName}.md
+├── RTM_{projectName}.md
+├── feasibility-study_{projectName}.md
+├── design_{projectName}.md
+├── pseudocode_{projectName}.md
+├── test-plan_{projectName}.md
+├── test-cases_{projectName}.md
+├── atomic-functions_{projectName}.md                      (only if /velpari-atomic-function was run)
+└── development-order_{projectName}.md                     (only if /velpari-development-order was run)
 
-.pi/velpari/files.json                     (output of /velpari-configure-inputs)
+.pi/velpari/files.json                     (output of /velpari-configure-inputs; includes projectName and framework)
 
-.pi/senai/architect-inputs.json             (output of /velpari-handoff; includes atomic-functions.md and development-order.md if they exist)
+.pi/senai/architect-inputs.json             (output of /velpari-handoff; document paths reference project-suffixed files)
 ```
+
+**Naming rules (v1.7):** Output files use the `projectName` captured in `/velpari-configure-inputs`. The previous hardcoded "Pi-Velpari" prefix is replaced by the user's project name (e.g., `Doc/PRD_TodoApp.md` instead of `Doc/PRD_Pi-Velpari.md`). Discussion files are per-topic: `Doc/discussion-{topic-slug}.md` for the first discussion of a topic; subsequent runs of the same topic append a timestamp suffix.
 
 ---
 
-## 6. Command surface (22 commands)
+## 6. Command surface (23 commands)
 
 ### Stage commands (9)
 
-1. `/velpari-discuss <mission>` — interactive interview with 4-agent scout pattern; entry point.
-2. `/velpari-prd` — convert discussion → PRD (full rewrite; usually not needed since discussion auto-updates the PRD).
-3. `/velpari-rtm` — derive RTM from PRD.
+1. `/velpari-discuss <mission>` — interactive interview with 4-agent pattern (3 always + 1 user-prompted web search); entry point. Iterative — can run multiple times.
+2. `/velpari-prd` — convert approved discussion notes → PRD. Triggered automatically by `/velpari-approve-discuss`. Can also be invoked manually for full rewrite.
+3. `/velpari-rtm` — derive RTM from approved PRD.
 4. `/velpari-feasibility` — analyze feasibility.
 5. `/velpari-design` — produce design doc.
 6. `/velpari-pseudocode` — produce pseudocode.
 7. `/velpari-testplan` — produce test plan + test cases.
-8. `/velpari-atomic-function` — **optional post-pipeline stage**. 4 scout agents propose atomic functions; user reviews suggestions in a picker; output `Doc/atomic-functions.md`.
-9. `/velpari-development-order` — **optional post-pipeline stage**. 4 scout agents propose implementation order; user reviews and reorders; output `Doc/development-order.md`.
+8. `/velpari-atomic-function` — **optional post-pipeline stage**. 4 scout agents propose atomic functions; user reviews suggestions in picker; output `Doc/atomic-functions.md`.
+9. `/velpari-development-order` — **optional post-pipeline stage**. 4 scout agents propose implementation order; user reorders in picker; output `Doc/development-order.md`.
 
-### Discipline commands (6)
+### Discipline commands (7, was 6)
 
-10. `/velpari-approve` — publish working copy to `Doc/`, advance state.
-11. `/velpari-status` — show current run state.
-12. `/velpari-reset` — discard current run.
-13. `/velpari-configure-inputs` — set input documents, output paths, **and framework/tech-stack** (v1.5). One-time setup. Writes `.pi/velpari/files.json`.
-14. `/velpari-doctor` — audit setup.
-15. `/velpari-handoff` — bridge to Senai.
+10. `/velpari-approve-discuss` (NEW in v1.6) — publishes `Doc/discussion-notes.md`, then **auto-invokes `/velpari-prd`**. Chains through `discussing → drafted-prd`. The dedicated discussion-approve command (separate from `/velpari-approve`).
+11. `/velpari-approve` — publish working copy to `Doc/`, advance state. Used for stages 2–7 (after `/velpari-approve-discuss` completes).
+12. `/velpari-status` — show current run state.
+13. `/velpari-reset` — discard current run.
+14. `/velpari-configure-inputs` — set input documents, output paths, **and framework/tech-stack** (v1.5). One-time setup. Writes `.pi/velpari/files.json`.
+15. `/velpari-doctor` — audit setup.
+16. `/velpari-handoff` — bridge to Senai.
 
 ### View commands (7)
 
-16–22. `/velpari-show-{discussion,prd,rtm,feasibility,design,pseudocode,testplan}` — print published artifact.
+17–23. `/velpari-show-{discussion,prd,rtm,feasibility,design,pseudocode,testplan}` — print published artifact.
 
-Total: 22 commands. Each command's **doc scope** (which `Doc/` artifacts it reads) and **gate** (prerequisite check) is documented in §11 below.
+Total: 23 commands. Each command's **doc scope** (which `Doc/` artifacts it reads) and **gate** (prerequisite check) is documented in §11 below.
+
+### Approval command selection (v1.6)
+
+- **Discussion stage** (`discussing`): use `/velpari-approve-discuss`, NOT `/velpari-approve`. This publishes discussion and auto-triggers PRD.
+- **All other core stages** (`drafting-prd`, `building-rtm`, etc.): use `/velpari-approve`. Auto-advances through the chain.
+- The UI hint reflects the current stage. If you run `/velpari-approve` while in `discussed` state, it errors with: "Use `/velpari-approve-discuss` for the discussion stage."
 
 ---
 
@@ -257,22 +268,22 @@ The only difference is scope: Velpari produces requirements, design, and impleme
 .pi/senai/architect-inputs.json
 ```
 
-Shape (Senai-compatible, v1.3):
+Shape (Senai-compatible, v1.7):
 
 ```json
 {
   "version": 1,
-  "projectName": "<mission-slug>",
+  "projectName": "<project-name>",
   "documents": [
-    { "path": "Doc/PRD_Pi-Velpari.md",     "type": "PRD" },
-    { "path": "Doc/RTM_Pi-Velpari.md",     "type": "RTM" },
-    { "path": "Doc/feasibility-study.md",  "type": "Feasibility" },
-    { "path": "Doc/design.md",             "type": "Design" },
-    { "path": "Doc/pseudocode.md",         "type": "Pseudocode" },
-    { "path": "Doc/test-plan.md",          "type": "Test Plan" },
-    { "path": "Doc/test-cases.md",         "type": "Test Cases" },
-    { "path": "Doc/atomic-functions.md",   "type": "Atomic Functions" },
-    { "path": "Doc/development-order.md",  "type": "Development Order" }
+    { "path": "Doc/PRD_{projectName}.md",                     "type": "PRD" },
+    { "path": "Doc/RTM_{projectName}.md",                     "type": "RTM" },
+    { "path": "Doc/feasibility-study_{projectName}.md",       "type": "Feasibility" },
+    { "path": "Doc/design_{projectName}.md",                 "type": "Design" },
+    { "path": "Doc/pseudocode_{projectName}.md",             "type": "Pseudocode" },
+    { "path": "Doc/test-plan_{projectName}.md",              "type": "Test Plan" },
+    { "path": "Doc/test-cases_{projectName}.md",             "type": "Test Cases" },
+    { "path": "Doc/atomic-functions_{projectName}.md",        "type": "Atomic Functions" },
+    { "path": "Doc/development-order_{projectName}.md",       "type": "Development Order" }
   ],
   "constraints": []
 }
@@ -290,47 +301,49 @@ Mission: *"Build a CLI that lists TODOs from a markdown file."*
 
 **Core pipeline (required):**
 
-1. `/velpari-configure-inputs` → set `Doc/` as output dir; nothing to read.
-2. `/velpari-discuss "Build a CLI that lists TODOs from a markdown file"` → multi-turn interview; then 4-agent discussion: NEW EXTRACTOR captures user input; PRD CHECKER reads existing PRD (empty on first run); RTM CHECKER reads existing RTM (empty on first run); **WEB SEARCH AGENT** (user-prompted, default off) collects community resources, official docs, similar projects. Main handler merges all proposals and classifies each statement as new FR / update / helper function update / new helper. Preview shows proposed additions; user confirms. Working copy at `.IDE_Plans/velpari/runs/.../discuss/discussion-notes.md`.
-3. `/velpari-approve` → `Doc/discussion-notes.md` published; **handler verdict auto-applied** to `Doc/PRD_Pi-Velpari.md` (new FR-Ns added).
-4. `/velpari-rtm` → produces `Doc/RTM_Pi-Velpari.md` (after preview + confirm).
+1. `/velpari-configure-inputs` → set `projectName` ("TodoApp" in this example), framework, language, libraries, runtime, output paths. One-time setup.
+2. `/velpari-discuss "Build a CLI that lists TODOs from a markdown file"` → topic-slug is "build-a-cli-that-lists-todos-from-a-markdown-file". Multi-turn interview; then 4-agent discussion: NEW EXTRACTOR captures user input; PRD CHECKER reads existing PRD (empty on first run); RTM CHECKER reads existing RTM (empty on first run); **WEB SEARCH AGENT** (user-prompted, default off) collects community resources, official docs, similar projects. Main handler merges all proposals and classifies each statement as new FR / update / helper function update / new helper. Preview shows proposed additions; user confirms. Working copy at `.IDE_Plans/velpari/runs/.../discuss/discussion-build-a-cli-that-lists-todos-from-a-markdown-file.md`.
+3. `/velpari-approve-discuss` → `Doc/discussion-build-a-cli-that-lists-todos-from-a-markdown-file.md` published; **auto-invokes `/velpari-prd`**.
+4. `/velpari-prd` (auto-invoked) → produces `Doc/PRD_TodoApp.md` (after preview + confirm).
 5. `/velpari-approve` → published.
-6. `/velpari-feasibility` → produces `Doc/feasibility-study.md` (Go — small CLI, no unknowns).
+6. `/velpari-rtm` → produces `Doc/RTM_TodoApp.md` (after preview + confirm).
 7. `/velpari-approve` → published.
-8. `/velpari-design` → produces `Doc/design.md` (modules: parser, formatter, CLI entry).
+8. `/velpari-feasibility` → produces `Doc/feasibility-study_TodoApp.md` (Go — small CLI, no unknowns).
 9. `/velpari-approve` → published.
-10. `/velpari-pseudocode` → produces `Doc/pseudocode.md`.
+10. `/velpari-design` → produces `Doc/design_TodoApp.md` (modules: parser, formatter, CLI entry).
 11. `/velpari-approve` → published.
-12. `/velpari-testplan` → produces `Doc/test-plan.md` and `Doc/test-cases.md`.
+12. `/velpari-pseudocode` → produces `Doc/pseudocode_TodoApp.md`.
 13. `/velpari-approve` → published.
+14. `/velpari-testplan` → produces `Doc/test-plan_TodoApp.md` and `Doc/test-cases_TodoApp.md`.
+15. `/velpari-approve` → published.
 
 **Optional post-pipeline stages (recommended):**
 
-14. `/velpari-atomic-function` → 4 scout agents read all completed docs:
+16. `/velpari-atomic-function` → 4 scout agents read all completed docs:
     - AF-SCOUT-1 reads RTM's helper functions, suggests splitting `validateTodoLine` into `parseStatusTag` + `parsePriorityTag`.
     - AF-SCOUT-2 reads pseudocode, finds the repeated `if (!line.startsWith('- [')) return null` pattern across modules, suggests `isTodoLine(line)` as an atomic function.
     - AF-SCOUT-3 reads PRD requirements, suggests `formatDate(iso)` for FR-N "include date in output".
     - AF-SCOUT-4 reads test cases, suggests `makeFakeTodoLine(...)` for test setup.
     - Suggestion picker shows all 4 proposals. User accepts 3, rejects 1.
-    - On accept, `Doc/atomic-functions.md` is written with the 3 accepted entries (`AF-01`, `AF-02`, `AF-03`).
+    - On accept, `Doc/atomic-functions_TodoApp.md` is written with the 3 accepted entries (`AF-01`, `AF-02`, `AF-03`).
     - `/velpari-approve` advances state.
 
-15. `/velpari-development-order` → 4 scout agents read all completed docs:
+17. `/velpari-development-order` → 4 scout agents read all completed docs:
     - DO-SCOUT-1 (dependency sort): parse → format → CLI entry → filter.
     - DO-SCOUT-2 (risk priority): CLI entry first (most surface area), parse second.
     - DO-SCOUT-3 (test priority): parse → format → filter (testable in order).
     - DO-SCOUT-4 (user value): CLI entry → filter → format → parse (visible value first).
     - Merged proposal shown to user. User reorders slightly: CLI entry → parse → format → filter.
-    - `Doc/development-order.md` is written.
+    - `Doc/development-order_TodoApp.md` is written.
     - `/velpari-approve` advances state.
 
-16. `/velpari-handoff` → `.pi/senai/architect-inputs.json` is written with all 9 documents (including atomic-functions.md and development-order.md).
+18. `/velpari-handoff` → `.pi/senai/architect-inputs.json` is written with all 9 documents (with project-suffixed paths).
 
-17. Switch to Senai: `/senai-configure-architect-inputs` picks up the handoff, then `/senai-generate-architect` produces the architecture agents and skills. Senai now has a clear implementation order from `development-order.md` and an atomic-function catalog from `atomic-functions.md`.
+19. Switch to Senai: `/senai-configure-architect-inputs` picks up the handoff, then `/senai-generate-architect` produces the architecture agents and skills. Senai now has a clear implementation order from `development-order_TodoApp.md` and an atomic-function catalog from `atomic-functions_TodoApp.md`.
 
-18. `/senai-plan "Implement TODO CLI"` → Senai runs the production phase.
+20. `/senai-plan "Implement TODO CLI"` → Senai runs the production phase.
 
-End-to-end, Velpari produces 11 published artifacts (`Doc/` + `architect-inputs.json`). Each one traces back through the RTM to a discussion note or earlier approved artifact. The atomic functions are referenced by helper functions; the development order guides Senai's planner.
+End-to-end, Velpari produces 11 published artifacts (`Doc/` + `architect-inputs.json`), all suffixed with the project name "TodoApp". Each one traces back through the RTM to a discussion note or earlier approved artifact. The atomic functions are referenced by helper functions; the development order guides Senai's planner.
 
 ---
 
@@ -436,16 +449,18 @@ Each stage command declares what it reads and what it writes. Before the command
 
 | Command | Reads (gate check) | Writes (working copy) |
 |---|---|---|
-| `/velpari-discuss` | (none — entry point) | `Doc/discussion-notes.md` (after approve) |
-| `/velpari-prd` | `Doc/discussion-notes.md` | `Doc/PRD_Pi-Velpari.md` (after approve) |
-| `/velpari-rtm` | `Doc/PRD_Pi-Velpari.md` | `Doc/RTM_Pi-Velpari.md` (after approve) |
-| `/velpari-feasibility` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/feasibility-study.md` (after approve) |
-| `/velpari-design` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md` | `Doc/design.md` (after approve) |
-| `/velpari-pseudocode` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md` | `Doc/pseudocode.md` (after approve) |
-| `/velpari-testplan` | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md` | `Doc/test-plan.md`, `Doc/test-cases.md` (after approve) |
-| `/velpari-atomic-function` *(optional)* | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md` | `Doc/atomic-functions.md` (after approve) |
-| `/velpari-development-order` *(optional)* | `Doc/PRD_Pi-Velpari.md`, `Doc/RTM_Pi-Velpari.md`, `Doc/design.md`, `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md` | `Doc/development-order.md` (after approve) |
+| `/velpari-discuss` | (none — entry point) | `Doc/discussion-{topic-slug}.md` (after approve; with timestamp suffix if multi-run) |
+| `/velpari-prd` | `Doc/discussion-{topic-slug}.md` | `Doc/PRD_{projectName}.md` (after approve) |
+| `/velpari-rtm` | `Doc/PRD_{projectName}.md` | `Doc/RTM_{projectName}.md` (after approve) |
+| `/velpari-feasibility` | `Doc/PRD_{projectName}.md`, `Doc/RTM_{projectName}.md` | `Doc/feasibility-study_{projectName}.md` (after approve) |
+| `/velpari-design` | `Doc/PRD_{projectName}.md`, `Doc/RTM_{projectName}.md` | `Doc/design_{projectName}.md` (after approve) |
+| `/velpari-pseudocode` | `Doc/PRD_{projectName}.md`, `Doc/RTM_{projectName}.md`, `Doc/design_{projectName}.md` | `Doc/pseudocode_{projectName}.md` (after approve) |
+| `/velpari-testplan` | `Doc/PRD_{projectName}.md`, `Doc/RTM_{projectName}.md`, `Doc/design_{projectName}.md`, `Doc/pseudocode_{projectName}.md` | `Doc/test-plan_{projectName}.md`, `Doc/test-cases_{projectName}.md` (after approve) |
+| `/velpari-atomic-function` *(optional)* | all 6 core artifacts (suffixed) | `Doc/atomic-functions_{projectName}.md` (after approve) |
+| `/velpari-development-order` *(optional)* | all 6 core artifacts (suffixed) | `Doc/development-order_{projectName}.md` (after approve) |
 | `/velpari-handoff` | all published `Doc/*` artifacts | `.pi/senai/architect-inputs.json` |
+
+**Naming convention (v1.7):** Output files use the `projectName` captured in `/velpari-configure-inputs`. Example for a "TodoApp" project: `Doc/PRD_TodoApp.md`, `Doc/RTM_TodoApp.md`, etc. Discussion is per-topic: `Doc/discussion-{topic-slug}.md`. Subsequent runs of the same topic append a timestamp: `Doc/discussion-{topic-slug}-{YYYYMMDD-HHMMSS}.md`.
 
 ### 11.2 Discipline commands (no Doc scope)
 

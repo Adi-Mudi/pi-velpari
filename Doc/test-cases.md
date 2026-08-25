@@ -566,4 +566,75 @@ Every requirement in `Doc/RTM_Pi-Velpari.md` has at least one TC. Every TC refer
 
 ---
 
+## 37. v1.6: Discussion-approve split + chain
+
+**Test file:** `pi-extension/test/discuss-approve.test.ts` (new)
+
+### /velpari-approve-discuss chain (FR-58)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-201 | `handleApproveDiscuss` publishes `Doc/discussion-notes.md` and advances state | State at `discussing`; working copy exists | Call handleApproveDiscuss | Doc/discussion-notes.md content matches working copy; state → `discussed` → `drafting-prd` → `drafted-prd` | FR-58 | P1 |
+| TC-202 | `handleApproveDiscuss` auto-invokes `/velpari-prd` after publishing discussion | State at `discussing`; mock prd module | Call handleApproveDiscuss | prd.runPrd called once; state ends at `drafted-prd` | FR-58, FR-61 | P1 |
+| TC-203 | `handleApproveDiscuss` errors when not in discussion stage | State at `drafted-prd` | Call handleApproveDiscuss | Error: "Use /velpari-approve-discuss for the discussion stage only" | FR-58, FR-59 | P1 |
+| TC-204 | `/velpari-approve` errors when in discussion stage | State at `discussed` | Call handleApprove | Error: "Use /velpari-approve-discuss for the discussion stage" | FR-59 | P1 |
+| TC-205 | `/velpari-approve` works normally for stages 2–7 | State at `drafted-prd` | Call handleApprove | Advances to `building-rtm`; auto-invokes rtm stage | FR-59 | P1 |
+
+### Stage-aware approval hint (FR-60)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-206 | `renderApproveHint` returns correct text for each stage | All 15 stage values | Call renderApproveHint for each | "discussed" → "/velpari-approve-discuss"; "drafted-prd" → "/velpari-approve"; "handoff-ready" → "/velpari-handoff" | FR-60, NFR-14 | P1 |
+
+### /velpari-prd canonical path (FR-61)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-207 | `/velpari-prd` reads `Doc/discussion-notes.md` (gate check) | Doc/discussion-notes.md exists | Call runPrd | No gate error; proceeds | FR-61 | P1 |
+| TC-208 | `/velpari-prd` errors when `Doc/discussion-notes.md` missing | Doc/ empty | Call runPrd | Gate error: "missing Doc/discussion-notes.md" | FR-61 | P1 |
+
+---
+
+## 38. v1.7: Project-name output documents
+
+**Test file:** `pi-extension/test/paths.test.ts` (new)
+
+### projectName capture and validation (FR-67)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-209 | `/velpari-configure-inputs` prompts for projectName | Fresh project | Run command | Picker UI shows project name field; user can input | FR-67 | P1 |
+| TC-210 | `projectName` field validated by `validateFilesConfig`; missing → error | Files written without `projectName` | Run any stage command | Error: "projectName is required. Run /velpari-configure-inputs." | FR-67 | P1 |
+
+### Project-name-suffixed output paths (FR-68)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-211 | `buildOutputPath("prd", "TodoApp")` returns `Doc/PRD_TodoApp.md` | — | Call buildOutputPath | Returns the correct path | FR-68 | P1 |
+| TC-212 | `buildOutputPath("rtm", "TodoApp")` returns `Doc/RTM_TodoApp.md` | — | Call buildOutputPath | Returns the correct path | FR-68 | P1 |
+| TC-213 | `buildOutputPath("design", "TodoApp")` returns `Doc/design_TodoApp.md` | — | Call buildOutputPath | Returns the correct path | FR-68 | P1 |
+| TC-214 | `buildOutputPath("pseudocode", "TodoApp")` returns `Doc/pseudocode_TodoApp.md` | — | Call buildOutputPath | Returns the correct path | FR-68 | P1 |
+| TC-215 | `buildOutputPath("atomicFunction", "TodoApp")` returns `Doc/atomic-functions_TodoApp.md` | — | Call buildOutputPath | Returns the correct path | FR-68 | P1 |
+
+### Per-topic discussion (FR-69)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-216 | First `/velpari-discuss "onboarding flow"` produces `Doc/discussion-onboarding-flow.md` | First run for this topic | Call handleApproveDiscuss | Doc file exists with topic-slug name (no timestamp) | FR-69 | P1 |
+| TC-217 | Second `/velpari-discuss "onboarding flow"` produces `Doc/discussion-onboarding-flow-{timestamp}.md` | Second run for same topic | Call handleApproveDiscuss | Doc file with timestamp suffix; canonical file unchanged | FR-69 | P1 |
+
+### topic-slug derivation (FR-70)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-218 | `slugify("Build a CLI")` returns `"build-a-cli"` | — | Call slugify | Lowercase, hyphens, no special chars | FR-70 | P1 |
+
+### Handoff with project-suffixed paths (FR-71)
+
+| TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
+|---|---|---|---|---|---|---|
+| TC-219 | Handoff output references project-suffixed paths | `Doc/PRD_TodoApp.md` exists | Call runHandoff | `architect-inputs.json` documents array has `Doc/PRD_TodoApp.md` etc. | FR-71 | P1 |
+
+---
+
 *This document is consumed by Phase A–E implementation (each test is written alongside its module) and by `pi-extension/src/doctor.ts` (audit-time verification that every RTM row has at least one test case).*

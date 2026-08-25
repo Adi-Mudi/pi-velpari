@@ -27,6 +27,21 @@ Pi-Velpari is feasible to build as a single-developer, open-source Pi extension.
 - Uniform subagent pattern: `ScoutContract` defined in `contracts.ts`; `spawnScout()` helper enforces 30-second timeout uniformly. Reduces drift between scouts. Implementation cost: ~150 lines (one new file `contracts.ts` + `scout.ts` helper + 12 skill markdown files).
 - TUI independence: Velpari re-implements Senai's picker patterns in `pi-extension/src/ui/` (3 files: simple-picker, list-editor, role-picker). No runtime dependency on Senai. Implementation cost: ~400 lines but reusable across all 22 commands.
 
+**v1.6 additions** (discussion-approve split + chain):
+
+- New command `/velpari-approve-discuss` is the dedicated discussion-approve. `/velpari-approve` errors when in discussion stage.
+- `/velpari-approve-discuss` chains: publishes discussion → auto-invokes `/velpari-prd` → publishes PRD → advances state to `drafted-prd`. One user action closes both discussion and PRD stages.
+- Implementation cost: ~80 lines (one new file `discuss-approve.ts` with `handleApproveDiscuss`, `publishDiscussionNotes`, `chainToPrd`, `renderApproveHint`; update `handleApprove` to refuse discussion stage).
+- Reduces user cognitive load: one clear action per stage transition.
+
+**v1.7 additions** (project-name output documents):
+
+- `/velpari-configure-inputs` extended to capture `projectName` (one-time setup, persisted in `.pi/velpari/files.json` version 3).
+- Output documents use `projectName` suffix: `Doc/PRD_{projectName}.md` instead of hardcoded `Doc/PRD_Pi-Velpari.md`. Same for RTM, feasibility, design, pseudocode, test-plan, test-cases, atomic-functions, development-order.
+- Discussion is per-topic: `Doc/discussion-{topic-slug}.md`. Subsequent runs of the same topic get timestamp suffix.
+- Implementation cost: ~150 lines (new `paths.ts` module with `buildOutputPath`, `buildDiscussionPath`, `slugify`, `buildHandoffDocuments`; update `state.ts:publishToDoc` to use new paths; update `config.ts` to validate `projectName`).
+- Solves multi-project reuse: a developer can plan multiple projects in different `Doc/` folders; each project's docs are clearly distinguished by name.
+
 **Total v1.5 implementation cost:** ~600 lines + 12 scout skill markdown files. All deterministic, no LLM cost beyond the web search itself.
 
 ---

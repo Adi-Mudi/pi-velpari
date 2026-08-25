@@ -224,6 +224,16 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `pi-extension/src/ui/role-picker.ts` — re-implementation of Senai's role-picker.
 - **Note:** These are independent of Senai's source. They may share UX patterns but the implementations are separate. Drift over time is a known risk; tests in `pi-extension/test/ui/` lock the contract.
 
+### 2.23 `discuss-approve.ts` — dedicated discussion-approve chain (v1.6)
+
+- **Purpose:** Implements `/velpari-approve-discuss` — the dedicated command for closing the discussion stage. Publishes `Doc/discussion-notes.md` and auto-invokes `/velpari-prd` to chain into the PRD stage.
+- **Implements:** FR-58, FR-59, FR-60, NFR-14.
+- **Key exports:**
+  - `function handleApproveDiscuss(args, api): Promise<void>` — the command handler.
+  - `function publishDiscussionNotes(rootDir, state): void` — copies working copy to `Doc/discussion-notes.md` and advances state.
+  - `function chainToPrd(state, rootDir, api): Promise<void>` — auto-invokes `prd.ts:runPrd()` and advances state.
+  - `function renderApproveHint(stage): string` — UI hint based on current stage (`discussed` → "use /velpari-approve-discuss"; other → "use /velpari-approve").
+
 ---
 
 ## 3. Data Model
@@ -259,25 +269,29 @@ interface HistoryEntry {
 
 ```ts
 interface FilesConfig {
-  version: 1;
+  version: 3;                 // bumped in v1.7 to add projectName
+  projectName: string;        // required since v1.7; used in output file names
   codePaths: string[];        // empty for Velpari — no code is read
   inputDocuments: string[];   // PRDs, NFRs, etc. the user wants Velpari to be aware of
   outputPaths: {
-    discuss: string;          // "Doc/discussion-notes.md"
-    prd: string;              // "Doc/PRD_Pi-Velpari.md"
-    rtm: string;              // "Doc/RTM_Pi-Velpari.md"
-    feasibility: string;      // "Doc/feasibility-study.md"
-    design: string;           // "Doc/design.md"
-    pseudocode: string;       // "Doc/pseudocode.md"
-    testplan: string;         // "Doc/test-plan.md" (test-cases.md is colocated)
-    atomicFunction: string;    // "Doc/atomic-functions.md" (optional stage)
-    developmentOrder: string;  // "Doc/development-order.md" (optional stage)
+    discuss: string;          // "Doc/discussion-{topic-slug}.md"
+    prd: string;              // "Doc/PRD_{projectName}.md"
+    rtm: string;              // "Doc/RTM_{projectName}.md"
+    feasibility: string;      // "Doc/feasibility-study_{projectName}.md"
+    design: string;           // "Doc/design_{projectName}.md"
+    pseudocode: string;       // "Doc/pseudocode_{projectName}.md"
+    testplan: string;         // "Doc/test-plan_{projectName}.md" (test-cases.md is colocated)
+    atomicFunction: string;    // "Doc/atomic-functions_{projectName}.md"
+    developmentOrder: string;  // "Doc/development-order_{projectName}.md"
   };
+  framework?: FrameworkInfo; // optional but recommended (v1.5)
   excludedPaths: string[];    // standard ignores
 }
 ```
 
 **File location:** `.pi/velpari/files.json`.
+
+**v1.7 naming rule:** Every output file name uses the `projectName` field. The previous hardcoded "Pi-Velpari" prefix is replaced by the user's project name. Discussion is per-topic: `Doc/discussion-{topic-slug}.md`. The `outputPaths` values shown above are templates; the actual paths are derived from `projectName` via `paths.ts:buildOutputPath()`.
 
 ### 3.3 `architect-inputs.json` (Senai-compatible handoff target)
 
@@ -488,6 +502,31 @@ Velpari does NOT depend on Senai at runtime. The picker UI patterns used by Velp
 
 - `package.json` does not list Senai as a dependency. TC-198 verifies this.
 - A grep for `from ".*Pi-Orchestra_v4.*"` in `pi-extension/src/` returns zero matches.
+
+### 3.10 Approval model (v1.6)
+
+Per user direction, discussion has its own dedicated approve command. The approval model distinguishes between two cases:
+
+| Current stage | User invokes | Behavior |
+|---|---|---|
+| `discussed` | `/velpari-approve-discuss` | Publishes `Doc/discussion-notes.md`, advances to `drafting-prd`, then auto-invokes `/velpari-prd` (which produces PRD with its own preview/confirm gate, advances to `drafted-prd`). |
+| `discussed` | `/velpari-approve` | Errors: "Use `/velpari-approve-discuss` for the discussion stage." |
+| `drafted-prd`, `built-rtm`, `analyzed-feasibility`, `designed`, `wrote-pseudocode`, `planned-tests` | `/velpari-approve` | Publishes artifact, advances to next starting state, auto-launches next stage. |
+| Any state | `/velpari-approve-discuss` | Errors: "Discussion approval only applies to the discussion stage." |
+
+#### 3.10.1 Why split approval
+
+Discussion is iterative: `/velpari-discuss` can run multiple times before the user is satisfied. The previous design (single `/velpari-approve` for all stages) auto-updated the PRD on discussion approval. Running discussion 5 times and approving 5 times would create 5 incremental PRD updates, which is confusing.
+
+Splitting approval into `/velpari-approve-discuss` (discussion only) and `/velpari-approve` (stages 2–7) gives the user a clear, single action per stage. The auto-chain from discussion to PRD reduces cognitive load: one command, two stages closed.
+
+#### 3.10.2 Approval hint
+
+`discuss-approve.ts:renderApproveHint(stage)` returns the appropriate hint based on `currentStage`:
+
+- In `discussed`: "Discussion notes are ready. Run `/velpari-approve-discuss` to publish and auto-generate the PRD."
+- In `drafted-prd` and beyond: "Ready for next stage. Run `/velpari-approve` to continue."
+- In `handoff-ready`: "Ready for handoff. Run `/velpari-handoff` to package for Senai."
 
 ---
 
@@ -888,6 +927,41 @@ Both extensions share UX patterns because they share a design philosophy (Senai-
 
 This is documented as `FR-55` and tracked as a constraint (PRD §6 item 12). TC-198 verifies that `package.json` does not list Senai.
 
+### 7.10 Why `/velpari-approve-discuss` is separate from `/velpari-approve` (v1.6)
+
+Per user direction, discussion has its own dedicated approve command. The original v1.5 design used a single `/velpari-approve` for all stages, with the discussion stage also auto-updating the PRD on approval.
+
+This caused confusion because `/velpari-discuss` is iterative — the user can run it multiple times to refine the multi-turn interview. Each `/velpari-discuss` produces a new working copy. With auto-update on approval, running discussion 5 times and approving 5 times would create 5 incremental PRD updates, which is error-prone.
+
+By introducing `/velpari-approve-discuss`:
+
+- Discussion approval is explicit: the user calls this command when satisfied.
+- The chain to PRD is automatic: the command publishes discussion, then auto-invokes `/velpari-prd`.
+- No intermediate state where the PRD is silently modified between discussion runs.
+
+The user has one clear action per stage transition:
+
+1. Run `/velpari-discuss` (iterative — any number of times).
+2. Run `/velpari-approve-discuss` when done (closes discussion, opens PRD).
+3. Run `/velpari-approve` to chain through the rest (PRD → RTM → feasibility → design → pseudocode → testplan).
+4. Run `/velpari-handoff` when the entire pipeline is complete.
+
+This is documented as `FR-58..FR-61` and `NFR-14`. The UI hint reflects the current stage.
+
+### 7.11 Why output documents use `projectName` suffix (v1.7)
+
+Per user direction, output document names use the user's `projectName` instead of the hardcoded "Pi-Velpari" prefix. Example: a "TodoApp" project produces `Doc/PRD_TodoApp.md` instead of `Doc/PRD_Pi-Velpari.md`.
+
+This solves three problems:
+
+1. **Multi-project reuse.** If a developer uses Velpari to plan multiple projects in different `Doc/` folders, each project's docs are clearly distinguished by the project name.
+2. **Tooling integration.** Downstream tools (version control, document viewers) recognize the docs by project name rather than the extension name.
+3. **Handoff clarity.** The handoff to Senai includes project-suffixed paths (`Doc/PRD_TodoApp.md`), making it clear which PRD is being consumed.
+
+Discussion is per-topic (not per-project) because discussion is about a specific subject, not the whole project. A "TodoApp" project can have discussions on "onboarding flow", "search feature", "billing", etc., each as a separate file: `Doc/discussion-onboarding-flow.md`, `Doc/discussion-search-feature.md`. Multiple discussions on the same topic get timestamp suffixes for comparison: `Doc/discussion-onboarding-flow-20260824-153045.md`.
+
+This is documented as `FR-67..FR-71` and `NFR-15`. The `paths.ts` module centralizes the naming logic.
+
 ---
 
 ## 8. Cross-Reference Index
@@ -898,7 +972,7 @@ This is documented as `FR-55` and tracked as a constraint (PRD §6 item 12). TC-
 | `constants.ts` | FR-24 | — |
 | `state.ts` | FR-21, FR-23, FR-25, FR-28, FR-30, FR-33 | NFR-06 |
 | `prompt.ts` | FR-22, FR-23 | — |
-| `commands.ts` | FR-01..FR-32, FR-43, FR-44, FR-49, FR-57 (delegation, 22 commands total; COMMAND_SCOPE and checkDocScope; framework handling) | — |
+| `commands.ts` | FR-01..FR-32, FR-43, FR-44, FR-49, FR-57, FR-59, FR-60, FR-67, FR-68 (delegation, 23 commands total; COMMAND_SCOPE and checkDocScope; framework handling; stage-aware approval; project-name output paths) | — |
 | `compaction.ts` | — | NFR-01 |
 | `config.ts` | FR-11 | — |
 | `doctor.ts` | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
@@ -916,6 +990,7 @@ This is documented as `FR-55` and tracked as a constraint (PRD §6 item 12). TC-
 | `contracts.ts` | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
 | `scout.ts` | FR-54 | NFR-13 |
 | `ui/{simple-picker,list-editor,role-picker}.ts` | FR-55 | — |
+| `discuss-approve.ts` | FR-58, FR-59, FR-60 | NFR-14 (stage-aware approval) |
 
 Every requirement in the RTM is implemented by at least one module. No module is orphan (every module implements at least one FR-N or NFR-N).
 

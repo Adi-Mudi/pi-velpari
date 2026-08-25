@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (docs-first scope — v1.5 plan)
+### Added (docs-first scope — v1.7 plan)
+
+**v1.7 changes (project-name output documents + topic-scoped discussion):**
+
+- **`projectName` captured in `/velpari-configure-inputs`** (FR-67). One-time setup, persisted in `.pi/velpari/files.json` (version 3). Validated by `config.ts:validateFilesConfig`. Missing → error from any stage command.
+- **Output documents use `projectName` suffix** (FR-68). The previous hardcoded "Pi-Velpari" prefix is replaced. Example: a "TodoApp" project produces `Doc/PRD_TodoApp.md`, `Doc/RTM_TodoApp.md`, `Doc/design_TodoApp.md`, `Doc/pseudocode_TodoApp.md`, `Doc/test-plan_TodoApp.md`, `Doc/test-cases_TodoApp.md`, `Doc/feasibility-study_TodoApp.md`, `Doc/atomic-functions_TodoApp.md`, `Doc/development-order_TodoApp.md`.
+- **Discussion output is per-topic** (FR-69). First `/velpari-discuss <topic>` produces `Doc/discussion-{topic-slug}.md`. Subsequent runs of the same topic append a timestamp suffix (`Doc/discussion-{topic-slug}-{YYYYMMDD-HHMMSS}.md`).
+- **`topic-slug` derived from `/velpari-discuss <mission>`** (FR-70). Slugification: lowercase, hyphens for spaces, no special characters, max 64 chars.
+- **Handoff schema uses project-suffixed paths** (FR-71). `.pi/senai/architect-inputs.json` documents reference `Doc/PRD_{projectName}.md` etc.
+- **`paths.ts` module** — new central module with `buildOutputPath()`, `buildDiscussionPath()`, `slugify()`, `buildHandoffDocuments()`. Centralizes naming logic so all 22 commands produce consistent paths.
+- **NFR-15** — output file names are deterministic and project-derived. The same `projectName` always produces the same file name. No "Pi-Velpari" hardcoding.
+- **Sequence doc §5, §8, §9, §11** — artifact layout, handoff schema, end-to-end example, and sub-sequence table updated for project-suffixed output paths.
+- **Design §3.2** — `files.json` schema upgraded to version 3 with `projectName`. §7.11 new architecture decision: why project-name output documents.
+- **Pseudocode §20** — new `paths.ts` module pseudocode: `buildOutputPath`, `buildDiscussionPath`, `slugify`, `buildHandoffDocuments`, updated `publishToDoc`.
+- **Test cases §38** — 11 new TCs (TC-209..TC-219) covering project name capture, output path derivation, discussion naming, slugify, handoff.
+- **Test plan** — 24 test files (added `paths.test.ts`).
+- **Step-by-step guide §1** — `/velpari-configure-inputs` now prompts for `projectName` first; example output file names listed.
+
+**v1.6 changes (discussion-approve split + chain + stage-aware approval):**
+
+- **`/velpari-approve-discuss` command (NEW).** Dedicated discussion-approve. Publishes `Doc/discussion-notes.md`, then **auto-invokes `/velpari-prd`** to chain through to PRD. The single user action that closes discussion and opens PRD.
+- **`/velpari-approve` scope restricted.** Now applies only to stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan). Errors when invoked in discussion stage: "Use `/velpari-approve-discuss` for the discussion stage."
+- **FR-28 removed.** `/velpari-discuss` no longer auto-updates PRD. PRD update is driven by `/velpari-prd`, which is auto-invoked by `/velpari-approve-discuss`.
+- **FR-29 changed.** `/velpari-prd` is now the **primary** PRD path, not the "full-rewrite exception." Triggered automatically by `/velpari-approve-discuss`.
+- **Stage-aware approval hint.** UI hint reflects `currentStage`: in `discussed`, suggests `/velpari-approve-discuss`; in any other stage, suggests `/velpari-approve`.
+- **23 commands total** (was 22). New: `/velpari-approve-discuss`.
+- **Sequence doc §2** — transition table updated: `discussing → discussed` is now triggered by `/velpari-approve-discuss`, not `/velpari-approve`. `discussed → drafting-prd → drafted-prd` happens in the chain.
+- **Sequence doc §6** — command surface updated: 23 commands, discipline section now lists `/velpari-approve-discuss` first.
+- **Design §2.23** — new `discuss-approve.ts` module documented.
+- **Design §3.10** — new approval model section: table of stage-vs-approve behavior.
+- **Design §7.10** — new architecture decision: why `/velpari-approve-discuss` is separate.
+- **Pseudocode §19** — new module pseudocode: `handleApproveDiscuss`, `publishDiscussionNotes`, `chainToPrd`, `renderApproveHint`. Updated `handleApprove` to refuse discussion stage.
+- **Test cases §37** — 8 new TCs (TC-201..TC-208): chain behavior, stage-aware errors, hint per stage, PRD canonical path.
+- **Test plan** — 23 test files (added `discuss-approve.test.ts`).
+- **Step-by-step guide §3** — `/velpari-approve-discuss` is the dedicated discussion-approve command. Auto-invokes `/velpari-prd`.
 
 **v1.5 changes (framework as one-time setup + WEB SEARCH AGENT + uniform subagent pattern + TUI independence):**
 

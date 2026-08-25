@@ -56,14 +56,27 @@ Discipline commands (`/velpari-approve`, `/velpari-status`, `/velpari-reset`, `/
 
 This command:
 
-1. Deep-scans your project for existing markdown files (potential input documents — existing PRDs, NFRs, etc.).
-2. Suggests default output paths under `Doc/`.
-3. Lets you accept or adjust each suggestion.
-4. Writes `.pi/velpari/files.json`.
+1. **Prompts for `projectName`** (v1.7). This is used in all output document names. Example: "TodoApp".
+2. Deep-scans your project for existing markdown files (potential input documents — existing PRDs, NFRs, etc.).
+3. Suggests default output paths under `Doc/`.
+4. Lets you accept or adjust each suggestion.
+5. Writes `.pi/velpari/files.json` (version 3) including `projectName` and `framework`.
 
 For a brand-new project with no existing PRDs, the defaults are fine. For a project with an existing PRD or NFR document, you can mark it as an `inputDocument` — Velpari will keep it in scope across all stages.
 
-**After this step**, `/velpari-doctor` should report "Setup progress: 1 of 7 steps done."
+After this step, `/velpari-doctor` should report "Setup progress: 1 of 7 steps done."
+
+**Output file names** will use your `projectName`. For example, a "TodoApp" project produces:
+
+- `Doc/PRD_TodoApp.md`
+- `Doc/RTM_TodoApp.md`
+- `Doc/design_TodoApp.md`
+- `Doc/pseudocode_TodoApp.md`
+- `Doc/test-plan_TodoApp.md`
+- `Doc/test-cases_TodoApp.md`
+- `Doc/feasibility-study_TodoApp.md`
+- `Doc/atomic-functions_TodoApp.md`
+- `Doc/development-order_TodoApp.md`
 
 ### 1a. Configure framework (one-time, in the same command)
 
@@ -139,29 +152,35 @@ If the preview missed something, **cancel** and rerun `/velpari-discuss`. The ne
 
 ---
 
-## 3. Approve the discussion
+## 3. Approve the discussion (and auto-generate the PRD)
 
 ```
-/velpari-approve
+/velpari-approve-discuss
 ```
+
+**Important (v1.6):** Discussion has its own dedicated approve command. Do NOT use `/velpari-approve` here — it will error with "Use `/velpari-approve-discuss` for the discussion stage."
 
 What happens:
 
 1. The working copy (`discussion-notes.md`) is copied to `Doc/discussion-notes.md`. This is the published copy.
-2. **Auto-update applied:** the DECISION AGENT's verdict from the discussion is applied to `Doc/PRD_Pi-Velpari.md`. New FR-Ns are added to the Functional Requirements table; updated FR-Ns replace existing entries; new helper functions are appended to `## Helper Functions`.
-3. State advances from `discussed` to `drafting-prd` (or `building-rtm` if the PRD already had content).
-4. The next stage's prompt is auto-launched (you'll see a `/velpari-rtm` or `/velpari-prd` prompt ready to go).
+2. State advances from `discussing` to `discussed`.
+3. **`/velpari-prd` is auto-invoked** (v1.6). It reads the published discussion, produces a draft PRD, shows preview, and on your confirm publishes `Doc/PRD_Pi-Velpari.md`.
+4. State advances through `discussed → drafting-prd → drafted-prd`.
 
-**If parent context usage is ≥ 50%**, `/velpari-approve` first compacts the session. A deterministic zero-LLM summary of the run state is injected so nothing is lost.
+After this single command, the discussion stage is closed and the PRD stage is complete. You don't need to run `/velpari-prd` manually unless you want to fully regenerate the PRD from scratch.
 
-**Note:** you can skip `/velpari-prd` in this flow — the auto-update already wrote your discussion into the PRD. `/velpari-prd` is only needed if you want to fully regenerate the PRD from scratch.
+**If parent context usage is ≥ 50%**, the compaction hook runs before any LLM call in the chain. A deterministic zero-LLM summary of the run state is injected so nothing is lost.
 
 ---
 
-## 4. Produce the PRD
+## 4. Continue through the rest of the pipeline
 
-```
-/velpari-prd
+After `/velpari-approve-discuss` completes, you run `/velpari-approve` to chain through the remaining stages. Each `/velpari-approve` invocation:
+
+1. Publishes the current stage's working copy to `Doc/`.
+2. Auto-advances state to the next starting state.
+3. Auto-launches the next stage's prompt.
+
 ```
 
 What happens:
@@ -579,8 +598,8 @@ A complete run produces 9–11 published artifacts:
 
 **Core (9 — always produced):**
 
-- [ ] `Doc/discussion-notes.md` (after `/velpari-discuss` + `/velpari-approve`)
-- [ ] `Doc/PRD_Pi-Velpari.md` (auto-updated by discussion's DECISION AGENT; or `/velpari-prd` + `/velpari-approve` for full rewrite)
+- [ ] `Doc/discussion-notes.md` (after `/velpari-discuss` + `/velpari-approve-discuss`)
+- [ ] `Doc/PRD_Pi-Velpari.md` (auto-invoked by `/velpari-approve-discuss`; or `/velpari-prd` + `/velpari-approve` for full rewrite)
 - [ ] `Doc/RTM_Pi-Velpari.md` (after `/velpari-rtm` + `/velpari-approve`)
 - [ ] `Doc/feasibility-study.md` (after `/velpari-feasibility` + `/velpari-approve`)
 - [ ] `Doc/design.md` (after `/velpari-design` + `/velpari-approve`)

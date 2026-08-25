@@ -123,6 +123,23 @@ This is the actionable list. Each pending decision should be resolved before it 
 18. **Should `ScoutContract` be extensible with custom scout types per project?** (e.g., a project might want a "compliance-checker" scout.) — **pending**
 19. **Should TUI re-implementations live in `pi-extension/src/ui/` mirroring Senai's structure exactly?** Currently planned as separate `pi-extension/src/ui/{simple-picker,list-editor,role-picker}.ts`. Drift from Senai over time is a risk. — **pending**
 
+### v1.6 decisions (added with the discussion-approve split)
+
+20. **Should `/velpari-approve-discuss` chain through to PRD?** Currently yes — it publishes discussion then auto-invokes `/velpari-prd`. Alternative: just publish discussion and require user to run `/velpari-prd` manually. User direction chose auto-chain to reduce cognitive load. — **decided** (auto-chain)
+21. **Should there be a `/velpari-approve-stage` for explicit stage-by-stage approval?** Currently no; stages 2–7 use the auto-advancing `/velpari-approve`. Adding a per-stage approve would slow the chain but give more control. — **pending**
+22. **What if `/velpari-prd` (auto-invoked by `/velpari-approve-discuss`) is cancelled by the user?** The chain halts at `drafting-prd` state; user must re-run `/velpari-approve-discuss` to retry. Alternative: chain remembers the discussion-publish and skips it on retry. — **pending**
+23. **Should the discussion-publish be reversible?** Currently once `/velpari-approve-discuss` publishes `Doc/discussion-notes.md`, there's no built-in undo. User can re-run `/velpari-discuss` to overwrite the working copy but not the published copy. — **pending**
+24. **How does this interact with v1.5's optional framework field?** If `framework` is missing from `files.json` and user runs `/velpari-approve-discuss`, the auto-invoked `/velpari-prd` should fail with a clear error. Currently framed as a v1.5 gate, but the new chain exposes it earlier. — **pending**
+
+### v1.7 decisions (added with the project-name output document scope)
+
+25. **Should `projectName` be required or optional in `/velpari-configure-inputs`?** Currently required (per user direction). Mandatory because output file names depend on it. Alternative: derive from mission slug if not set. — **decided** (required)
+26. **Should multiple discussions on the same topic be merged into a single file or kept as separate timestamped files?** Currently separate timestamped files (`discussion-{slug}-{timestamp}.md`) per user direction. Allows comparison of iterations. Alternative: merge with a "last updated" header. — **decided** (separate timestamped files)
+27. **Should `topic-slug` be sluggable at all, or always require explicit topic?** Currently derived from `/velpari-discuss <mission>` argument. Slugified automatically. Alternative: require explicit `--topic` flag. — **decided** (slugify from mission)
+28. **Should the project name change between runs (e.g., same project, different name variations)?** Currently no — `projectName` is fixed by `/velpari-configure-inputs` and persisted. Changing it requires re-running config. — **pending**
+29. **What happens if two projects share the same `Doc/` folder?** Currently no protection — files would collide. Mitigation: warn if `Doc/` already has artifacts from a different `projectName`. — **pending**
+30. **Should the project name support namespaces (e.g., `acme/TodoApp`)?** Currently flat (no slashes). Alternative: support paths. — **pending**
+
 ---
 
 ## 6. How to use this document

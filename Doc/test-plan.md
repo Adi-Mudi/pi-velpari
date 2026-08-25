@@ -39,6 +39,8 @@ The following are tested by automated tests (`node --test` under `pi-extension/t
 21. **Web search agent** (v1.5) — `WEB SEARCH AGENT` is the 4th discussion scout; user-prompted (yes/no after interview); collects community + official docs + similar projects.
 22. **Uniform subagent pattern** (v1.5) — all 12 scouts follow `ScoutContract` (defined in `contracts.ts`); same `spawnScout()` helper; same JSON envelope; same 30s timeout; same picker UI.
 23. **TUI independence** (v1.5) — Velpari does not depend on Senai at runtime; TUI patterns re-implemented in `pi-extension/src/ui/`.
+24. **Discussion-approve chain** (v1.6) — `/velpari-approve-discuss` publishes discussion-notes.md and auto-invokes `/velpari-prd`. `/velpari-approve` errors when in discussion stage. UI hints reflect current stage.
+25. **Project-name output documents** (v1.7) — `projectName` captured in `/velpari-configure-inputs`; output docs use `projectName` suffix; discussion is per-topic with timestamp versioning.
 
 ### 1.2 Out of scope
 
@@ -111,10 +113,12 @@ Per file/module:
 | `gate.test.ts` | `commands.ts:checkDocScope`, `COMMAND_SCOPE` | Unit | Per-command gate success and failure; COMMAND_SCOPE matches docs |
 | `framework.test.ts` | `config.ts`, `prompt.ts` | Unit | Framework is captured, validated, and injected into prompts |
 | `scout.test.ts` | `contracts.ts`, `scout.ts`, all 12 scout modules | Unit | ScoutContract shape; spawnScout timeout + JSON envelope; picker UI |
-| `handoff.test.ts` | `handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip |
-| `show.test.ts` | `show.ts` | Unit | All 7 stages; missing-artifact path; testplan concatenation |
+| `discuss-approve.test.ts` | `discuss-approve.ts`, `commands.ts:handleApprove*` | Unit | /velpari-approve-discuss chain; /velpari-approve errors on discussion; renderApproveHint per stage |
+| `paths.test.ts` | `paths.ts` | Unit | buildOutputPath per stage; buildDiscussionPath per topic + timestamp; slugify; project-name suffix on every stage |
+| `handoff.test.ts` | `handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip; project-suffixed paths |
+| `show.test.ts` | `show.ts` | Unit | All 7 stages; missing-artifact path; testplan concatenation; project-suffixed names |
 
-**Total: 22 test files.**
+**Total: 24 test files.**
 
 ### 2.7 Integration tests
 

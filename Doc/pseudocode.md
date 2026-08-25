@@ -1983,4 +1983,275 @@ export async function promptForWebSearch(api: ExtensionAPI): Promise<boolean> {
 
 ---
 
+## 19. Module: `discuss-approve.ts` (v1.6)
+
+### 19.1 `handleApproveDiscuss` — `/velpari-approve-discuss` handler
+
+```ts
+async function handleApproveDiscuss(args: CommandArgs, api: ExtensionAPI): Promise<void>
+
+// Preconditions
+- state.currentStage is "discussing" (working copy is ready)
+- working copy at runs/<run-id>/discussing/discussion-notes.md exists
+
+// Postconditions
+- Doc/discussion-notes.md is published
+- state advances: discussing → discussed → drafting-prd → drafted-prd
+- The chain runs through publishDiscussionNotes() then chainToPrd()
+
+// Logic
+const state = loadState(rootDir);
+if (state === null) {
+  api.ui.error("No active run. Run /velpari-discuss first.");
+  return;
+}
+if (state.currentStage !== "discussing") {
+  api.ui.error(
+    "/velpari-approve-discuss is for the discussion stage only. " +
+    `Current stage: ${state.currentStage}. Use /velpari-approve instead.`
+  );
+  return;
+}
+
+// 1. Publish discussion notes
+publishDiscussionNotes(rootDir, state);
+
+// 2. Advance state: discussing → discussed
+const afterPublish = advanceStage(rootDir, state, "discussed");
+
+// 3. Auto-invoke /velpari-prd (with its own preview/confirm gate)
+api.ui.notify("Discussion published. Auto-generating PRD...");
+
+try {
+  await chainToPrd(afterPublish, rootDir, api);
+  api.ui.notify("PRD ready. Run /velpari-approve to continue to RTM.");
+} catch (err) {
+  // User cancelled the PRD preview. State stays at drafting-prd.
+  api.ui.notify(
+    "PRD generation cancelled. Re-run /velpari-approve-discuss to retry. " +
+    `Reason: ${err.message}`
+  );
+  return;
+}
+```
+
+### 19.2 `publishDiscussionNotes`
+
+```ts
+function publishDiscussionNotes(rootDir: string, state: RunState): void
+
+// Preconditions
+- working copy exists at runs/<run-id>/discussing/discussion-notes.md
+
+// Postconditions
+- Doc/discussion-notes.md contains the working copy content
+- atomic write
+
+// Logic
+const workingPath = path.join(rootDir, RUNS_DIR, state.runId, "discussing", "discussion-notes.md");
+if (!fs.existsSync(workingPath)) {
+  throw new Error(`Discussion working copy missing: ${workingPath}`);
+}
+const content = fs.readFileSync(workingPath, "utf-8");
+const docPath = path.join(rootDir, DOC_DIR, "discussion-notes.md");
+const tmpPath = docPath + ".tmp";
+fs.writeFileSync(tmpPath, content, "utf-8");
+fs.renameSync(tmpPath, docPath);
+```
+
+### 19.3 `chainToPrd`
+
+```ts
+async function chainToPrd(state: RunState, rootDir: string, api: ExtensionAPI): Promise<void>
+
+// Preconditions
+- state.currentStage is "discussed" (just published)
+// Doc/discussion-notes.md exists
+
+// Postconditions
+- Doc/PRD_Pi-Velpari.md is published (after user preview + confirm)
+// state advances: discussed → drafting-prd → drafted-prd
+
+// Logic
+// 1. Advance state: discussed → drafting-prd
+const afterAdvance = advanceStage(rootDir, state, "drafting-prd");
+
+// 2. Run the PRD stage (which produces draft, shows preview, requires confirm)
+const prdModule = await import("./prd.js");
+await prdModule.runPrd({ state: afterAdvance, rootDir, api });
+
+// 3. The prd module itself advances state from drafting-prd to drafted-prd via its
+//    internal publishToDoc + advanceStage calls.
+```
+
+### 19.4 `renderApproveHint`
+
+```ts
+function renderApproveHint(currentStage: Stage): string
+
+// Preconditions
+- none
+
+// Postconditions
+- returns a string the UI displays when the user is ready to advance
+
+// Logic
+switch (currentStage) {
+  case "discussed":
+    return "Discussion notes are ready. Run /velpari-approve-discuss to publish and auto-generate the PRD.";
+  case "drafted-prd":
+  case "built-rtm":
+  case "analyzed-feasibility":
+  case "designed":
+  case "wrote-pseudocode":
+  case "planned-tests":
+    return "Ready for next stage. Run /velpari-approve to continue.";
+  case "handoff-ready":
+    return "Ready for handoff. Run /velpari-handoff to package for Senai.";
+  default:
+    return "Run /velpari-status to see current state.";
+}
+```
+
+### 19.5 Updated `handleApprove` — error on discussion stage
+
+```ts
+async function handleApprove(args: CommandArgs, api: ExtensionAPI): Promise<void>
+
+// Logic
+const state = loadState(rootDir);
+if (state === null) {
+  api.ui.error("No active run.");
+  return;
+}
+
+// NEW in v1.6: refuse if in discussion stage
+if (state.currentStage === "discussed" || state.currentStage === "discussing") {
+  api.ui.error(
+    "Use /velpari-approve-discuss for the discussion stage. " +
+    "/velpari-approve is for stages 2-7 only."
+  );
+  return;
+}
+
+// ... existing logic for stages 2-7 (auto-advance chain)
+```
+
+---
+
+## 20. Module: `paths.ts` (v1.7)
+
+### 20.1 `buildOutputPath` — project-name-suffixed output path
+
+```ts
+// pi-extension/src/paths.ts
+export function buildOutputPath(
+  stage: "prd" | "rtm" | "feasibility" | "design" | "pseudocode" | "testPlan" | "testCases" | "atomicFunction" | "developmentOrder",
+  projectName: string
+): string
+
+// Preconditions
+projectName is non-empty (validated by config.ts:validateFilesConfig)
+
+// Postconditions
+returns a path under Doc/ with the project-name suffix
+
+// Logic
+switch (stage) {
+  case "prd":               return path.join("Doc", `PRD_${projectName}.md`);
+  case "rtm":               return path.join("Doc", `RTM_${projectName}.md`);
+  case "feasibility":       return path.join("Doc", `feasibility-study_${projectName}.md`);
+  case "design":            return path.join("Doc", `design_${projectName}.md`);
+  case "pseudocode":        return path.join("Doc", `pseudocode_${projectName}.md`);
+  case "testPlan":          return path.join("Doc", `test-plan_${projectName}.md`);
+  case "testCases":         return path.join("Doc", `test-cases_${projectName}.md`);
+  case "atomicFunction":    return path.join("Doc", `atomic-functions_${projectName}.md`);
+  case "developmentOrder":  return path.join("Doc", `development-order_${projectName}.md`);
+}
+```
+
+### 20.2 `buildDiscussionPath` — per-topic discussion path
+
+```ts
+// pi-extension/src/paths.ts
+export function buildDiscussionPath(
+  topicSlug: string,
+  timestamp?: string
+): string
+
+// Preconditions
+topicSlug is non-empty (slugified from mission argument)
+
+// Postconditions
+returns a path under Doc/ with optional timestamp suffix
+
+// Logic
+if (timestamp === undefined) {
+  return path.join("Doc", `discussion-${topicSlug}.md`);
+}
+return path.join("Doc", `discussion-${topicSlug}-${timestamp}.md`);
+```
+
+### 20.3 `slugify` — mission argument → topic-slug
+
+```ts
+// pi-extension/src/paths.ts
+export function slugify(mission: string): string
+
+// Preconditions
+mission is non-empty
+
+// Postconditions
+returns a URL-safe slug
+
+// Logic
+return mission
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-")   // non-alphanumeric → hyphen
+  .replace(/^-+|-+$/g, "")       // trim leading/trailing hyphens
+  .slice(0, 64);                 // max 64 chars
+```
+
+### 20.4 `buildHandoffDocuments` — project-suffixed handoff
+
+```ts
+// pi-extension/src/handoff.ts (updated v1.7)
+export function buildHandoffDocuments(projectName: string): ArchitectInputDocument[]
+
+// Logic
+return [
+  { path: buildOutputPath("prd", projectName),              type: "PRD" },
+  { path: buildOutputPath("rtm", projectName),              type: "RTM" },
+  { path: buildOutputPath("feasibility", projectName),      type: "Feasibility" },
+  { path: buildOutputPath("design", projectName),           type: "Design" },
+  { path: buildOutputPath("pseudocode", projectName),       type: "Pseudocode" },
+  { path: buildOutputPath("testPlan", projectName),         type: "Test Plan" },
+  { path: buildOutputPath("testCases", projectName),        type: "Test Cases" },
+  ... // optional atomicFunctions and developmentOrder if Doc/ has them
+];
+```
+
+### 20.5 Updated `publishToDoc` (v1.7)
+
+```ts
+// pi-extension/src/state.ts (updated v1.7)
+export function publishToDoc(
+  rootDir: string,
+  stage: Stage,
+  sourcePath: string,
+  projectName: string
+): void
+
+// Logic
+const docPath = stage === "discuss"
+  ? buildDiscussionPath(slugify(missionForStage), undefined)  // first run; or with timestamp
+  : path.join(rootDir, buildOutputPath(stageToKey(stage), projectName));
+
+// Atomic write
+fs.mkdirSync(path.dirname(docPath), { recursive: true });
+fs.copyFileSync(sourcePath, docPath);
+```
+
+---
+
 *This pseudocode is the algorithm specification consumed by Phase A–E implementation. Every exported function in `Doc/design.md` §4 has a corresponding block here. No pseudocode block introduces logic that is not already documented in the design.*

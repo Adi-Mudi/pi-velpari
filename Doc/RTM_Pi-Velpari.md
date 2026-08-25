@@ -1,7 +1,7 @@
 # Pi-Velpari Requirements Traceability Matrix (RTM)
 
 - **Project:** Pi-Velpari
-- **Source PRD:** `Doc/PRD.md` (v1.5)
+- **Source PRD:** `Doc/PRD.md` (v1.7)
 - **Status:** All requirements **Planned** — v1.3 includes the post-pipeline atomic-function and development-order stages. Implementation is Phase A–E of `pi_velpari_commands_plan_20260824_0924_v1.3.md`.
 - **Format:** industry-standard RTM with `Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status`.
 
@@ -137,6 +137,29 @@ All seven view commands share a single helper function, parameterized by stage n
 
 ---
 
+## 5g. Approval command split (FR-58..FR-61, added in v1.6)
+
+| Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
+|---|---|---|---|---|---|---|
+| FR-58 | `/velpari-approve-discuss` command: publishes `Doc/discussion-notes.md` and auto-invokes `/velpari-prd` | PRD §4.4 | Design §2.23 (discuss-approve.ts) | `pi-extension/src/commands.ts:handleApproveDiscuss()` | TC-201..TC-203 | Planned |
+| FR-59 | `/velpari-approve` scope restricted to stages 2–7; errors when in discussion stage | PRD §4.4 | Design §3.10 (Approval model) | `pi-extension/src/commands.ts:handleApprove()` checks `state.currentStage` | TC-204..TC-205 | Planned |
+| FR-60 | Stage-aware approval hint: UI suggests correct approve command based on `currentStage` | PRD §4.4 | Design §3.10 | `pi-extension/src/commands.ts:renderApproveHint()` | TC-206 | Planned |
+| FR-61 | `/velpari-prd` is canonical PRD update path; auto-invoked by `/velpari-approve-discuss` | PRD §4.4 | Design §2.10 (prd.ts) | `pi-extension/src/prd.ts:runPrd()`; chain invoked from `handleApproveDiscuss()` | TC-207..TC-208 | Planned |
+
+---
+
+## 5h. Project-name output documents (FR-67..FR-71, added in v1.7)
+
+| Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
+|---|---|---|---|---|---|---|
+| FR-67 | `projectName` captured in `/velpari-configure-inputs`; persisted in `.pi/velpari/files.json` (v3); validated by `config.ts:validateFilesConfig` | PRD §4.4 | Design §3.2 (files.json v3) | `pi-extension/src/config.ts:runFilesDiscovery()` | TC-209..TC-210 | Planned |
+| FR-68 | Output docs use `projectName` suffix: `Doc/PRD_{projectName}.md`, `Doc/RTM_{projectName}.md`, etc. | PRD §4.4 | Design §3.10 (Output naming) | `pi-extension/src/paths.ts:buildOutputPath(stage, projectName)` | TC-211..TC-215 | Planned |
+| FR-69 | Discussion output is per-topic: `Doc/discussion-{topic-slug}.md` for first run; timestamp suffix for subsequent | PRD §4.4 | Design §3.10 | `pi-extension/src/paths.ts:buildDiscussionPath(topic, timestamp?)` | TC-216..TC-217 | Planned |
+| FR-70 | `topic-slug` derived from `/velpari-discuss <mission>` argument via slugification (lowercase, hyphens, no special chars) | PRD §4.4 | Design §3.10 | `pi-extension/src/paths.ts:slugify(mission)` | TC-218 | Planned |
+| FR-71 | Handoff schema uses project-suffixed document paths | PRD §4.4 | Design §3.3 | `pi-extension/src/handoff.ts:runHandoff()` | TC-219 | Planned |
+
+---
+
 ## 6. Non-functional requirements (NFR-01 through NFR-11)
 
 | Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
@@ -154,6 +177,8 @@ All seven view commands share a single helper function, parameterized by stage n
 | NFR-11 | Subagents permitted only in 3 stages: discuss (4 agents), atomic-function (4 scouts), development-order (4 scouts); total 12 scout agents; stages 2–7 and handoff MUST NOT spawn subagents | PRD §5 | Design §7.11 (Subagent exception) | Each scout agent lives in its own module function: `discuss.ts` (4 subagents), `atomic-function.ts` (4 AF scouts), `development-order.ts` (4 DO scouts) | TC-161..TC-163 | Planned |
 | NFR-12 | Doc scope is the source of truth for command behavior; the PRD per-command section, sequence doc §11, design.md pseudocode, and test cases must all agree | PRD §5 | Design §3.7 (Doc scope) | `pi-extension/src/commands.ts:checkDocScope()` (deterministic gate function) | TC-164..TC-166 | Planned |
 | NFR-13 | Uniform subagent pattern: all 12 scouts follow the `ScoutContract` (same spawn helper, JSON envelope, 30s timeout, picker UI); drift is a defect | PRD §5 | Design §2.20 + §7.8 | `pi-extension/src/contracts.ts:ScoutContract`; `pi-extension/src/scout.ts:spawnScout()` | TC-195..TC-198 | Planned |
+| NFR-14 | Approval commands are stage-aware: `/velpari-approve-discuss` for discussion; `/velpari-approve` for stages 2–7; UI hints reflect current stage; user is never confused | PRD §5 | Design §3.10 | `pi-extension/src/commands.ts:handleApproveDiscuss()` vs `handleApprove()`; `renderApproveHint()` | TC-204..TC-206 | Planned |
+| NFR-15 | Output file names are deterministic and project-derived: same `projectName` produces same file name; no "Pi-Velpari" hardcoding | PRD §5 | Design §3.10 | `pi-extension/src/paths.ts:buildOutputPath()`; tests assert naming | TC-211..TC-219 | Planned |
 
 ---
 
@@ -169,8 +194,10 @@ All seven view commands share a single helper function, parameterized by stage n
 | Cross-cutting v1.3 (FR-33..FR-36) | 4 | 18 (TC-143..TC-160) |
 | Cross-cutting v1.4 (FR-43..FR-48) | 6 | 17 (TC-167..TC-183) |
 | Cross-cutting v1.5 (FR-49..FR-57) | 9 | 10 (TC-189..TC-198) |
-| Non-functional (NFR-01..NFR-13) | 13 | 27 (TC-092..TC-110, TC-161..TC-166, TC-195..TC-198) |
-| **Total** | **64** | **193** |
+| Cross-cutting v1.6 (FR-58..FR-61) | 4 | 8 (TC-201..TC-208) |
+| Cross-cutting v1.7 (FR-67..FR-71) | 5 | 11 (TC-209..TC-219) |
+| Non-functional (NFR-01..NFR-15) | 15 | 40 (TC-092..TC-110, TC-161..TC-166, TC-195..TC-198, TC-204..TC-206, TC-211..TC-219) |
+| **Total** | **75** | **212** |
 
 Every requirement has at least one test case. Every test case traces back to a requirement. No requirement is un-traced; no test case is orphan.
 
