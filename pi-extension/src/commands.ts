@@ -3,6 +3,11 @@ import { handleDiscuss } from "./discuss.js";
 import { handlePrd } from "./prd.js";
 import { handleRtm } from "./rtm.js";
 import { handleApproveDiscuss } from "./discuss-approve.js";
+import { handleFeasibility } from "./feasibility.js";
+import { handleDesign } from "./design.js";
+import { handlePseudocode } from "./pseudocode.js";
+import { handleTestplan } from "./testplan.js";
+import { handleApprove } from "./approve.js";
 
 /**
  * All 23 commands. Phase B wires 4 of them (discuss, prd, rtm, approve-discuss)
@@ -40,6 +45,7 @@ export const COMMAND_NAMES = [
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 // Phase B: 4 commands wired to real handlers.
+// Phase C: 5 more wired (feasibility, design, pseudocode, testplan, approve).
 const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void>> = {
 	"velpari-discuss": async (args, ctx) => {
 		const mission = (args ?? "").trim();
@@ -60,6 +66,21 @@ const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void
 	},
 	"velpari-approve-discuss": async (_args, ctx) => {
 		await handleApproveDiscuss(ctx as never);
+	},
+	"velpari-feasibility": async (_args, ctx) => {
+		await handleFeasibility(ctx as never);
+	},
+	"velpari-design": async (_args, ctx) => {
+		await handleDesign(ctx as never);
+	},
+	"velpari-pseudocode": async (_args, ctx) => {
+		await handlePseudocode(ctx as never);
+	},
+	"velpari-testplan": async (_args, ctx) => {
+		await handleTestplan(ctx as never);
+	},
+	"velpari-approve": async (_args, ctx) => {
+		await handleApprove(ctx as never);
 	},
 };
 

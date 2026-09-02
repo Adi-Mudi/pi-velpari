@@ -44,9 +44,22 @@ export async function handleApproveDiscuss(
 	}
 	const content = readFileSync(workingPath, "utf8");
 
-	// 3. Compute target path
+	// 3. Compute target path (FR-69: append timestamp suffix on re-run).
 	const topicSlug = slugify(state.mission);
-	const targetPath = join(cwd, buildDiscussionPath(topicSlug));
+	let targetPath = join(cwd, buildDiscussionPath(topicSlug));
+	if (existsSync(targetPath)) {
+		// Generate a YYYYMMDD-HHMMSS suffix from current time.
+		const now = new Date();
+		const stamp =
+			now.getFullYear().toString() +
+			String(now.getMonth() + 1).padStart(2, "0") +
+			String(now.getDate()).padStart(2, "0") +
+			"-" +
+			String(now.getHours()).padStart(2, "0") +
+			String(now.getMinutes()).padStart(2, "0") +
+			String(now.getSeconds()).padStart(2, "0");
+		targetPath = join(cwd, buildDiscussionPath(topicSlug, stamp));
+	}
 
 	// 4. Write published copy
 	mkdirSync(join(cwd, "Doc"), { recursive: true });

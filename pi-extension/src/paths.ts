@@ -21,9 +21,10 @@ export function slugify(input: string): string {
 /**
  * Build a Doc/<artifact>_<projectName>.md path.
  * Example: buildOutputPath("PRD", "TodoApp") === "Doc/PRD_TodoApp.md"
+ * Example: buildOutputPath("feasibility-study", "TodoApp") === "Doc/feasibility-study_TodoApp.md"
  */
 export function buildOutputPath(artifact: string, projectName: string): string {
-	const safeArtifact = artifact.replace(/[^A-Za-z0-9]+/g, "");
+	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
 	return `Doc/${safeArtifact}_${safeProject}.md`;
 }
