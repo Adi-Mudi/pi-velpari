@@ -18,6 +18,10 @@ import {
 	showPseudocode,
 	showTestplan,
 } from "./show.js";
+import { handleStatus } from "./status.js";
+import { handleReset } from "./reset.js";
+import { handleConfigureInputs } from "./configure-inputs.js";
+import { handleDoctor } from "./doctor.js";
 import { loadState } from "./state.js";
 
 /**
@@ -117,6 +121,18 @@ const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void
 	},
 	"velpari-show-testplan": async (_args, ctx) => {
 		await showTestplan(ctx as never);
+	},
+	"velpari-status": async (_args, ctx) => {
+		await handleStatus(ctx as never);
+	},
+	"velpari-reset": async (_args, ctx) => {
+		await handleReset(ctx as never);
+	},
+	"velpari-configure-inputs": async (_args, ctx) => {
+		await handleConfigureInputs(ctx as never);
+	},
+	"velpari-doctor": async (_args, ctx) => {
+		await handleDoctor(ctx as never);
 	},
 };
 

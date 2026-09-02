@@ -164,3 +164,20 @@ for (const cmd of SHOW_COMMANDS) {
 		assert.ok(!def.description.includes("Phase A stub"), `${cmd} must use the real handler`);
 	});
 }
+
+const DISCIPLINE_COMMANDS = [
+	"velpari-status",
+	"velpari-reset",
+	"velpari-configure-inputs",
+	"velpari-doctor",
+] as const;
+
+for (const cmd of DISCIPLINE_COMMANDS) {
+	test(`real handlers are wired for /${cmd} (v1.0 complete)`, () => {
+		const pi = makeMockPi();
+		index(pi as unknown as Parameters<typeof index>[0]);
+		const def = pi.commands.get(cmd);
+		assert.ok(def, `command ${cmd} missing`);
+		assert.ok(!def.description.includes("Phase A stub"), `${cmd} must use the real handler`);
+	});
+}

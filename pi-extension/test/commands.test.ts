@@ -33,15 +33,15 @@ test("registerCommands registers every name", () => {
 
 test("stub handler invokes ctx.ui.notify", async () => {
 	const calls: Array<{ msg: string; level: string }> = [];
-	// velpari-discuss is now a real handler in Phase B; use velpari-doctor (still a stub).
+	// velpari-atomic-function is still a stub (Phase F, optional).
 	let capturedHandler: ((a: string, ctx: unknown) => Promise<void>) | undefined;
 	const pi = {
 		registerCommand(name: string, def: { handler: (a: string, ctx: unknown) => Promise<void> }) {
-			if (name === "velpari-doctor") capturedHandler = def.handler;
+			if (name === "velpari-atomic-function") capturedHandler = def.handler;
 		},
 	};
 	registerCommands(pi as unknown as Parameters<typeof registerCommands>[0]);
-	assert.ok(capturedHandler, "velpari-doctor handler not captured");
+	assert.ok(capturedHandler, "velpari-atomic-function handler not captured");
 
 	const ctx = {
 		ui: {
