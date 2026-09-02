@@ -12,6 +12,95 @@ The order in which Pi-Velpari's source code is built. Mirrors the Phase A→G ro
 2. **One phase = one shippable increment.** Each phase ends with a test pass.
 3. **Optional stages ship last.** Atomic-function (F) and Development-order (G) are post-pipeline; they are not on the critical path for v1.0.
 
+## Verified architecture (from official Pi docs)
+
+Verified on 2026-09-02 against [the official extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md). This section is the single source of truth for the entry-point shape, package metadata, and event names. If you find a contradiction between this section and `Doc/design.md`, this section wins.
+
+### Package name
+
+| What | Correct value |
+|---|---|
+| Peer dep | `@earendil-works/pi-coding-agent` |
+| Import type | `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";` |
+
+The earlier `@mariozechner/pi-coding-agent` name was wrong. `npm install` will fail against the wrong name.
+
+### Entry point
+
+```typescript
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  // register commands, subscribe to events, etc.
+}
+```
+
+### package.json (corrected shape)
+
+```json
+{
+  "name": "pi-velpari",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/test/**/*.test.js"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./dist/index.js"]
+  }
+}
+```
+
+The `pi.extensions` array is how npm-distributed Pi packages register their entry point.
+
+### Lifecycle events we will use
+
+| Event | Purpose in Velpari | Where defined |
+|---|---|---|
+| `session_start` | Run-state init | extension.md §session_start |
+| `session_before_compact` | Zero-LLM run-state preservation (NFR-01) | extension.md §session_before_compact |
+| `tool_call` | Optional — path protection (FR: doctor scans) | extension.md §tool_call |
+| `session_shutdown` | Cleanup (close any session-scoped resources) | extension.md §session_shutdown |
+
+### Compaction hook (NFR-01)
+
+The verified hook returns a `compaction` object; pi replaces its default LLM-based summary with this content:
+
+```typescript
+pi.on("session_before_compact", async (event, ctx) => {
+  return {
+    compaction: {
+      summary: buildCompactionSummary(), // zero-LLM, reads .IDE_Plans/velpari/state.json
+      firstKeptEntryId: event.preparation.firstKeptEntryId,
+      tokensBefore: event.preparation.tokensBefore,
+    },
+  };
+});
+```
+
+### Subagent guard — UNVERIFIED
+
+The earlier `index.ts` guard against `PI_SUBAGENT_NAME` env var **cannot be verified** in the official docs. Pi's documented subagent pattern uses `registerTool` + `exec` (see `examples/extensions/subagent/`), not env-var checks.
+
+**Action for Phase A:** before relying on the guard, write a tiny smoke test:
+1. Spawn a subagent manually via pi's subagent tool.
+2. Confirm whether `process.env.PI_SUBAGENT_NAME` is set inside that subagent's process.
+3. If unset, replace the guard with a different strategy (e.g., a stage-id passed via session entry, or trust the user not to invoke `/velpari-*` inside a subagent).
+
+If the guard is unverifiable, default behavior is: trust the in-session command registration.
+
+### Loader
+
+Extensions load via [jiti](https://github.com/unjs/jiti). TypeScript works without compilation. We still compile because:
+- npm-distributed packages must work with `--omit=dev` installs.
+- The test harness uses `node --test` on `dist/test/**/*.test.js`.
+- TypeScript strict mode catches errors at build time, before jiti sees them.
+
 ## Phase summary
 
 | Phase | Scope | New files | Test files | Blocks |
@@ -32,9 +121,9 @@ The order in which Pi-Velpari's source code is built. Mirrors the Phase A→G ro
 
 | File | Purpose |
 |---|---|
-| `package.json` | npm metadata, scripts, `pi.extensions` field, peer dep on `@mariozechner/pi-coding-agent` |
+| `package.json` | npm metadata, scripts, `pi.extensions` field → `["./dist/index.js"]`, peer dep on `@earendil-works/pi-coding-agent` |
 | `tsconfig.json` | TS strict mode, ESM target, `dist/pi-extension/` output |
-| `pi-extension/src/index.ts` | Entry point — extension guard + `registerCommands` call |
+| `pi-extension/src/index.ts` | Entry point — `export default function (pi: ExtensionAPI)` + `registerCommands(pi)` + `session_before_compact` hook + subagent-guard smoke test |
 | `pi-extension/src/constants.ts` | `Stage` enum, `STAGE_TRANSITIONS` table, path helpers |
 | `pi-extension/src/state.ts` | `loadState`, `saveState`, `createRun`, `advanceStage`, `clearRun`, `publishToDoc` |
 | `pi-extension/src/prompt.ts` | `loadStageSkill`, `buildStagePrompt` |
@@ -52,6 +141,7 @@ The order in which Pi-Velpari's source code is built. Mirrors the Phase A→G ro
 - `npm run build` exits 0 under TS strict mode, no warnings
 - `npm test` exits 0; covers every source module
 - `Stage` enum + `STAGE_TRANSITIONS` is the source of truth (verified by tests)
+- The subagent guard is verified: if the `PI_SUBAGENT_NAME` check is retained, a smoke test confirms it returns early when run inside a subagent. If the guard is dropped, that decision is documented in `Doc/design.md` §3 (entry-point section).
 - The extension loads inside Pi without spawning subagents (guard works)
 
 **Depends on:** nothing.
@@ -240,3 +330,9 @@ A phase is not DONE until all four gates pass.
 ## Where this doc lives
 
 `DevPlan/development-order.md` is the canonical source. `CHANGELOG.md` records history. If they ever disagree, this doc wins for "what to build next."
+
+## Cross-reference
+
+- [Official Pi extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md) — re-verify before editing `pi-extension/src/index.ts` or `package.json`
+- [Pi repo](https://github.com/earendil-works/pi) — current package name (`@earendil-works/pi-coding-agent`)
+- This doc was last verified against those sources on 2026-09-02.
