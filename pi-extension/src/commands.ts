@@ -9,6 +9,15 @@ import { handlePseudocode } from "./pseudocode.js";
 import { handleTestplan } from "./testplan.js";
 import { handleApprove } from "./approve.js";
 import { runHandoff } from "./handoff.js";
+import {
+	showDiscussion,
+	showPrd,
+	showRtm,
+	showFeasibility,
+	showDesign,
+	showPseudocode,
+	showTestplan,
+} from "./show.js";
 import { loadState } from "./state.js";
 
 /**
@@ -87,6 +96,27 @@ const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void
 	"velpari-handoff": async (_args, ctx) => {
 		const state = loadState();
 		await runHandoff(state, ctx as never);
+	},
+	"velpari-show-discussion": async (_args, ctx) => {
+		await showDiscussion(ctx as never);
+	},
+	"velpari-show-prd": async (_args, ctx) => {
+		await showPrd(ctx as never);
+	},
+	"velpari-show-rtm": async (_args, ctx) => {
+		await showRtm(ctx as never);
+	},
+	"velpari-show-feasibility": async (_args, ctx) => {
+		await showFeasibility(ctx as never);
+	},
+	"velpari-show-design": async (_args, ctx) => {
+		await showDesign(ctx as never);
+	},
+	"velpari-show-pseudocode": async (_args, ctx) => {
+		await showPseudocode(ctx as never);
+	},
+	"velpari-show-testplan": async (_args, ctx) => {
+		await showTestplan(ctx as never);
 	},
 };
 

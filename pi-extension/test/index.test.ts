@@ -144,3 +144,23 @@ test("real handlers are wired for /velpari-handoff (Phase D)", () => {
 	assert.ok(def, "command missing");
 	assert.ok(!def.description.includes("Phase A stub"), "velpari-handoff must use the real handler");
 });
+
+const SHOW_COMMANDS = [
+	"velpari-show-discussion",
+	"velpari-show-prd",
+	"velpari-show-rtm",
+	"velpari-show-feasibility",
+	"velpari-show-design",
+	"velpari-show-pseudocode",
+	"velpari-show-testplan",
+] as const;
+
+for (const cmd of SHOW_COMMANDS) {
+	test(`real handlers are wired for /${cmd} (Phase E)`, () => {
+		const pi = makeMockPi();
+		index(pi as unknown as Parameters<typeof index>[0]);
+		const def = pi.commands.get(cmd);
+		assert.ok(def, `command ${cmd} missing`);
+		assert.ok(!def.description.includes("Phase A stub"), `${cmd} must use the real handler`);
+	});
+}
