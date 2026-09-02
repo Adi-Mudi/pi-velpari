@@ -114,3 +114,87 @@ test("handleApprove publishes working copy + transitions state for prd stage", a
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// Parameterized happy-path test for all 6 stages (FR-08).
+// Exhaustive coverage of the stageToArtifact mapping in approve.ts.
+const STAGE_CASES: ReadonlyArray<{
+	stage: string;
+	nextStage: string;
+	workingDir: string;
+	artifact: string;
+	workingFile: string;
+	extraFiles?: string[];
+}> = [
+	{ stage: "drafting-prd", nextStage: "drafted-prd", workingDir: "prd", artifact: "PRD", workingFile: "PRD_Mission.md" },
+	{ stage: "building-rtm", nextStage: "built-rtm", workingDir: "rtm", artifact: "RTM", workingFile: "RTM_Mission.md" },
+	{
+		stage: "analyzing-feasibility",
+		nextStage: "analyzed-feasibility",
+		workingDir: "feasibility",
+		artifact: "feasibility-study",
+		workingFile: "feasibility-study_Mission.md",
+	},
+	{ stage: "designing", nextStage: "designed", workingDir: "design", artifact: "design", workingFile: "design_Mission.md" },
+	{
+		stage: "writing-pseudocode",
+		nextStage: "wrote-pseudocode",
+		workingDir: "pseudocode",
+		artifact: "pseudocode",
+		workingFile: "pseudocode_Mission.md",
+	},
+	{
+		stage: "planning-tests",
+		nextStage: "planned-tests",
+		workingDir: "testplan",
+		artifact: "test-plan",
+		workingFile: "test-plan_Mission.md",
+		extraFiles: ["test-cases_Mission.md"],
+	},
+];
+
+for (const c of STAGE_CASES) {
+	test(`handleApprove happy-path: ${c.stage} -> ${c.nextStage}`, async () => {
+		const dir = tempDir();
+		try {
+			const state = createRun("Mission", dir);
+			const { writeFileSync, readFileSync, mkdirSync } = await import("node:fs");
+			const statePath = join(dir, ".IDE_Plans", "velpari", "state.json");
+			const raw = readFileSync(statePath, "utf8");
+			const patched = JSON.parse(raw);
+			patched.currentStage = c.stage;
+			mkdirSync(join(dir, ".IDE_Plans", "velpari", "runs", state.runId, c.workingDir), {
+				recursive: true,
+			});
+			writeFileSync(statePath, JSON.stringify(patched, null, 2), "utf8");
+
+			// Create working copy
+			const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, c.workingDir);
+			writeFileSync(join(workingDir, c.workingFile), `# ${c.workingFile}\n`, "utf8");
+			if (c.extraFiles) {
+				for (const f of c.extraFiles) {
+					writeFileSync(join(workingDir, f), `# ${f}\n`, "utf8");
+				}
+			}
+
+			const notifies: Array<{ msg: string; level: string }> = [];
+			const ctx = { ui: makeUI(notifies) } as never;
+			await handleApprove(ctx, dir);
+
+			// Verify published copy exists
+			assert.ok(existsSync(join(dir, "Doc", c.workingFile)), `${c.workingFile} not published`);
+			if (c.extraFiles) {
+				for (const f of c.extraFiles) {
+					assert.ok(existsSync(join(dir, "Doc", f)), `${f} not published`);
+				}
+			}
+
+			// Verify state transitioned
+			const afterRaw = readFileSync(statePath, "utf8");
+			const after = JSON.parse(afterRaw);
+			assert.equal(after.currentStage, c.nextStage, `state should be ${c.nextStage} after approve`);
+		} finally {
+			clearRun(dir);
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+}
