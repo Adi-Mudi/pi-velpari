@@ -1,0 +1,60 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import index from "../src/index.js";
+import { COMMAND_NAMES } from "../src/commands.js";
+
+interface RegisteredCommand {
+	description: string;
+	handler: (args: string, ctx: unknown) => Promise<void>;
+}
+
+function makeMockPi() {
+	const commands = new Map<string, RegisteredCommand>();
+	const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
+	return {
+		commands,
+		handlers,
+		registerCommand(name: string, def: RegisteredCommand) {
+			commands.set(name, def);
+		},
+		on(event: string, handler: (event: unknown) => Promise<unknown>) {
+			handlers.set(event, handler);
+		},
+	};
+}
+
+test("index exports a default function", () => {
+	assert.equal(typeof index, "function");
+});
+
+test("index registers all 23 commands via ExtensionAPI", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	assert.equal(pi.commands.size, COMMAND_NAMES.length, "expected all 23 commands to register");
+	for (const name of COMMAND_NAMES) {
+		assert.ok(pi.commands.has(name), `missing command: ${name}`);
+	}
+});
+
+test("index registers session_before_compact hook", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	assert.ok(pi.handlers.has("session_before_compact"), "session_before_compact hook not registered");
+});
+
+test("compaction hook returns a compaction object", async () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const handler = pi.handlers.get("session_before_compact");
+	assert.ok(handler, "hook missing");
+	const event = {
+		preparation: { firstKeptEntryId: "abc", tokensBefore: 1000 },
+	};
+	const result = await handler(event);
+	assert.ok(result && typeof result === "object", "hook did not return an object");
+	const r = result as { compaction?: { summary?: string; firstKeptEntryId?: string; tokensBefore?: number } };
+	assert.ok(r.compaction, "compaction key missing");
+	assert.equal(typeof r.compaction.summary, "string", "summary must be a string");
+	assert.equal(r.compaction.firstKeptEntryId, "abc");
+	assert.equal(r.compaction.tokensBefore, 1000);
+});

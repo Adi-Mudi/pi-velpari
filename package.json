@@ -1,0 +1,33 @@
+{
+  "name": "pi-velpari",
+  "version": "1.0.0",
+  "description": "Stage-gated pre-production orchestration for Pi",
+  "type": "module",
+  "main": "./dist/pi-extension/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/pi-extension/test/**/*.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "pi",
+    "extension",
+    "orchestration",
+    "prd",
+    "rtm"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./dist/pi-extension/src/index.js"
+    ]
+  }
+}
