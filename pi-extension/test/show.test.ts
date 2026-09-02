@@ -307,3 +307,21 @@ test("showDiscussion picks canonical (no-suffix) file when FR-69 re-runs exist",
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("showTestplan emits partial content + warning when test-cases is missing (mirror case)", async () => {
+	const dir = tempDir();
+	try {
+		saveConfigAndCreateRun(dir, "TestApp", "Mission");
+		// Only write test-plan; test-cases is missing
+		writeDocFile(dir, "test-plan", "TestApp", "# Test Plan content\n");
+		const ui = makeUI();
+		await showTestplan({ ui } as never, dir);
+		const info = ui.notifies.find((n) => n.level === "info");
+		assert.ok(info, "expected an info notification");
+		assert.match(info.msg, /Test Plan content/);
+		assert.match(info.msg, /missing at .*test-cases_TestApp\.md/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
