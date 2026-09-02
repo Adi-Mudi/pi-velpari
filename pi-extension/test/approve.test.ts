@@ -77,3 +77,40 @@ test("handleApprove refuses when no run is active", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("handleApprove publishes working copy + transitions state for prd stage", async () => {
+	const dir = tempDir();
+	try {
+		const state = createRun("Mission", dir);
+		// Patch state directly to drafting-prd so we test the success path.
+		const { writeFileSync, readFileSync, mkdirSync } = await import("node:fs");
+		const statePath = join(dir, ".IDE_Plans", "velpari", "state.json");
+		const raw = readFileSync(statePath, "utf8");
+		const patched = JSON.parse(raw);
+		patched.currentStage = "drafting-prd";
+		mkdirSync(join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "prd"), {
+			recursive: true,
+		});
+		writeFileSync(statePath, JSON.stringify(patched, null, 2), "utf8");
+
+		// Create a working copy
+		const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "prd");
+		writeFileSync(join(workingDir, "PRD_Mission.md"), "# PRD content\n", "utf8");
+
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = { ui: makeUI(notifies) } as never;
+		await handleApprove(ctx, dir);
+
+		// Verify published copy exists at Doc/PRD_Mission.md
+		const publishedPath = join(dir, "Doc", "PRD_Mission.md");
+		assert.ok(existsSync(publishedPath), "published copy not created at Doc/");
+
+		// Verify state transitioned
+		const afterRaw = readFileSync(statePath, "utf8");
+		const after = JSON.parse(afterRaw);
+		assert.equal(after.currentStage, "drafted-prd", "state should be drafted-prd after approve");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

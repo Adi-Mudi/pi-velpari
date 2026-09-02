@@ -42,6 +42,22 @@ test("handleFeasibility refuses when RTM is missing", async () => {
 	}
 });
 
+test("handleFeasibility refuses when projectName is missing", async () => {
+	const dir = tempDir();
+	try {
+		// No saveFilesConfig — projectName is empty default
+		createRun("Mission", dir);
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = { ui: makeUI(notifies) } as never;
+		await handleFeasibility(ctx, dir);
+		const errored = notifies.some((n) => n.level === "error");
+		assert.ok(errored, "expected an error notification when projectName is missing");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("handleFeasibility writes a working copy at the project-derived path", async () => {
 	const dir = tempDir();
 	try {

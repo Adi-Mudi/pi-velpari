@@ -96,3 +96,43 @@ test("real handlers are wired for /velpari-approve-discuss (Phase B)", () => {
 		"velpari-approve-discuss must use the real handler",
 	);
 });
+
+test("real handlers are wired for /velpari-feasibility (Phase C)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-feasibility");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-feasibility must use the real handler");
+});
+
+test("real handlers are wired for /velpari-design (Phase C)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-design");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-design must use the real handler");
+});
+
+test("real handlers are wired for /velpari-pseudocode (Phase C)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-pseudocode");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-pseudocode must use the real handler");
+});
+
+test("real handlers are wired for /velpari-testplan (Phase C)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-testplan");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-testplan must use the real handler");
+});
+
+test("real handlers are wired for /velpari-approve (Phase C)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-approve");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-approve must use the real handler");
+});

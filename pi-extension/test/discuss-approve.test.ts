@@ -93,11 +93,7 @@ test("handleApproveDiscuss advances state to discussed", async () => {
 	}
 });
 
-// TODO Phase C: implement timestamp suffix on re-run (FR-69).
-// For now this test is marked as TODO and not active. The handler in Phase B does
-// not yet detect filename conflicts; it always writes to Doc/discussion-<slug>.md.
-// When the handler is extended, this test should be uncommented and the assertion verified.
-test.todo("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async () => {
+test("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async () => {
 	const dir = tempDir();
 	try {
 		saveFilesConfig(

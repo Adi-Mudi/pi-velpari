@@ -71,3 +71,18 @@ test("buildOutputPath with only invalid characters in projectName returns a well
 	const result = buildOutputPath("PRD", "@#$%");
 	assert.match(result, /^Doc\/PRD_.*\.md$/, "must be a well-formed Doc/<artifact>_<name>.md path");
 });
+
+test("buildOutputPath preserves hyphens in artifact name (regression for Phase C bug)", () => {
+	assert.equal(
+		buildOutputPath("feasibility-study", "TodoApp"),
+		"Doc/feasibility-study_TodoApp.md",
+	);
+	assert.equal(
+		buildOutputPath("test-plan", "TodoApp"),
+		"Doc/test-plan_TodoApp.md",
+	);
+	assert.equal(
+		buildOutputPath("test-cases", "TodoApp"),
+		"Doc/test-cases_TodoApp.md",
+	);
+});
