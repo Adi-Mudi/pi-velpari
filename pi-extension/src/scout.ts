@@ -43,14 +43,17 @@ export function readScoutSkill(scoutId: ScoutId, cwd: string = process.cwd()): s
  * Run a scout function with the standard 30-second timeout.
  * Returns the scout's output. If the scout throws or times out, returns
  * an empty output (so the main handler continues).
+ *
+ * Optional `timeoutMs` override is for tests; production uses the 30s default.
  */
 export async function runScout<T>(
 	scoutId: ScoutId,
 	scoutFn: ScoutFn<T>,
 	input: ScoutInput,
+	timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<ScoutOutput<T>> {
 	try {
-		return await withTimeout(scoutFn(input), DEFAULT_TIMEOUT_MS);
+		return await withTimeout(scoutFn(input), timeoutMs);
 	} catch (err) {
 		// Phase B: defensive — never let one scout failure crash the discussion.
 		void err;

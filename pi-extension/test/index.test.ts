@@ -58,3 +58,41 @@ test("compaction hook returns a compaction object", async () => {
 	assert.equal(r.compaction.firstKeptEntryId, "abc");
 	assert.equal(r.compaction.tokensBefore, 1000);
 });
+
+test("real handlers are wired for /velpari-discuss (Phase B)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-discuss");
+	assert.ok(def, "command missing");
+	assert.ok(
+		!def.description.includes("Phase A stub"),
+		"velpari-discuss must use the real handler in Phase B",
+	);
+});
+
+test("real handlers are wired for /velpari-prd (Phase B)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-prd");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-prd must use the real handler");
+});
+
+test("real handlers are wired for /velpari-rtm (Phase B)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-rtm");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-rtm must use the real handler");
+});
+
+test("real handlers are wired for /velpari-approve-discuss (Phase B)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-approve-discuss");
+	assert.ok(def, "command missing");
+	assert.ok(
+		!def.description.includes("Phase A stub"),
+		"velpari-approve-discuss must use the real handler",
+	);
+});

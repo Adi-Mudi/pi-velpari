@@ -92,3 +92,53 @@ test("handleApproveDiscuss advances state to discussed", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// TODO Phase C: implement timestamp suffix on re-run (FR-69).
+// For now this test is marked as TODO and not active. The handler in Phase B does
+// not yet detect filename conflicts; it always writes to Doc/discussion-<slug>.md.
+// When the handler is extended, this test should be uncommented and the assertion verified.
+test.todo("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "TestApp",
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		const state = createRun("Same Topic", dir);
+		const { writeFileSync, mkdirSync } = await import("node:fs");
+		const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "discuss");
+		mkdirSync(workingDir, { recursive: true });
+		writeFileSync(join(workingDir, "discussion-notes.md"), "# Notes\n", "utf8");
+
+		const notifies1: Array<{ msg: string; level: string }> = [];
+		const ctx1 = { ui: makeUI(notifies1) } as never;
+		await handleApproveDiscuss(ctx1, dir);
+
+		// Second run on same topic — handler should detect conflict and append suffix.
+		const state2 = createRun("Same Topic", dir);
+		const workingDir2 = join(dir, ".IDE_Plans", "velpari", "runs", state2.runId, "discuss");
+		mkdirSync(workingDir2, { recursive: true });
+		writeFileSync(join(workingDir2, "discussion-notes.md"), "# Notes 2\n", "utf8");
+
+		const notifies2: Array<{ msg: string; level: string }> = [];
+		const ctx2 = { ui: makeUI(notifies2) } as never;
+		await handleApproveDiscuss(ctx2, dir);
+
+		// Expect at least one of:
+		//   Doc/discussion-same-topic-<timestamp>.md
+		//   Doc/discussion-same-topic.md  (overwrite, also acceptable per FR-69)
+		const { readdirSync } = await import("node:fs");
+		const docs = readdirSync(join(dir, "Doc"));
+		const matching = docs.filter((f) => f.startsWith("discussion-same-topic"));
+		assert.ok(matching.length >= 1, "at least one discussion-same-topic file should exist");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

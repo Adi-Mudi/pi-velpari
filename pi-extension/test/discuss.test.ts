@@ -108,3 +108,19 @@ test("handleDiscuss writes a working copy to the run directory", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("handleDiscuss with empty mission does not crash", async () => {
+	const dir = tempDir();
+	try {
+		createRun("Existing Mission", dir);
+		const ui = makeMockUI([], [false]);
+		const ctx = { ui } as never;
+		// Empty mission: handleDiscuss should not crash, may or may not produce output.
+		// The test verifies it returns without throwing.
+		await handleDiscuss("", ctx, dir);
+		assert.ok(true, "handleDiscuss returned without throwing on empty mission");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
