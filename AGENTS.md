@@ -30,7 +30,7 @@ It mirrors Pi-Senai's discipline model (state-gated runs, working/published copy
 - **Package manager:** npm
 - **Build:** `tsc` (see `tsconfig.json`)
 - **Target layout:** ESM under `dist/`
-- **Peer dependency:** `@mariozechner/pi-coding-agent`
+- **Peer dependency:** `@earendil-works/pi-coding-agent`
 - **No runtime dependencies.** No subagent extension, no test framework, no linter.
 
 ## Build and test
@@ -58,7 +58,7 @@ npm test
 ├── DevPlan/                   # persistent project roadmap (canonical Phase A→G build order)
 │   └── development-order.md
 ├── pi-extension/src/          # extension source
-│   ├── index.ts               # entry point: register commands, hook, subagent guard
+│   ├── index.ts               # entry point: export default (pi: ExtensionAPI) → registerCommands + session_before_compact hook + (unverified) subagent guard
 │   ├── commands.ts            # registerCommands + all 22 handlers
 │   ├── constants.ts           # Stage enum, STAGE_TRANSITIONS (19 states), paths, helpers
 │   ├── state.ts               # loadState, saveState, createRun, advanceStage, clearRun, publishToDoc
@@ -113,7 +113,7 @@ npm test
 1. **Zero hallucination.** Every claim in every artifact traces back to a user-provided statement in a discussion note or to an earlier approved artifact. Stage skill markdown enforces this; doctor validates it via cross-reference.
 2. **Confirm-then-write.** No file under `Doc/` is written without a user-facing preview and explicit `/velpari-approve`. Working copies in `.IDE_Plans/velpari/runs/` are written freely; published copies in `Doc/` are only produced on approval.
 3. **Stage gates are enforced.** A stage cannot start until its prerequisites are approved. The transition table in `constants.ts:STAGE_TRANSITIONS` is the single source of truth.
-4. **Scout pattern in three stages.** Subagents are used in **discussion** (4 agents: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT), **atomic-function** (4 AF scouts), and **development-order** (4 DO scouts) — 12 scout agents total. Stages 2–7 and the handoff stage do NOT spawn subagents. The `index.ts` guard against `PI_SUBAGENT_NAME` env var applies to those stages only.
+4. **Scout pattern in three stages.** Subagents are used in **discussion** (4 agents: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT), **atomic-function** (4 AF scouts), and **development-order** (4 DO scouts) — 12 scout agents total. Stages 2–7 and the handoff stage do NOT spawn subagents.
 5. **Helper ↔ atomic relationship.** Helper functions are tracked in `Doc/PRD_Pi-Velpari.md` (`## Helper Functions` section). Atomic functions are tracked in `Doc/atomic-functions.md`. Atomic functions are strictly leaf nodes; helper functions may call atomic functions. The dependency is bidirectional.
 6. **Optional stages stay optional.** `/velpari-atomic-function` and `/velpari-development-order` are post-pipeline stages that can be invoked in any order or skipped entirely. `/velpari-handoff` works with or without their output.
 7. **Deterministic, not creative.** File paths, file formats, state JSON shape, stage transitions, and the handoff schema are all fixed by code. Only the artifact contents vary per run.
@@ -229,13 +229,13 @@ Total: 22 commands.
 
 ## Extension loading
 
-The extension guards against loading inside subagent processes:
+The extension has a guard against loading inside subagent processes. **This guard is unverified** — `PI_SUBAGENT_NAME` is not documented in the official Pi extension API (verified 2026-09-02 against github.com/earendil-works/pi). The guard is kept as a defensive check; Phase A includes a smoke test to confirm whether the env var is set inside a subagent.
 
 ```typescript
 if (process.env.PI_SUBAGENT_NAME) return;
 ```
 
-Do not remove this guard.
+If the smoke test fails, remove the guard and rely on the in-session command registration model (Pi does not pass `/velpari-*` commands to subagents because subagents run their own command namespace).
 
 ## Development symlink
 

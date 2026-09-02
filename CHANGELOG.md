@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (Q1 verification — 2026-09-02)
+
+Verified the architecture against the official Pi extension docs (github.com/earendil-works/pi) and corrected six stale references:
+
+- **AGENTS.md line 33:** peer dependency corrected from `@mariozechner/pi-coding-agent` to `@earendil-works/pi-coding-agent`.
+- **AGENTS.md line 61:** entry-point comment updated to reflect the verified `export default (pi: ExtensionAPI)` shape.
+- **AGENTS.md line 116:** removed the unverifiable claim that `PI_SUBAGENT_NAME` guard applies. The guard itself is retained defensively; Phase A smoke-tests it.
+- **AGENTS.md §Extension Loading:** added a note that the `PI_SUBAGENT_NAME` guard cannot be verified in current Pi docs and may be removed in Phase A if the smoke test fails.
+- **README.md line 80:** clarified the two install modes (project-local `.pi/extensions/` vs npm-distributed `pi install npm:...`).
+- **DevPlan/development-order.md:** added a "Verified architecture" section as the canonical reference for the entry-point shape, package metadata, and event names. (Committed separately in `1b227bc`.)
+
 ### Added (docs-first scope — v1.7 plan)
 
 **v1.7 changes (project-name output documents + topic-scoped discussion):**

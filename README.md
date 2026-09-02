@@ -77,7 +77,10 @@ Velpari splits pre-production work into seven explicit stages. Each stage produc
 
 ## Install
 
-The extension is loaded automatically by Pi when the project is opened because it is listed in `package.json` under the `pi.extensions` field.
+The extension is loaded automatically by Pi. Two install modes are supported:
+
+- **Project-local (development):** copy or symlink the extension into `.pi/extensions/pi-velpari/`. Pi auto-discovers from this directory.
+- **npm-distributed (release):** users run `pi install npm:pi-velpari`. The package's `package.json` declares its entry point under the `pi.extensions` field (Pi reads this when installing).
 
 ```bash
 npm install
