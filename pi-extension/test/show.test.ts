@@ -242,3 +242,68 @@ test("show commands are read-only (state.json unchanged after show)", async () =
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("showPrd truncates content larger than MAX_NOTIFY_LENGTH (8000 chars)", async () => {
+	const dir = tempDir();
+	try {
+		saveConfigAndCreateRun(dir, "TestApp", "Mission");
+		const longContent = "x".repeat(9000);
+		writeDocFile(dir, "PRD", "TestApp", longContent);
+		const ui = makeUI();
+		await showPrd({ ui } as never, dir);
+		const info = ui.notifies.find((n) => n.level === "info");
+		assert.ok(info, "expected an info notification");
+		assert.ok(info.msg.length <= 8000, `truncated notification must be <= 8000 chars, got ${info.msg.length}`);
+		assert.match(info.msg, /\.\.\. \[truncated\]/, "truncated notification must include the truncation marker");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("showTestplan emits partial content + warning when one file is missing", async () => {
+	const dir = tempDir();
+	try {
+		saveConfigAndCreateRun(dir, "TestApp", "Mission");
+		// Only write test-cases; test-plan is missing
+		writeDocFile(dir, "test-cases", "TestApp", "# Test Cases content\n");
+		const ui = makeUI();
+		await showTestplan({ ui } as never, dir);
+		const info = ui.notifies.find((n) => n.level === "info");
+		assert.ok(info, "expected an info notification");
+		assert.match(info.msg, /Test Cases content/);
+		assert.match(info.msg, /missing at .*test-plan_TestApp\.md/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("showDiscussion picks canonical (no-suffix) file when FR-69 re-runs exist", async () => {
+	const dir = tempDir();
+	try {
+		saveConfigAndCreateRun(dir, "TestApp", "My Mission");
+		mkdirSync(join(dir, "Doc"), { recursive: true });
+		// Canonical file
+		writeFileSync(
+			join(dir, "Doc", "discussion-my-mission.md"),
+			"# Canonical discussion notes\n",
+			"utf8",
+		);
+		// FR-69 timestamped re-run (older canonical content)
+		writeFileSync(
+			join(dir, "Doc", "discussion-my-mission-20260902-120000.md"),
+			"# OLDER re-run content (should not appear)\n",
+			"utf8",
+		);
+		const ui = makeUI();
+		await showDiscussion({ ui } as never, dir);
+		const info = ui.notifies.find((n) => n.level === "info");
+		assert.ok(info);
+		assert.match(info.msg, /Canonical discussion notes/);
+		assert.doesNotMatch(info.msg, /OLDER re-run/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

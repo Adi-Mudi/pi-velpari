@@ -27,7 +27,10 @@ function emit(ctx: ExtensionCommandContext, content: string, fallback: string): 
 	if (content.length <= MAX_NOTIFY_LENGTH) {
 		ctx.ui.notify(content, "info");
 	} else {
-		const truncated = content.slice(0, MAX_NOTIFY_LENGTH) + "\n... [truncated]";
+		// Reserve room for the truncation marker so the total emitted length
+		// does not exceed MAX_NOTIFY_LENGTH.
+		const TRUNCATION_MARKER = "\n... [truncated]";
+		const truncated = content.slice(0, MAX_NOTIFY_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
 		ctx.ui.notify(truncated, "info");
 	}
 	void fallback;
