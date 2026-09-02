@@ -55,6 +55,8 @@ npm test
 ├── CHANGELOG.md
 ├── AGENTS.md                  # this file
 ├── .gitignore
+├── DevPlan/                   # persistent project roadmap (canonical Phase A→G build order)
+│   └── development-order.md
 ├── pi-extension/src/          # extension source
 │   ├── index.ts               # entry point: register commands, hook, subagent guard
 │   ├── commands.ts            # registerCommands + all 22 handlers
