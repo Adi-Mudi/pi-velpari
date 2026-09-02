@@ -66,3 +66,8 @@ test("buildRunDir strips invalid characters from run id", () => {
 	const result = buildRunDir("bad/id with spaces!", "/tmp");
 	assert.match(result, /^\/tmp\/.IDE_Plans\/velpari\/runs\/bad-id-with-spaces-$/);
 });
+
+test("buildOutputPath with only invalid characters in projectName returns a well-formed path", () => {
+	const result = buildOutputPath("PRD", "@#$%");
+	assert.match(result, /^Doc\/PRD_.*\.md$/, "must be a well-formed Doc/<artifact>_<name>.md path");
+});

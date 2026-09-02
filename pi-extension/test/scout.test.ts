@@ -88,3 +88,31 @@ test("runScout returns empty ScoutOutput when scout times out", async () => {
 	const result = await runScout("extractor", hangingScout, input, 50);
 	assert.equal(result.proposals.length, 0);
 });
+
+test("runScout propagates the scout's actual output on success (positive path)", async () => {
+	const input: ScoutInput = {
+		mission: "test",
+		interviewAnswers: [],
+		framework: undefined,
+		existingPrd: undefined,
+		existingRtm: undefined,
+		webSearchAllowed: false,
+	};
+	const expectedOutput: ScoutOutput = {
+		proposals: [{ id: "p1", source: "extractor", payload: { rawText: "x", classification: "new-requirement" } }],
+		source: "extractor",
+		timestamp: "2026-09-03T00:00:00.000Z",
+	};
+	const goodScout = async (): Promise<ScoutOutput> => expectedOutput;
+	const result = await runScout("extractor", goodScout, input);
+	assert.deepEqual(result, expectedOutput, "runScout must propagate the scout's output unchanged");
+});
+
+test("withTimeout with ms=0 rejects immediately with a timeout error", async () => {
+	const slow = new Promise(() => {
+		/* never resolves */
+	});
+	await assert.rejects(async () => {
+		await withTimeout(slow, 0);
+	}, /timed out after 0ms/);
+});
