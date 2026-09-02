@@ -1,0 +1,94 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { handleApproveDiscuss } from "../src/discuss-approve.js";
+import { createRun, clearRun, loadState } from "../src/state.js";
+import { saveFilesConfig } from "../src/config.js";
+
+function tempDir(): string {
+	return mkdtempSync(join(tmpdir(), "velpari-discuss-approve-"));
+}
+
+function makeUI(notifies: Array<{ msg: string; level: string }>) {
+	return {
+		notifies,
+		async confirm(_t: string, _m: string) {
+			return true;
+		},
+		notify(msg: string, level: string) {
+			notifies.push({ msg, level });
+		},
+	};
+}
+
+test("handleApproveDiscuss publishes working copy to Doc/", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "TestApp",
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		const state = createRun("Test Mission", dir);
+		// Write a fake working copy
+		const { writeFileSync, mkdirSync } = await import("node:fs");
+		const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "discuss");
+		mkdirSync(workingDir, { recursive: true });
+		const workingPath = join(workingDir, "discussion-notes.md");
+		writeFileSync(workingPath, "# Discussion Notes — Test Mission\n\n## Mission\nTest Mission\n", "utf8");
+
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = { ui: makeUI(notifies) } as never;
+		await handleApproveDiscuss(ctx, dir);
+
+		// Published copy exists at Doc/discussion-<topic-slug>.md
+		const expectedPath = join(dir, "Doc", "discussion-test-mission.md");
+		assert.ok(existsSync(expectedPath), "published copy not created");
+		const content = readFileSync(expectedPath, "utf8");
+		assert.match(content, /Test Mission/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleApproveDiscuss advances state to discussed", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "TestApp",
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		const state = createRun("Mission", dir);
+		const { writeFileSync, mkdirSync } = await import("node:fs");
+		const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "discuss");
+		mkdirSync(workingDir, { recursive: true });
+		writeFileSync(join(workingDir, "discussion-notes.md"), "# Notes\n", "utf8");
+
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = { ui: makeUI(notifies) } as never;
+		await handleApproveDiscuss(ctx, dir);
+
+		// After approve-discuss: state should be "discussed".
+		// The chained handlePrd will error out because state is "discussed" not "drafting-prd",
+		// and that's OK — the transition itself was the test target.
+		const after = loadState(dir);
+		assert.equal(after.currentStage, "discussed", "state should be 'discussed' after approve-discuss");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

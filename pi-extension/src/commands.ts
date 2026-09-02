@@ -1,8 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { handleDiscuss } from "./discuss.js";
+import { handlePrd } from "./prd.js";
+import { handleRtm } from "./rtm.js";
+import { handleApproveDiscuss } from "./discuss-approve.js";
 
 /**
- * All 23 commands. Phase A registers every name with a stub handler so the
- * surface exists; later phases replace stubs with real handlers.
+ * All 23 commands. Phase B wires 4 of them (discuss, prd, rtm, approve-discuss)
+ * to real handlers; the remaining 19 keep stub handlers until later phases.
  */
 export const COMMAND_NAMES = [
 	// Stage commands (9)
@@ -35,13 +39,41 @@ export const COMMAND_NAMES = [
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
+// Phase B: 4 commands wired to real handlers.
+const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void>> = {
+	"velpari-discuss": async (args, ctx) => {
+		const mission = (args ?? "").trim();
+		if (!mission) {
+			(ctx as { ui: { notify: (m: string, l: string) => void } }).ui.notify(
+				"Usage: /velpari-discuss <topic>",
+				"error",
+			);
+			return;
+		}
+		await handleDiscuss(mission, ctx as never);
+	},
+	"velpari-prd": async (_args, ctx) => {
+		await handlePrd(ctx as never);
+	},
+	"velpari-rtm": async (_args, ctx) => {
+		await handleRtm(ctx as never);
+	},
+	"velpari-approve-discuss": async (_args, ctx) => {
+		await handleApproveDiscuss(ctx as never);
+	},
+};
+
 export function registerCommands(pi: ExtensionAPI): void {
 	for (const name of COMMAND_NAMES) {
+		const realHandler = REAL_HANDLERS[name];
 		pi.registerCommand(name, {
-			description: `Stub handler for /${name} (implemented in a later phase).`,
-			handler: async (args, ctx) => {
+			description:
+				realHandler !== undefined
+					? `Real handler for /${name} (Phase B).`
+					: `Stub handler for /${name} (implemented in a later phase).`,
+			handler: realHandler ?? (async (args, ctx) => {
 				ctx.ui.notify(`/${name}: Phase A stub. Args: ${args ?? "(none)"}`, "info");
-			},
+			}),
 		});
 	}
 }

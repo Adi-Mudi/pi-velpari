@@ -33,22 +33,15 @@ test("registerCommands registers every name", () => {
 
 test("stub handler invokes ctx.ui.notify", async () => {
 	const calls: Array<{ msg: string; level: string }> = [];
+	// velpari-discuss is now a real handler in Phase B; use velpari-doctor (still a stub).
+	let capturedHandler: ((a: string, ctx: unknown) => Promise<void>) | undefined;
 	const pi = {
-		registerCommand(_name: string, def: { handler: (a: string, ctx: unknown) => Promise<void> }) {
-			void def;
+		registerCommand(name: string, def: { handler: (a: string, ctx: unknown) => Promise<void> }) {
+			if (name === "velpari-doctor") capturedHandler = def.handler;
 		},
 	};
 	registerCommands(pi as unknown as Parameters<typeof registerCommands>[0]);
-
-	// Now invoke one handler directly by re-registering a capturing pi
-	let capturedHandler: ((a: string, ctx: unknown) => Promise<void>) | undefined;
-	const pi2 = {
-		registerCommand(name: string, def: { handler: (a: string, ctx: unknown) => Promise<void> }) {
-			if (name === "velpari-discuss") capturedHandler = def.handler;
-		},
-	};
-	registerCommands(pi2 as unknown as Parameters<typeof registerCommands>[0]);
-	assert.ok(capturedHandler, "velpari-discuss handler not captured");
+	assert.ok(capturedHandler, "velpari-doctor handler not captured");
 
 	const ctx = {
 		ui: {

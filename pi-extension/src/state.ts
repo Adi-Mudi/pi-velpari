@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Stage } from "./constants.js";
-import { PATHS } from "./constants.js";
+import { PATHS, STAGE_TRANSITIONS } from "./constants.js";
 
 /**
  * Run state shape. Persisted to PATHS.STATE_FILE after every operation.
@@ -82,13 +82,30 @@ export function createRun(mission: string, cwd: string = process.cwd()): RunStat
 }
 
 /**
- * Advance the state to the next stage. Phase A stub — looks up the transition.
+ * Advance the state to the next stage. Looks up the transition in
+ * STAGE_TRANSITIONS, updates currentStage, appends to history, persists.
+ * Throws if the transition is not allowed from the current state.
  */
 export function advanceStage(state: RunState, command: string, cwd: string = process.cwd()): RunState {
-	// Phase A: no-op stub. Real lookup is in a later phase.
-	void command;
 	void cwd;
-	return state;
+	const transition = STAGE_TRANSITIONS.find(
+		(t) => t.from === state.currentStage && t.command === command,
+	);
+	if (!transition) {
+		throw new Error(
+			`Cannot transition from "${state.currentStage}" via "${command}". ` +
+				`No matching transition in STAGE_TRANSITIONS.`,
+		);
+	}
+	const now = new Date().toISOString();
+	const next: RunState = {
+		...state,
+		currentStage: transition.to,
+		history: [...state.history, { stage: transition.to, command, timestamp: now }],
+		updatedAt: now,
+	};
+	saveState(next, cwd);
+	return next;
 }
 
 /**
