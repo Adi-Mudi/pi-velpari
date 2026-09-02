@@ -69,3 +69,35 @@ test("handleStatus includes history entries", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("handleStatus truncates long history (MAX_NOTIFY_LENGTH = 8000)", async () => {
+	const dir = tempDir();
+	try {
+		createRun("Mission", dir);
+		// Patch state to have a very long history
+		const { readFileSync, writeFileSync } = await import("node:fs");
+		const statePath = join(dir, ".IDE_Plans", "velpari", "state.json");
+		const state = JSON.parse(readFileSync(statePath, "utf8"));
+		state.history = Array.from({ length: 200 }, (_, i) => ({
+			stage: `stage-${i}`,
+			command: `/velpari-cmd-${i} with some extra text to make each line longer`,
+			timestamp: new Date().toISOString(),
+		}));
+		writeFileSync(statePath, JSON.stringify(state, null, 2), "utf8");
+
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = { ui: makeUI(notifies) } as never;
+		await handleStatus(ctx, dir);
+
+		const info = notifies.find((n) => n.level === "info");
+		assert.ok(info, "expected an info notification");
+		assert.ok(
+			info.msg.length <= 8000,
+			`truncated notification must be <= 8000 chars, got ${info.msg.length}`,
+		);
+		assert.match(info.msg, /\.\.\. \[truncated\]/, "must include truncation marker");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

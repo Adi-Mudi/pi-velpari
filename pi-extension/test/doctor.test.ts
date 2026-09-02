@@ -62,3 +62,22 @@ test("scanForSecrets detects GitHub PAT", () => {
 	assert.ok(hits.length >= 1);
 	assert.ok(hits.some((h) => h.pattern === "GitHub PAT"));
 });
+
+test("scanForSecrets detects multiple secrets in one text", () => {
+	const text = [
+		"AWS_KEY=AKIAIOSFODNN7EXAMPLE",
+		"GH_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789",
+		"Authorization: Bearer abc123def456ghi789jkl012mno345pq",
+	].join("\n");
+	const hits = scanForSecrets(text);
+	assert.ok(hits.length >= 3, `expected at least 3 hits, got ${hits.length}`);
+	const patterns = new Set(hits.map((h) => h.pattern));
+	assert.ok(patterns.has("AWS Access Key"));
+	assert.ok(patterns.has("GitHub PAT"));
+	assert.ok(patterns.has("Generic Bearer Token"));
+	// Verify line numbers are 1, 2, 3
+	const lines = new Set(hits.map((h) => h.line));
+	assert.ok(lines.has(1));
+	assert.ok(lines.has(2));
+	assert.ok(lines.has(3));
+});

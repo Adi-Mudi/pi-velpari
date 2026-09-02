@@ -56,7 +56,11 @@ export async function handleStatus(
 	if (summary.length <= MAX_NOTIFY_LENGTH) {
 		ctx.ui.notify(summary, "info");
 	} else {
-		ctx.ui.notify(summary.slice(0, MAX_NOTIFY_LENGTH) + "\n... [truncated]", "info");
+		// Reserve room for the truncation marker so the total emitted length
+		// does not exceed MAX_NOTIFY_LENGTH.
+		const TRUNCATION_MARKER = "\n... [truncated]";
+		const truncated = summary.slice(0, MAX_NOTIFY_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+		ctx.ui.notify(truncated, "info");
 	}
 
 	void buildOutputPath;
