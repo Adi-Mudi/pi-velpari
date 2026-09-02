@@ -136,3 +136,11 @@ test("real handlers are wired for /velpari-approve (Phase C)", () => {
 	assert.ok(def, "command missing");
 	assert.ok(!def.description.includes("Phase A stub"), "velpari-approve must use the real handler");
 });
+
+test("real handlers are wired for /velpari-handoff (Phase D)", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const def = pi.commands.get("velpari-handoff");
+	assert.ok(def, "command missing");
+	assert.ok(!def.description.includes("Phase A stub"), "velpari-handoff must use the real handler");
+});

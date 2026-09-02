@@ -8,6 +8,8 @@ import { handleDesign } from "./design.js";
 import { handlePseudocode } from "./pseudocode.js";
 import { handleTestplan } from "./testplan.js";
 import { handleApprove } from "./approve.js";
+import { runHandoff } from "./handoff.js";
+import { loadState } from "./state.js";
 
 /**
  * All 23 commands. Phase B wires 4 of them (discuss, prd, rtm, approve-discuss)
@@ -81,6 +83,10 @@ const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void
 	},
 	"velpari-approve": async (_args, ctx) => {
 		await handleApprove(ctx as never);
+	},
+	"velpari-handoff": async (_args, ctx) => {
+		const state = loadState();
+		await runHandoff(state, ctx as never);
 	},
 };
 
