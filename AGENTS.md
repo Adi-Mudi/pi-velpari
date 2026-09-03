@@ -239,13 +239,21 @@ If the smoke test fails, remove the guard and rely on the in-session command reg
 
 ## Development symlink
 
-For local testing, the extension can be symlinked into Pi:
+For local testing, the extension can be symlinked into Pi. **Symlink the built artifact** (`dist/pi-extension/src/index.js`), NOT the project root — Pi needs the compiled output:
 
 ```bash
-ln -sf /mnt/Just_Do_It/02_Devp_Soft/pi-senai/Pi-Velpari ~/.pi/agent/extensions/pi-velpari
+mkdir -p ~/.pi/agent/extensions
+ln -sf /path/to/Pi-Velpari/dist/pi-extension/src/index.js ~/.pi/agent/extensions/pi-velpari.js
 ```
 
-After code changes, run `npm run build` and restart Pi or run `/reload`.
+After code changes, run `npm run build` (the symlink auto-reflects the new dist) and restart Pi or run `/reload`.
+
+For project-local install instead of global:
+
+```bash
+mkdir -p .pi/extensions
+ln -sf /path/to/Pi-Velpari/dist/pi-extension/src/index.js .pi/extensions/pi-velpari.js
+```
 
 ## Cross-extension compatibility
 
