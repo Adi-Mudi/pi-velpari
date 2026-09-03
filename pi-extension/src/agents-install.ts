@@ -85,6 +85,54 @@ export function formatScoutAgentsInstalledMessage(result: EnsureScoutAgentsResul
 	return `Installed ${result.installed.length} scout agent(s) into .pi/agents/: ${list}.`;
 }
 
+export interface EnsureStageAgentsResult {
+	installed: string[];
+	alreadyPresent: string[];
+	missing: string[];
+}
+
+/**
+ * Generic stage agent bootstrap (Phase 1 of the all-stages refactor).
+ *
+ * Ensures the named agents (any string id) are present in `.pi/agents/`.
+ * Differs from `ensureScoutAgents` (above) which is hardcoded to the 4
+ * discuss-stage scouts. Use this for any other stage (prd, rtm, feasibility,
+ * design, pseudocode, testplan, atomic-function, development-order).
+ *
+ * Bundled files are looked up at `skills/agents/<agentId>.md`. If a bundled
+ * file is missing, the agent id is added to `missing` and skipped silently
+ * (the parent LLM surfaces the error at subagent-spawn time).
+ */
+export function ensureStageAgents(
+	agentIds: readonly string[],
+	cwd: string = process.cwd(),
+): EnsureStageAgentsResult {
+	const agentsDir = join(cwd, ".pi", "agents");
+	const installed: string[] = [];
+	const alreadyPresent: string[] = [];
+	const missing: string[] = [];
+
+	for (const id of agentIds) {
+		const target = join(agentsDir, `${id}.md`);
+		if (existsSync(target)) {
+			alreadyPresent.push(id);
+			continue;
+		}
+		const source = bundledAgentPath(id as ScoutAgentId);
+		if (!existsSync(source)) {
+			missing.push(id);
+			continue;
+		}
+		if (!existsSync(agentsDir)) {
+			mkdirSync(agentsDir, { recursive: true });
+		}
+		copyFileSync(source, target);
+		installed.push(id);
+	}
+
+	return { installed, alreadyPresent, missing };
+}
+
 // Keep imports referenced for the bundler
 void readFileSync;
 void writeFileSync;
