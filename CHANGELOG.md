@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (v2.0 — visible subagents, 2026-09-03)
+
+The discussion stage now uses **real visible subagents** spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep, ≥3.7.2). This replaces the v1.0 design that mirrored `pi-seani`'s `/senai-discussion` (parent-LLM-only, no subagents).
+
+**Breaking changes vs. v1.x:**
+
+- `/velpari-discuss <topic>` is now a **two-phase flow**:
+  1. **Handler phase** (deterministic, in the extension): validates mission, loads state, bootstraps 4 scout agents into `.pi/agents/` if missing, asks 6 fixed interview questions via `ctx.ui.input`, asks web-search yes/no via `ctx.ui.confirm`, then calls `pi.sendUserMessage(prompt)` to hand off to the parent LLM.
+  2. **LLM phase** (orchestrated by the parent LLM, driven by `skills/velpari-discuss.md`): spawns the 4 scouts in parallel via the `subagent` tool (visible multiplexer panes), waits for completion, reads their reports, optionally iterates with `AskUserQuestion` follow-ups (up to 3 rounds), writes the working-copy `discussion-notes.md`, and shows the preview gate.
+- **Handler no longer writes the working copy.** The parent LLM does that after reading the 4 scout reports. The handler still creates the run directory and the `discuss/` + `scouts/` subdirectories so the LLM knows where to write artifacts.
+- **State is not mutated by `/velpari-discuss`.** Discussion is orthogonal: `createRun()` already advanced to `discussing`; the next transition (`discussed`) happens in `/velpari-approve-discuss`.
+
+**New files:**
+
+- `skills/agents/{extractor,prd-checker,rtm-checker,web-search-agent}.md` — 4 Pi agent definitions (real subagents) with YAML frontmatter, role description, input contract, output contract, completion contract, and `auto-exit: true / spawning: false / session-mode: standalone` flags. Bundled with the extension.
+- `pi-extension/src/agents-install.ts` — `ensureScoutAgents(cwd)` helper that copies the 4 bundled agent definitions from `skills/agents/` into `.pi/agents/` on first use. Called automatically by `handleDiscuss`.
+- `pi-extension/test/agents-install.test.ts` — 6 tests covering the bootstrap helper (fresh dir, skip present, create `.pi/agents/`, idempotent, format helper).
+
+**Removed files:**
+
+- `pi-extension/src/scout.ts` — `runScout`, `withTimeout`, `readScoutSkill` runner (in-process 30s-timeout wrapper, no longer used).
+- `pi-extension/src/contracts.ts` — `ScoutContract`, `ScoutId`, `ScoutFn`, `ScoutOutput`, `ScoutProposal`, `ScoutInput`, `emptyScoutOutput` (in-process scout contract, no longer used).
+- `pi-extension/src/scouts/{extractor,prd-checker,rtm-checker,web-search-agent}.ts` — 4 stub scout implementations returning empty proposals. Replaced by real Pi agent files.
+- `skills/discuss-subagents/{extractor,prd-checker,rtm-checker,web-search-agent}.md` — 4 markdown skill stubs (replaced by `skills/agents/*.md`).
+- `pi-extension/test/scout.test.ts` — tests for the deleted runner.
+
+**Modified files:**
+
+- `pi-extension/src/prompt.ts` — full rewrite. `loadStageSkill(stage)` now actually reads `skills/velpari-<skill>.md` (stripping YAML frontmatter); `buildStagePrompt(input)` assembles the `<pi-velpari stage="...">` metadata block with mission, framework, run ID, scout paths, embedded answers, web-search flag, and the stage skill content. Mirrors `pi-seani/src/prompt.ts:loadSkill + buildStagePrompt`.
+- `pi-extension/src/discuss.ts` — full rewrite. New two-phase flow described above. `ctx` no longer accepts the 6 questions itself; the handler does. Handler no longer calls `mergeProposals`; the LLM does the deterministic merge.
+- `pi-extension/src/commands.ts` — `REAL_HANDLERS` signature widened to accept optional `pi: ExtensionAPI`; `registerCommands` threads `pi` into the wrapper. Only `velpari-discuss` uses `pi` today.
+- `skills/velpari-discuss.md` — full rewrite. Now describes the LLM-orchestrated sequence: spawn 4 subagents in parallel, wait, read reports, iterate up to 3 rounds, write working copy, show preview gate. Mirrors `pi-seani/skills/senai-plan.md` (scout spawning + sync rules) + `pi-seani/skills/senai-discussion.md` (iterative questioning).
+- `pi-extension/test/prompt.test.ts` — full rewrite. 11 tests covering `loadStageSkill` (real file read, frontmatter strip, error cases) and `buildStagePrompt` (metadata block, framework line, embedded answers, web-search flag, scout paths, skill content inclusion).
+- `pi-extension/test/discuss.test.ts` — full rewrite. 11 tests covering the two-phase flow: 6-question interview, skip-on-empty, web-search prompt, `pi.sendUserMessage` call shape, handler does NOT write working copy, state.stage not mutated, run directories created, agents bootstrapped on first use, no re-bootstrap on second call, follow-up notify, web-search flag embedded.
+- `package.json` — added `@earendil-works/pi-interactive-subagents` (≥3.7.2) to `peerDependencies`. Required for the `subagent` tool.
+
+**New peer dependency:**
+
+`@earendil-works/pi-interactive-subagents` (≥3.7.2) — provides the `subagent` tool the parent LLM uses to spawn the 4 visible scout panes. Without it installed, the LLM has no way to spawn scouts and the discussion flow breaks. Install via Pi's package manager alongside Velpari.
+
+**Risks / behavior changes:**
+
+- First-run now silently creates 4 agent files in `.pi/agents/`. A `ctx.ui.notify` informs the user which files were installed.
+- The 30s-per-scout timeout (v1.x) is gone; scouts run as long as they need to. Use the live subagent widget to monitor progress.
+- The handler no longer writes the working copy synchronously; the LLM does that after all scouts complete. Users see a brief loading period between the interview finishing and the working copy appearing.
+
+**Patched after doc-verification pass (2026-09-03, later):**
+
+Verified against the official [`pi-interactive-subagents`](https://github.com/HazAT/pi-interactive-subagents) README and fixed 6 mismatches between our plan and the actual tool API:
+
+- **`max_turns` removed** from `skills/velpari-discuss.md`. The `subagent` tool does NOT accept a turn cap; the parameter was hallucinated. Interrupt stuck scouts via `subagent_interrupt` instead.
+- **Agent frontmatter updated.** All 4 agent files (`extractor`, `prd-checker`, `rtm-checker`, `web-search-agent`) now declare `tools: read, write, bash` and `thinking: minimal` per the docs' recommended fast-reconnaissance profile.
+- **`caller_ping` documented.** Scouts can request help from the parent mid-task via `caller_ping({ message })`; the child exits and the parent is steered. Added to skill markdown.
+- **`cwd` parameter documented.** Spawns should pass `cwd: <runDir>` so scouts can use relative paths.
+- **`subagent_interrupt` clarified.** Works only for Pi-backed subagents; Claude-backed runs return an error.
+- **Live widget status states** (`active`, `waiting`, `stalled`, `running`, `starting`) added to skill markdown for sync-rule decisions.
+
+**Known issue carried forward:** [pi-interactive-subagents Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) — the zellij backend's `close-pane` step can close the parent session instead of the subagent pane. Workaround documented in `skills/velpari-discuss.md`: do NOT manually focus a subagent pane during the discussion.
+
 ### Fixed (Q1 verification — 2026-09-02)
 
 Verified the architecture against the official Pi extension docs (github.com/earendil-works/pi) and corrected six stale references:

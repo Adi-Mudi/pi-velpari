@@ -30,8 +30,8 @@ It mirrors Pi-Senai's discipline model (state-gated runs, working/published copy
 - **Package manager:** npm
 - **Build:** `tsc` (see `tsconfig.json`)
 - **Target layout:** ESM under `dist/`
-- **Peer dependency:** `@earendil-works/pi-coding-agent`
-- **No runtime dependencies.** No subagent extension, no test framework, no linter.
+- **Peer dependencies:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-interactive-subagents` (≥3.7.2 — provides the `subagent` tool for visible subagent panes).
+- **No runtime dependencies.** No test framework, no linter.
 
 ## Build and test
 
@@ -68,7 +68,8 @@ npm test
 │   ├── doctor.ts              # runDoctor, writeDoctorReport, scanForSecrets, validateSenaiHandoffSchema
 │   ├── handoff.ts             # runHandoff, validateSenaiSchema, readApprovedArtifacts
 │   ├── show.ts                # showStage (parameterized)
-│   ├── discuss.ts             # /velpari-discuss: 4-agent interview (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT)
+│   ├── discuss.ts             # /velpari-discuss (v2.0): two-phase flow — handler runs 6-question interview + bootstrap agents + pi.sendUserMessage; parent LLM orchestrates 4 visible subagents + iterative rounds + working copy
+│   ├── agents-install.ts      # ensureScoutAgents(cwd): bootstraps 4 scout agent definitions from skills/agents/ into .pi/agents/ on first use
 │   ├── prd.ts                 # /velpari-prd (full rewrite path; usually auto-updated by discuss)
 │   ├── rtm.ts                 # /velpari-rtm
 │   ├── feasibility.ts         # /velpari-feasibility
@@ -77,9 +78,9 @@ npm test
 │   ├── testplan.ts            # /velpari-testplan
 │   ├── atomic-function.ts     # /velpari-atomic-function: 4 AF scouts + suggestion picker (optional post-pipeline)
 │   └── development-order.ts   # /velpari-development-order: 4 DO scouts + ranking merge + order picker (optional post-pipeline)
-├── pi-extension/test/         # one test file per src module (19 files)
-├── skills/                    # stage skill markdown files (one per stage + handoff + 8 scout skills)
-│   ├── velpari-discuss.md
+├── pi-extension/test/         # one test file per src module (20 files)
+├── skills/                    # stage skill markdown files + bundled scout agents
+│   ├── velpari-discuss.md     # parent-LLM program: spawn 4 subagents, wait, iterate, write working copy, preview
 │   ├── velpari-prd.md
 │   ├── velpari-rtm.md
 │   ├── velpari-feasibility.md
@@ -89,11 +90,11 @@ npm test
 │   ├── velpari-handoff.md
 │   ├── velpari-atomic-function.md
 │   ├── velpari-development-order.md
-│   └── discuss-subagents/     # 4 subagent skills for the discussion stage
+│   └── agents/                # 4 bundled Pi agent definitions (bootstrapped to .pi/agents/ on first /velpari-discuss)
 │       ├── extractor.md
 │       ├── prd-checker.md
 │       ├── rtm-checker.md
-│       └── decision-agent.md
+│       └── web-search-agent.md
 ├── Doc/                       # human-facing docs
 │   ├── PRD.md                 # source PRD (with FR-01..FR-36, NFR-01..NFR-11, ## Helper Functions)
 │   ├── RTM_Pi-Velpari.md      # requirements traceability matrix (47 requirements, 163 test cases)
@@ -113,7 +114,7 @@ npm test
 1. **Zero hallucination.** Every claim in every artifact traces back to a user-provided statement in a discussion note or to an earlier approved artifact. Stage skill markdown enforces this; doctor validates it via cross-reference.
 2. **Confirm-then-write.** No file under `Doc/` is written without a user-facing preview and explicit `/velpari-approve`. Working copies in `.IDE_Plans/velpari/runs/` are written freely; published copies in `Doc/` are only produced on approval.
 3. **Stage gates are enforced.** A stage cannot start until its prerequisites are approved. The transition table in `constants.ts:STAGE_TRANSITIONS` is the single source of truth.
-4. **Scout pattern in three stages.** Subagents are used in **discussion** (4 agents: NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, DECISION AGENT), **atomic-function** (4 AF scouts), and **development-order** (4 DO scouts) — 12 scout agents total. Stages 2–7 and the handoff stage do NOT spawn subagents.
+4. **Scout pattern via real visible subagents (v2.0).** Discussion uses **4 real subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. They run in **visible multiplexer panes**. Agent definitions live in `.pi/agents/*.md`, auto-bootstrapped from bundled `skills/agents/*.md` files by `agents-install.ts:ensureScoutAgents` on first use. The 4 scouts write their reports to `.IDE_Plans/velpari/runs/<run-id>/scouts/*.json`. The parent LLM orchestrates spawning, waiting, optional iterative follow-up rounds (up to 3), and writes the working-copy `discussion-notes.md`. Stages 2–7 and the handoff stage do NOT spawn subagents. Atomic-function (4 AF scouts) and development-order (4 DO scouts) are stub commands that will follow the same pattern when implemented.
 5. **Helper ↔ atomic relationship.** Helper functions are tracked in `Doc/PRD_Pi-Velpari.md` (`## Helper Functions` section). Atomic functions are tracked in `Doc/atomic-functions.md`. Atomic functions are strictly leaf nodes; helper functions may call atomic functions. The dependency is bidirectional.
 6. **Optional stages stay optional.** `/velpari-atomic-function` and `/velpari-development-order` are post-pipeline stages that can be invoked in any order or skipped entirely. `/velpari-handoff` works with or without their output.
 7. **Deterministic, not creative.** File paths, file formats, state JSON shape, stage transitions, and the handoff schema are all fixed by code. Only the artifact contents vary per run.

@@ -3,8 +3,10 @@
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`
-- **Date:** 2026-08-24
+- **Date:** 2026-08-24 (initial); 2026-09-03 (v2.0 update)
 - **Status:** Design complete; implementation in Phase A–E per `pi_velpari_commands_plan_20260824_0924_v1.1.md`.
+
+> **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
 
 ---
 
@@ -89,7 +91,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
 - **Key exports:**
   - `function registerCommands(api: ExtensionAPI): void` — registers all 20 commands.
   - **Stage handlers** (each delegates to the per-stage module):
-    - `handleDiscuss(args, api) → discuss.ts:runDiscuss()`
+    - `handleDiscuss(mission, ctx, pi) → discuss.ts:handleDiscuss()` (v2.0: handler runs 6-question interview via ctx.ui.input + bootstrap agents + pi.sendUserMessage; parent LLM orchestrates the 4 visible scouts)
     - `handlePrd(args, api) → prd.ts:runPrd()`
     - `handleRtm(args, api) → rtm.ts:runRtm()`
     - `handleFeasibility(args, api) → feasibility.ts:runFeasibility()`
@@ -143,7 +145,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
 - **Each implements:** its own FR-N (FR-01 through FR-07) and FR-22, FR-23 (zero-hallucination, confirm gate).
 - **Key exports per stage module:**
   - `function runXxx(args: { state: RunState; rootDir: string; api: ExtensionAPI; }): Promise<void>` — drives the stage end-to-end.
-  - Optional helpers for interactive input (e.g., `discuss.ts` has `askNextQuestion`, `recordAnswer`).
+  - Optional helpers for interactive input. **v2.0 change:** `discuss.ts` no longer has `askNextQuestion`/`recordAnswer` — it uses `ctx.ui.input` directly inside `handleDiscuss`, then hands off to the parent LLM via `pi.sendUserMessage`. The parent LLM is responsible for spawning the 4 visible subagents and writing the working copy.
 
 ### 2.16 `handoff.ts` — bridge to Senai
 
@@ -192,27 +194,16 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function renderOrderPicker(ranked: OrderEntry[], api: ExtensionAPI): OrderEntry[]` — lets the user reorder and accept.
   - `function writeDevelopmentOrder(accepted: OrderEntry[], rootDir: string): void` — writes to working copy and (on approve) published copy.
 
-### 2.20 `contracts.ts` — shared types (v1.5)
+### 2.20 ~~`contracts.ts` — shared types (v1.5)~~ **REMOVED in v2.0**
 
-- **Purpose:** Centralize shared types so all scout modules follow the same shape. Avoids drift between the 12 scouts.
-- **Implements:** FR-54, FR-56, NFR-13.
-- **Key exports:**
-  - `interface ScoutContract` — input/output shapes for any scout.
-  - `interface ScoutOutput` — standard envelope `{ proposals: [...], source: ScoutId, warnings?: string[] }`.
-  - `interface ScoutInput` — stage-specific input with skill markdown path.
-  - `interface AcceptedProposal` — what the picker returns.
-  - `interface FrameworkInfo` — shape of `.pi/velpari/files.json:framework` field.
-  - `function spawnScout(scoutId, input, api)` — standard spawn helper with 30s timeout, JSON parsing, error handling. Used by all 12 scouts.
+The `ScoutContract` TypeScript types were deleted in v2.0. They are no longer needed because:
+- Scout logic moved from in-process TypeScript to real Pi agent definitions in `.pi/agents/*.md`.
+- The "uniform subagent pattern" is now enforced by the parent LLM reading the stage skill markdown (`skills/velpari-discuss.md`) which lists the scout conventions.
+- FR-54 / NFR-13 are still satisfied, but by the markdown contract rather than by TypeScript types.
 
-### 2.21 `scout.ts` — scout coordinator (v1.5)
+### 2.21 ~~`scout.ts` — scout coordinator (v1.5)~~ **REMOVED in v2.0**
 
-- **Purpose:** Single point of entry for spawning any scout. Wraps `contracts.ts:spawnScout()` with stage-specific helpers.
-- **Implements:** FR-54.
-- **Key exports:**
-  - `function spawnDiscussionScout(name, mission, answers, api)` — for the 4 discussion scouts.
-  - `function spawnAfScout(name, rootDir, api)` — for the 4 AF-SCOUTs.
-  - `function spawnDoScout(name, rootDir, api)` — for the 4 DO-SCOUTs.
-  - `function spawnWebSearchScout(input, api)` — for the WEB SEARCH AGENT (only in discussion).
+The in-process `runScout` / `withTimeout` / `readScoutSkill` runner was deleted in v2.0. The parent LLM now orchestrates scout spawning via the `subagent()` tool provided by `@earendil-works/pi-interactive-subagents`. No extension-side runner is needed.
 
 ### 2.22 `ui/` — re-implemented TUI patterns (v1.5)
 
@@ -806,7 +797,7 @@ Pi Runtime              compaction.ts             state.ts            Filesystem
 | NFR-08 (Senai compat) | `handoff.ts:validateSenaiSchema` reads Senai's `architect-inputs-config.ts` at test time. |
 | NFR-09 (testing) | One test file per source module under `pi-extension/test/`. `node --test` with `fs.mkdtempSync` for temp dirs. |
 | NFR-10 (docs) | Phase 0 of v1.1 plan produces README, AGENTS, CHANGELOG, sequence, step-by-step. |
-| NFR-11 (scout agent exception) | Three stages use subagents: `discuss.ts` (4 subagents), `atomic-function.ts` (4 AF scouts), `development-order.ts` (4 DO scouts) — total 12 scout agents. Each scout lives in its own function with deterministic input/output. The scout pattern is centralized so all stages share UI affordance and trace-back rigor. |
+| NFR-11 (scout agent exception) | **v2.0:** Three stages use subagents. `discuss.ts` uses **4 real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. `atomic-function.ts` (4 AF scouts) and `development-order.ts` (4 DO scouts) are stubs that will follow the same pattern. Total target: 12 real subagents. The scout pattern is centralized in `.pi/agents/*.md` (auto-bootstrapped by `agents-install.ts:ensureScoutAgents`) so all stages share UI affordance and trace-back rigor. |
 
 ---
 

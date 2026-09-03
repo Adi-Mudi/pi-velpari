@@ -59,10 +59,12 @@ export const COMMAND_NAMES = [
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
-// Phase B: 4 commands wired to real handlers.
-// Phase C: 5 more wired (feasibility, design, pseudocode, testplan, approve).
-const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void>> = {
-	"velpari-discuss": async (args, ctx) => {
+// v2.0: handlers may receive `pi` (ExtensionAPI) so they can call
+// pi.sendUserMessage to hand off a prompt to the parent LLM.
+// Most handlers currently ignore it; velpari-discuss uses it.
+type RealHandler = (args: string, ctx: unknown, pi?: ExtensionAPI) => Promise<void>;
+const REAL_HANDLERS: Record<string, RealHandler> = {
+	"velpari-discuss": async (args, ctx, pi) => {
 		const mission = (args ?? "").trim();
 		if (!mission) {
 			(ctx as { ui: { notify: (m: string, l: string) => void } }).ui.notify(
@@ -71,7 +73,7 @@ const REAL_HANDLERS: Record<string, (args: string, ctx: unknown) => Promise<void
 			);
 			return;
 		}
-		await handleDiscuss(mission, ctx as never);
+		await handleDiscuss(mission, ctx as never, pi as never);
 	},
 	"velpari-prd": async (_args, ctx) => {
 		await handlePrd(ctx as never);
@@ -144,9 +146,11 @@ export function registerCommands(pi: ExtensionAPI): void {
 				realHandler !== undefined
 					? `Real handler for /${name} (Phase B).`
 					: `Stub handler for /${name} (implemented in a later phase).`,
-			handler: realHandler ?? (async (args, ctx) => {
-				ctx.ui.notify(`/${name}: Phase A stub. Args: ${args ?? "(none)"}`, "info");
-			}),
+			handler: realHandler
+				? async (args, ctx) => realHandler(args, ctx, pi)
+				: async (args, ctx) => {
+						ctx.ui.notify(`/${name}: Phase A stub. Args: ${args ?? "(none)"}`, "info");
+					},
 		});
 	}
 }

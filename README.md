@@ -82,6 +82,14 @@ The extension is loaded automatically by Pi. Two install modes are supported:
 - **Project-local (development):** copy or symlink the extension into `.pi/extensions/pi-velpari/`. Pi auto-discovers from this directory.
 - **npm-distributed (release):** users run `pi install npm:pi-velpari`. The package's `package.json` declares its entry point under the `pi.extensions` field (Pi reads this when installing).
 
+**Required peer dependency:** Velpari requires the [`@earendil-works/pi-interactive-subagents`](https://github.com/HazAT/pi-interactive-subagents) extension (≥3.7.2) to be installed alongside Velpari. It provides the `subagent` tool the parent LLM uses to spawn the 4 discussion scouts (`NEW EXTRACTOR`, `PRD CHECKER`, `RTM CHECKER`, optional `WEB SEARCH AGENT`) in **visible multiplexer panes**. Without it installed, `/velpari-discuss` will fail to spawn scouts and the working copy will not be written. Install via Pi's package manager:
+
+```bash
+pi install npm:@earendil-works/pi-interactive-subagents
+```
+
+The 4 scout agent definitions (`.pi/agents/{extractor,prd-checker,rtm-checker,web-search-agent}.md`) are auto-bootstrapped by `/velpari-discuss` on first use from the bundled `skills/agents/*.md` files. No separate install step needed for the agents.
+
 ```bash
 npm install
 npm test

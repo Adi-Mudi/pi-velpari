@@ -1,23 +1,167 @@
+/**
+ * Stage prompt loading (v2.0).
+ *
+ * Mirrors the pattern in pi-seani/src/prompt.ts: actually reads
+ * `skills/velpari-<skill>.md` from disk and assembles the full prompt that
+ * `pi.sendUserMessage()` sends to the parent LLM. The parent LLM then
+ * follows the skill instructions (interview questions, subagent spawns,
+ * artifact writes, preview gate).
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Stage } from "./constants.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /**
- * Load a stage skill from skills/velpari-<stage>.md. Phase A stub.
+ * Map each Stage value to the skill-file basename (without `velpari-` prefix
+ * or `.md` suffix). Both the in-progress and completed states for a stage
+ * point at the same skill file.
  */
-export function loadStageSkill(stage: Stage, _cwd: string = process.cwd()): string {
-	void _cwd;
-	void stage;
-	return `[Phase A stub] Stage skill for ${stage} not loaded yet.`;
+const STAGE_SKILL: Record<Stage, string | undefined> = {
+	none: undefined,
+	discussing: "discuss",
+	discussed: "discuss",
+	"drafting-prd": "prd",
+	"drafted-prd": "prd",
+	"building-rtm": "rtm",
+	"built-rtm": "rtm",
+	"analyzing-feasibility": "feasibility",
+	"analyzed-feasibility": "feasibility",
+	designing: "design",
+	designed: "design",
+	"writing-pseudocode": "pseudocode",
+	"wrote-pseudocode": "pseudocode",
+	"planning-tests": "testplan",
+	"planned-tests": "testplan",
+	"analyzing-atomic-functions": "atomic-function",
+	"analyzed-atomic-functions": "atomic-function",
+	"ordering-development": "development-order",
+	"ordered-development": "development-order",
+	"handoff-ready": "handoff",
+};
+
+/**
+ * Resolve the path to a skill markdown file. Tries the dist layout first
+ * (dist/pi-extension/src → repo root, 3 levels up) and falls back to the
+ * source layout (pi-extension/src → repo root, 2 levels up).
+ */
+export function resolveSkillPath(skillName: string): string {
+	const candidates = [
+		resolve(__dirname, "../../..", "skills", `velpari-${skillName}.md`),
+		resolve(__dirname, "../..", "skills", `velpari-${skillName}.md`),
+	];
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate;
+	}
+	return candidates[0]!;
 }
 
 /**
- * Build the prompt for a given stage, with framework injection (FR-49).
- * Phase A stub.
+ * Load a stage skill markdown. Strips YAML frontmatter. Returns content.
+ * On ENOENT, throws so the caller can decide whether to surface or swallow.
  */
-export function buildStagePrompt(
-	stage: Stage,
-	framework: string | undefined,
-	context: string,
-): string {
-	const fwLine = framework ? `Framework: ${framework}\n` : "";
-	return `[Phase A stub] Stage: ${stage}\n${fwLine}\n${context}`;
+export function loadStageSkill(stage: Stage): string {
+	const skill = STAGE_SKILL[stage];
+	if (!skill) {
+		throw new Error(`No skill mapped for stage "${stage}".`);
+	}
+	const skillPath = resolveSkillPath(skill);
+	if (!existsSync(skillPath)) {
+		throw new Error(`Stage skill not found at ${skillPath} for stage "${stage}".`);
+	}
+	let content = readFileSync(skillPath, "utf8");
+	content = content.replace(/^---\n[\s\S]*?\n---\n*/, "");
+	return content.trim();
+}
+
+/**
+ * Inputs for assembling a stage prompt.
+ *
+ * - stage: current Stage value (for the metadata block + skill selection)
+ * - mission: the run's mission string
+ * - framework: optional framework line (per FR-49) — from `.pi/velpari/files.json`
+ * - runId: optional run id (used in metadata block)
+ * - answers: interview answers collected by the handler (Q1-Q6)
+ * - webSearchAllowed: whether the user consented to web search (FR-52)
+ * - paths: artifact paths the parent LLM needs (scout reports, working copy, etc.)
+ */
+export interface BuildStagePromptInput {
+	stage: Stage;
+	mission: string;
+	framework: string | undefined;
+	runId: string | undefined;
+	answers: readonly string[];
+	webSearchAllowed: boolean;
+	paths: {
+		extractorReport: string;
+		prdCheckerReport: string;
+		rtmCheckerReport: string;
+		webSearchReport: string;
+		discussionNotes: string;
+		scoutsDir: string;
+	};
+}
+
+/**
+ * Build the full stage prompt that gets sent to the parent LLM via
+ * `pi.sendUserMessage()`. Mirrors the structure used in pi-seani:
+ *
+ *   <pi-velpari stage="...">
+ *     metadata block (mission, framework, run id, paths)
+ *   </pi-velpari>
+ *
+ *   <interview answers section>
+ *
+ *   <web search flag section>
+ *
+ *   <stage skill content (from skills/velpari-*.md)>
+ */
+export function buildStagePrompt(input: BuildStagePromptInput): string {
+	const skill = loadStageSkill(input.stage);
+	const fwLine = input.framework ? `Framework: ${input.framework}\n` : "";
+	const answersBlock = input.answers.length === 0
+		? "(no answers collected)"
+		: input.answers
+				.map((a, i) => `${i + 1}. ${a}`)
+				.join("\n");
+
+	const webSearchLine = input.webSearchAllowed
+		? `Web search: ALLOWED (spawn web-search-agent subagent).\n`
+		: `Web search: NOT ALLOWED (skip web-search-agent subagent).\n`;
+
+	const metadata = [
+		`<pi-velpari stage="${input.stage}">`,
+		`Mission: ${input.mission}`,
+		fwLine.trimEnd(),
+		`Run ID: ${input.runId ?? "(none — pre-run)"}`,
+		``,
+		`Artifact paths for this run:`,
+		`  Scouts directory: ${input.paths.scoutsDir}`,
+		`    extractor-report.json: ${input.paths.extractorReport}`,
+		`    prd-checker-report.json: ${input.paths.prdCheckerReport}`,
+		`    rtm-checker-report.json: ${input.paths.rtmCheckerReport}`,
+		`    web-search-report.json: ${input.paths.webSearchReport}`,
+		`  Discussion notes (working copy): ${input.paths.discussionNotes}`,
+		`</pi-velpari>`,
+		``,
+	].join("\n");
+
+	const answersSection = [
+		`## Interview Answers (collected by handler)`,
+		``,
+		answersBlock,
+		``,
+	].join("\n");
+
+	const flagsSection = [
+		`## Flags`,
+		``,
+		webSearchLine.trimEnd(),
+		``,
+	].join("\n");
+
+	return [metadata, answersSection, flagsSection, skill].join("\n");
 }

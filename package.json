@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-interactive-subagents": ">=3.7.2"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
