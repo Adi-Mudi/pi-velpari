@@ -239,11 +239,15 @@ If the smoke test fails, remove the guard and rely on the in-session command reg
 
 ## Development symlink
 
-For local testing, the extension can be symlinked into Pi. **Symlink the built artifact** (`dist/pi-extension/src/index.js`), NOT the project root — Pi needs the compiled output:
+For local testing, the extension can be symlinked into Pi. **Symlink the built directory** (`dist/pi-extension/src/`), NOT a single file or the project root — Pi auto-discovers `index.{ts,js}` inside the symlinked directory, and the relative imports (`./commands.js`, `./state.js`, etc.) resolve correctly only when siblings are present.
+
+Per the official docs:
+- Single-file extensions: `~/.pi/agent/extensions/*.ts` (one file only — no relative imports)
+- Multi-file extensions: `~/.pi/agent/extensions/*/index.{ts,js}` (subdirectory with index entry)
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-ln -sf /path/to/Pi-Velpari/dist/pi-extension/src/index.js ~/.pi/agent/extensions/pi-velpari.js
+ln -sf /path/to/Pi-Velpari/dist/pi-extension/src ~/.pi/agent/extensions/pi-velpari
 ```
 
 After code changes, run `npm run build` (the symlink auto-reflects the new dist) and restart Pi or run `/reload`.
@@ -252,7 +256,7 @@ For project-local install instead of global:
 
 ```bash
 mkdir -p .pi/extensions
-ln -sf /path/to/Pi-Velpari/dist/pi-extension/src/index.js .pi/extensions/pi-velpari.js
+ln -sf /path/to/Pi-Velpari/dist/pi-extension/src .pi/extensions/pi-velpari
 ```
 
 ## Cross-extension compatibility
