@@ -204,3 +204,126 @@ test("handleFeasibility bootstraps feasibility agent files on first use", async 
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// ---------------------------------------------------------------------------
+// Edge cases
+// ---------------------------------------------------------------------------
+
+test("handleFeasibility preserves unicode mission verbatim in prompt", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir, "X", "café 🚀 naïve");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.ok(prompt.includes("café") && prompt.includes("🚀"), "unicode mission preserved in prompt");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility handles very long mission (>2KB) without error", async () => {
+	const dir = tempDir();
+	try {
+		const longMission = "M".repeat(2000);
+		setupValidRun(dir, "X", longMission);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.equal(pi.sent.length, 1);
+		const prompt = pi.sent[0]!.prompt;
+		assert.ok(prompt.includes(longMission), "long mission preserved verbatim in prompt");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility works when framework is undefined (omits Framework line)", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "X",
+				framework: {},
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		createRun("Mission", dir);
+		mkdirSync(join(dir, "Doc"), { recursive: true });
+		writeFileSync(join(dir, "Doc", "RTM_X.md"), "# stub\n", "utf8");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.doesNotMatch(prompt, /Framework:/, "framework line should be omitted when undefined");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility refuses to write outside the run dir when mission has path-traversal characters", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir, "X", "../../../etc/passwd");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const state = loadState(dir);
+		const wc = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "feasibility", "feasibility-study_X.md");
+		assert.equal(existsSync(wc), false, "working copy should NOT be created at dangerous path");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility does not crash when the feasibility output dir already exists with stale content", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const state = loadState(dir);
+		const feasDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "feasibility");
+		mkdirSync(feasDir, { recursive: true });
+		writeFileSync(join(feasDir, "stale-file.txt"), "stale content", "utf8");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.equal(pi.sent.length, 1);
+		assert.ok(existsSync(join(feasDir, "stale-file.txt")));
+		assert.ok(existsSync(join(feasDir, "scouts")));
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility sets the correct stage field in the prompt (analyzing-feasibility)", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.match(prompt, /<pi-velpari stage="analyzing-feasibility">/);
+		assert.doesNotMatch(prompt, /stage="discussing"/);
+		assert.doesNotMatch(prompt, /stage="building-rtm"/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

@@ -227,3 +227,135 @@ test("handleRtm bootstraps rtm scout agent files on first use", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// ---------------------------------------------------------------------------
+// Edge cases
+// ---------------------------------------------------------------------------
+
+test("handleRtm preserves unicode mission verbatim in prompt", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir, "X", "café 🚀 naïve");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleRtm(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.ok(prompt.includes("café") && prompt.includes("🚀"), "unicode mission preserved in prompt");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleRtm handles very long mission (>2KB) without error", async () => {
+	const dir = tempDir();
+	try {
+		const longMission = "M".repeat(2000);
+		setupValidRun(dir, "X", longMission);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleRtm(ctx, pi as never, dir);
+		assert.equal(pi.sent.length, 1);
+		const prompt = pi.sent[0]!.prompt;
+		assert.ok(prompt.includes(longMission), "long mission preserved verbatim in prompt");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleRtm works when framework is undefined (omits Framework line)", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "X",
+				framework: {},
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		createRun("Mission", dir);
+		mkdirSync(join(dir, "Doc"), { recursive: true });
+		writeFileSync(join(dir, "Doc", "PRD_X.md"), "# stub\n", "utf8");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleRtm(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.doesNotMatch(prompt, /Framework:/, "framework line should be omitted when undefined");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleRtm refuses to write outside the run dir when mission has path-traversal characters", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir, "X", "../../../etc/passwd");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleRtm(ctx, pi as never, dir);
+		// Working copy must be inside the run dir under .IDE_Plans/velpari/runs/<id>/rtm/
+		// NOT at /etc/passwd or anywhere else.
+		const state = loadState(dir);
+		const wc = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "rtm", "RTM_X.md");
+		assert.equal(existsSync(wc), false, "working copy should NOT be created at dangerous path");
+		// And no file should be created at /etc/passwd
+		assert.equal(existsSync("/etc/passwd-rt"), false);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleRtm does not crash when the rtm output dir already exists with stale content", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		// Pre-create the rtm output dir with a stale file
+		const state = loadState(dir);
+		const rtmDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "rtm");
+		mkdirSync(rtmDir, { recursive: true });
+		writeFileSync(join(rtmDir, "stale-file.txt"), "stale content", "utf8");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		// Should not throw
+		await handleRtm(ctx, pi as never, dir);
+		assert.equal(pi.sent.length, 1);
+		// Stale file should still be there (handler doesn't delete it)
+		assert.ok(existsSync(join(rtmDir, "stale-file.txt")));
+		// But the new scouts dir should also be created
+		assert.ok(existsSync(join(rtmDir, "scouts")));
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleRtm sets the correct stage field in the prompt (building-rtm)", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleRtm(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.match(prompt, /<pi-velpari stage="building-rtm">/);
+		// Must NOT use discuss or prd stage
+		assert.doesNotMatch(prompt, /stage="discussing"/);
+		assert.doesNotMatch(prompt, /stage="drafting-prd"/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
