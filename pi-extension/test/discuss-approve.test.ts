@@ -23,6 +23,10 @@ function makeUI(notifies: Array<{ msg: string; level: string }>) {
 	};
 }
 
+function makeMockPi() {
+	return { sentUserMessages: [] as string[], sendUserMessage(p: string) { this.sentUserMessages.push(p); } };
+}
+
 test("handleApproveDiscuss publishes working copy to Doc/", async () => {
 	const dir = tempDir();
 	try {
@@ -46,7 +50,7 @@ test("handleApproveDiscuss publishes working copy to Doc/", async () => {
 
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApproveDiscuss(ctx, dir);
+		await handleApproveDiscuss(ctx, makeMockPi() as never, dir);
 
 		// Published copy exists at Doc/discussion-<topic-slug>.md
 		const expectedPath = join(dir, "Doc", "discussion-test-mission.md");
@@ -80,7 +84,7 @@ test("handleApproveDiscuss advances state to discussed", async () => {
 
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApproveDiscuss(ctx, dir);
+		await handleApproveDiscuss(ctx, makeMockPi() as never, dir);
 
 		// After approve-discuss: state should be "discussed".
 		// The chained handlePrd will error out because state is "discussed" not "drafting-prd",
@@ -114,7 +118,7 @@ test("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async ()
 
 		const notifies1: Array<{ msg: string; level: string }> = [];
 		const ctx1 = { ui: makeUI(notifies1) } as never;
-		await handleApproveDiscuss(ctx1, dir);
+		await handleApproveDiscuss(ctx1, makeMockPi() as never, dir);
 
 		// Second run on same topic — handler should detect conflict and append suffix.
 		const state2 = createRun("Same Topic", dir);
@@ -124,7 +128,7 @@ test("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async ()
 
 		const notifies2: Array<{ msg: string; level: string }> = [];
 		const ctx2 = { ui: makeUI(notifies2) } as never;
-		await handleApproveDiscuss(ctx2, dir);
+		await handleApproveDiscuss(ctx2, makeMockPi() as never, dir);
 
 		// Expect at least one of:
 		//   Doc/discussion-same-topic-<timestamp>.md

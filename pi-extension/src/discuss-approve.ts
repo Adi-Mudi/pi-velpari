@@ -11,13 +11,14 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { advanceStage, loadState } from "./state.js";
 import { buildDiscussionPath, buildRunDir, slugify } from "./paths.js";
 import { handlePrd } from "./prd.js";
 
 export async function handleApproveDiscuss(
 	ctx: ExtensionCommandContext,
+	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
 	// 1. Load state
@@ -72,7 +73,7 @@ export async function handleApproveDiscuss(
 
 	// 6. Chain into PRD
 	ctx.ui.notify("Chaining into PRD stage...", "info");
-	await handlePrd(ctx, cwd);
+	await handlePrd(ctx, pi, cwd);
 
 	void next; // state already saved by advanceStage
 }

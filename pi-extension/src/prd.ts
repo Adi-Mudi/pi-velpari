@@ -1,79 +1,73 @@
 /**
- * /velpari-prd handler.
+ * /velpari-prd handler (v2.0 / Phase 2 of all-stages refactor).
  *
- * Flow:
- * 1. Read Doc/discussion-<topic-slug>.md (gate check)
- * 2. Read projectName from .pi/velpari/files.json
- * 3. Compose prompt with stage skill + framework + discussion content
- * 4. Send prompt via ctx; LLM responds with PRD content
- * 5. Write working copy to .IDE_Plans/velpari/runs/<run-id>/prd/PRD_<projectName>.md
- * 6. Render preview + ask user to confirm
+ * Two-phase flow (matches the discuss pattern at commit a25e975):
+ *   1. Handler (this file): gate check + bootstrap agents + build prompt
+ *      + hand off via `pi.sendUserMessage(prompt)`.
+ *   2. Parent LLM (driven by skills/velpari-prd.md): spawn 4 subagents
+ *      (fr-extractor, nfr-checker, helper-detector, consolidator) in
+ *      parallel, read their reports, write the working-copy PRD, show
+ *      preview gate, tell user to run /velpari-approve.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
-import { buildRunDir, buildOutputPath, slugify } from "./paths.js";
-import { loadState } from "./state.js";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { loadFilesConfig } from "../src/config.js";
+import { buildRunDir, buildDiscussionPath, slugify } from "../src/paths.js";
+import { loadState } from "../src/state.js";
+import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
 
-export async function handlePrd(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
-	// 1. Read projectName
-	const config = loadFilesConfig(cwd);
-	if (!validateFilesConfig(config)) {
-		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
-		return;
-	}
-	const projectName = config.projectName;
+const PRD_SCOUTS = [
+	{ name: "fr-extractor" },
+	{ name: "nfr-checker" },
+	{ name: "helper-detector" },
+	{ name: "consolidator" },
+] as const;
 
-	// 2. Gate check: discussion must exist
+export async function handlePrd(
+	ctx: ExtensionCommandContext,
+	pi: ExtensionAPI,
+	cwd: string = process.cwd(),
+): Promise<void> {
+	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
 		return;
 	}
-
-	// Try to find the discussion file (search by topic-slug from mission)
-	const topicSlug = slugify(state.mission);
-	const discussionPath = join(cwd, "Doc", `discussion-${topicSlug}.md`);
-	if (!existsSync(discussionPath)) {
-		ctx.ui.notify(`Discussion not found at ${discussionPath}. Run /velpari-discuss first.`, "error");
+	const config = loadFilesConfig(cwd);
+	if (!config.projectName) {
+		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
 		return;
 	}
+	const projectName = config.projectName;
 
-	// 3. Build working-copy dir
+	// 2. Gate check: published discussion must exist.
+	const topicSlug = slugify(state.mission);
+	const inputArtifactPath = buildDiscussionPath(topicSlug);
+	const fullInputPath = join(cwd, inputArtifactPath);
+
+	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
 	const prdDir = join(runDir, "prd");
-	mkdirSync(prdDir, { recursive: true });
+	const scoutsDir = join(prdDir, "scouts");
+	const workingCopyPath = join(prdDir, `PRD_${projectName}.md`);
 
-	// 4. Compose PRD content (Phase B stub — real LLM call ships in Phase C)
-	const prdContent = renderPrdStub(projectName, state.mission);
+	const stageConfig: StageRunConfig = {
+		stage: "drafting-prd",
+		mission: state.mission,
+		framework: config.framework?.language,
+		runId: state.runId,
+		scouts: PRD_SCOUTS.map((s) => ({
+			name: s.name,
+			reportPath: join(scoutsDir, `${s.name}-report.json`),
+		})),
+		inputArtifactPath: fullInputPath,
+		workingCopyDir: prdDir,
+		workingCopyPath,
+		scoutsDir,
+		cwd,
+	};
 
-	// 5. Write working copy
-	const workingPath = join(prdDir, `PRD_${projectName}.md`);
-	writeFileSync(workingPath, prdContent, "utf8");
-
-	// 6. Preview gate
-	const targetPath = buildOutputPath("PRD", projectName);
-	const confirmed = await ctx.ui.confirm(
-		"Publish PRD?",
-		`Working copy written to ${workingPath}. Publish to ${targetPath}?`,
-	);
-	if (confirmed) {
-		ctx.ui.notify("PRD drafted. Run /velpari-approve to publish.", "info");
-	}
-}
-
-function renderPrdStub(projectName: string, mission: string): string {
-	return [
-		`# Product Requirements Document — ${projectName}`,
-		``,
-		`## 1. Objective`,
-		mission,
-		``,
-		`## 4. Key Features & Requirements`,
-		``,
-		`_Phase B stub. Real FR-Ns derive from discussion notes._`,
-		``,
-	].join("\n");
+	await runStageWithScouts(stageConfig, ctx, pi);
 }
