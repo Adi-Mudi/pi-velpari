@@ -135,6 +135,50 @@ function parseFrontmatter(markdown: string): Record<string, string> {
 const REQUIRED_AGENT_FIELDS = ["name", "description", "tools", "thinking", "session-mode", "auto-exit", "spawning"];
 
 /**
+ * Per-stage scout agent ids (v2.0 — all 8 stages use 4 visible subagents each).
+ * 9 stages total: discuss, prd, rtm, feasibility, design, pseudocode, testplan,
+ * atomic-function (post-pipeline, optional), development-order (post-pipeline, optional).
+ */
+export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
+	discuss: ["extractor", "prd-checker", "rtm-checker", "web-search-agent"],
+	prd: ["fr-extractor", "nfr-checker", "helper-detector", "consolidator"],
+	rtm: ["rtm-requirement-tracer", "rtm-test-case-linker", "rtm-coverage-analyzer", "rtm-consolidator"],
+	feasibility: ["feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk"],
+	design: ["design-module-decomposer", "design-contract-definer", "design-data-flow-mapper", "design-error-definer"],
+	pseudocode: [
+		"pseudo-algorithm-extractor",
+		"pseudo-edge-case-handler",
+		"pseudo-complexity-analyzer",
+		"pseudo-consolidator",
+	],
+	testplan: [
+		"testplan-strategy-designer",
+		"testplan-unit-test-generator",
+		"testplan-integration-test-generator",
+		"testplan-coverage-tracer",
+	],
+	"atomic-function": ["af-source-rtm", "af-source-pseudocode", "af-source-prd", "af-source-testcases"],
+	"development-order": ["do-topology", "do-risk", "do-test", "do-value"],
+};
+
+/**
+ * Stages that produce a stage skill markdown under skills/velpari-<stage>.md.
+ * The 6 core stages (prd..testplan) plus discuss have skill markdowns; atomic-function
+ * and development-order also have skill markdowns (added in Phase 5).
+ */
+const STAGES_WITH_SKILL_MARKDOWN = [
+	"discuss",
+	"prd",
+	"rtm",
+	"feasibility",
+	"design",
+	"pseudocode",
+	"testplan",
+	"atomic-function",
+	"development-order",
+];
+
+/**
  * Run the full audit. Returns the report markdown and writes it to disk.
  */
 export function runDoctor(cwd: string = process.cwd()): string {
@@ -223,42 +267,56 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	}
 	lines.push("");
 
-	// 5. Scout agent files (v2.0)
+	// 5. Scout agent files (v2.0 — covers all 9 stages)
 	lines.push("## Scout agents (.pi/agents/)");
 	const agentsDir = join(cwd, ".pi", "agents");
-	let allAgentsOk = true;
-	for (const id of SCOUT_AGENT_IDS) {
-		const target = join(agentsDir, `${id}.md`);
-		if (!existsSync(target)) {
-			lines.push(`✗ ${id}.md MISSING (will auto-bootstrap on first /velpari-discuss)`);
-			allAgentsOk = false;
-			continue;
+	let totalMissing = 0;
+	let totalBadFrontmatter = 0;
+	for (const stage of Object.keys(ALL_STAGE_SCOUTS)) {
+		const scouts = ALL_STAGE_SCOUTS[stage]!;
+		lines.push(`### /velpari-${stage} (${scouts.length} scouts)`);
+		for (const id of scouts) {
+			const target = join(agentsDir, `${id}.md`);
+			if (!existsSync(target)) {
+				lines.push(`  ✗ ${id}.md MISSING (will auto-bootstrap on first /velpari-${stage === "discuss" ? "discuss" : stage})`);
+				totalMissing++;
+				continue;
+			}
+			const content = readFileSync(target, "utf8");
+			const fm = parseFrontmatter(content);
+			const missing = REQUIRED_AGENT_FIELDS.filter((f) => !fm[f]);
+			if (missing.length > 0) {
+				lines.push(`  ✗ ${id}.md frontmatter missing: ${missing.join(", ")}`);
+				totalBadFrontmatter++;
+			} else {
+				lines.push(`  ✓ ${id}.md (frontmatter OK)`);
+			}
 		}
-		const content = readFileSync(target, "utf8");
-		const fm = parseFrontmatter(content);
-		const missing = REQUIRED_AGENT_FIELDS.filter((f) => !fm[f]);
-		if (missing.length > 0) {
-			lines.push(`✗ ${id}.md frontmatter missing: ${missing.join(", ")}`);
-			allAgentsOk = false;
-		} else {
-			lines.push(`✓ ${id}.md (frontmatter OK)`);
-		}
-	}
-	if (allAgentsOk) {
-		lines.push("All 4 scout agents present with valid frontmatter.");
 	}
 	lines.push("");
+	lines.push(
+		`Summary: ${Object.values(ALL_STAGE_SCOUTS).flat().length} scouts expected across ${Object.keys(ALL_STAGE_SCOUTS).length} stages. ` +
+			`Missing: ${totalMissing}, bad frontmatter: ${totalBadFrontmatter}.`,
+	);
+	lines.push("");
 
-	// 6. Stage skill markdown integrity (v2.0)
+	// 6. Stage skill markdown integrity (v2.0 — covers all 9 stages)
 	lines.push("## Stage skills");
-	const skillPath = join(cwd, "skills", "velpari-discuss.md");
-	if (!existsSync(skillPath)) {
-		lines.push(`✗ skills/velpari-discuss.md MISSING`);
-	} else {
+	let totalSkillIssues = 0;
+	for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
+		const skillPath = join(cwd, "skills", `velpari-${stage}.md`);
+		if (!existsSync(skillPath)) {
+			lines.push(`✗ skills/velpari-${stage}.md MISSING`);
+			totalSkillIssues++;
+			continue;
+		}
 		const content = readFileSync(skillPath, "utf8");
 		const issues: string[] = [];
-		for (const agentName of SCOUT_AGENT_IDS) {
-			if (!content.includes(agentName)) issues.push(`missing mention of agent '${agentName}'`);
+		// Every stage skill should mention all of its scouts.
+		for (const agentName of ALL_STAGE_SCOUTS[stage] ?? []) {
+			if (!content.includes(agentName)) {
+				issues.push(`missing mention of agent '${agentName}'`);
+			}
 		}
 		if (content.includes("max_turns")) {
 			issues.push("contains removed v2.0 hallucination 'max_turns'");
@@ -276,15 +334,17 @@ export function runDoctor(cwd: string = process.cwd()): string {
 			issues.push("missing reference to zellij close-pane workaround (Issue #19)");
 		}
 		if (issues.length === 0) {
-			lines.push("✓ skills/velpari-discuss.md: OK (mentions all 4 agents, no max_turns,");
-			lines.push("  references pi-interactive-subagents + caller_ping + AskUserQuestion + zellij workaround)");
+			lines.push(`✓ skills/velpari-${stage}.md: OK (mentions all ${ALL_STAGE_SCOUTS[stage]?.length ?? 0} agents, no max_turns, references pi-interactive-subagents + caller_ping + AskUserQuestion + zellij workaround)`);
 		} else {
-			lines.push(`✗ skills/velpari-discuss.md: ${issues.length} issue(s)`);
+			lines.push(`✗ skills/velpari-${stage}.md: ${issues.length} issue(s)`);
 			for (const issue of issues) {
 				lines.push(`  - ${issue}`);
 			}
+			totalSkillIssues += issues.length;
 		}
 	}
+	lines.push("");
+	lines.push(`Summary: ${STAGES_WITH_SKILL_MARKDOWN.length} stage skills checked, ${totalSkillIssues} issues.`);
 	lines.push("");
 
 	return lines.join("\n");

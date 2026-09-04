@@ -1,5 +1,7 @@
 # Pi-Velpari Pseudocode
 
+> **v2.0 Update (2026-09-04):** The in-process `spawnScout` + `runScout` pattern described in §13 below (e.g. `runDiscuss` calling `spawnScout("extractor", ...)` from inside the handler) has been **replaced** by the visible-subagent pattern. The handler now calls `runStageWithScouts(config, ctx, pi)` which builds a stage prompt and hands off to the parent LLM via `pi.sendUserMessage(prompt)`. The parent LLM then spawns the 4 subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The pseudocode in §13-§14 still describes the *intent* (4 parallel agents per stage, deterministic merge) but the *mechanism* is now parent-LLM-driven. See `skills/velpari-discuss.md` for the current LLM-orchestrated flow. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) follow this pattern.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source Design:** `Doc/design.md`

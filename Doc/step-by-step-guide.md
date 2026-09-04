@@ -2,6 +2,8 @@
 
 A hands-on walkthrough for running a full Velpari cycle, from `/velpari-discuss` through `/velpari-handoff`. The example uses a fictional mission *"Build a CLI that lists TODOs from a markdown file."* Substitute your own mission.
 
+> **v2.0 Update (2026-09-04):** The step-by-step instructions in this guide still describe the user experience correctly (run a command, answer questions, approve). What changed is the *mechanism*: the handler no longer spawns subagents in-process. Instead, after the interview (discuss) or gate check (prd+), the handler calls `pi.sendUserMessage(prompt)`. The parent LLM then spawns the 4 subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes (zellij, tmux, cmux, or wezTerm). To use Velpari today, start pi **inside one of these multiplexers** so the subagent panes can appear. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) follow this pattern. The interview + approve gate UX is unchanged.
+
 ---
 
 ## 0. Prerequisites

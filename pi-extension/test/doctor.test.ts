@@ -258,3 +258,64 @@ test("runDoctor passes all v2.0 checks on the actual repo (skills/agents in expe
 	// At minimum, the bundled skill markdown should pass the integrity gate.
 	assert.match(report, /skills\/velpari-discuss\.md: OK/);
 });
+
+// ---------------------------------------------------------------------------
+// All-stages Doctor coverage (Phase 6)
+// ---------------------------------------------------------------------------
+
+test("runDoctor enumerates Scout agents for all 9 stages (Phase 6)", () => {
+	const cwd = resolve(__dirname, "..", "..", "..");
+	const report = runDoctor(cwd);
+	// Every stage should have its own subsection in the Scout agents section.
+	for (const stage of [
+		"discuss",
+		"prd",
+		"rtm",
+		"feasibility",
+		"design",
+		"pseudocode",
+		"testplan",
+		"atomic-function",
+		"development-order",
+	]) {
+		assert.match(
+			report,
+			new RegExp(`/velpari-${stage.replace(/[-]/g, "-")} \\(`),
+			`Scout agents section should list /velpari-${stage}`,
+		);
+	}
+});
+
+test("runDoctor checks Stage skills for all 9 stages (Phase 6)", () => {
+	const cwd = resolve(__dirname, "..", "..", "..");
+	const report = runDoctor(cwd);
+	// Every stage's skill markdown should be checked.
+	for (const stage of [
+		"discuss",
+		"prd",
+		"rtm",
+		"feasibility",
+		"design",
+		"pseudocode",
+		"testplan",
+		"atomic-function",
+		"development-order",
+	]) {
+		assert.ok(
+			report.includes(`skills/velpari-${stage}.md`),
+			`Stage skills section should reference skills/velpari-${stage}.md`,
+		);
+	}
+});
+
+test("runDoctor Scout agents summary counts all 36 scouts (9 stages × 4)", () => {
+	const cwd = resolve(__dirname, "..", "..", "..");
+	const report = runDoctor(cwd);
+	assert.match(report, /36 scouts expected across 9 stages/);
+});
+
+test("runDoctor Stage skills summary covers all 9 skills", () => {
+	const cwd = resolve(__dirname, "..", "..", "..");
+	const report = runDoctor(cwd);
+	assert.match(report, /9 stage skills checked/);
+});

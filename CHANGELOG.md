@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (all-stages visible subagents, 2026-09-03 to 2026-09-04)
+
+Extended the v2.0 visible-subagent pattern from `/velpari-discuss` to **all 9 stage commands**. Each stage now spawns 4 real subagents in parallel visible multiplexer panes via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. Total: **36 subagent definitions** across 9 stages.
+
+| Stage | 4 scouts |
+|---|---|
+| discuss | extractor, prd-checker, rtm-checker, web-search-agent |
+| prd | fr-extractor, nfr-checker, helper-detector, consolidator |
+| rtm | rtm-requirement-tracer, rtm-test-case-linker, rtm-coverage-analyzer, rtm-consolidator |
+| feasibility | feasibility-tech, feasibility-schedule, feasibility-cost, feasibility-risk |
+| design | design-module-decomposer, design-contract-definer, design-data-flow-mapper, design-error-definer |
+| pseudocode | pseudo-algorithm-extractor, pseudo-edge-case-handler, pseudo-complexity-analyzer, pseudo-consolidator |
+| testplan | testplan-strategy-designer, testplan-unit-test-generator, testplan-integration-test-generator, testplan-coverage-tracer |
+| atomic-function (optional) | af-source-rtm, af-source-pseudocode, af-source-prd, af-source-testcases |
+| development-order (optional) | do-topology, do-risk, do-test, do-value |
+
+**Phase 1 (commit `4d64b18`) — Scaffolding:**
+- `pi-extension/src/stage-runner.ts` (NEW) — `StageRunConfig` + `runStageWithScouts` generic two-phase flow.
+- `pi-extension/src/prompt.ts` — real `loadStageSkill` + `buildStagePrompt` with scout paths, input artifact, working copy.
+- `pi-extension/src/agents-install.ts` — generic `ensureStageAgents(agentIds, cwd)` helper.
+- 11 tests for stage-runner scaffolding.
+
+**Phase 2 (commit `4f68d05`) — `/velpari-prd`:**
+- 4 prd-scouts created, skill rewritten, handler uses runStageWithScouts, 13 tests.
+- `src/discuss-approve.ts` updated to pass `pi` through for the auto-chain.
+
+**Phase 3 (commits `c1b5ca5` + `adbaad5`) — `/velpari-rtm` + `/velpari-feasibility`:**
+- 8 new agents (4 each), skills rewritten, handlers + tests. 16 + 12 = 28 new tests.
+
+**Phase 4 (commit `9f51538`) — `/velpari-design` + `/velpari-pseudocode` + `/velpari-testplan`:**
+- 12 new agents (4 each), skills rewritten, handlers + tests. 42 new tests.
+- `StageRunConfig` extended with `additionalWorkingCopies` (testplan writes 2 outputs).
+
+**Phase 5 (commit `0289aef`) — `/velpari-atomic-function` + `/velpari-development-order`:**
+- 8 new agents, skills rewritten, NEW handlers + tests. 30 new tests.
+- `BuildStagePromptInput` extended with `inputArtifactContent` (multi-doc stages concatenate 5-7 published artifacts into the prompt).
+- All 23 commands now wired; no more "Phase A stub" handlers.
+
+**Phase 6 (commit `TBD`) — Docs only:**
+- `src/doctor.ts` extended to enumerate all 9 stages' scouts + check all 9 stage skill markdowns.
+- `AGENTS.md` principle #4 updated.
+- Doc sweep for stale scout references in `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md`, `Doc/velpari-sequence.md`, `Doc/step-by-step-guide.md`.
+
+**Cumulative test count:** 343/343 passing (was 169 before any of this work, +174 net).
+
+**New peer dep (added in v2.0):** `@earendil-works/pi-interactive-subagents` (≥3.7.2).
+
+**Cumulative files added:** 36 agent files in `skills/agents/`, 9 skill markdowns, 7 new src files, 5 new test files. Files removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*` (4), `skills/discuss-subagents/*` (4).
+
 ### Changed (v2.0 — visible subagents, 2026-09-03)
 
 The discussion stage now uses **real visible subagents** spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep, ≥3.7.2). This replaces the v1.0 design that mirrored `pi-seani`'s `/senai-discussion` (parent-LLM-only, no subagents).

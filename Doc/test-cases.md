@@ -1,5 +1,7 @@
 # Pi-Velpari Test Cases
 
+> **v2.0 Update (2026-09-04):** Most of the in-process test cases below (TC-163, TC-191, TC-129..TC-137, etc.) describe the v1.x in-process scout pattern. With v2.0, all 9 stages use real visible subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents`. The handler calls `runStageWithScouts` which builds a stage prompt and hands off to the parent LLM via `pi.sendUserMessage(prompt)`; the parent LLM does the actual `subagent()` spawn. The new test files (`test/{prd,rtm,feasibility,design,pseudocode,testplan,atomic-function,development-order}.test.ts`) cover the two-phase flow: handler builds prompt correctly, no working copy is written, no state mutation, etc. See `AGENTS.md` principle #4 and the per-stage skill markdowns for current behavior. The intent (4 parallel agents per stage, merge to working copy) is unchanged; only the *mechanism* moved from in-handler to parent-LLM.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`

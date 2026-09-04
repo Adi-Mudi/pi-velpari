@@ -1,5 +1,7 @@
 # Pi-Velpari Test Plan
 
+> **v2.0 Update (2026-09-04):** The in-process scout pattern described in this document (e.g. `spawnScout` called from inside the handler) has been **replaced** by the visible-subagent pattern. All 9 stages (including `/velpari-testplan`) now spawn 4 real subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The handler calls `runStageWithScouts` which hands off to the parent LLM via `pi.sendUserMessage(prompt)`. The parent LLM does the actual spawning. The test cases below still describe the *intent* (4 parallel agents, 30s timeout, JSON envelope) but the *mechanism* is now parent-LLM-driven, not in-handler. See `skills/velpari-testplan.md` and `AGENTS.md` principle #4 for the current behavior. Test file `test/doctor.test.ts` now verifies all 9 stages' scout files are present and all 9 stage skill markdowns pass the integrity gate.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`

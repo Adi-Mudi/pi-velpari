@@ -2,6 +2,8 @@
 
 A reference for how Pi-Velpari orchestrates the pre-production phase. Parallels `Pi-Orchestra_v4/Doc/senai-sequence.md` so users learn one mental model and apply it across both extensions.
 
+> **v2.0 Update (2026-09-04):** The "4 scout agents + suggestion picker" pattern described below has been **replaced** by the visible-subagent pattern. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) now spawn 4 real subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The handler hands off to the parent LLM via `pi.sendUserMessage(prompt)`; the parent LLM does the spawning. The picker UI described in the original spec is replaced by a preview gate via `AskUserQuestion`. The 12-scout count below is now 36 (9 stages × 4). See `AGENTS.md` principle #4 for the current mental model.
+
 ---
 
 ## 1. The 9-stage pipeline (with 2 optional post-pipeline stages)
