@@ -6,16 +6,22 @@
   "main": "./dist/pi-extension/src/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/pi-extension/test/**/*.test.js",
+    "test": "npm run build && node --test dist/pi-extension/test/*.test.js",
+    "test:e2e": "node --test dist/pi-extension/test/e2e/*.test.js",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-interactive-subagents": ">=3.7.2"
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-interactive-subagents": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@types/node": "^20.0.0",
+    "pi-coding-agent-test": "^0.1.1",
     "typescript": "^5.4.0"
   },
   "keywords": [
