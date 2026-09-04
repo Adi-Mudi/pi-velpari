@@ -142,6 +142,7 @@ export async function runStageWithScouts(
 			paths: {
 				scouts: [...config.scouts],
 				inputArtifact: config.inputArtifactPath,
+				inputArtifactContent: config.inputArtifactContent,
 				workingCopy: workingCopyField,
 				scoutsDir: config.scoutsDir,
 			},

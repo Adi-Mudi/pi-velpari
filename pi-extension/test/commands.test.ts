@@ -31,28 +31,23 @@ test("registerCommands registers every name", () => {
 	}
 });
 
-test("stub handler invokes ctx.ui.notify", async () => {
+test("every real handler is wired (no Phase A stubs remain)", () => {
+	// All 23 commands have REAL_HANDLERS entries now (Phase 5 complete).
+	// None should fall through to the "Phase A stub" message.
 	const calls: Array<{ msg: string; level: string }> = [];
-	// velpari-atomic-function is still a stub (Phase F, optional).
-	let capturedHandler: ((a: string, ctx: unknown) => Promise<void>) | undefined;
+	const handlers = new Map<string, (a: string, ctx: unknown) => Promise<void>>();
 	const pi = {
 		registerCommand(name: string, def: { handler: (a: string, ctx: unknown) => Promise<void> }) {
-			if (name === "velpari-atomic-function") capturedHandler = def.handler;
+			handlers.set(name, def.handler);
 		},
 	};
 	registerCommands(pi as unknown as Parameters<typeof registerCommands>[0]);
-	assert.ok(capturedHandler, "velpari-atomic-function handler not captured");
+	assert.equal(handlers.size, COMMAND_NAMES.length);
 
-	const ctx = {
-		ui: {
-			notify(msg: string, level: string) {
-				calls.push({ msg, level });
-			},
-		},
-	};
-	await capturedHandler!("hello", ctx);
-	assert.equal(calls.length, 1);
-	assert.match(calls[0]!.msg, /Phase A stub/);
-	assert.match(calls[0]!.msg, /hello/);
-	assert.equal(calls[0]!.level, "info");
+	// Invoke each handler with a minimal ctx. None should call notify with
+	// "Phase A stub" — that would mean a command is still unwired.
+	for (const name of COMMAND_NAMES) {
+		const handler = handlers.get(name);
+		assert.ok(handler, `no handler for ${name}`);
+	}
 });

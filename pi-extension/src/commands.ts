@@ -7,6 +7,8 @@ import { handleFeasibility } from "./feasibility.js";
 import { handleDesign } from "./design.js";
 import { handlePseudocode } from "./pseudocode.js";
 import { handleTestplan } from "./testplan.js";
+import { handleAtomicFunction } from "./atomic-function.js";
+import { handleDevelopmentOrder } from "./development-order.js";
 import { handleApprove } from "./approve.js";
 import { runHandoff } from "./handoff.js";
 import {
@@ -95,6 +97,12 @@ const REAL_HANDLERS: Record<string, RealHandler> = {
 	},
 	"velpari-testplan": async (_args, ctx, pi) => {
 		await handleTestplan(ctx as never, pi as never);
+	},
+	"velpari-atomic-function": async (_args, ctx, pi) => {
+		await handleAtomicFunction(ctx as never, pi as never);
+	},
+	"velpari-development-order": async (_args, ctx, pi) => {
+		await handleDevelopmentOrder(ctx as never, pi as never);
 	},
 	"velpari-approve": async (_args, ctx) => {
 		await handleApprove(ctx as never);

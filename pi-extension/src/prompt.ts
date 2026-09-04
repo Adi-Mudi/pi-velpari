@@ -115,6 +115,13 @@ export interface BuildStagePromptInput {
 		scouts?: ScoutSlot[];
 		/** Path to the input artifact (e.g. discussion-{slug}.md, PRD_<project>.md). */
 		inputArtifact?: string;
+		/**
+		 * NEW (Phase 5): full text of the input artifact(s) to embed in the prompt.
+		 * Used by stages that read multiple published docs (atomic-function,
+		 * development-order) and concatenate them into a single content blob.
+		 * When provided, this is rendered as a fenced markdown section in the prompt.
+		 */
+		inputArtifactContent?: string;
 		/** Path where the LLM should write the working-copy artifact. */
 		workingCopy?: string;
 		/** Directory under run/ where the scouts write their reports. */
@@ -220,5 +227,20 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 		``,
 	].join("\n");
 
-	return [metadata, answersSection, flagsSection, skill].join("\n");
+	// Optional: pre-provided input artifact content (concatenated published docs).
+	// Rendered as a fenced markdown block in its own section so the LLM can read it.
+	const inputContentSection = input.paths.inputArtifactContent
+		? [
+				`## Input Artifact Content (pre-loaded by handler)`,
+				``,
+				"```",
+				input.paths.inputArtifactContent,
+				"```",
+				``,
+			].join("\n")
+		: "";
+
+	return [metadata, answersSection, flagsSection, inputContentSection, skill]
+		.filter((s) => s.length > 0)
+		.join("\n");
 }
