@@ -15,7 +15,7 @@
 
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -39,6 +39,7 @@ t("Velpari extension loads into a real Pi session and /velpari-doctor runs", asy
 		// the notification from outside Pi, but we CAN verify:
 		//  (a) the test produced a result (no exception thrown)
 		//  (b) the doctor-report.md was written to the workspace
+		//  (c) the report contains the expected sections
 		const result = await new PiIntegrationTest({
 			testName: "velpari-doctor-smoke",
 			artifactsDir: testArtifactsDir(import.meta.filename),
@@ -50,6 +51,13 @@ t("Velpari extension loads into a real Pi session and /velpari-doctor runs", asy
 		}).run("/velpari-doctor");
 
 		assert.ok(result, "PiIntegrationTest should produce a result");
+
+		// Assert the doctor wrote its report to the isolated workspace.
+		const reportPath = path.join(workspace, ".IDE_Plans", "velpari", "doctor-report.md");
+		const report = await readFile(reportPath, "utf8");
+		assert.ok(report.includes("## Multiplexer"), "doctor-report.md should have Multiplexer section");
+		assert.ok(report.includes("## Scout agents"), "doctor-report.md should have Scout agents section");
+		assert.ok(report.includes("## Stage skills"), "doctor-report.md should have Stage skills section");
 	} finally {
 		await rm(workspace, { recursive: true, force: true });
 	}
