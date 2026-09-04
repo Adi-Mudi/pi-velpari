@@ -1,83 +1,70 @@
 /**
- * /velpari-pseudocode handler.
+ * /velpari-pseudocode handler (v2.0 / Phase 4 of all-stages refactor).
  *
- * Flow:
- * 1. Read Doc/design_<projectName>.md (gate check)
- * 2. Read projectName
- * 3. Compose prompt with loadStageSkill("writing-pseudocode")
- * 4. Write working copy at .IDE_Plans/velpari/runs/<run-id>/pseudocode/pseudocode_<projectName>.md
- * 5. Preview gate
- *
- * Phase C: stub content. Real LLM call deferred.
+ * Two-phase flow:
+ *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
+ *   2. Parent LLM (driven by skills/velpari-pseudocode.md): spawn 4 subagents
+ *      (pseudo-algorithm-extractor, pseudo-edge-case-handler,
+ *      pseudo-complexity-analyzer, pseudo-consolidator) in parallel, write
+ *      pseudocode_<project>.md, show preview gate.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
-import { buildRunDir, buildOutputPath } from "./paths.js";
-import { loadState } from "./state.js";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { loadFilesConfig } from "../src/config.js";
+import { buildOutputPath, buildRunDir } from "../src/paths.js";
+import { loadState } from "../src/state.js";
+import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+
+const PSEUDO_SCOUTS = [
+	{ name: "pseudo-algorithm-extractor" },
+	{ name: "pseudo-edge-case-handler" },
+	{ name: "pseudo-complexity-analyzer" },
+	{ name: "pseudo-consolidator" },
+] as const;
 
 export async function handlePseudocode(
 	ctx: ExtensionCommandContext,
+	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	const config = loadFilesConfig(cwd);
-	if (!validateFilesConfig(config)) {
-		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
-		return;
-	}
-	const projectName = config.projectName;
-
+	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
 		return;
 	}
-
-	const designPath = join(cwd, buildOutputPath("design", projectName));
-	if (!existsSync(designPath)) {
-		ctx.ui.notify(`Design not found at ${designPath}. Run /velpari-design first.`, "error");
+	const config = loadFilesConfig(cwd);
+	if (!config.projectName) {
+		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
 		return;
 	}
+	const projectName = config.projectName;
 
+	// 2. Gate check: published design must exist.
+	const inputArtifactPath = join(cwd, buildOutputPath("design", projectName));
+
+	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
 	const pseudoDir = join(runDir, "pseudocode");
-	mkdirSync(pseudoDir, { recursive: true });
+	const scoutsDir = join(pseudoDir, "scouts");
+	const workingCopyPath = join(pseudoDir, `pseudocode_${projectName}.md`);
 
-	const content = renderPseudocodeStub(projectName);
-	const workingPath = join(pseudoDir, `pseudocode_${projectName}.md`);
-	writeFileSync(workingPath, content, "utf8");
+	const stageConfig: StageRunConfig = {
+		stage: "writing-pseudocode",
+		mission: state.mission,
+		framework: config.framework?.language,
+		runId: state.runId,
+		scouts: PSEUDO_SCOUTS.map((s) => ({
+			name: s.name,
+			reportPath: join(scoutsDir, `${s.name}-report.json`),
+		})),
+		inputArtifactPath,
+		workingCopyDir: pseudoDir,
+		workingCopyPath,
+		scoutsDir,
+		cwd,
+	};
 
-	const targetPath = buildOutputPath("pseudocode", projectName);
-	const confirmed = await ctx.ui.confirm(
-		"Publish pseudocode?",
-		`Working copy written to ${workingPath}. Publish to ${targetPath}?`,
-	);
-	if (confirmed) {
-		ctx.ui.notify("Pseudocode drafted. Run /velpari-approve to publish.", "info");
-	}
-}
-
-function renderPseudocodeStub(projectName: string): string {
-	return [
-		`# Pseudocode — ${projectName}`,
-		``,
-		`## Module: <name>`,
-		``,
-		`### Function: <function-name>`,
-		``,
-		"```pseudo",
-		`FUNCTION <name>(inputs):`,
-		`  preconditions: <list>`,
-		`  postconditions: <list>`,
-		``,
-		`  step 1`,
-		`  step 2`,
-		`  RETURN <output>`,
-		"```",
-		``,
-		`_Phase C stub. Real function blocks derive from design._`,
-		``,
-	].join("\n");
+	await runStageWithScouts(stageConfig, ctx, pi);
 }

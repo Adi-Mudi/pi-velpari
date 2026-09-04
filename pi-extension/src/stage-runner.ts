@@ -49,6 +49,12 @@ export interface StageRunConfig {
 	workingCopyPath: string;
 	/** Subdirectory for scout reports (e.g. `<runDir>/prd/scouts`). */
 	scoutsDir: string;
+	/**
+	 * Optional: additional working-copy paths for stages that produce multiple
+	 * outputs (e.g. testplan writes test-plan_<project>.md AND test-cases_<project>.md).
+	 * The LLM is told to write the primary `workingCopyPath` plus each of these.
+	 */
+	additionalWorkingCopies?: readonly string[];
 	/** Working directory (defaults to process.cwd()). */
 	cwd?: string;
 	/**
@@ -122,6 +128,10 @@ export async function runStageWithScouts(
 	// 4. Build the prompt.
 	let prompt: string;
 	try {
+		const additionalLines = (config.additionalWorkingCopies ?? []).map((p) => `    additional: ${p}`).join("\n");
+		const workingCopyField = additionalLines
+			? `${config.workingCopyPath}\n${additionalLines}`
+			: config.workingCopyPath;
 		prompt = buildStagePrompt({
 			stage: config.stage,
 			mission: config.mission,
@@ -132,7 +142,7 @@ export async function runStageWithScouts(
 			paths: {
 				scouts: [...config.scouts],
 				inputArtifact: config.inputArtifactPath,
-				workingCopy: config.workingCopyPath,
+				workingCopy: workingCopyField,
 				scoutsDir: config.scoutsDir,
 			},
 		});

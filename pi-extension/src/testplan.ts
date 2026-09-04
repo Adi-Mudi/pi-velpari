@@ -1,102 +1,77 @@
 /**
- * /velpari-testplan handler.
+ * /velpari-testplan handler (v2.0 / Phase 4 of all-stages refactor).
  *
- * Flow:
- * 1. Read Doc/pseudocode_<projectName>.md (gate check)
- * 2. Read projectName
- * 3. Compose prompt with loadStageSkill("planning-tests")
- * 4. Write TWO working copies:
- *    - test-plan_<projectName>.md
- *    - test-cases_<projectName>.md
- * 5. Preview gate
+ * Two-phase flow:
+ *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
+ *   2. Parent LLM (driven by skills/velpari-testplan.md): spawn 4 subagents
+ *      (testplan-strategy-designer, testplan-unit-test-generator,
+ *      testplan-integration-test-generator, testplan-coverage-tracer) in
+ *      parallel, write BOTH test-plan_<project>.md and test-cases_<project>.md,
+ *      show preview gate.
  *
- * Phase C: stub content for both.
+ * Note: This stage produces TWO working copies (test-plan + test-cases).
+ * The handler passes both paths to stage-runner via `additionalWorkingCopies`.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
-import { buildRunDir, buildOutputPath } from "./paths.js";
-import { loadState } from "./state.js";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { loadFilesConfig } from "../src/config.js";
+import { buildOutputPath, buildRunDir } from "../src/paths.js";
+import { loadState } from "../src/state.js";
+import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+
+const TESTPLAN_SCOUTS = [
+	{ name: "testplan-strategy-designer" },
+	{ name: "testplan-unit-test-generator" },
+	{ name: "testplan-integration-test-generator" },
+	{ name: "testplan-coverage-tracer" },
+] as const;
 
 export async function handleTestplan(
 	ctx: ExtensionCommandContext,
+	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	const config = loadFilesConfig(cwd);
-	if (!validateFilesConfig(config)) {
-		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
-		return;
-	}
-	const projectName = config.projectName;
-
+	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
 		return;
 	}
-
-	const pseudoPath = join(cwd, buildOutputPath("pseudocode", projectName));
-	if (!existsSync(pseudoPath)) {
-		ctx.ui.notify(
-			`Pseudocode not found at ${pseudoPath}. Run /velpari-pseudocode first.`,
-			"error",
-		);
+	const config = loadFilesConfig(cwd);
+	if (!config.projectName) {
+		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
 		return;
 	}
+	const projectName = config.projectName;
 
+	// 2. Gate check: published pseudocode must exist.
+	const inputArtifactPath = join(cwd, buildOutputPath("pseudocode", projectName));
+
+	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
 	const testplanDir = join(runDir, "testplan");
-	mkdirSync(testplanDir, { recursive: true });
+	const scoutsDir = join(testplanDir, "scouts");
+	// Two working copies for this stage.
+	const workingCopyPath = join(testplanDir, `test-plan_${projectName}.md`);
+	const additionalWorkingCopies = [join(testplanDir, `test-cases_${projectName}.md`)];
 
-	// Write two working copies
-	const planContent = renderTestPlanStub(projectName);
-	const casesContent = renderTestCasesStub(projectName);
+	const stageConfig: StageRunConfig = {
+		stage: "planning-tests",
+		mission: state.mission,
+		framework: config.framework?.language,
+		runId: state.runId,
+		scouts: TESTPLAN_SCOUTS.map((s) => ({
+			name: s.name,
+			reportPath: join(scoutsDir, `${s.name}-report.json`),
+		})),
+		inputArtifactPath,
+		workingCopyDir: testplanDir,
+		workingCopyPath,
+		scoutsDir,
+		additionalWorkingCopies,
+		cwd,
+	};
 
-	const planWorkingPath = join(testplanDir, `test-plan_${projectName}.md`);
-	const casesWorkingPath = join(testplanDir, `test-cases_${projectName}.md`);
-	writeFileSync(planWorkingPath, planContent, "utf8");
-	writeFileSync(casesWorkingPath, casesContent, "utf8");
-
-	const planTarget = buildOutputPath("test-plan", projectName);
-	const casesTarget = buildOutputPath("test-cases", projectName);
-	const confirmed = await ctx.ui.confirm(
-		"Publish test plan + cases?",
-		`Working copies written to ${planWorkingPath} and ${casesWorkingPath}. Publish to ${planTarget} and ${casesTarget}?`,
-	);
-	if (confirmed) {
-		ctx.ui.notify("Test plan drafted. Run /velpari-approve to publish.", "info");
-	}
-}
-
-function renderTestPlanStub(projectName: string): string {
-	return [
-		`# Test Plan — ${projectName}`,
-		``,
-		`## 1. Test Strategy`,
-		`_Phase C stub._`,
-		``,
-		`## 2. Test Types`,
-		`| Type | Scope | Tools | Owner |`,
-		`| --- | --- | --- | --- |`,
-		`| Unit | _stub_ | _stub_ | _stub_ |`,
-		``,
-		`## 3. Coverage Targets`,
-		`_Phase C stub._`,
-		``,
-	].join("\n");
-}
-
-function renderTestCasesStub(projectName: string): string {
-	return [
-		`# Test Cases — ${projectName}`,
-		``,
-		`| TC ID | Name | FR Ref | Steps | Expected |`,
-		`| --- | --- | --- | --- | --- |`,
-		`| TC-001 | _stub_ | FR-NN | _stub_ | _stub_ |`,
-		``,
-		`_Phase C stub. Real test cases derive from pseudocode._`,
-		``,
-	].join("\n");
+	await runStageWithScouts(stageConfig, ctx, pi);
 }
