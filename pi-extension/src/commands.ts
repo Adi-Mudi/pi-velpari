@@ -78,14 +78,14 @@ const REAL_HANDLERS: Record<string, RealHandler> = {
 	"velpari-prd": async (_args, ctx, pi) => {
 		await handlePrd(ctx as never, pi as never);
 	},
-	"velpari-rtm": async (_args, ctx) => {
-		await handleRtm(ctx as never);
+	"velpari-rtm": async (_args, ctx, pi) => {
+		await handleRtm(ctx as never, pi as never);
 	},
 	"velpari-approve-discuss": async (_args, ctx, pi) => {
 		await handleApproveDiscuss(ctx as never, pi as never);
 	},
-	"velpari-feasibility": async (_args, ctx) => {
-		await handleFeasibility(ctx as never);
+	"velpari-feasibility": async (_args, ctx, pi) => {
+		await handleFeasibility(ctx as never, pi as never);
 	},
 	"velpari-design": async (_args, ctx) => {
 		await handleDesign(ctx as never);

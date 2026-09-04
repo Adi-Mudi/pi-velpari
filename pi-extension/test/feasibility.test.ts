@@ -1,43 +1,66 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleFeasibility } from "../src/feasibility.js";
 import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun } from "../src/state.js";
+import { createRun, clearRun, loadState } from "../src/state.js";
+
+interface MockUI {
+	notifies: Array<{ msg: string; level: string }>;
+	notify: (msg: string, level: string) => void;
+}
+interface MockPi {
+	sent: Array<{ prompt: string }>;
+	sendUserMessage: (p: string) => void;
+}
 
 function tempDir(): string {
-	return mkdtempSync(join(tmpdir(), "velpari-feasibility-"));
+	return mkdtempSync(join(tmpdir(), "velpari-feas-"));
+}
+function makeMockUI(): MockUI {
+	const notifies: Array<{ msg: string; level: string }> = [];
+	return { notifies, notify(msg, level) { notifies.push({ msg, level }); } };
+}
+function makeMockPi(): MockPi {
+	const sent: Array<{ prompt: string }> = [];
+	return { sent, sendUserMessage(p) { sent.push({ prompt: p }); } };
 }
 
-function makeUI(notifies: Array<{ msg: string; level: string }>) {
-	return {
-		notifies,
-		async confirm(_t: string, _m: string) {
-			return true;
+function setupValidRun(dir: string, projectName = "TestApp", mission = "Mission"): void {
+	saveFilesConfig(
+		{
+			version: 3,
+			projectName,
+			framework: { language: "TypeScript" },
+			inputDocuments: [],
+			outputPaths: {},
+			excludedPaths: [],
 		},
-		notify(msg: string, level: string) {
-			notifies.push({ msg, level });
-		},
-	};
+		dir,
+	);
+	createRun(mission, dir);
+	mkdirSync(join(dir, "Doc"), { recursive: true });
+	writeFileSync(join(dir, "Doc", `RTM_${projectName}.md`), "# stub RTM\n", "utf8");
 }
 
-test("handleFeasibility refuses when RTM is missing", async () => {
+// Gate checks
+
+test("handleFeasibility refuses when no active run exists", async () => {
 	const dir = tempDir();
 	try {
 		saveFilesConfig(
-			{ version: 3, projectName: "TestApp", inputDocuments: [], outputPaths: {}, excludedPaths: [] },
+			{ version: 3, projectName: "X", framework: { language: "TypeScript" }, inputDocuments: [], outputPaths: {}, excludedPaths: [] },
 			dir,
 		);
-		createRun("Mission", dir);
-		const notifies: Array<{ msg: string; level: string }> = [];
-		const ctx = { ui: makeUI(notifies) } as never;
-		await handleFeasibility(ctx, dir);
-		const errored = notifies.some((n) => n.level === "error" && /RTM/i.test(n.msg));
-		assert.ok(errored, "expected an error about missing RTM");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /no active run/i.test(n.msg)));
+		assert.equal(pi.sent.length, 0);
 	} finally {
-		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -45,51 +68,137 @@ test("handleFeasibility refuses when RTM is missing", async () => {
 test("handleFeasibility refuses when projectName is missing", async () => {
 	const dir = tempDir();
 	try {
-		// No saveFilesConfig — projectName is empty default
 		createRun("Mission", dir);
-		const notifies: Array<{ msg: string; level: string }> = [];
-		const ctx = { ui: makeUI(notifies) } as never;
-		await handleFeasibility(ctx, dir);
-		const errored = notifies.some((n) => n.level === "error");
-		assert.ok(errored, "expected an error notification when projectName is missing");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /project name/i.test(n.msg)));
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
 
-test("handleFeasibility writes a working copy at the project-derived path", async () => {
+test("handleFeasibility refuses when no RTM exists", async () => {
 	const dir = tempDir();
 	try {
 		saveFilesConfig(
-			{ version: 3, projectName: "TestApp", inputDocuments: [], outputPaths: {}, excludedPaths: [] },
+			{ version: 3, projectName: "TestApp", framework: { language: "TypeScript" }, inputDocuments: [], outputPaths: {}, excludedPaths: [] },
 			dir,
 		);
 		createRun("Mission", dir);
-		const { writeFileSync, mkdirSync, readdirSync } = await import("node:fs");
-		mkdirSync(join(dir, "Doc"), { recursive: true });
-		writeFileSync(join(dir, "Doc", "RTM_TestApp.md"), "# RTM\n", "utf8");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /cannot read input artifact/i.test(n.msg)));
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
 
-		const notifies: Array<{ msg: string; level: string }> = [];
-		const ctx = { ui: makeUI(notifies) } as never;
-		await handleFeasibility(ctx, dir);
+// Two-phase flow
 
-		const feasDir = join(dir, ".IDE_Plans", "velpari", "runs");
-		const find = (d: string): string | null => {
-			for (const e of readdirSync(d, { withFileTypes: true })) {
-				const full = join(d, e.name);
-				if (e.isDirectory()) {
-					const r = find(full);
-					if (r) return r;
-				} else if (e.name.startsWith("feasibility-study_") && e.name.endsWith(".md")) {
-					return full;
-				}
-			}
-			return null;
-		};
-		const workingPath = find(feasDir);
-		assert.ok(workingPath, "feasibility working copy not created");
-		assert.match(workingPath, /feasibility-study_TestApp\.md$/);
+test("handleFeasibility calls pi.sendUserMessage with the assembled prompt", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		assert.equal(pi.sent.length, 1);
+		const prompt = pi.sent[0]!.prompt;
+		assert.match(prompt, /<pi-velpari stage="analyzing-feasibility">/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility embeds all 4 feasibility scout paths", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		for (const s of ["feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk"]) {
+			assert.match(prompt, new RegExp(`${s}-report\\.json`));
+		}
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility embeds input (RTM_<project>.md) + output (feasibility-study_<project>.md)", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir, "TestApp");
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const prompt = pi.sent[0]!.prompt;
+		assert.match(prompt, /RTM_TestApp\.md/);
+		assert.match(prompt, /feasibility-study_TestApp\.md/);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility does NOT write the working copy (LLM's job)", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const state = loadState(dir);
+		const wc = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "feasibility", "feasibility-study_TestApp.md");
+		assert.equal(existsSync(wc), false);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility does NOT mutate state.stage", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		const before = loadState(dir);
+		await handleFeasibility(ctx, pi as never, dir);
+		const after = loadState(dir);
+		assert.equal(after.currentStage, before.currentStage);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("handleFeasibility bootstraps feasibility agent files on first use", async () => {
+	const dir = tempDir();
+	try {
+		setupValidRun(dir);
+		const ui = makeMockUI();
+		const pi = makeMockPi();
+		const ctx = { ui, cwd: dir } as never;
+		await handleFeasibility(ctx, pi as never, dir);
+		const agentsDir = join(dir, ".pi", "agents");
+		for (const id of ["feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk"]) {
+			assert.ok(existsSync(join(agentsDir, `${id}.md`)), `${id}.md should be bootstrapped`);
+		}
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });
