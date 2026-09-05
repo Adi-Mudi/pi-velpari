@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
 	detectInteractiveSubagentsVersion,
 	detectMultiplexer,
+	handleDoctor,
 	runDoctor,
 } from "../src/discipline/doctor/index.js";
 
@@ -447,6 +448,100 @@ test("runDoctor still shows MISSING when profile JSON is malformed", () => {
 		writeFileSync(join(cfgDir, "requirements-profile.json"), "{bad json", "utf8");
 		const report = runDoctor(dir);
 		assert.match(report, /Profile: MISSING/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// ---------------------------------------------------------------------------
+// handleDoctor — Phase D follow-up. Previously no test covered the handler
+// that wraps runDoctor + writeDoctorReport + ctx.ui.notify. This test pins
+// the truncation path: a synthetic oversized report must end with the
+// "\n... [truncated]" marker when MAX_NOTIFY_LENGTH (8000) is exceeded.
+// ---------------------------------------------------------------------------
+
+test("handleDoctor truncates the TUI notify when the report exceeds MAX_NOTIFY_LENGTH", async () => {
+	const dir = tempDir();
+	try {
+		// Stage a stub `files.json` and a `state.json` so runDoctor doesn't
+		// fall through the "no state" branch (smaller output).
+		const cfgDir = join(dir, ".pi", "velpari");
+		mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "files.json"), JSON.stringify({
+			version: 3, projectName: "T", framework: {}, inputDocuments: [], outputPaths: {}, excludedPaths: [],
+		}));
+		// Write a minimal run state so runDoctor enters the "state present"
+		// branch. Avoids the import-of-createRun dependency.
+		mkdirSync(join(dir, ".IDE_Plans", "velpari"), { recursive: true });
+		writeFileSync(
+			join(dir, ".IDE_Plans", "velpari", "state.json"),
+			JSON.stringify({
+				version: 1,
+				runId: "test-run",
+				mission: "mission",
+				currentStage: "discussed",
+				history: [],
+				updatedAt: new Date().toISOString(),
+			}),
+			"utf8",
+		);
+
+		// Build a ctx that records notify calls. We then synthesize a large
+		// report by writing many artifacts, growing runDoctor's output well
+		// past MAX_NOTIFY_LENGTH (8000 chars). The notify that exceeds 8000
+		// must end with "\n... [truncated]".
+		const notifyCalls: Array<{ msg: string; level: string }> = [];
+		const ctx = {
+			ui: {
+				notify: (msg: string, level: string) => { notifyCalls.push({ msg, level }); },
+				input: async () => undefined,
+				confirm: async () => true,
+				select: async () => undefined,
+			},
+			cwd: dir,
+		} as never;
+
+		// Force the report past 8000 chars by writing many doc artifacts plus
+		// all 36 scout agent files with bad frontmatter. The MISSING/error
+		// lines for the scout files are the longest printed section;
+		// combined with 100 doc artifacts the report reliably exceeds
+		// MAX_NOTIFY_LENGTH.
+		mkdirSync(join(dir, "Doc"), { recursive: true });
+		const fill = "x".repeat(300);
+		for (let i = 0; i < 100; i++) {
+			writeFileSync(join(dir, "Doc", `artifact_${i}.md`), `# ${fill}\n\n${fill.repeat(20)}\n`, "utf8");
+		}
+		// Write every scout agent file with deliberately-bad frontmatter
+		// so the doctor prints the long "missing required fields" line.
+		const agentsDir = join(dir, ".pi", "agents");
+		mkdirSync(agentsDir, { recursive: true });
+		const allScouts: ReadonlyArray<string> = [
+			"extractor", "prd-checker", "rtm-checker", "web-search-agent",
+			"fr-extractor", "nfr-checker", "helper-detector", "consolidator",
+			"rtm-requirement-tracer", "rtm-test-case-linker", "rtm-coverage-analyzer", "rtm-consolidator",
+			"feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk",
+			"design-module-decomposer", "design-contract-definer", "design-data-flow-mapper", "design-error-definer",
+			"pseudo-algorithm-extractor", "pseudo-edge-case-handler", "pseudo-complexity-analyzer", "pseudo-consolidator",
+			"testplan-strategy-designer", "testplan-unit-test-generator", "testplan-integration-test-generator", "testplan-coverage-tracer",
+			"af-source-rtm", "af-source-pseudocode", "af-source-prd", "af-source-testcases",
+			"do-topology", "do-risk", "do-test", "do-value",
+		];
+		for (const id of allScouts) {
+			// Empty frontmatter-only stub; doctor will report all required fields as missing.
+			writeFileSync(join(agentsDir, `${id}.md`), "---\n---\n", "utf8");
+		}
+
+		await handleDoctor(ctx, dir);
+
+		assert.ok(notifyCalls.length >= 1, "handleDoctor must call notify at least once");
+		// First notify is the report; second is the "report written" line.
+		const reportNotify = notifyCalls[0]!;
+		assert.ok(reportNotify.msg.length > 8000, "test setup must produce a report > MAX_NOTIFY_LENGTH");
+		assert.match(
+			reportNotify.msg,
+			/\n\.\.\. \[truncated\]$/,
+			"oversized report must end with the truncation marker",
+		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
