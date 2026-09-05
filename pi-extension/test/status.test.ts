@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleStatus } from "../src/discipline/status.js";
 import { createRun, clearRun } from "../src/core/state.js";
+import { saveFilesConfig } from "../src/core/config.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-status-"));
@@ -96,6 +97,62 @@ test("handleStatus truncates long history (MAX_NOTIFY_LENGTH = 8000)", async () 
 			`truncated notification must be <= 8000 chars, got ${info.msg.length}`,
 		);
 		assert.match(info.msg, /\.\.\. \[truncated\]/, "must include truncation marker");
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Phase E followup — status.ts pi.appendEntry path.
+//
+// When `pi` is supplied, handleStatus writes the status to the session as
+// a `velpari-status` entry instead of a notify blob. This test pins:
+//   - the customType string ("velpari-status")
+//   - the payload schema (runId, mission, stage, profileId, body, ...)
+//   - that the legacy MAX_NOTIFY_LENGTH path is bypassed
+// ---------------------------------------------------------------------------
+
+test("handleStatus appends a velpari-status entry when pi is provided", async () => {
+	const dir = tempDir();
+	try {
+		// Stage a run + projectName so the helper has data to summarize.
+		createRun("mission-X", dir);
+		saveFilesConfig(
+			{
+				version: 3,
+				projectName: "TestApp",
+				framework: {},
+				inputDocuments: [],
+				outputPaths: {},
+				excludedPaths: [],
+			},
+			dir,
+		);
+		const captured: Array<{ customType: string; data: unknown }> = [];
+		const pi = {
+			appendEntry(customType: string, data: unknown) {
+				captured.push({ customType, data });
+			},
+		};
+		const ui = makeUI([] as never);
+		const ctx = { ui } as never;
+		await handleStatus(ctx, pi as never, dir);
+
+		assert.ok(captured.length === 1, "appendEntry must be called exactly once");
+		const entry = captured[0]!;
+		assert.equal(entry.customType, "velpari-status");
+		const data = entry.data as Record<string, unknown>;
+		// createRun sets a non-empty runId derived from mission+stamp; assert
+		// it's non-empty and matches the mission-derived slug.
+		assert.equal(typeof data.runId, "string");
+		assert.match(data.runId as string, /mission-x/);
+		assert.equal(data.mission, "mission-X");
+		assert.equal(typeof data.stage, "string");
+		assert.equal(data.profileId, "(none)", "no profile saved → (none)");
+		// Body must contain the markdown summary, not the entry envelope.
+		assert.ok(typeof data.body === "string", "body must be a string");
+		assert.match(data.body as string, /Mission: mission-X/);
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });

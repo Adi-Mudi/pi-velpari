@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadState, saveState, createRun, clearRun, type RunState } from "../src/core/state.js";
+import {
+	appendStageEntry,
+	clearRun,
+	createRun,
+	loadState,
+	saveState,
+	type RunState,
+} from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-state-"));
@@ -64,4 +71,43 @@ test("clearRun removes state file", () => {
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+});
+
+// ---------------------------------------------------------------------------
+// appendStageEntry — Phase E followup
+//
+// The customType "velpari-state" and the field set (runId, mission, stage,
+// updatedAt, history) are part of the contract other extensions / session
+// forks rely on. Pin the shape directly.
+// ---------------------------------------------------------------------------
+
+test("appendStageEntry uses customType 'velpari-state' with the documented field set", () => {
+	const captured: Array<{ customType: string; data: unknown }> = [];
+	const pi = {
+		appendEntry(customType: string, data: unknown) {
+			captured.push({ customType, data });
+		},
+	};
+	const state: RunState = {
+		version: 1,
+		runId: "2026-09-05-test-run",
+		mission: "test mission",
+		currentStage: "planning-tests",
+		history: [{ stage: "planning-tests", command: "/velpari-approve", timestamp: "2026-09-05T10:00:00Z" }],
+		updatedAt: "2026-09-05T10:00:00Z",
+	};
+	appendStageEntry(pi as never, state);
+
+	assert.equal(captured.length, 1, "appendEntry must be called exactly once");
+	const entry = captured[0]!;
+	assert.equal(entry.customType, "velpari-state");
+	// appendStageEntry emits field `stage` (not RunState's `currentStage`) so
+	// downstream session-fork handlers can stay schema-stable across
+	// refactors. Cast loosens the type so we can assert on the emitted keys.
+	const data = entry.data as Record<string, unknown>;
+	assert.equal(data.runId, state.runId);
+	assert.equal(data.mission, state.mission);
+	assert.equal(data.stage, state.currentStage);
+	assert.equal(data.updatedAt, state.updatedAt);
+	assert.deepEqual(data.history, state.history);
 });
