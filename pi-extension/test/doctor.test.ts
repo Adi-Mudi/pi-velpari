@@ -8,7 +8,7 @@ import {
 	detectInteractiveSubagentsVersion,
 	detectMultiplexer,
 	runDoctor,
-} from "../src/discipline/doctor.js";
+} from "../src/discipline/doctor/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

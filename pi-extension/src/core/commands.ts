@@ -25,7 +25,7 @@ import {
 import { handleStatus } from "../discipline/status.js";
 import { handleReset } from "../discipline/reset.js";
 import { handleConfigureInputs } from "../discipline/configure-inputs.js";
-import { handleDoctor } from "../discipline/doctor.js";
+import { handleDoctor } from "../discipline/doctor/index.js";
 import { loadState } from "./state.js";
 
 /**
