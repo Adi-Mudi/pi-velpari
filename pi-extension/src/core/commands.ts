@@ -152,8 +152,8 @@ const REAL_HANDLERS: Record<string, RealHandler> = {
 	"velpari-configure-inputs": async (_args, ctx) => {
 		await handleConfigureInputs(ctx as never);
 	},
-	"velpari-doctor": async (_args, ctx) => {
-		await handleDoctor(ctx as never);
+	"velpari-doctor": async (_args, ctx, pi) => {
+		await handleDoctor(ctx as never, pi as never);
 	},
 };
 

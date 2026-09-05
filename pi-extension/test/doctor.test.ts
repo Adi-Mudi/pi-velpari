@@ -531,7 +531,7 @@ test("handleDoctor truncates the TUI notify when the report exceeds MAX_NOTIFY_L
 			writeFileSync(join(agentsDir, `${id}.md`), "---\n---\n", "utf8");
 		}
 
-		await handleDoctor(ctx, dir);
+		await handleDoctor(ctx, undefined, dir);
 
 		assert.ok(notifyCalls.length >= 1, "handleDoctor must call notify at least once");
 		// First notify is the report; second is the "report written" line.
@@ -542,6 +542,51 @@ test("handleDoctor truncates the TUI notify when the report exceeds MAX_NOTIFY_L
 			/\n\.\.\. \[truncated\]$/,
 			"oversized report must end with the truncation marker",
 		);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+// ---------------------------------------------------------------------------
+// v0.5.0 Phase I.1 followup — honor --velpari-skip-doctor flag.
+//
+// When the flag is set, handleDoctor must short-circuit before runDoctor:
+// no doctor report is written, only a single notify telling the user the
+// check was skipped. The flag is registered in index.ts; the handler now
+// reads it via pi.getFlag("velpari-skip-doctor").
+// ---------------------------------------------------------------------------
+
+test("handleDoctor short-circuits when --velpari-skip-doctor is set", async () => {
+	const dir = tempDir();
+	try {
+		const notifies: Array<{ msg: string; level: string }> = [];
+		const ctx = {
+			ui: {
+				notifies,
+				notify(msg: string, level: string) {
+					notifies.push({ msg, level });
+				},
+				input: async () => undefined,
+				confirm: async () => true,
+				select: async () => undefined,
+			},
+			cwd: dir,
+		} as never;
+		// pi returns true for the skip-doctor flag, false/undefined otherwise.
+		const pi = {
+			getFlag: (name: string) => name === "velpari-skip-doctor",
+		} as never;
+
+		await handleDoctor(ctx, pi, dir);
+
+		// 1. No doctor report must be written.
+		const reportPath = join(dir, ".IDE_Plans", "velpari", "doctor-report.md");
+		assert.equal(existsSync(reportPath), false, "doctor report must NOT be written when flag is set");
+
+		// 2. Exactly one notify — the skip message. No report text.
+		assert.equal(notifies.length, 1, "exactly one notify expected");
+		assert.match(notifies[0]!.msg, /skipped/i);
+		assert.match(notifies[0]!.msg, /--velpari-skip-doctor/);
+		assert.equal(notifies[0]!.level, "info");
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

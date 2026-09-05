@@ -19,7 +19,7 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { PATHS } from "../../core/constants.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { loadState } from "../../core/state.js";
@@ -238,8 +238,17 @@ export function runDoctor(cwd: string = process.cwd()): string {
  */
 export async function handleDoctor(
 	ctx: ExtensionCommandContext,
+	pi?: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
+	// v0.5.0 Phase I.1: honor the --velpari-skip-doctor flag (registered
+	// in index.ts). When set, short-circuit and notify the user instead of
+	// running the audit. The `?.` makes this safe in test rig / RPC mode
+	// where `pi` is absent.
+	if (pi?.getFlag?.("velpari-skip-doctor")) {
+		ctx.ui.notify("Doctor checks skipped (--velpari-skip-doctor).", "info");
+		return;
+	}
 	const report = runDoctor(cwd);
 	writeDoctorReport(report, cwd);
 	const reportPath = join(cwd, PATHS.DOCTOR_REPORT);
