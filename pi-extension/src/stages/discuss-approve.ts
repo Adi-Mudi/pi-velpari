@@ -1,6 +1,13 @@
 /**
  * /velpari-approve-discuss handler (Phase 7 update; FR-58, FR-59, NFR-14).
  *
+ * Bespoke by design — Phase B refactor left this handler outside
+ * STAGE_REGISTRY because /velpari-approve-discuss is the only handler that
+ * (a) writes to a per-discussion grouped path with an optional timestamp
+ * suffix so re-runs of the same topic don't clobber earlier notes (FR-69),
+ * and (b) directly chains into the next stage's handler
+ * (`handlePrd` here, instead of relying on the user to type /velpari-prd).
+ *
  * Flow:
  * 1. Read working copy from `.IDE_Plans/velpari/runs/<run-id>/discuss/discussion-notes.md`.
  *    If only the legacy flat working-copy layout exists, read from there.

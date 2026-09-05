@@ -1,6 +1,16 @@
 /**
  * /velpari-discuss handler (v2.0 — two-phase flow).
  *
+ * Bespoke by design — Phase B refactor left this handler outside
+ * STAGE_REGISTRY because of three data-flow concerns that would leak UI
+ * state into the data model:
+ *   1. Six-question native UI interview loop (`ctx.ui.input`) — answers are
+ *      collected here and passed into the prompt.
+ *   2. Web-search yes/no consent (`ctx.ui.confirm`) — gates the
+ *      webSearchAllowed flag in the prompt.
+ *   3. Stage does not advance state on its own; `/velpari-approve-discuss`
+ *      owns the discussing -> discussed -> drafting-prd transition.
+ *
  * Handler phase (deterministic, runs in this function):
  * 1. Validate mission arg.
  * 2. Load state + framework config; create run if `currentStage === "none"`.
