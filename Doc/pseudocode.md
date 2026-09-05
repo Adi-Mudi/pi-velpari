@@ -2,10 +2,12 @@
 
 > **v2.0 Update (2026-09-04):** The in-process `spawnScout` + `runScout` pattern described in §13 below (e.g. `runDiscuss` calling `spawnScout("extractor", ...)` from inside the handler) has been **replaced** by the visible-subagent pattern. The handler now calls `runStageWithScouts(config, ctx, pi)` which builds a stage prompt and hands off to the parent LLM via `pi.sendUserMessage(prompt)`. The parent LLM then spawns the 4 subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The pseudocode in §13-§14 still describes the *intent* (4 parallel agents per stage, deterministic merge) but the *mechanism* is now parent-LLM-driven. See `skills/velpari-discuss.md` for the current LLM-orchestrated flow. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) follow this pattern.
 
+> **v0.4.0 Update (2026-09-05):** source layout reorganized from 30 flat files into 6 subfolders (`core/`, `stages/`, `discipline/`, `view/`, `prompts/`, `ui/`). Per the path map documented in `Doc/design.md` §v0.4.0 update, the §1–§18 module names below reference the post-Phase-A layout. Specifically: §8 covers `discipline/doctor/index.ts` (was `doctor.ts`); profile-related pseudocode lives in `core/profile.ts` (was `core/requirements-profile.ts`); UI flow lives in `discipline/configure-requirements/{index,interview,research,recommend}.ts` (was `discipline/configure-requirements.ts`). Algorithmic pseudocode below is unchanged.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source Design:** `Doc/design.md`
-- **Date:** 2026-08-24
+- **Date:** 2026-08-24 (initial); 2026-09-05 (v0.4.0 sync)
 - **Convention:** Each block describes one exported function: signature, inputs, outputs, preconditions, postconditions, step-by-step logic. Pseudocode language is TypeScript-flavored but not necessarily runnable; it's the algorithm specification.
 
 ---
@@ -723,7 +725,13 @@ return suggestions;
 
 ---
 
-## 8. Module: `doctor.ts`
+## 8. Module: `discipline/doctor/index.ts`
+
+> Phase A: this module was the `doctor.ts` monolith; Phase D split it into
+> the orchestrator at `discipline/doctor/index.ts`, the disk-write helper at
+> `discipline/doctor/report.ts`, and 7 per-check modules at
+> `discipline/doctor/checks/*.ts`. This section documents the orchestrator;
+> per-check pseudocode lives in §8A–§8G below where applicable.
 
 ### 8.1 `runDoctor`
 
@@ -1659,7 +1667,7 @@ return { written: true, targetPath: HANDOFF_TARGET, documentCount: target.docume
 ### 17.1 `COMMAND_SCOPE` (declarative table)
 
 ```ts
-// pi-extension/src/commands.ts
+// pi-extension/src/core/commands.ts
 const COMMAND_SCOPE: Record<string, { reads: string[]; writes: string[] }> = {
   "velpari-discuss":          { reads: [],                writes: ["Doc/discussion-notes.md"] },
   "velpari-prd":              { reads: ["Doc/discussion-notes.md"], writes: ["Doc/PRD_Pi-Velpari.md"] },
@@ -1679,7 +1687,7 @@ const COMMAND_SCOPE: Record<string, { reads: string[]; writes: string[] }> = {
 ### 17.2 `checkDocScope` (gate function)
 
 ```ts
-// pi-extension/src/commands.ts
+// pi-extension/src/core/commands.ts
 function checkDocScope(commandName: string, rootDir: string): void {
   const scope = COMMAND_SCOPE[commandName];
   if (!scope) {
@@ -1711,7 +1719,7 @@ function checkDocScope(commandName: string, rootDir: string): void {
 Every stage command handler calls `checkDocScope` at the top, before delegating to the stage module.
 
 ```ts
-// pi-extension/src/commands.ts (handler template)
+// pi-extension/src/core/commands.ts (handler template)
 async function stageHandler(args: CommandArgs, api: ExtensionAPI): Promise<void> {
   try {
     checkDocScope("velpari-<stage>", rootDir);
@@ -1959,7 +1967,7 @@ export interface FrameworkInfo {
   runtime: string;          // e.g., "Node.js 20+"
 }
 
-// pi-extension/src/prompt.ts (extended)
+// pi-extension/src/core/prompt.ts (extended)
 export function buildStagePrompt(args: BuildPromptArgs & { framework?: FrameworkInfo }): string {
   const skill = loadStageSkill(args.stage);
   const frameworkBlock = args.framework
@@ -1973,7 +1981,7 @@ export function buildStagePrompt(args: BuildPromptArgs & { framework?: Framework
 ### 18.5 Discussion web-search activation
 
 ```ts
-// pi-extension/src/discuss.ts (v1.5)
+// pi-extension/src/stages/discuss.ts (v1.5)
 export async function promptForWebSearch(api: ExtensionAPI): Promise<boolean> {
   return await api.ui.confirm(
     "Do you want me to search the web for community resources, " +
@@ -2146,7 +2154,7 @@ if (state.currentStage === "discussed" || state.currentStage === "discussing") {
 ### 20.1 `buildOutputPath` — project-name-suffixed output path
 
 ```ts
-// pi-extension/src/paths.ts
+// pi-extension/src/core/paths.ts
 export function buildOutputPath(
   stage: "prd" | "rtm" | "feasibility" | "design" | "pseudocode" | "testPlan" | "testCases" | "atomicFunction" | "developmentOrder",
   projectName: string
@@ -2175,7 +2183,7 @@ switch (stage) {
 ### 20.2 `buildDiscussionPath` — per-topic discussion path
 
 ```ts
-// pi-extension/src/paths.ts
+// pi-extension/src/core/paths.ts
 export function buildDiscussionPath(
   topicSlug: string,
   timestamp?: string
@@ -2197,7 +2205,7 @@ return path.join("Doc", `discussion-${topicSlug}-${timestamp}.md`);
 ### 20.3 `slugify` — mission argument → topic-slug
 
 ```ts
-// pi-extension/src/paths.ts
+// pi-extension/src/core/paths.ts
 export function slugify(mission: string): string
 
 // Preconditions
@@ -2217,7 +2225,7 @@ return mission
 ### 20.4 `buildHandoffDocuments` — project-suffixed handoff
 
 ```ts
-// pi-extension/src/handoff.ts (updated v1.7)
+// pi-extension/src/discipline/handoff.ts (updated v1.7)
 export function buildHandoffDocuments(projectName: string): ArchitectInputDocument[]
 
 // Logic
@@ -2236,7 +2244,7 @@ return [
 ### 20.5 Updated `publishToDoc` (v1.7)
 
 ```ts
-// pi-extension/src/state.ts (updated v1.7)
+// pi-extension/src/core/state.ts (updated v1.7)
 export function publishToDoc(
   rootDir: string,
   stage: Stage,

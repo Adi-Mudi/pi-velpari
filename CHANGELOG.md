@@ -350,3 +350,90 @@ Verified the architecture against the official Pi extension docs (github.com/ear
 ### Notes
 
 - This is the pre-v1.1 baseline. The 32-line PRD is fully superseded by the v1.1 PRD expansion.
+
+## [v0.4.0] — 2026-09-05 — Architecture upgrade (7 phases, A through F + G doc sync)
+
+Phase A through Phase F commit-by-commit. Each is a single, recoverable
+step; rollback is `git revert <sha>` on the individual commit.
+
+### Phase A — Folder layout (refactor only)
+
+- `9d1b83b` — Move 30 src modules into 6 subfolders (`core/`, `stages/`,
+  `discipline/`, `view/`, `prompts/`, `ui/`) by concern. Net 0 LOC change.
+- `c6fbcb6` (followup) — Pin the new 4-level `__dirname` probe chain
+  for `bundledAgentPath` and `resolveSkillPath`. Adds 2 regression tests.
+
+### Phase B — STAGE_REGISTRY + DRY stage handlers (refactor only)
+
+- `6fe3ea2` — Introduce `stages/registry.ts` with `STAGE_REGISTRY`,
+  `runStage()`, and `resolveStageInputs()`. The 8 single-input + multi-
+  input stage handlers shrink from ~100 lines each to ~10. Per-stage
+  error wording byte-for-byte preserved.
+- `e76f5f7` (followup) — 4 edge tests: multi-input concatenation,
+  optional-discussion skip, doc legacy fallback, `stageEnum` drift
+  detection.
+
+### Phase C — Profile split (refactor only)
+
+- `eca15b4` — Split `requirements-profile.ts` (598 monolith) into
+  `core/profile.ts` (types + persistence) + `core/profiles-library.ts`
+  (built-in library + scoring). Split `configure-requirements.ts`
+  (511 monolith) into `discipline/configure-requirements/{index,
+  interview,research,recommend}.ts`. Per-document and per-test imports
+  rewired.
+- `2a92834` (followup) — Direct `migrateLegacyProfile` contract test
+  (writes v1.0.0 JSON, asserts migration shape).
+
+### Phase D — Doctor split (refactor only)
+
+- `03af76d` — Split `doctor.ts` (560 monolith) into
+  `discipline/doctor/{index,report}.ts` + 7 checks under
+  `discipline/doctor/checks/`. Discovered + recorded a JSDoc parser
+  bug caused by literal `**/` inside backticked comment text.
+- `70a5d62` (followup) — `handleDoctor` + truncation contract test.
+  Locks in the entry wrapper that previously had zero direct coverage.
+
+### Phase E — Pi-native features (the only feature commit)
+
+- `61b1198` — Drop unverified `PI_SUBAGENT_NAME` guard. Add
+  `pi-package` keyword to `package.json`. New `appendStageEntry(pi,
+  state)` in `core/state.ts`. Called after every `advanceStage` to
+  persist state as a `velpari-state` entry — survives session fork /
+  resume. `pi.events.emit` on `velpari:start / :before-compact /
+  :shutdown`. `pi.registerShortcut` for `ctrl+shift+v` (status) and
+  `ctrl+shift+r` (reset). `pi.registerFlag` for `velpari-skip-doctor`
+  (boolean) and `velpari-stage` (string). `discipline/status.ts`
+  switched from `ctx.ui.notify` (truncated at ~8000 chars) to
+  `pi.appendEntry("velpari-status", ...)` with full body + profile
+  metadata. Custom entry renderer (`ui/entry-renderer.ts`) deferred
+  until `@earendil-works/pi-tui` peer dep is approved.
+- `619da1a` (followup) — 5 direct tests for the new contracts:
+  `appendStageEntry` shape, 3 event emissions, status entry shape.
+
+### Phase F — resources_discover migration (refactor only)
+
+- `dc61099` — Honest reading: Pi's `pi.on("resources_discover", ...)` is
+  for paths Pi should auto-discover, NOT for resolving bundled
+  extension assets. So Phase F pragmatically collapsed 4 dead
+  `__dirname` probe candidates in `bundledAgentPath` and
+  `resolveSkillPath` (only the 4-level-up probe is live since Phase A),
+  and added an explicit `pi.on("resources_discover")` registration
+  contributing `<cwd>/skills` as a Pi resource path. Net −20 LOC, no
+  behavior change.
+- `82e4a4a` (followup) — Pin the `resources_discover` registration
+  contract (1 test in `index.test.ts`).
+
+### Documentation sync (Phase G)
+
+- `AGENTS.md` "Project structure" block rewritten to reflect the new
+  6-subfolder layout and the per-subfolder module summary.
+- `Doc/pseudocode.md` §8 doctor.ts reference updated to the new
+  `discipline/doctor/index.ts`.
+- This CHANGELOG entry.
+
+### Tests
+
+- 463 unit tests + 5 E2E tests across 38 test files (Phase F followup).
+- All phase commits maintain the test gate.
+- Symlink contract unchanged: `~/.pi/agent/extensions/pi-velpari →
+  dist/pi-extension/src`.

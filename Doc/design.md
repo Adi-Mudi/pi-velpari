@@ -3,8 +3,30 @@
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`
-- **Date:** 2026-08-24 (initial); 2026-09-03 (v2.0 update)
-- **Status:** Design complete; implementation in Phase A–E per `pi_velpari_commands_plan_20260824_0924_v1.1.md`.
+- **Date:** 2026-08-24 (initial); 2026-09-03 (v2.0 update); 2026-09-05 (v0.4.0 architecture sync)
+- **Status:** Design complete; implementation in Phase A–F per `architecture-upgrade_plan`. Phase G (this update) is documentation sync only.
+
+> **v0.4.0 architecture update (2026-09-05):** the source layout was reorganized from 30 flat files into 6 subfolders by concern (`core/`, `stages/`, `discipline/`, `view/`, `prompts/`, `ui/`). Concrete file paths referenced throughout this document have shifted:
+>
+> - `commands.ts`              → `core/commands.ts`
+> - `state.ts`                  → `core/state.ts`
+> - `paths.ts`                  → `core/paths.ts`
+> - `compaction.ts`             → `core/compaction.ts`
+> - `agents-install.ts`        → `core/agents-install.ts`
+> - `stage-runner.ts`           → `core/stage-runner.ts`
+> - `prompt.ts`                 → `core/prompt.ts`
+> - `config.ts`                 → `core/config.ts`
+> - `profile.ts`               → `core/profile.ts` (split from former `requirements-profile.ts`)
+> - `profiles-library.ts`      → `core/profiles-library.ts`
+> - `discuss.ts` / `prd.ts` / `rtm.ts` / … → `stages/<name>.ts`
+> - `approve.ts` / `status.ts` / `reset.ts` / … → `discipline/<name>.ts`
+> - `doctor.ts`                 → `discipline/doctor/index.ts` (orchestrator) + `discipline/doctor/report.ts` (disk write) + `discipline/doctor/checks/{secrets,multiplexer,psrs,rtm,agents,paths,working-published,profile}.ts`
+> - `configure-requirements.ts` → `discipline/configure-requirements/index.ts` + `discipline/configure-requirements/{interview,research,recommend}.ts`
+> - `show.ts`                   → `view/show.ts`
+>
+> Module names like `\`doctor.ts:scanForSecrets\`` referenced earlier in this document now resolve to `discipline/doctor/checks/secrets.ts:scanForSecrets`. The function signatures and contracts documented below are unchanged.
+
+> **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
 
 > **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
 

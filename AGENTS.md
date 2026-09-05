@@ -55,30 +55,81 @@ npm test
 ├── CHANGELOG.md
 ├── AGENTS.md                  # this file
 ├── .gitignore
-├── DevPlan/                   # persistent project roadmap (canonical Phase A→G build order)
+├── DevPlan/                   # persistent project roadmap (Phase A→G build order)
 │   └── development-order.md
-├── pi-extension/src/          # extension source
-│   ├── index.ts               # entry point: export default (pi: ExtensionAPI) → registerCommands + session_before_compact hook + (unverified) subagent guard
-│   ├── commands.ts            # registerCommands + all 22 handlers
-│   ├── constants.ts           # Stage enum, STAGE_TRANSITIONS (19 states), paths, helpers
-│   ├── state.ts               # loadState, saveState, createRun, advanceStage, clearRun, publishToDoc
-│   ├── prompt.ts              # loadStageSkill, buildStagePrompt
-│   ├── compaction.ts          # buildCompactionSummary (zero-LLM)
-│   ├── config.ts              # configure-inputs: load/save/validate + runFilesDiscovery
-│   ├── doctor.ts              # runDoctor, writeDoctorReport, scanForSecrets, validateSenaiHandoffSchema
-│   ├── handoff.ts             # runHandoff, validateSenaiSchema, readApprovedArtifacts
-│   ├── show.ts                # showStage (parameterized)
-│   ├── discuss.ts             # /velpari-discuss (v2.0): two-phase flow — handler runs 6-question interview + bootstrap agents + pi.sendUserMessage; parent LLM orchestrates 4 visible subagents + iterative rounds + working copy
-│   ├── agents-install.ts      # ensureScoutAgents(cwd): bootstraps 4 scout agent definitions from skills/agents/ into .pi/agents/ on first use
-│   ├── prd.ts                 # /velpari-prd (full rewrite path; usually auto-updated by discuss)
-│   ├── rtm.ts                 # /velpari-rtm
-│   ├── feasibility.ts         # /velpari-feasibility
-│   ├── design.ts              # /velpari-design
-│   ├── pseudocode.ts          # /velpari-pseudocode
-│   ├── testplan.ts            # /velpari-testplan
-│   ├── atomic-function.ts     # /velpari-atomic-function: 4 AF scouts + suggestion picker (optional post-pipeline)
-│   └── development-order.ts   # /velpari-development-order: 4 DO scouts + ranking merge + order picker (optional post-pipeline)
-├── pi-extension/test/         # one test file per src module (20 files)
+├── pi-extension/src/          # extension source — organized by concern (Phase A)
+│   ├── index.ts               # entry point: default factory + Pi lifecycle hooks + shortcuts/flags/events (Phases A, E, F)
+│   ├── core/                  # cross-cutting primitives
+│   │   ├── commands.ts            # registerCommands + 25 handler shells
+│   │   ├── constants.ts           # Stage enum, STAGE_TRANSITIONS (19 states), PATHS
+│   │   ├── state.ts               # load/save/createRun/advanceStage/clearRun/appendStageEntry (Phase E)
+│   │   ├── paths.ts               # grouped + legacy helpers (Phase 7 + Phase F probes collapsed)
+│   │   ├── compaction.ts          # buildCompactionSummary (zero-LLM)
+│   │   ├── agents-install.ts       # ensureStageAgents + bundledAgentPath (Phase A probe, F collapsed)
+│   │   ├── stage-runner.ts        # generic two-phase flow (Phase B)
+│   │   ├── prompt.ts              # loadStageSkill + buildStagePrompt
+│   │   ├── config.ts              # files.json load/save/validate
+│   │   ├── profile.ts             # requirements profile types + persistence (Phase C)
+│   │   └── profiles-library.ts    # built-in profile library + scoring (Phase C)
+│   ├── stages/                 # stage handlers (8 stage handlers, plus discuss + discuss-approve which are bespoke)
+│   │   ├── registry.ts            # STAGE_REGISTRY + runStage (Phase B; the source of truth for stage config)
+│   │   ├── discuss.ts             # /velpari-discuss (v2.0): bespoke 6-question interview + web-search consent
+│   │   ├── discuss-approve.ts     # /velpari-approve-discuss (chains into prd)
+│   │   ├── prd.ts                 # /velpari-prd
+│   │   ├── rtm.ts                 # /velpari-rtm
+│   │   ├── feasibility.ts         # /velpari-feasibility
+│   │   ├── design.ts              # /velpari-design
+│   │   ├── pseudocode.ts          # /velpari-pseudocode
+│   │   ├── testplan.ts            # /velpari-testplan
+│   │   ├── atomic-function.ts     # /velpari-atomic-function
+│   │   └── development-order.ts   # /velpari-development-order
+│   ├── discipline/             # ops / approval / setup handlers
+│   │   ├── approve.ts             # /velpari-approve (stages 2–7)
+│   │   ├── status.ts              # /velpari-status (Phase E: switched to pi.appendEntry)
+│   │   ├── reset.ts               # /velpari-reset
+│   │   ├── doctor/                # Phase D — split into orchestrator + 7 checks + report
+│   │   │   ├── index.ts           # runDoctor + handleDoctor + re-exports
+│   │   │   ├── report.ts          # writeDoctorReport
+│   │   │   └── checks/
+│   │   │       ├── secrets.ts     # scanForSecrets
+│   │   │       ├── multiplexer.ts # detectMultiplexer + detectInteractiveSubagentsVersion
+│   │   │       ├── psrs.ts        # checkPsrs
+│   │   │       ├── rtm.ts         # checkRtmTraceability
+│   │   │       ├── agents.ts      # scout file presence + skill markdown integrity
+│   │   │       ├── paths.ts       # grouped/legacy path presence per artifact
+│   │   │       ├── working-published.ts
+│   │   │       └── profile.ts     # requirements profile presence
+│   │   ├── handoff.ts             # /velpari-handoff (Senai export)
+│   │   ├── configure-inputs.ts    # /velpari-configure-inputs
+│   │   └── configure-requirements/   # Phase C split — interview + research + recommend + UI
+│   │       ├── index.ts           # UI orchestrator
+│   │       ├── interview.ts       # 7-step ask block
+│   │       ├── research.ts        # web-research prompt composer
+│   │       └── recommend.ts       # labelled pickers + fallbacks
+│   ├── view/                   # read-only display handlers
+│   │   └── show.ts                # /velpari-show-*
+│   ├── prompts/                # (reserved for future prompt sub-modules)
+│   └── ui/                     # (reserved for future UI sub-modules)
+├── pi-extension/test/         # one test file per src module + per-check (37+ files)
+│   # Phase A follow-up: agents-install-path.test.ts + prompt-path.test.ts
+│   # Phase B follow-up: registry.test.ts (4 edge tests)
+│   # Phase C follow-up: requirements-profile.test.ts (migration test)
+│   # Phase D follow-up: doctor.test.ts (handleDoctor + truncation)
+│   # Phase E follow-up: index.test.ts (events + registration tests)
+│   # Phase F follow-up: index.test.ts (resources_discover test)
+├── skills/                    # stage skill markdown files + bundled scout agents
+│   ├── velpari-discuss.md
+│   ├── velpari-prd.md
+│   ├── velpari-rtm.md
+│   ├── velpari-feasibility.md
+│   ├── velpari-design.md
+│   ├── velpari-pseudocode.md
+│   ├── velpari-testplan.md
+│   ├── velpari-handoff.md
+│   ├── velpari-atomic-function.md
+│   ├── velpari-development-order.md
+│   ├── velpari-configure-requirements.md
+│   └── agents/                # 36 bundled scout agent definitions
 ├── skills/                    # stage skill markdown files + bundled scout agents
 │   ├── velpari-discuss.md     # parent-LLM program: spawn 4 subagents, wait, iterate, write working copy, preview
 │   ├── velpari-prd.md
