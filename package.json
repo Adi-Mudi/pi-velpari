@@ -6,8 +6,9 @@
   "main": "./dist/pi-extension/src/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/pi-extension/test/*.test.js",
-    "test:e2e": "node --test dist/pi-extension/test/e2e/*.test.js",
+    "test": "npm run build && node --test --test-force-exit dist/pi-extension/test/*.test.js",
+    "test:e2e": "npm run build && RUN_E2E=1 node --test --test-force-exit --test-timeout=180000 dist/pi-extension/test/e2e/*.test.js",
+    "test:e2e:tier2": "RUN_E2E=1 RUN_LLM_E2E=1 node --test --test-force-exit --test-timeout=300000 dist/pi-extension/test/e2e/*.test.js",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -21,7 +22,6 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@types/node": "^20.0.0",
-    "pi-coding-agent-test": "^0.1.1",
     "typescript": "^5.4.0"
   },
   "keywords": [
