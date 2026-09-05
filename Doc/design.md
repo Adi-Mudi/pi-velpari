@@ -28,7 +28,6 @@
 
 > **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
 
-> **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
 
 ---
 
@@ -145,7 +144,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function validateFilesConfig(config: FilesConfig): string[]` — returns list of error messages (empty if valid).
   - `function runFilesDiscovery(rootDir: string): DiscoveryResult` — deep-scans project for suggested inputs (markdown files) and outputs (default paths).
 
-### 2.8 `doctor.ts` — setup audit
+### 2.8 `discipline/doctor/index.ts` — setup audit (v0.4.0 split: see callout above)
 
 - **Purpose:** Audit setup, validate artifacts, scan for secrets, write report.
 - **Implements:** FR-12, NFR-04, NFR-05, NFR-08.
@@ -216,16 +215,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function renderOrderPicker(ranked: OrderEntry[], api: ExtensionAPI): OrderEntry[]` — lets the user reorder and accept.
   - `function writeDevelopmentOrder(accepted: OrderEntry[], rootDir: string): void` — writes to working copy and (on approve) published copy.
 
-### 2.20 ~~`contracts.ts` — shared types (v1.5)~~ **REMOVED in v2.0**
-
-The `ScoutContract` TypeScript types were deleted in v2.0. They are no longer needed because:
-- Scout logic moved from in-process TypeScript to real Pi agent definitions in `.pi/agents/*.md`.
-- The "uniform subagent pattern" is now enforced by the parent LLM reading the stage skill markdown (`skills/velpari-discuss.md`) which lists the scout conventions.
-- FR-54 / NFR-13 are still satisfied, but by the markdown contract rather than by TypeScript types.
-
-### 2.21 ~~`scout.ts` — scout coordinator (v1.5)~~ **REMOVED in v2.0**
-
-The in-process `runScout` / `withTimeout` / `readScoutSkill` runner was deleted in v2.0. The parent LLM now orchestrates scout spawning via the `subagent()` tool provided by `@earendil-works/pi-interactive-subagents`. No extension-side runner is needed.
+(§2.20 `contracts.ts` and §2.21 `scout.ts` were both removed in v0.5.0 Phase I.3 because the modules no longer exist. The removals are also documented in the v2.0 callout box at the top of this file.)
 
 ### 2.22 `ui/` — re-implemented TUI patterns (v1.5)
 
@@ -640,7 +630,7 @@ function validateSenaiSchema(targetContent: object): string[];
 // Pure. Returns list of errors (empty if valid).
 ```
 
-### 4.6 `doctor.ts` contracts
+### 4.6 `discipline/doctor/index.ts` contracts (v0.4.0 split: see callout at top)
 
 ```ts
 function runDoctor(rootDir: string): DoctorReport;
@@ -761,7 +751,7 @@ User                    commands.ts             config.ts             Filesystem
 ### 5.3 Doctor flow
 
 ```
-User                    commands.ts             doctor.ts             Filesystem
+User                    commands.ts             doctor/index.ts        Filesystem
  |                          |                       |                     |
  | /velpari-doctor          |                       |                     |
  |------------------------->|                       |                     |
@@ -812,8 +802,8 @@ Pi Runtime              compaction.ts             state.ts            Filesystem
 | NFR-01 (compaction) | `compaction.ts:buildCompactionSummary` is pure and zero-LLM. State.json is unchanged by compaction. |
 | NFR-02 (no subagents in stages 2–7) | `index.ts` guards against `PI_SUBAGENT_NAME` env for stages 2–7 and handoff. No subagent-spawning code exists in those stages. |
 | NFR-03 (project-local) | `package.json` declares `pi.extensions`. All paths are project-relative. |
-| NFR-04 (secret scan) | `doctor.ts:scanForSecrets` uses a fixed regex set; findings are warnings only. |
-| NFR-05 (doctor report) | `doctor.ts:writeDoctorReport` writes to `DOCTOR_REPORT_PATH` on every run. Report opens with "Setup progress". |
+| NFR-04 (secret scan) | `discipline/doctor/checks/secrets.ts:scanForSecrets` uses a fixed regex set; findings are warnings only. |
+| NFR-05 (doctor report) | `discipline/doctor/report.ts:writeDoctorReport` writes to `DOCTOR_REPORT_PATH` on every run. Report opens with "Setup progress". |
 | NFR-06 (code quality) | TypeScript strict mode; `path.join` everywhere; no in-place state mutation; thin handlers in `commands.ts`. |
 | NFR-07 (no extra deps) | `package.json` declares only the `@mariozechner/pi-coding-agent` peer dep. |
 | NFR-08 (Senai compat) | `handoff.ts:validateSenaiSchema` reads Senai's `architect-inputs-config.ts` at test time. |
@@ -988,7 +978,7 @@ This is documented as `FR-67..FR-71` and `NFR-15`. The `paths.ts` module central
 | `commands.ts` | FR-01..FR-32, FR-43, FR-44, FR-49, FR-57, FR-59, FR-60, FR-67, FR-68 (delegation, 23 commands total; COMMAND_SCOPE and checkDocScope; framework handling; stage-aware approval; project-name output paths) | — |
 | `compaction.ts` | — | NFR-01 |
 | `config.ts` | FR-11 | — |
-| `doctor.ts` | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
+| `discipline/doctor/` (orchestrator + 7 checks + report) | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
 | `discuss.ts` | FR-01, FR-22, FR-23, FR-26, FR-28, FR-50, FR-51, FR-52, FR-53 | NFR-11 (4 scouts incl. WEB SEARCH) |
 | `prd.ts` | FR-02, FR-22, FR-23, FR-29 | — |
 | `rtm.ts` | FR-03, FR-22, FR-23, FR-30 | — |
@@ -1000,8 +990,8 @@ This is documented as `FR-67..FR-71` and `NFR-15`. The `paths.ts` module central
 | `development-order.ts` | FR-32, FR-36 | NFR-11 (4 DO scouts) |
 | `handoff.ts` | FR-13, FR-34 | NFR-08 |
 | `show.ts` | FR-14..FR-20 | — |
-| `contracts.ts` | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
-| `scout.ts` | FR-54 | NFR-13 |
+| `discipline/configure-requirements/{index,interview,research,recommend}.ts` (v0.4.0 split) | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
+| `core/stage-runner.ts` + `core/agents-install.ts` (v0.4.0 split) | FR-54 | NFR-13 |
 | `ui/{simple-picker,list-editor,role-picker}.ts` | FR-55 | — |
 | `discuss-approve.ts` | FR-58, FR-59, FR-60 | NFR-14 (stage-aware approval) |
 
