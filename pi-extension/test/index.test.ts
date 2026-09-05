@@ -278,6 +278,29 @@ test("index emits velpari:before-compact alongside the compaction return", async
 	assert.equal(emitted[0]?.reason, "manual");
 });
 
+// ---------------------------------------------------------------------------
+// Phase F followup — `pi.on("resources_discover", ...)` registration.
+//
+// The registration contributes `<cwd>/skills` as a Pi resource path so
+// auto-discovery sees the project's skill/agent files. A future refactor
+// that drops or renames the registration silently breaks auto-discovery;
+// pin the contract directly.
+// ---------------------------------------------------------------------------
+
+test("index registers a resources_discover handler that contributes <cwd>/skills", async () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const handlers = pi.handlers.get("resources_discover") ?? [];
+	assert.ok(handlers.length >= 1, "resources_discover handler must be registered");
+
+	const result = (await (handlers[0] as (e: unknown) => Promise<unknown>)({})) as unknown as {
+		skillPaths?: string[];
+	};
+	assert.ok(Array.isArray(result.skillPaths), "handler must return { skillPaths: string[] }");
+	assert.equal(result.skillPaths!.length, 1);
+	assert.match(result.skillPaths![0]!, /\/skills$/);
+});
+
 test("index emits velpari:shutdown on session_shutdown", async () => {
 	const pi = makeMockPi();
 	index(pi as unknown as Parameters<typeof index>[0]);
