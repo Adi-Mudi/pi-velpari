@@ -1,5 +1,7 @@
 # Pi-Velpari Test Plan
 
+> **v2.0 Update (2026-09-04):** The in-process scout pattern described in this document (e.g. `spawnScout` called from inside the handler) has been **replaced** by the visible-subagent pattern. All 9 stages (including `/velpari-testplan`) now spawn 4 real subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The handler calls `runStageWithScouts` which hands off to the parent LLM via `pi.sendUserMessage(prompt)`. The parent LLM does the actual spawning. The test cases below still describe the *intent* (4 parallel agents, 30s timeout, JSON envelope) but the *mechanism* is now parent-LLM-driven, not in-handler. See `skills/velpari-testplan.md` and `AGENTS.md` principle #4 for the current behavior. Test file `test/doctor.test.ts` now verifies all 9 stages' scout files are present and all 9 stage skill markdowns pass the integrity gate.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`
@@ -37,7 +39,7 @@ The following are tested by automated tests (`node --test` under `pi-extension/t
 19. **Architecture decisions** (v1.4) — `architecture-discussion.md` exists and has pending decisions list with no recommendations; no `/velpari-architect` command in `commands.ts`; PRD and RTM are separate stages.
 20. **Framework as one-time setup** (v1.5) — `/velpari-configure-inputs` captures framework/language/libraries/runtime; persisted in `files.json`; injected into every stage prompt.
 21. **Web search agent** (v1.5) — `WEB SEARCH AGENT` is the 4th discussion scout; user-prompted (yes/no after interview); collects community + official docs + similar projects.
-22. **Uniform subagent pattern** (v1.5) — all 12 scouts follow `ScoutContract` (defined in `contracts.ts`); same `spawnScout()` helper; same JSON envelope; same 30s timeout; same picker UI.
+22. **Uniform subagent pattern** (v2.0) — all 36 scout agents follow the same `stages/registry.ts:runStageWithScouts` orchestration: same JSON envelope, same 30s timeout, same picker UI. The original v1.5 `ScoutContract` TypeScript types and `spawnScout` in-process runner were both removed in v2.0 (when the parent LLM began orchestrating real visible subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents`); the contract is now in `skills/velpari-*.md` markdown.
 23. **TUI independence** (v1.5) — Velpari does not depend on Senai at runtime; TUI patterns re-implemented in `pi-extension/src/ui/`.
 24. **Discussion-approve chain** (v1.6) — `/velpari-approve-discuss` publishes discussion-notes.md and auto-invokes `/velpari-prd`. `/velpari-approve` errors when in discussion stage. UI hints reflect current stage.
 25. **Project-name output documents** (v1.7) — `projectName` captured in `/velpari-configure-inputs`; output docs use `projectName` suffix; discussion is per-topic with timestamp versioning.
@@ -100,7 +102,7 @@ Per file/module:
 | `commands.test.ts` | `commands.ts` | Unit | `registerCommands` registers all 22 commands; handler delegation |
 | `compaction.test.ts` | `compaction.ts` | Unit | `buildCompactionSummary` deterministic output |
 | `config.test.ts` | `config.ts` | Unit | `loadFilesConfig`/`saveFilesConfig`/`validateFilesConfig`/`runFilesDiscovery` |
-| `doctor.test.ts` | `doctor.ts` | Unit | `runDoctor`, `scanForSecrets`, `validateSenaiHandoffSchema` |
+| `doctor.test.ts` | `discipline/doctor/index.ts` (+ report + 7 checks under `discipline/doctor/checks/`) | Unit | `runDoctor`, `scanForSecrets`, `validateSenaiHandoffSchema`, truncation |
 | `discuss.test.ts` | `discuss.ts` | Unit (mocked) | 4-agent pattern; multi-turn loop; preview gate; auto-update PRD |
 | `prd.test.ts` | `prd.ts` | Unit (mocked) | Working copy written; preview gate; trace-back enforced |
 | `rtm.test.ts` | `rtm.ts` | Unit (mocked) | Working copy written; table columns enforced; `HF-NN` references |
@@ -110,12 +112,12 @@ Per file/module:
 | `testplan.test.ts` | `testplan.ts` | Unit (mocked) | Two files written (test-plan + test-cases); TC table columns |
 | `atomic-function.test.ts` | `atomic-function.ts` | Unit (mocked) | 4 AF scouts; merge/dedup; picker; working copy; bidirectional atomic refs |
 | `development-order.test.ts` | `development-order.ts` | Unit (mocked) | 4 DO scouts; ranking merge; order picker; working copy |
-| `gate.test.ts` | `commands.ts:checkDocScope`, `COMMAND_SCOPE` | Unit | Per-command gate success and failure; COMMAND_SCOPE matches docs |
-| `framework.test.ts` | `config.ts`, `prompt.ts` | Unit | Framework is captured, validated, and injected into prompts |
-| `scout.test.ts` | `contracts.ts`, `scout.ts`, all 12 scout modules | Unit | ScoutContract shape; spawnScout timeout + JSON envelope; picker UI |
-| `discuss-approve.test.ts` | `discuss-approve.ts`, `commands.ts:handleApprove*` | Unit | /velpari-approve-discuss chain; /velpari-approve errors on discussion; renderApproveHint per stage |
-| `paths.test.ts` | `paths.ts` | Unit | buildOutputPath per stage; buildDiscussionPath per topic + timestamp; slugify; project-name suffix on every stage |
-| `handoff.test.ts` | `handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip; project-suffixed paths |
+| `gate.test.ts` | `core/commands.ts:checkDocScope`, `COMMAND_SCOPE` | Unit | Per-command gate success and failure; COMMAND_SCOPE matches docs |
+| `framework.test.ts` | `core/config.ts`, `core/prompt.ts` | Unit | Framework is captured, validated, and injected into prompts |
+| `stage-runner.test.ts` + `registry.test.ts` (replaces the v1.5 `scout.test.ts`) | `core/stage-runner.ts:runStageWithScouts`, `stages/registry.ts:STAGE_REGISTRY` | Unit | 4-scout parallel orchestration; stage config shape; round-trip through runStageWithScouts |
+| `discuss-approve.test.ts` | `stages/discuss-approve.ts`, `core/commands.ts:handleApprove*` | Unit | /velpari-approve-discuss chain; /velpari-approve errors on discussion; renderApproveHint per stage |
+| `paths.test.ts` | `core/paths.ts` | Unit | buildOutputPath per stage; buildDiscussionPath per topic + timestamp; slugify; project-name suffix on every stage |
+| `handoff.test.ts` | `discipline/handoff.ts` | Unit + integration | Valid handoff; missing artifact rejection; optional artifact inclusion; Senai schema round-trip; project-suffixed paths |
 | `show.test.ts` | `show.ts` | Unit | All 7 stages; missing-artifact path; testplan concatenation; project-suffixed names |
 
 **Total: 24 test files.**

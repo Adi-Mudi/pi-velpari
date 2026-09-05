@@ -2,6 +2,8 @@
 
 A reference for how Pi-Velpari orchestrates the pre-production phase. Parallels `Pi-Orchestra_v4/Doc/senai-sequence.md` so users learn one mental model and apply it across both extensions.
 
+> **v2.0 Update (2026-09-04):** The "4 scout agents + suggestion picker" pattern described below has been **replaced** by the visible-subagent pattern. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) now spawn 4 real subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes. The handler hands off to the parent LLM via `pi.sendUserMessage(prompt)`; the parent LLM does the spawning. The picker UI described in the original spec is replaced by a preview gate via `AskUserQuestion`. The 12-scout count below is now 36 (9 stages × 4). See `AGENTS.md` principle #4 for the current mental model.
+
 ---
 
 ## 1. The 9-stage pipeline (with 2 optional post-pipeline stages)
@@ -69,6 +71,19 @@ A reference for how Pi-Velpari orchestrates the pre-production phase. Parallels 
 ```
 
 Each core stage produces one (or two, for testplan) published artifact. `/velpari-approve` is the only transition for the core 7 stages. The two post-pipeline stages (atomic-function, development-order) are **optional** — they can be invoked in either order, or skipped entirely. Both use a **scout-agent + suggestion picker** pattern: 4 parallel agents propose content, the user reviews and accepts/modifies/rejects each suggestion in a unified picker UI, and only accepted entries are written to the published doc.
+
+### 1a. Pre-pipeline setup: `/velpari-configure-requirements` (optional, recommended)
+
+Profile selection is a **separate one-time setup step**, not a pipeline stage. It runs before `/velpari-discuss` and produces `.pi/velpari/requirements-profile.json`:
+
+1. Handler asks core questions via `ctx.ui.input(title, placeholder)` and fixed choices via `ctx.ui.select(title, options)`.
+2. Web-research consent is collected via `ctx.ui.confirm` immediately after the answers — **before** any recommendations are produced.
+3. Research handoff (when consent=yes) is sent through `pi.sendUserMessage` and explicitly says **profile selection is pending** + **MUST NOT save or write a profile** + never includes a final selected profile id.
+4. Handler computes deterministic `ProfileRecommendation[]`: the **common PSRS core** (`core-psrs-v1`, always present, a real choice) plus up to two closest built-in profiles, each with a 0–100 score, reasons, and trade-offs.
+5. User picks via `ctx.ui.select`, then confirms save via `ctx.ui.confirm`. The profile JSON is written.
+6. If no exact built-in matches, fallback actions (`Use common PSRS core` / `Use closest built-in profile` / `Update Velpari` / `Stop`) are surfaced via `ctx.ui.select`. The common core and closest built-in are real choices; no fake custom-profile action exists.
+
+Doctor (`/velpari-doctor`) reports the active profile mode, id, version (with expected-comparison), research consent + source count, and the report-only stance; it never selects, fixes, or mutates a profile.
 
 ---
 

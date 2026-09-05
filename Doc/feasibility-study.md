@@ -24,7 +24,7 @@ Pi-Velpari is feasible to build as a single-developer, open-source Pi extension.
 
 - Framework capture extends `/velpari-configure-inputs` with one-time prompts for framework/language/libraries/runtime. Stored in `.pi/velpari/files.json` (version 2). Injected into every stage prompt via `prompt.ts:buildStagePrompt()`. Implementation cost: ~50 lines (4 prompt fields + validation).
 - WEB SEARCH AGENT replaces DECISION AGENT in the discussion stage (4 agents total). DECISION logic moves to the main handler as deterministic post-scout processing. The web search agent is user-prompted (yes/no after interview), so latency is opt-in.
-- Uniform subagent pattern: `ScoutContract` defined in `contracts.ts`; `spawnScout()` helper enforces 30-second timeout uniformly. Reduces drift between scouts. Implementation cost: ~150 lines (one new file `contracts.ts` + `scout.ts` helper + 12 skill markdown files).
+- Uniform subagent pattern: enforced by `stages/registry.ts:runStageWithScouts` plus the bundled `skills/agents/*.md` agent definitions. The `ScoutContract` TypeScript types (v1.5) and `spawnScout` in-process runner (v1.5) were both removed in v2.0 when the parent LLM began orchestrating real visible subagents via the `subagent()` tool. Current implementation cost: ~250 lines (registry + agents-install + 36 bundled agent files).
 - TUI independence: Velpari re-implements Senai's picker patterns in `pi-extension/src/ui/` (3 files: simple-picker, list-editor, role-picker). No runtime dependency on Senai. Implementation cost: ~400 lines but reusable across all 22 commands.
 
 **v1.6 additions** (discussion-approve split + chain):

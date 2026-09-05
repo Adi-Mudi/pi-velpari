@@ -2,6 +2,8 @@
 
 A hands-on walkthrough for running a full Velpari cycle, from `/velpari-discuss` through `/velpari-handoff`. The example uses a fictional mission *"Build a CLI that lists TODOs from a markdown file."* Substitute your own mission.
 
+> **v2.0 Update (2026-09-04):** The step-by-step instructions in this guide still describe the user experience correctly (run a command, answer questions, approve). What changed is the *mechanism*: the handler no longer spawns subagents in-process. Instead, after the interview (discuss) or gate check (prd+), the handler calls `pi.sendUserMessage(prompt)`. The parent LLM then spawns the 4 subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents` in visible multiplexer panes (zellij, tmux, cmux, or wezTerm). To use Velpari today, start pi **inside one of these multiplexers** so the subagent panes can appear. All 9 stages (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) follow this pattern. The interview + approve gate UX is unchanged.
+
 ---
 
 ## 0. Prerequisites
@@ -90,6 +92,40 @@ After this step, `/velpari-doctor` should report "Setup progress: 1 of 7 steps d
 The selection is persisted in `.pi/velpari/files.json` under `framework`. Every subsequent stage prompt injects this info, so the LLM produces artifacts in your chosen framework's style (TypeScript signatures if your language is TypeScript; Python docstrings if Python).
 
 **This is one-time setup.** You don't re-pick the framework per run. If you need to change it, re-run `/velpari-configure-inputs`.
+
+---
+
+## 1a. Configure requirements profile (recommended, one-time)
+
+```
+/velpari-configure-requirements
+```
+
+This captures the project's profile (application type, domain, development method, security level, regulated flag) and persists it to `.pi/velpari/requirements-profile.json`. Profile selection is **optional** — you can skip it, pick a built-in profile, or pick the common PSRS core.
+
+**Native Pi UI** is used throughout:
+
+- Free text → `ctx.ui.input(title, placeholder)` (what / who / problem / platforms).
+- Yes/no → `ctx.ui.confirm(title, message)` (sensitive data / external systems / existing codebase / web research / save confirm).
+- Fixed choices → `ctx.ui.select(title, options)` for novelty, application type, domain, development method, security level, profile selection, and fallback actions.
+
+**Research-before-selection.** After the answers are collected, the handler asks for web-research consent **before** any recommendations are produced. The research prompt (handed to the parent LLM via `pi.sendUserMessage`) explicitly says **profile selection is pending** and **MUST NOT save or write a profile**. Findings are suggestions only; they never become a profile requirement.
+
+**Recommendations.** Up to three deterministic candidates (sorted by score, then `profileId`):
+
+- **Common PSRS core** (`core-psrs-v1`) — always present. Defines the baseline PSRS structure (Objective, Problem, Actors, Scope, MVP, Phases, FR, NFR, Data and Interfaces, Errors and Edge Cases, Constraints, Dependencies and Risks, Out of Scope, Open Questions, Acceptance Criteria, Helper Function Candidates). A real, valid choice, not a fallback because nothing matched.
+- **Up to two closest built-in profiles** from the library (banking-web, healthcare-ai, web-general, …). Each labeled with its 0–100 score, reasons, and trade-offs.
+
+The picker shows one line per option. Pick one. The handler asks one final save-confirm before writing the JSON.
+
+**No exact built-in match.** When nothing matches exactly, the handler surfaces fallback actions via `ctx.ui.select`:
+
+- `Use common PSRS core` — real choice.
+- `Use closest built-in profile` — real choice.
+- `Update Velpari with a new profile` — informational; treated as stop in this scope.
+- `Stop` — cancel.
+
+No fake "create custom profile" action. No silent profile invention.
 
 ---
 

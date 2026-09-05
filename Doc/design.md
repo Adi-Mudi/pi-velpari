@@ -3,8 +3,31 @@
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`
-- **Date:** 2026-08-24
-- **Status:** Design complete; implementation in Phase A–E per `pi_velpari_commands_plan_20260824_0924_v1.1.md`.
+- **Date:** 2026-08-24 (initial); 2026-09-03 (v2.0 update); 2026-09-05 (v0.4.0 architecture sync)
+- **Status:** Design complete; implementation in Phase A–F per `architecture-upgrade_plan`. Phase G (this update) is documentation sync only.
+
+> **v0.4.0 architecture update (2026-09-05):** the source layout was reorganized from 30 flat files into 6 subfolders by concern (`core/`, `stages/`, `discipline/`, `view/`, `prompts/`, `ui/`). Concrete file paths referenced throughout this document have shifted:
+>
+> - `commands.ts`              → `core/commands.ts`
+> - `state.ts`                  → `core/state.ts`
+> - `paths.ts`                  → `core/paths.ts`
+> - `compaction.ts`             → `core/compaction.ts`
+> - `agents-install.ts`        → `core/agents-install.ts`
+> - `stage-runner.ts`           → `core/stage-runner.ts`
+> - `prompt.ts`                 → `core/prompt.ts`
+> - `config.ts`                 → `core/config.ts`
+> - `profile.ts`               → `core/profile.ts` (split from former `requirements-profile.ts`)
+> - `profiles-library.ts`      → `core/profiles-library.ts`
+> - `discuss.ts` / `prd.ts` / `rtm.ts` / … → `stages/<name>.ts`
+> - `approve.ts` / `status.ts` / `reset.ts` / … → `discipline/<name>.ts`
+> - `doctor.ts`                 → `discipline/doctor/index.ts` (orchestrator) + `discipline/doctor/report.ts` (disk write) + `discipline/doctor/checks/{secrets,multiplexer,psrs,rtm,agents,paths,working-published,profile}.ts`
+> - `configure-requirements.ts` → `discipline/configure-requirements/index.ts` + `discipline/configure-requirements/{interview,research,recommend}.ts`
+> - `show.ts`                   → `view/show.ts`
+>
+> Module names like `\`doctor.ts:scanForSecrets\`` referenced earlier in this document now resolve to `discipline/doctor/checks/secrets.ts:scanForSecrets`. The function signatures and contracts documented below are unchanged.
+
+> **v2.0 update (2026-09-03):** the discussion stage now uses **real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep). They run in multiplexer panes. The handler does the 6-question interview via `ctx.ui.input`; the parent LLM does the spawning, waiting, optional iterative rounds (up to 3), and writes the working-copy `discussion-notes.md`. Removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*.ts` (4 stubs), `skills/discuss-subagents/*.md` (4 stubs). Added: `src/agents-install.ts` (auto-bootstrap helper), `skills/agents/*.md` (4 Pi agent definitions). Doc sweep for prior versions is a follow-up — sections §2.20, §2.21, §7.8, §11 are stale and will be rewritten in a separate update.
+
 
 ---
 
@@ -89,7 +112,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
 - **Key exports:**
   - `function registerCommands(api: ExtensionAPI): void` — registers all 20 commands.
   - **Stage handlers** (each delegates to the per-stage module):
-    - `handleDiscuss(args, api) → discuss.ts:runDiscuss()`
+    - `handleDiscuss(mission, ctx, pi) → discuss.ts:handleDiscuss()` (v2.0: handler runs 6-question interview via ctx.ui.input + bootstrap agents + pi.sendUserMessage; parent LLM orchestrates the 4 visible scouts)
     - `handlePrd(args, api) → prd.ts:runPrd()`
     - `handleRtm(args, api) → rtm.ts:runRtm()`
     - `handleFeasibility(args, api) → feasibility.ts:runFeasibility()`
@@ -121,7 +144,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function validateFilesConfig(config: FilesConfig): string[]` — returns list of error messages (empty if valid).
   - `function runFilesDiscovery(rootDir: string): DiscoveryResult` — deep-scans project for suggested inputs (markdown files) and outputs (default paths).
 
-### 2.8 `doctor.ts` — setup audit
+### 2.8 `discipline/doctor/index.ts` — setup audit (v0.4.0 split: see callout above)
 
 - **Purpose:** Audit setup, validate artifacts, scan for secrets, write report.
 - **Implements:** FR-12, NFR-04, NFR-05, NFR-08.
@@ -143,7 +166,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
 - **Each implements:** its own FR-N (FR-01 through FR-07) and FR-22, FR-23 (zero-hallucination, confirm gate).
 - **Key exports per stage module:**
   - `function runXxx(args: { state: RunState; rootDir: string; api: ExtensionAPI; }): Promise<void>` — drives the stage end-to-end.
-  - Optional helpers for interactive input (e.g., `discuss.ts` has `askNextQuestion`, `recordAnswer`).
+  - Optional helpers for interactive input. **v2.0 change:** `discuss.ts` no longer has `askNextQuestion`/`recordAnswer` — it uses `ctx.ui.input` directly inside `handleDiscuss`, then hands off to the parent LLM via `pi.sendUserMessage`. The parent LLM is responsible for spawning the 4 visible subagents and writing the working copy.
 
 ### 2.16 `handoff.ts` — bridge to Senai
 
@@ -192,27 +215,7 @@ The extension source lives under `pi-extension/src/`. Each module has a single r
   - `function renderOrderPicker(ranked: OrderEntry[], api: ExtensionAPI): OrderEntry[]` — lets the user reorder and accept.
   - `function writeDevelopmentOrder(accepted: OrderEntry[], rootDir: string): void` — writes to working copy and (on approve) published copy.
 
-### 2.20 `contracts.ts` — shared types (v1.5)
-
-- **Purpose:** Centralize shared types so all scout modules follow the same shape. Avoids drift between the 12 scouts.
-- **Implements:** FR-54, FR-56, NFR-13.
-- **Key exports:**
-  - `interface ScoutContract` — input/output shapes for any scout.
-  - `interface ScoutOutput` — standard envelope `{ proposals: [...], source: ScoutId, warnings?: string[] }`.
-  - `interface ScoutInput` — stage-specific input with skill markdown path.
-  - `interface AcceptedProposal` — what the picker returns.
-  - `interface FrameworkInfo` — shape of `.pi/velpari/files.json:framework` field.
-  - `function spawnScout(scoutId, input, api)` — standard spawn helper with 30s timeout, JSON parsing, error handling. Used by all 12 scouts.
-
-### 2.21 `scout.ts` — scout coordinator (v1.5)
-
-- **Purpose:** Single point of entry for spawning any scout. Wraps `contracts.ts:spawnScout()` with stage-specific helpers.
-- **Implements:** FR-54.
-- **Key exports:**
-  - `function spawnDiscussionScout(name, mission, answers, api)` — for the 4 discussion scouts.
-  - `function spawnAfScout(name, rootDir, api)` — for the 4 AF-SCOUTs.
-  - `function spawnDoScout(name, rootDir, api)` — for the 4 DO-SCOUTs.
-  - `function spawnWebSearchScout(input, api)` — for the WEB SEARCH AGENT (only in discussion).
+(§2.20 `contracts.ts` and §2.21 `scout.ts` were both removed in v0.5.0 Phase I.3 because the modules no longer exist. The removals are also documented in the v2.0 callout box at the top of this file.)
 
 ### 2.22 `ui/` — re-implemented TUI patterns (v1.5)
 
@@ -627,7 +630,7 @@ function validateSenaiSchema(targetContent: object): string[];
 // Pure. Returns list of errors (empty if valid).
 ```
 
-### 4.6 `doctor.ts` contracts
+### 4.6 `discipline/doctor/index.ts` contracts (v0.4.0 split: see callout at top)
 
 ```ts
 function runDoctor(rootDir: string): DoctorReport;
@@ -748,7 +751,7 @@ User                    commands.ts             config.ts             Filesystem
 ### 5.3 Doctor flow
 
 ```
-User                    commands.ts             doctor.ts             Filesystem
+User                    commands.ts             doctor/index.ts        Filesystem
  |                          |                       |                     |
  | /velpari-doctor          |                       |                     |
  |------------------------->|                       |                     |
@@ -799,14 +802,14 @@ Pi Runtime              compaction.ts             state.ts            Filesystem
 | NFR-01 (compaction) | `compaction.ts:buildCompactionSummary` is pure and zero-LLM. State.json is unchanged by compaction. |
 | NFR-02 (no subagents in stages 2–7) | `index.ts` guards against `PI_SUBAGENT_NAME` env for stages 2–7 and handoff. No subagent-spawning code exists in those stages. |
 | NFR-03 (project-local) | `package.json` declares `pi.extensions`. All paths are project-relative. |
-| NFR-04 (secret scan) | `doctor.ts:scanForSecrets` uses a fixed regex set; findings are warnings only. |
-| NFR-05 (doctor report) | `doctor.ts:writeDoctorReport` writes to `DOCTOR_REPORT_PATH` on every run. Report opens with "Setup progress". |
+| NFR-04 (secret scan) | `discipline/doctor/checks/secrets.ts:scanForSecrets` uses a fixed regex set; findings are warnings only. |
+| NFR-05 (doctor report) | `discipline/doctor/report.ts:writeDoctorReport` writes to `DOCTOR_REPORT_PATH` on every run. Report opens with "Setup progress". |
 | NFR-06 (code quality) | TypeScript strict mode; `path.join` everywhere; no in-place state mutation; thin handlers in `commands.ts`. |
 | NFR-07 (no extra deps) | `package.json` declares only the `@mariozechner/pi-coding-agent` peer dep. |
 | NFR-08 (Senai compat) | `handoff.ts:validateSenaiSchema` reads Senai's `architect-inputs-config.ts` at test time. |
 | NFR-09 (testing) | One test file per source module under `pi-extension/test/`. `node --test` with `fs.mkdtempSync` for temp dirs. |
 | NFR-10 (docs) | Phase 0 of v1.1 plan produces README, AGENTS, CHANGELOG, sequence, step-by-step. |
-| NFR-11 (scout agent exception) | Three stages use subagents: `discuss.ts` (4 subagents), `atomic-function.ts` (4 AF scouts), `development-order.ts` (4 DO scouts) — total 12 scout agents. Each scout lives in its own function with deterministic input/output. The scout pattern is centralized so all stages share UI affordance and trace-back rigor. |
+| NFR-11 (scout agent exception) | **v2.0:** Three stages use subagents. `discuss.ts` uses **4 real visible subagents** (NEW EXTRACTOR, PRD CHECKER, RTM CHECKER, WEB SEARCH AGENT) spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. `atomic-function.ts` (4 AF scouts) and `development-order.ts` (4 DO scouts) are stubs that will follow the same pattern. Total target: 12 real subagents. The scout pattern is centralized in `.pi/agents/*.md` (auto-bootstrapped by `agents-install.ts:ensureScoutAgents`) so all stages share UI affordance and trace-back rigor. |
 
 ---
 
@@ -975,7 +978,7 @@ This is documented as `FR-67..FR-71` and `NFR-15`. The `paths.ts` module central
 | `commands.ts` | FR-01..FR-32, FR-43, FR-44, FR-49, FR-57, FR-59, FR-60, FR-67, FR-68 (delegation, 23 commands total; COMMAND_SCOPE and checkDocScope; framework handling; stage-aware approval; project-name output paths) | — |
 | `compaction.ts` | — | NFR-01 |
 | `config.ts` | FR-11 | — |
-| `doctor.ts` | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
+| `discipline/doctor/` (orchestrator + 7 checks + report) | FR-12, FR-33 | NFR-04, NFR-05, NFR-08 |
 | `discuss.ts` | FR-01, FR-22, FR-23, FR-26, FR-28, FR-50, FR-51, FR-52, FR-53 | NFR-11 (4 scouts incl. WEB SEARCH) |
 | `prd.ts` | FR-02, FR-22, FR-23, FR-29 | — |
 | `rtm.ts` | FR-03, FR-22, FR-23, FR-30 | — |
@@ -987,8 +990,8 @@ This is documented as `FR-67..FR-71` and `NFR-15`. The `paths.ts` module central
 | `development-order.ts` | FR-32, FR-36 | NFR-11 (4 DO scouts) |
 | `handoff.ts` | FR-13, FR-34 | NFR-08 |
 | `show.ts` | FR-14..FR-20 | — |
-| `contracts.ts` | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
-| `scout.ts` | FR-54 | NFR-13 |
+| `discipline/configure-requirements/{index,interview,research,recommend}.ts` (v0.4.0 split) | FR-54, FR-56 | NFR-13 (uniform subagent pattern) |
+| `core/stage-runner.ts` + `core/agents-install.ts` (v0.4.0 split) | FR-54 | NFR-13 |
 | `ui/{simple-picker,list-editor,role-picker}.ts` | FR-55 | — |
 | `discuss-approve.ts` | FR-58, FR-59, FR-60 | NFR-14 (stage-aware approval) |
 

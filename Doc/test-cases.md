@@ -1,5 +1,7 @@
 # Pi-Velpari Test Cases
 
+> **v2.0 Update (2026-09-04):** Most of the in-process test cases below (TC-163, TC-191, TC-129..TC-137, etc.) describe the v1.x in-process scout pattern. With v2.0, all 9 stages use real visible subagents via the `subagent()` tool from `@earendil-works/pi-interactive-subagents`. The handler calls `runStageWithScouts` which builds a stage prompt and hands off to the parent LLM via `pi.sendUserMessage(prompt)`; the parent LLM does the actual `subagent()` spawn. The new test files (`test/{prd,rtm,feasibility,design,pseudocode,testplan,atomic-function,development-order}.test.ts`) cover the two-phase flow: handler builds prompt correctly, no working copy is written, no state mutation, etc. See `AGENTS.md` principle #4 and the per-stage skill markdowns for current behavior. The intent (4 parallel agents per stage, merge to working copy) is unchanged; only the *mechanism* moved from in-handler to parent-LLM.
+
 - **Project:** Pi-Velpari
 - **Source PRD:** `Doc/PRD.md` v1.1
 - **Source RTM:** `Doc/RTM_Pi-Velpari.md`
@@ -163,7 +165,7 @@ Tests are grouped by the module they exercise. The "Test file" column tells you 
 
 ---
 
-## 11. `doctor.ts` (FR-12) — 5 cases
+## 11. `discipline/doctor/index.ts` (FR-12) — 5 cases
 
 **Test file:** `pi-extension/test/doctor.test.ts`
 
@@ -301,7 +303,7 @@ For each of the 7 content stages, two cases: published artifact exists (returns 
 
 ---
 
-## 21. `doctor.ts` — secret scanning (NFR-04) — 3 cases
+## 21. `discipline/doctor/checks/secrets.ts` — secret scanning (NFR-04) — 3 cases
 
 **Test file:** `pi-extension/test/doctor.test.ts`
 
@@ -313,7 +315,7 @@ For each of the 7 content stages, two cases: published artifact exists (returns 
 
 ---
 
-## 22. `doctor.ts` — doctor report (NFR-05) — 2 cases
+## 22. `discipline/doctor/report.ts` — doctor report (NFR-05) — 2 cases
 
 **Test file:** `pi-extension/test/doctor.test.ts`
 
@@ -552,7 +554,7 @@ Every requirement in `Doc/RTM_Pi-Velpari.md` has at least one TC. Every TC refer
 
 | TC ID | Description | Preconditions | Steps | Expected Result | RTM Req ID | Priority |
 |---|---|---|---|---|---|---|
-| TC-195 | `ScoutContract` interface defined in `pi-extension/src/contracts.ts` | Read source | Inspect | Interface has scoutId, stageName, inputSchema, outputSchema, timeoutMs | FR-56, NFR-13 | P1 |
+| TC-195 | `ScoutContract` interface defined in `(removed v1.5 module)` | Read source | Inspect | Interface has scoutId, stageName, inputSchema, outputSchema, timeoutMs | FR-56, NFR-13 | P1 |
 | TC-196 | All 12 scout files exist at `skills/scouts/{scoutId}.md` | Read filesystem | List files | 12 files: extractor, prd-checker, rtm-checker, web-search, af-scout-1..4, do-scout-1..4 | FR-54, FR-56 | P1 |
 | TC-197 | `spawnScout()` enforces 30-second timeout uniformly | Mock LLM with slow response | Call spawnScout | Throws after 30s; no scout can exceed timeout | FR-54, NFR-13 | P1 |
 | TC-198 | All scout outputs follow the `{ proposals: [...], source: ScoutId }` envelope | Mock LLM returns various shapes | Call spawnScout | Output is normalized to envelope; missing fields throw | FR-54, NFR-13 | P1 |
@@ -637,4 +639,4 @@ Every requirement in `Doc/RTM_Pi-Velpari.md` has at least one TC. Every TC refer
 
 ---
 
-*This document is consumed by Phase A–E implementation (each test is written alongside its module) and by `pi-extension/src/doctor.ts` (audit-time verification that every RTM row has at least one test case).*
+*This document is consumed by Phase A–E implementation (each test is written alongside its module) and by `pi-extension/src/discipline/doctor/index.ts` (audit-time verification that every RTM row has at least one test case).*

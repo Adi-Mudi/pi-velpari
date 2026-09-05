@@ -5,7 +5,273 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.1] — 2026-09-05 — Footer status bar + `--velpari-stage` flag
+
+Two small fixes that wire documented Pi TUI APIs end-to-end. No behavior change to any handler; no new dependencies; no scope additions.
+
+### Added (Phase J.2 — TUI footer status bar)
+
+- **`ctx.ui.setStatus(key, text)` integration.** The footer now reflects the current Velpari run state at all times, via the documented `ctx.ui.setStatus("velpari", text)` API (see `@earendil-works/pi-coding-agent/docs/extensions.md` and `docs/tui.md`, plus `examples/extensions/status-line.ts` and `examples/extensions/plan-mode/index.ts`).
+  - `pi-extension/src/index.ts` — `session_start` handler now also clears any leftover velpari status bar from a prior session via `setStatus("velpari", undefined)`.
+  - `pi-extension/src/discipline/status.ts` — `handleStatus` pushes `stage: <s> | mission: <m>` after appendEntry. Mission truncated to 30 chars via the now-exported `ui/entry-renderer.ts:truncate` helper.
+  - `pi-extension/src/discipline/approve.ts` — `handleApprove` pushes `stage: <s> | run: <r>` after `appendStageEntry`.
+  - `pi-extension/src/stages/discuss-approve.ts` — `handleApproveDiscuss` pushes the same after `appendStageEntry`. The chained `handlePrd` overwrites on the next run.
+- **Test pinning.** New test in `pi-extension/test/index.test.ts` asserts the clear-on-`session_start` contract. The existing `handleStatus` test in `pi-extension/test/status.test.ts` is augmented to assert the status bar prefix. `makeUI` mocks in `approve.test.ts` and `discuss-approve.test.ts` gain a no-op `setStatus` so the 11 previously-failing happy-path tests stay green.
+
+### Fixed (Phase J.1 — `--velpari-stage` flag)
+
+- **`advanceStage` honors the `--velpari-stage` flag.** `pi-extension/src/core/state.ts:advanceStage` now reads the CLI flag via `pi?.getFlag?.("velpari-stage")` and uses it as a hard override of the target stage when present. Without this wire-up the flag was registered but had no effect on stage transitions (the only path that consults `STAGE_TRANSITIONS`). Tested in `state.test.ts`.
+
+### Infrastructure
+
+- **`scripts/e2e-preflight.sh` — robust TAP counting.** Counts `ok N` lines directly instead of the aggregated `# pass N` summary, which is inconsistent under parallel file execution by Node's `--test` runner. Threshold updated to 488.
+
+### Stats
+
+- 10 files changed, +100 / −11 in J.2; 4 files changed, +18 / −2 in J.1.
+- Unit tests: 488 pass + 0 fail + 0 todo.
+
+## [v0.5.0] — 2026-09-05 — Pi-native features + doc-hygiene doctest
+
+Three commits adding the documented Pi TUI entry-renderer hook, a CLI flag, and a doc-hygiene doctest. No behavior change to any handler; no new dependencies.
+
+### Added (Phase I.2 — custom `velpari-status` entry renderer)
+
+- **`registerEntryRenderer` integration.** `pi-extension/src/ui/entry-renderer.ts` registers a styled `velpari-status` entry renderer using Pi's official TUI primitives (`Box` + `Text`) from `@earendil-works/pi-tui`. The renderer is invoked by Pi when the user expands a `velpari-status` entry written by `discipline/status.ts` via `pi.appendEntry(...)`.
+  - Pattern: matches the `status-line.ts` example in `https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions`.
+  - `pi-extension/src/index.ts` calls `registerVelpariStatusRenderer(pi)` at extension load.
+  - The renderer shows runId, truncated mission, stage, and profile id collapsed; adds applicationType/domain/developmentMethod/regulated/outputVariant/updatedAt when expanded.
+
+### Fixed (Phase I.1 — `--velpari-skip-doctor` flag)
+
+- **`handleDoctor` honors the `--velpari-skip-doctor` flag.** `pi-extension/src/discipline/doctor.ts:handleDoctor` now reads the flag via `pi?.getFlag?.("velpari-skip-doctor")` and skips the doctor check pass when set. Tested in `doctor.test.ts`.
+
+### Test (Phase I.3 — doc-hygiene doctest)
+
+- **`doc-hygiene.test.ts`.** A new doctest scans the `Doc/` tree and the project root for stale references to `pi-extension/src/{commands,prd,rtm,feasibility,design,pseudocode,testplan,handoff,show}.ts` (which were moved/renamed in the v0.4.0 folder refactor). It also pins the layout probes that document the new folder structure (`core/`, `stages/`, `discipline/`, `view/`, `prompts/`, `ui/`). Two followup commits cleaned up the remaining stale references.
+
+### Stats
+
+- 3 commits: `5f6dca3` (I.1), `d885bf9` (I.2), `1eb2a09` (I.3).
+- Unit tests: 487 pass + 0 fail + 0 todo.
+
 ## [Unreleased]
+
+### Changed (research-based profile workflow — 2026-09-05)
+
+Implements the approved `profile_workflow_plan_20260904_2349_v1.0.md`. PSRS structure, RTM structure, grouped `Doc/` paths, stage transitions, and command names are unchanged.
+
+- **Common PSRS core profile.** `core-psrs-v1` is now a first-class, versioned, deterministic profile in the built-in library. Its applicationType is `other`, domain `general`, developmentMethod `agile`, regulated `false`, securityLevel `medium`, outputVariant `standard`. A common-core selection is a real, valid choice — never a fallback for missing matches.
+- **`ProfileRecommendation` type + scoring.** `recommendProfiles(answers)` returns up to three deterministic recommendations: the common PSRS core plus up to two closest built-in profiles. Each carries a 0–100 score, reasons, and trade-offs. Sort order: `score DESC, profileId ASC`.
+- **`compactProfileMetadata` gains `profileKind`.** The compact projection now includes `"common-core" | "built-in"`.
+- **Persisted profile shape (v1.1.0).** `version = "1.1.0"`. New `profileKind` field. v1.0.0 profiles still load only if the user manually migrates them; the validator enforces the v1.1.0 shape. `REQUIREMENTS_PROFILE_VERSION` bumped.
+- **Native Pi selectors.** `/velpari-configure-requirements` uses `ctx.ui.select(title, options)` for novelty, application type, domain, development method, security level, regulated (via confirm), profile recommendation, and fallback actions. Free text stays on `ctx.ui.input(title, placeholder)`; yes/no stays on `ctx.ui.confirm(title, message)`. Tests mock `select`.
+- **Research BEFORE final profile selection.** Web-research consent (`ctx.ui.confirm`) is now collected immediately after the answers, before any recommendation list or saving. The research prompt explicitly states `Profile selection: PENDING`, says `MUST NOT save or write a profile`, and never includes a final selected profile id. Findings remain suggestions only. If consent is granted but `pi` is absent, the handler skips the handoff with a warning and still saves the profile with `researchConsent: true` and empty `researchSources`.
+- **`closestBuiltInProfile(answers)` helper.** Deterministic lookup used by the fallback action `Use closest built-in profile`.
+- **`runFallbackActions(ctx, cwd)` helper.** Surfaces the four documented fallback actions via native `ctx.ui.select`. No fake custom-profile action. Returns `"core" | "closest" | "stop" | undefined`.
+- **Doctor is report-only.** `doctor.ts` adds profile mode, id, version-with-expected-comparison, research consent + source count, and the explicit "Doctor is report-only" note. It also reports when a common-core profile is in use. Doctor never selects, fixes, or mutates a profile.
+- **`suggestProfiles` excludes common core.** The deterministic match list keeps the original behaviour (built-ins only). Use `recommendProfiles` for the user-facing list that always includes the common core.
+
+### Added (Phase 7 — Velpari Requirements Factory, 2026-09-04)
+
+Implements the design documented in `Doc/velpari-requirements-orchestration-design.md`.
+
+**New commands (2):**
+
+- **`/velpari-configure-requirements`** — captures the project's requirements profile (application type, domain, development method, regulated flag, security level, required sections, conditional questions) via dynamic core + conditional questions; suggests matching built-in profiles with reasons (deterministic, sorted by profileId); explicitly requires the user's confirmation before saving; asks for web-research consent and, on consent, hands a compact research prompt to the parent LLM via `pi.sendUserMessage` (the extension never fetches the web itself, never adds dependencies, never spawns subagents from this handler). If no profile matches, the handler reports the gap and the documented options — it never invents a profile. Profile persisted at `.pi/velpari/requirements-profile.json`.
+- **`/velpari-prd-rtm`** — wrapper that calls `handlePrd` then `handleRtm` in sequence. The wrapper does not duplicate stage logic, does not auto-approve, and can be skipped in favor of the independent `/velpari-prd` + `/velpari-rtm` calls.
+
+**New modules (4):**
+
+- `pi-extension/src/requirements-profile.ts` — versioned profile schema, deterministic profile library, suggest/match logic, save/load, compact-metadata projection, `validateRequirementsProfile` strict guard, `buildConditionalQuestions` for banking/healthcare/AI/regulated extensions.
+- `pi-extension/src/psrs.ts` — pure PSRS structural validator (frontmatter, 16 required sections, FR/NFR/HF dedup + duplicates, open-questions + IDs, helper traceability, placeholder detection, MVP/Phases presence + thin-section warning, acceptance/verification aggregation, renderPsrsSummary).
+- `pi-extension/src/configure-requirements.ts` — handler for `/velpari-configure-requirements`; calls existing helpers + builds the compact research handoff prompt.
+- `pi-extension/src/prd-rtm.ts` — wrapper for `/velpari-prd-rtm`; calls `handlePrd` then `handleRtm`.
+
+**Grouped category layout (new writes):**
+
+`Doc/` documents are now organized into category subfolders for new writes:
+
+```
+Doc/
+├── discussion/discussion-<topic>.md
+├── requirements/PRD_<project>.md        (combined PSRS)
+├── requirements/RTM_<project>.md
+├── feasibility/feasibility-study_<project>.md
+├── design/design_<project>.md
+├── pseudocode/pseudocode_<project>.md
+├── tests/test-plan_<project>.md
+├── tests/test-cases_<project>.md
+├── atomic-functions/atomic-functions_<project>.md
+└── development-order/development-order_<project>.md
+```
+
+Legacy flat paths (`Doc/PRD_<project>.md`, `Doc/discussion-<slug>.md`, etc.) remain readable everywhere as fallback. Nothing is moved, deleted, or overwritten. Working copies under `.IDE_Plans/velpari/runs/<run-id>/` use the matching category folder name (`prd/`, `rtm/`, `tests/`, etc.).
+
+**PSRS shape (preserves the `PRD_<project>.md` file name):**
+
+`/velpari-prd` produces a document with mandatory sections: Objective, Problem, System Actors, Scope, MVP, Phases, Functional Requirements, Non-Functional Requirements, Data and Interfaces, Errors and Edge Cases, Constraints, Dependencies and Risks, Out of Scope, Open Questions, Acceptance Criteria, Helper Function Candidates, plus YAML frontmatter (`documentType: product-software-requirements`, `version`, `status`, `profile`, `profileVersion`, `mission`, `projectName`). RTM remains a separate document and reads the PSRS.
+
+**Stage runner + prompt:**
+
+- `StageRunConfig.profileMetadata` — compact profile projection injected into the stage prompt as a `## Profile (compact)` block. Only the compact projection is carried, never the full profile.
+- `BuildStagePromptInput.profileMetadata` — same projection rendered into the prompt.
+- Profile absence → block omitted, prompt unchanged.
+
+**Updated handlers + doctor + status + show + handoff:**
+
+- `prd.ts`, `rtm.ts`, `feasibility.ts`, `design.ts`, `pseudocode.ts`, `testplan.ts`, `atomic-function.ts`, `development-order.ts` — read input artifacts from grouped layout first, fall back to legacy flat path; write working copies to grouped working-copy layout; pass `profileMetadata` to the stage runner.
+- `approve.ts` — publishes to grouped Doc/<category>/ (testplan keeps the two-file approval); reads working copies from grouped working-copy dir first, falls back to legacy flat.
+- `discuss-approve.ts` — publishes discussion to `Doc/discussion/discussion-<topic-slug>.md` with timestamp-suffix fallback for re-runs.
+- `show.ts`, `status.ts`, `handoff.ts` — resolveDocArtifact + resolveDiscussionArtifact (grouped first, legacy fallback).
+- `doctor.ts` — adds profile presence/version/mismatch, grouped/legacy paths, PSRS structural validation, RTM-to-PSRS traceability, working/published separation, MVP/phases coverage checks. Doctor remains a reporter; it never auto-selects, fixes, or generates a profile.
+
+**Paths module (`pi-extension/src/paths.ts`):**
+
+- `buildGroupedPath(artifact, projectName)` → `Doc/<category>/<artifact>_<project>.md`
+- `buildGroupedDiscussionPath(topicSlug)` → `Doc/discussion/discussion-<slug>.md`
+- `buildWorkingGroupedPath(cwd, runId, artifact, projectName)` → grouped working-copy path
+- `resolveDocArtifact` / `resolveDiscussionArtifact` — `{ path, layout: "grouped" | "legacy" }` resolution with grouped-first, legacy fallback.
+- `GROUPED_CATEGORIES` / `WORKING_GROUPED_CATEGORIES` — single source of truth for the category map.
+- `buildOutputPath` / `buildDiscussionPath` — preserved for back-compat.
+
+**New skill markdown:**
+
+- `skills/velpari-configure-requirements.md` — describes the deterministic profile selection flow + web-research consent rules + output contract + hard rules.
+- `skills/velpari-prd.md`, `skills/velpari-rtm.md` — updated to describe PSRS structure, grouped working/published paths, and the compact profile metadata block.
+
+**Test count: 424 passing** (was 347; +77 net). New test files:
+
+- `pi-extension/test/requirements-profile.test.ts` (32 tests) — schema validation, save/load round-trip, deterministic suggestion, library sanity, conditional questions, compact projection.
+- `pi-extension/test/psrs.test.ts` (28 tests) — frontmatter, headings, FR/NFR/HF dedup, open-questions, placeholders, MVP/phases thin-section, acceptance/verification aggregation.
+- `pi-extension/test/configure-requirements.test.ts` (12 tests) — happy path, gap reporting, cancel, override, research consent (with and without `ExtensionAPI`), re-run existing profile.
+- `pi-extension/test/paths.test.ts` (existing) — extended with grouped-path builders, category map, resolveDocArtifact/resolveDiscussionArtifact.
+- `pi-extension/test/prompt.test.ts` (existing) — extended with `## Profile (compact)` rendering + absence behavior.
+
+**Pre-existing unrelated changes preserved (per task instructions):**
+
+- `.IDE_Plans/git_init_plan_20260823_1755_v1.0.md` — marked deleted in `git status`; left untouched.
+- `pi-extension/test/e2e/README.md`, `pi-extension/test/e2e/_setup.ts`, `pi-extension/test/e2e/doctor.e2e.test.ts` — pre-existing modifications; left untouched.
+- `Doc/velpari-requirements-orchestration-design.md` — untracked file referenced as the design source; left untouched.
+
+### Changed (all-stages visible subagents, 2026-09-03 to 2026-09-04)
+
+Extended the v2.0 visible-subagent pattern from `/velpari-discuss` to **all 9 stage commands**. Each stage now spawns 4 real subagents in parallel visible multiplexer panes via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. Total: **36 subagent definitions** across 9 stages.
+
+| Stage | 4 scouts |
+|---|---|
+| discuss | extractor, prd-checker, rtm-checker, web-search-agent |
+| prd | fr-extractor, nfr-checker, helper-detector, consolidator |
+| rtm | rtm-requirement-tracer, rtm-test-case-linker, rtm-coverage-analyzer, rtm-consolidator |
+| feasibility | feasibility-tech, feasibility-schedule, feasibility-cost, feasibility-risk |
+| design | design-module-decomposer, design-contract-definer, design-data-flow-mapper, design-error-definer |
+| pseudocode | pseudo-algorithm-extractor, pseudo-edge-case-handler, pseudo-complexity-analyzer, pseudo-consolidator |
+| testplan | testplan-strategy-designer, testplan-unit-test-generator, testplan-integration-test-generator, testplan-coverage-tracer |
+| atomic-function (optional) | af-source-rtm, af-source-pseudocode, af-source-prd, af-source-testcases |
+| development-order (optional) | do-topology, do-risk, do-test, do-value |
+
+**Phase 1 (commit `4d64b18`) — Scaffolding:**
+- `pi-extension/src/stage-runner.ts` (NEW) — `StageRunConfig` + `runStageWithScouts` generic two-phase flow.
+- `pi-extension/src/prompt.ts` — real `loadStageSkill` + `buildStagePrompt` with scout paths, input artifact, working copy.
+- `pi-extension/src/agents-install.ts` — generic `ensureStageAgents(agentIds, cwd)` helper.
+- 11 tests for stage-runner scaffolding.
+
+**Phase 2 (commit `4f68d05`) — `/velpari-prd`:**
+- 4 prd-scouts created, skill rewritten, handler uses runStageWithScouts, 13 tests.
+- `src/discuss-approve.ts` updated to pass `pi` through for the auto-chain.
+
+**Phase 3 (commits `c1b5ca5` + `adbaad5`) — `/velpari-rtm` + `/velpari-feasibility`:**
+- 8 new agents (4 each), skills rewritten, handlers + tests. 16 + 12 = 28 new tests.
+
+**Phase 4 (commit `9f51538`) — `/velpari-design` + `/velpari-pseudocode` + `/velpari-testplan`:**
+- 12 new agents (4 each), skills rewritten, handlers + tests. 42 new tests.
+- `StageRunConfig` extended with `additionalWorkingCopies` (testplan writes 2 outputs).
+
+**Phase 5 (commit `0289aef`) — `/velpari-atomic-function` + `/velpari-development-order`:**
+- 8 new agents, skills rewritten, NEW handlers + tests. 30 new tests.
+- `BuildStagePromptInput` extended with `inputArtifactContent` (multi-doc stages concatenate 5-7 published artifacts into the prompt).
+- All 23 commands now wired; no more "Phase A stub" handlers.
+
+**Phase 6 (commit `TBD`) — Docs only:**
+- `src/doctor.ts` extended to enumerate all 9 stages' scouts + check all 9 stage skill markdowns.
+- `AGENTS.md` principle #4 updated.
+- Doc sweep for stale scout references in `Doc/pseudocode.md`, `Doc/test-plan.md`, `Doc/test-cases.md`, `Doc/velpari-sequence.md`, `Doc/step-by-step-guide.md`.
+
+**Cumulative test count:** 343/343 passing (was 169 before any of this work, +174 net).
+
+**New peer dep (added in v2.0):** `@earendil-works/pi-interactive-subagents` (≥3.7.2).
+
+**Cumulative files added:** 36 agent files in `skills/agents/`, 9 skill markdowns, 7 new src files, 5 new test files. Files removed: `src/scout.ts`, `src/contracts.ts`, `src/scouts/*` (4), `skills/discuss-subagents/*` (4).
+
+### Changed (v2.0 — visible subagents, 2026-09-03)
+
+The discussion stage now uses **real visible subagents** spawned via the `subagent` tool from `@earendil-works/pi-interactive-subagents` (new peer dep, ≥3.7.2). This replaces the v1.0 design that mirrored `pi-seani`'s `/senai-discussion` (parent-LLM-only, no subagents).
+
+**Breaking changes vs. v1.x:**
+
+- `/velpari-discuss <topic>` is now a **two-phase flow**:
+  1. **Handler phase** (deterministic, in the extension): validates mission, loads state, bootstraps 4 scout agents into `.pi/agents/` if missing, asks 6 fixed interview questions via `ctx.ui.input`, asks web-search yes/no via `ctx.ui.confirm`, then calls `pi.sendUserMessage(prompt)` to hand off to the parent LLM.
+  2. **LLM phase** (orchestrated by the parent LLM, driven by `skills/velpari-discuss.md`): spawns the 4 scouts in parallel via the `subagent` tool (visible multiplexer panes), waits for completion, reads their reports, optionally iterates with `AskUserQuestion` follow-ups (up to 3 rounds), writes the working-copy `discussion-notes.md`, and shows the preview gate.
+- **Handler no longer writes the working copy.** The parent LLM does that after reading the 4 scout reports. The handler still creates the run directory and the `discuss/` + `scouts/` subdirectories so the LLM knows where to write artifacts.
+- **State is not mutated by `/velpari-discuss`.** Discussion is orthogonal: `createRun()` already advanced to `discussing`; the next transition (`discussed`) happens in `/velpari-approve-discuss`.
+
+**New files:**
+
+- `skills/agents/{extractor,prd-checker,rtm-checker,web-search-agent}.md` — 4 Pi agent definitions (real subagents) with YAML frontmatter, role description, input contract, output contract, completion contract, and `auto-exit: true / spawning: false / session-mode: standalone` flags. Bundled with the extension.
+- `pi-extension/src/agents-install.ts` — `ensureScoutAgents(cwd)` helper that copies the 4 bundled agent definitions from `skills/agents/` into `.pi/agents/` on first use. Called automatically by `handleDiscuss`.
+- `pi-extension/test/agents-install.test.ts` — 6 tests covering the bootstrap helper (fresh dir, skip present, create `.pi/agents/`, idempotent, format helper).
+
+**Removed files:**
+
+- `pi-extension/src/scout.ts` — `runScout`, `withTimeout`, `readScoutSkill` runner (in-process 30s-timeout wrapper, no longer used).
+- `pi-extension/src/contracts.ts` — `ScoutContract`, `ScoutId`, `ScoutFn`, `ScoutOutput`, `ScoutProposal`, `ScoutInput`, `emptyScoutOutput` (in-process scout contract, no longer used).
+- `pi-extension/src/scouts/{extractor,prd-checker,rtm-checker,web-search-agent}.ts` — 4 stub scout implementations returning empty proposals. Replaced by real Pi agent files.
+- `skills/discuss-subagents/{extractor,prd-checker,rtm-checker,web-search-agent}.md` — 4 markdown skill stubs (replaced by `skills/agents/*.md`).
+- `pi-extension/test/scout.test.ts` — tests for the deleted runner.
+
+**Modified files:**
+
+- `pi-extension/src/prompt.ts` — full rewrite. `loadStageSkill(stage)` now actually reads `skills/velpari-<skill>.md` (stripping YAML frontmatter); `buildStagePrompt(input)` assembles the `<pi-velpari stage="...">` metadata block with mission, framework, run ID, scout paths, embedded answers, web-search flag, and the stage skill content. Mirrors `pi-seani/src/prompt.ts:loadSkill + buildStagePrompt`.
+- `pi-extension/src/discuss.ts` — full rewrite. New two-phase flow described above. `ctx` no longer accepts the 6 questions itself; the handler does. Handler no longer calls `mergeProposals`; the LLM does the deterministic merge.
+- `pi-extension/src/commands.ts` — `REAL_HANDLERS` signature widened to accept optional `pi: ExtensionAPI`; `registerCommands` threads `pi` into the wrapper. Only `velpari-discuss` uses `pi` today.
+- `skills/velpari-discuss.md` — full rewrite. Now describes the LLM-orchestrated sequence: spawn 4 subagents in parallel, wait, read reports, iterate up to 3 rounds, write working copy, show preview gate. Mirrors `pi-seani/skills/senai-plan.md` (scout spawning + sync rules) + `pi-seani/skills/senai-discussion.md` (iterative questioning).
+- `pi-extension/test/prompt.test.ts` — full rewrite. 11 tests covering `loadStageSkill` (real file read, frontmatter strip, error cases) and `buildStagePrompt` (metadata block, framework line, embedded answers, web-search flag, scout paths, skill content inclusion).
+- `pi-extension/test/discuss.test.ts` — full rewrite. 11 tests covering the two-phase flow: 6-question interview, skip-on-empty, web-search prompt, `pi.sendUserMessage` call shape, handler does NOT write working copy, state.stage not mutated, run directories created, agents bootstrapped on first use, no re-bootstrap on second call, follow-up notify, web-search flag embedded.
+- `package.json` — added `@earendil-works/pi-interactive-subagents` (≥3.7.2) to `peerDependencies`. Required for the `subagent` tool.
+
+**New peer dependency:**
+
+`@earendil-works/pi-interactive-subagents` (≥3.7.2) — provides the `subagent` tool the parent LLM uses to spawn the 4 visible scout panes. Without it installed, the LLM has no way to spawn scouts and the discussion flow breaks. Install via Pi's package manager alongside Velpari.
+
+**Risks / behavior changes:**
+
+- First-run now silently creates 4 agent files in `.pi/agents/`. A `ctx.ui.notify` informs the user which files were installed.
+- The 30s-per-scout timeout (v1.x) is gone; scouts run as long as they need to. Use the live subagent widget to monitor progress.
+- The handler no longer writes the working copy synchronously; the LLM does that after all scouts complete. Users see a brief loading period between the interview finishing and the working copy appearing.
+
+**Patched after doc-verification pass (2026-09-03, later):**
+
+Verified against the official [`pi-interactive-subagents`](https://github.com/HazAT/pi-interactive-subagents) README and fixed 6 mismatches between our plan and the actual tool API:
+
+- **`max_turns` removed** from `skills/velpari-discuss.md`. The `subagent` tool does NOT accept a turn cap; the parameter was hallucinated. Interrupt stuck scouts via `subagent_interrupt` instead.
+- **Agent frontmatter updated.** All 4 agent files (`extractor`, `prd-checker`, `rtm-checker`, `web-search-agent`) now declare `tools: read, write, bash` and `thinking: minimal` per the docs' recommended fast-reconnaissance profile.
+- **`caller_ping` documented.** Scouts can request help from the parent mid-task via `caller_ping({ message })`; the child exits and the parent is steered. Added to skill markdown.
+- **`cwd` parameter documented.** Spawns should pass `cwd: <runDir>` so scouts can use relative paths.
+- **`subagent_interrupt` clarified.** Works only for Pi-backed subagents; Claude-backed runs return an error.
+- **Live widget status states** (`active`, `waiting`, `stalled`, `running`, `starting`) added to skill markdown for sync-rule decisions.
+
+**Known issue carried forward:** [pi-interactive-subagents Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) — the zellij backend's `close-pane` step can close the parent session instead of the subagent pane. Workaround documented in `skills/velpari-discuss.md`: do NOT manually focus a subagent pane during the discussion.
+
+### Fixed (Q1 verification — 2026-09-02)
+
+Verified the architecture against the official Pi extension docs (github.com/earendil-works/pi) and corrected six stale references:
+
+- **AGENTS.md line 33:** peer dependency corrected from `@mariozechner/pi-coding-agent` to `@earendil-works/pi-coding-agent`.
+- **AGENTS.md line 61:** entry-point comment updated to reflect the verified `export default (pi: ExtensionAPI)` shape.
+- **AGENTS.md line 116:** removed the unverifiable claim that `PI_SUBAGENT_NAME` guard applies. The guard itself is retained defensively; Phase A smoke-tests it.
+- **AGENTS.md §Extension Loading:** added a note that the `PI_SUBAGENT_NAME` guard cannot be verified in current Pi docs and may be removed in Phase A if the smoke test fails.
+- **README.md line 80:** clarified the two install modes (project-local `.pi/extensions/` vs npm-distributed `pi install npm:...`).
+- **DevPlan/development-order.md:** added a "Verified architecture" section as the canonical reference for the entry-point shape, package metadata, and event names. (Committed separately in `1b227bc`.)
 
 ### Added (docs-first scope — v1.7 plan)
 
@@ -134,3 +400,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 
 - This is the pre-v1.1 baseline. The 32-line PRD is fully superseded by the v1.1 PRD expansion.
+
+## [v0.4.0] — 2026-09-05 — Architecture upgrade (7 phases, A through F + G doc sync)
+
+Phase A through Phase F commit-by-commit. Each is a single, recoverable
+step; rollback is `git revert <sha>` on the individual commit.
+
+### Phase A — Folder layout (refactor only)
+
+- `9d1b83b` — Move 30 src modules into 6 subfolders (`core/`, `stages/`,
+  `discipline/`, `view/`, `prompts/`, `ui/`) by concern. Net 0 LOC change.
+- `c6fbcb6` (followup) — Pin the new 4-level `__dirname` probe chain
+  for `bundledAgentPath` and `resolveSkillPath`. Adds 2 regression tests.
+
+### Phase B — STAGE_REGISTRY + DRY stage handlers (refactor only)
+
+- `6fe3ea2` — Introduce `stages/registry.ts` with `STAGE_REGISTRY`,
+  `runStage()`, and `resolveStageInputs()`. The 8 single-input + multi-
+  input stage handlers shrink from ~100 lines each to ~10. Per-stage
+  error wording byte-for-byte preserved.
+- `e76f5f7` (followup) — 4 edge tests: multi-input concatenation,
+  optional-discussion skip, doc legacy fallback, `stageEnum` drift
+  detection.
+
+### Phase C — Profile split (refactor only)
+
+- `eca15b4` — Split `requirements-profile.ts` (598 monolith) into
+  `core/profile.ts` (types + persistence) + `core/profiles-library.ts`
+  (built-in library + scoring). Split `configure-requirements.ts`
+  (511 monolith) into `discipline/configure-requirements/{index,
+  interview,research,recommend}.ts`. Per-document and per-test imports
+  rewired.
+- `2a92834` (followup) — Direct `migrateLegacyProfile` contract test
+  (writes v1.0.0 JSON, asserts migration shape).
+
+### Phase D — Doctor split (refactor only)
+
+- `03af76d` — Split `doctor.ts` (560 monolith) into
+  `discipline/doctor/{index,report}.ts` + 7 checks under
+  `discipline/doctor/checks/`. Discovered + recorded a JSDoc parser
+  bug caused by literal `**/` inside backticked comment text.
+- `70a5d62` (followup) — `handleDoctor` + truncation contract test.
+  Locks in the entry wrapper that previously had zero direct coverage.
+
+### Phase E — Pi-native features (the only feature commit)
+
+- `61b1198` — Drop unverified `PI_SUBAGENT_NAME` guard. Add
+  `pi-package` keyword to `package.json`. New `appendStageEntry(pi,
+  state)` in `core/state.ts`. Called after every `advanceStage` to
+  persist state as a `velpari-state` entry — survives session fork /
+  resume. `pi.events.emit` on `velpari:start / :before-compact /
+  :shutdown`. `pi.registerShortcut` for `ctrl+shift+v` (status) and
+  `ctrl+shift+r` (reset). `pi.registerFlag` for `velpari-skip-doctor`
+  (boolean) and `velpari-stage` (string). `discipline/status.ts`
+  switched from `ctx.ui.notify` (truncated at ~8000 chars) to
+  `pi.appendEntry("velpari-status", ...)` with full body + profile
+  metadata. Custom entry renderer (`ui/entry-renderer.ts`) deferred
+  until `@earendil-works/pi-tui` peer dep is approved.
+- `619da1a` (followup) — 5 direct tests for the new contracts:
+  `appendStageEntry` shape, 3 event emissions, status entry shape.
+
+### Phase F — resources_discover migration (refactor only)
+
+- `dc61099` — Honest reading: Pi's `pi.on("resources_discover", ...)` is
+  for paths Pi should auto-discover, NOT for resolving bundled
+  extension assets. So Phase F pragmatically collapsed 4 dead
+  `__dirname` probe candidates in `bundledAgentPath` and
+  `resolveSkillPath` (only the 4-level-up probe is live since Phase A),
+  and added an explicit `pi.on("resources_discover")` registration
+  contributing `<cwd>/skills` as a Pi resource path. Net −20 LOC, no
+  behavior change.
+- `82e4a4a` (followup) — Pin the `resources_discover` registration
+  contract (1 test in `index.test.ts`).
+
+### Documentation sync (Phase G)
+
+- `AGENTS.md` "Project structure" block rewritten to reflect the new
+  6-subfolder layout and the per-subfolder module summary.
+- `Doc/pseudocode.md` §8 doctor.ts reference updated to the new
+  `discipline/doctor/index.ts`.
+- This CHANGELOG entry.
+
+### Tests
+
+- 463 unit tests + 5 E2E tests across 38 test files (Phase F followup).
+- All phase commits maintain the test gate.
+- Symlink contract unchanged: `~/.pi/agent/extensions/pi-velpari →
+  dist/pi-extension/src`.

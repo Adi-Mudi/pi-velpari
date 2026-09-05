@@ -43,7 +43,7 @@ Every requirement in `Doc/PRD.md` appears in this RTM with at least one row. Eve
 | FR-09 | Display run id, mission, current stage, completed stages, artifact paths | PRD §4.2 | Design §4.2 (Status display) | `pi-extension/src/commands.ts:handleStatus()` + `pi-extension/src/state.ts:loadState()` | TC-041..TC-043 | Planned |
 | FR-10 | Discard current run (state.json and run dir) with confirmation prompt | PRD §4.2 | Design §4.3 (Reset flow) | `pi-extension/src/commands.ts:handleReset()` + `pi-extension/src/state.ts:clearRun()` | TC-044..TC-046 | Planned |
 | FR-11 | Categorize input docs and output paths; write `.pi/velpari/files.json` | PRD §4.2 | Design §4.4 (Configuration) | `pi-extension/src/config.ts:runFilesDiscovery()` + `pi-extension/src/config.ts:saveFilesConfig()` | TC-047..TC-050 | Planned |
-| FR-12 | Audit setup, validate artifacts, secret scan, save report to `.IDE_Plans/velpari/doctor-report.md` | PRD §4.2 | Design §4.5 (Doctor) | `pi-extension/src/doctor.ts:runDoctor()` | TC-051..TC-055 | Planned |
+| FR-12 | Audit setup, validate artifacts, secret scan, save report to `.IDE_Plans/velpari/doctor-report.md` | PRD §4.2 | Design §4.5 (Doctor) | `discipline/doctor/index.ts:runDoctor()` | TC-051..TC-055 | Planned |
 | FR-13 | Package approved artifacts into `.pi/senai/architect-inputs.json` matching Senai's schema | PRD §4.2 | Design §4.6 (Handoff) | `pi-extension/src/handoff.ts:runHandoff()` | TC-056..TC-060 | Planned |
 
 ---
@@ -69,7 +69,7 @@ All seven view commands share a single helper function, parameterized by stage n
 | Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
 |---|---|---|---|---|---|---|
 | FR-21 | Working copy lives in `.IDE_Plans/velpari/runs/<run-id>/<stage>/`; published copy lives in `Doc/`; only `/velpari-approve` writes the published copy; covers atomic-function and development-order stages too | PRD §4.4 | Design §6.1 (Copy model) | `pi-extension/src/state.ts:publishToDoc()` (called from `commands.ts:handleApprove()`) | TC-075..TC-078 | Planned |
-| FR-22 | Zero-hallucination: every artifact claim traces to a user statement or earlier approved artifact; verified by cross-reference in doctor | PRD §4.4 | Design §6.2 (Traceability) | Enforced by stage skill markdown (`skills/velpari-*.md`) and verified by `pi-extension/src/doctor.ts:runDoctor()` | TC-079..TC-082 | Planned |
+| FR-22 | Zero-hallucination: every artifact claim traces to a user statement or earlier approved artifact; verified by cross-reference in doctor | PRD §4.4 | Design §6.2 (Traceability) | Enforced by stage skill markdown (`skills/velpari-*.md`) and verified by `discipline/doctor/index.ts:runDoctor()` | TC-079..TC-082 | Planned |
 | FR-23 | Preview-then-save: no `Doc/` write without explicit user confirmation | PRD §4.4 | Design §6.3 (Confirm gate) | Stage modules render preview via `pi-extension/src/prompt.ts:buildStagePrompt()` and call `pi-extension/src/state.ts:publishToDoc()` only after confirm | TC-083..TC-085 | Planned |
 | FR-24 | Stage transitions enforced by `STAGE_TRANSITIONS` table; manual override not supported | PRD §4.4 | Design §6.4 (Transition table) | `pi-extension/src/constants.ts:STAGE_TRANSITIONS` + `pi-extension/src/state.ts:advanceStage()` | TC-086..TC-088 | Planned |
 | FR-25 | State persisted to `.IDE_Plans/velpari/state.json` after every operation; state file is the source of truth | PRD §4.4 | Design §6.5 (Persistence) | `pi-extension/src/state.ts:saveState()` + `pi-extension/src/state.ts:loadState()` | TC-089..TC-091 | Planned |
@@ -101,7 +101,7 @@ All seven view commands share a single helper function, parameterized by stage n
 
 | Req ID | Description | Source / PRD Section | Design Element | Implementation / Helper Function | Test Case ID | Status |
 |---|---|---|---|---|---|---|
-| FR-33 | Helper functions may call atomic functions; dependency recorded bidirectionally (`helper → calls atomic: AF-NN`, `atomic → called by helper: HF-NN`); atomic functions are strictly leaf nodes | PRD §4.4 | Design §3 (Data Model) | PRD schema enforces bidirectional refs; `pi-extension/src/doctor.ts` cross-checks | TC-143..TC-147 | Planned |
+| FR-33 | Helper functions may call atomic functions; dependency recorded bidirectionally (`helper → calls atomic: AF-NN`, `atomic → called by helper: HF-NN`); atomic functions are strictly leaf nodes | PRD §4.4 | Design §3 (Data Model) | PRD schema enforces bidirectional refs; `discipline/doctor/index.ts` cross-checks | TC-143..TC-147 | Planned |
 | FR-34 | Handoff includes optional artifacts (`Doc/atomic-functions.md`, `Doc/development-order.md`) when they exist | PRD §4.4 | Design §4.6 (Handoff) | `pi-extension/src/handoff.ts:runHandoff()` checks file existence before including | TC-148..TC-150 | Planned |
 | FR-35 | AF-SCOUT agents: helper splitter, duplicate pattern finder, requirement helper, test helper | PRD §4.4 | Design §3.8 (AF scouts) | 4 functions in `pi-extension/src/atomic-function.ts` | TC-151..TC-155 | Planned |
 | FR-36 | DO-SCOUT agents: dependency sort, risk priority, test priority, user value; weighted merge with user resolving conflicts | PRD §4.4 | Design §3.9 (DO scouts) | 4 functions in `pi-extension/src/development-order.ts` | TC-156..TC-160 | Planned |
@@ -130,9 +130,9 @@ All seven view commands share a single helper function, parameterized by stage n
 | FR-51 | DECISION AGENT logic (helper function dedup, classification) moves to main handler | PRD §4.4 | Design §7.8 (Architecture decisions) | `pi-extension/src/discuss.ts:mergeAndClassify()` runs in main handler after scouts | TC-192 | Planned |
 | FR-52 | WEB SEARCH AGENT is user-prompted (yes/no after interview) | PRD §4.4 | Pseudocode §13.2 | `pi-extension/src/discuss.ts:promptForWebSearch()` | TC-193 | Planned |
 | FR-53 | WEB SEARCH AGENT scope: community + official docs + similar projects | PRD §4.4 | Pseudocode §13.2 | Skill markdown `skills/scouts/web-search.md` defines scope | TC-194 | Planned |
-| FR-54 | All 12 scout agents follow the `ScoutContract` (same spawn, JSON envelope, timeout, picker UI) | PRD §4.4 | Design §2.20 (contracts.ts) | `pi-extension/src/contracts.ts:ScoutContract`; `pi-extension/src/scout.ts:spawnScout()` | TC-195..TC-197 | Planned |
+| FR-54 | All 36 scout agents follow the same `stages/registry.ts:runStageWithScouts` orchestration (4 scouts per stage, JSON envelope, timeout, picker UI) | PRD §4.4 | Design §2.21 (history of removed `scout.ts` v1.5 → v2.0 visible-subagent pattern) | `stages/registry.ts:runStageWithScouts`; `core/agents-install.ts:ensureStageAgents`; per-stage skill markdown in `skills/velpari-*.md` defines the contract | TC-195..TC-197 | Planned |
 | FR-55 | Velpari does NOT depend on Senai at runtime | PRD §4.4 (constraint) | Design §3.9 (TUI independence) | `package.json` does not list Senai; TUI re-implemented in `pi-extension/src/ui/` | TC-198 | Planned |
-| FR-56 | `ScoutContract` interface defined in `pi-extension/src/contracts.ts`; all scout modules import it; scout files at `skills/scouts/{scoutId}.md` | PRD §4.4 | Design §2.20 | New file `pi-extension/src/contracts.ts` | TC-195 | Planned |
+| FR-56 | The scout contract is now defined per-stage in the per-stage skill markdown (`skills/velpari-*.md`); `core/agents-install.ts:ensureStageAgents` bootstraps the four required `skills/agents/{scoutId}.md` files on first use of each stage. The original v1.5 `ScoutContract` TypeScript interface in `pi-extension/src/contracts.ts` was removed in v2.0 | PRD §4.4 | Design §2.20 (history) | `core/agents-install.ts:ensureStageAgents` | TC-195 | Planned |
 | FR-57 | `framework` field in `files.json` validated by `config.ts:validateFilesConfig` | PRD §4.4 | Design §3.8 | `pi-extension/src/config.ts:validateFilesConfig()` extended | TC-189 | Planned |
 
 ---
@@ -167,8 +167,8 @@ All seven view commands share a single helper function, parameterized by stage n
 | NFR-01 | `session_before_compact` hook supplies zero-LLM run summary; context compaction preserves run state | PRD §5 | Design §7.1 (Compaction) | `pi-extension/src/compaction.ts:buildCompactionSummary()` | TC-092..TC-094 | Planned |
 | NFR-02 | Velpari does not spawn subagents in stages 2–7 or handoff; stages 1 (discuss), 8 (atomic-function), 9 (development-order) are exceptions | PRD §5 | Design §7.2 (Architecture boundary) | Extension entry `pi-extension/src/index.ts` guards against `PI_SUBAGENT_NAME` env var for stages 2–7 | TC-095 | Planned |
 | NFR-03 | Project-local installation via `package.json`'s `pi.extensions` field; no global state | PRD §5 | Design §7.3 (Deployment) | `package.json` declares `"pi": { "extensions": ["pi-extension/src/index.ts"] }`; all paths are project-relative | TC-096 | Planned |
-| NFR-04 | Doctor's secret scan uses a deterministic regex set; findings are warnings, not failures | PRD §5 | Design §7.4 (Secret scanning) | `pi-extension/src/doctor.ts:scanForSecrets()` with regex set for AWS keys, GitHub tokens, generic API keys, private key headers | TC-097..TC-099 | Planned |
-| NFR-05 | Doctor report written to `.IDE_Plans/velpari/doctor-report.md` on every run; opens with "Setup progress" section | PRD §5 | Design §7.5 (Doctor report) | `pi-extension/src/doctor.ts:writeDoctorReport()` | TC-100..TC-101 | Planned |
+| NFR-04 | Doctor's secret scan uses a deterministic regex set; findings are warnings, not failures | PRD §5 | Design §7.4 (Secret scanning) | `discipline/doctor/checks/secrets.ts:scanForSecrets()` with regex set for AWS keys, GitHub tokens, generic API keys, private key headers | TC-097..TC-099 | Planned |
+| NFR-05 | Doctor report written to `.IDE_Plans/velpari/doctor-report.md` on every run; opens with "Setup progress" section | PRD §5 | Design §7.5 (Doctor report) | `discipline/doctor/report.ts:writeDoctorReport()` | TC-100..TC-101 | Planned |
 | NFR-06 | TypeScript strict mode; `path.join` for paths; no in-place state mutation; thin command handlers | PRD §5 | Design §7.6 (Coding conventions) | `tsconfig.json` with `"strict": true`; convention enforced via code review in AGENTS.md §"Coding conventions" | TC-102 | Planned |
 | NFR-07 | Peer dependency on `@mariozechner/pi-coding-agent` only; no runtime dependencies added | PRD §5 | Design §7.7 (Dependencies) | `package.json` declares the peer dep and no `dependencies` block | TC-103 | Planned |
 | NFR-08 | Handoff output schema is compatible with Senai's `architect-inputs-config.ts`; handoff test reads Senai source to assert compatibility | PRD §5 | Design §7.8 (Cross-extension compat) | `pi-extension/src/handoff.ts:validateSenaiSchema()` | TC-104..TC-106 | Planned |
@@ -176,7 +176,7 @@ All seven view commands share a single helper function, parameterized by stage n
 | NFR-10 | `AGENTS.md`, `README.md`, `CHANGELOG.md`, `Doc/velpari-sequence.md`, `Doc/step-by-step-guide.md` exist and accurately describe behavior | PRD §5 | Design §7.10 (Documentation) | Documents written in Phase 0 of v1.1 plan | TC-109..TC-110 | Planned |
 | NFR-11 | Subagents permitted only in 3 stages: discuss (4 agents), atomic-function (4 scouts), development-order (4 scouts); total 12 scout agents; stages 2–7 and handoff MUST NOT spawn subagents | PRD §5 | Design §7.11 (Subagent exception) | Each scout agent lives in its own module function: `discuss.ts` (4 subagents), `atomic-function.ts` (4 AF scouts), `development-order.ts` (4 DO scouts) | TC-161..TC-163 | Planned |
 | NFR-12 | Doc scope is the source of truth for command behavior; the PRD per-command section, sequence doc §11, design.md pseudocode, and test cases must all agree | PRD §5 | Design §3.7 (Doc scope) | `pi-extension/src/commands.ts:checkDocScope()` (deterministic gate function) | TC-164..TC-166 | Planned |
-| NFR-13 | Uniform subagent pattern: all 12 scouts follow the `ScoutContract` (same spawn helper, JSON envelope, 30s timeout, picker UI); drift is a defect | PRD §5 | Design §2.20 + §7.8 | `pi-extension/src/contracts.ts:ScoutContract`; `pi-extension/src/scout.ts:spawnScout()` | TC-195..TC-198 | Planned |
+| NFR-13 | Uniform subagent pattern: all 12 scouts follow the `ScoutContract` (same spawn helper, JSON envelope, 30s timeout, picker UI); drift is a defect | PRD §5 | Design §2.20 + §7.8 | (v1.5 modules removed in v2.0; the v0.4.0+ contract is per-stage skill markdowns) | TC-195..TC-198 | Planned |
 | NFR-14 | Approval commands are stage-aware: `/velpari-approve-discuss` for discussion; `/velpari-approve` for stages 2–7; UI hints reflect current stage; user is never confused | PRD §5 | Design §3.10 | `pi-extension/src/commands.ts:handleApproveDiscuss()` vs `handleApprove()`; `renderApproveHint()` | TC-204..TC-206 | Planned |
 | NFR-15 | Output file names are deterministic and project-derived: same `projectName` produces same file name; no "Pi-Velpari" hardcoding | PRD §5 | Design §3.10 | `pi-extension/src/paths.ts:buildOutputPath()`; tests assert naming | TC-211..TC-219 | Planned |
 
@@ -208,7 +208,7 @@ Every requirement has at least one test case. Every test case traces back to a r
 1. **At design time:** `Doc/design.md` lists a "Design elements" section where each design element is tagged with one or more FR-N or NFR-N IDs. A design element with no tagged requirement is a defect.
 2. **At code time:** each implementation file's exported function appears in the "Implementation / Helper Function" column. A function exported but not referenced in this RTM is a defect (or, conversely, a row pointing to a function that does not exist is a defect).
 3. **At test time:** each test case in `Doc/test-cases.md` is tagged with a Test Case ID that matches a TC-NNN in this RTM. A test case with no RTM row is a defect.
-4. **At audit time:** `pi-extension/src/doctor.ts:runDoctor()` reads this RTM and walks the dependency graph, reporting:
+4. **At audit time:** `discipline/doctor/index.ts:runDoctor()` reads this RTM and walks the dependency graph, reporting:
    - PRD requirements with no RTM row.
    - RTM rows with no test case.
    - RTM rows pointing to functions that do not exist.
@@ -219,4 +219,4 @@ Every requirement has at least one test case. Every test case traces back to a r
 
 ---
 
-*This RTM is consumed by `Doc/design.md` (every row's "Design Element" column is a design section), `Doc/test-cases.md` (every row's "Test Case ID" column is a test case entry), and `pi-extension/src/doctor.ts` (audit-time cross-reference check).*
+*This RTM is consumed by `Doc/design.md` (every row's "Design Element" column is a design section), `Doc/test-cases.md` (every row's "Test Case ID" column is a test case entry), and `discipline/doctor/index.ts` (audit-time cross-reference check).*
