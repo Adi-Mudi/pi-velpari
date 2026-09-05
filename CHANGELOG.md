@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.1] — 2026-09-05 — Footer status bar + `--velpari-stage` flag
+
+Two small fixes that wire documented Pi TUI APIs end-to-end. No behavior change to any handler; no new dependencies; no scope additions.
+
+### Added (Phase J.2 — TUI footer status bar)
+
+- **`ctx.ui.setStatus(key, text)` integration.** The footer now reflects the current Velpari run state at all times, via the documented `ctx.ui.setStatus("velpari", text)` API (see `@earendil-works/pi-coding-agent/docs/extensions.md` and `docs/tui.md`, plus `examples/extensions/status-line.ts` and `examples/extensions/plan-mode/index.ts`).
+  - `pi-extension/src/index.ts` — `session_start` handler now also clears any leftover velpari status bar from a prior session via `setStatus("velpari", undefined)`.
+  - `pi-extension/src/discipline/status.ts` — `handleStatus` pushes `stage: <s> | mission: <m>` after appendEntry. Mission truncated to 30 chars via the now-exported `ui/entry-renderer.ts:truncate` helper.
+  - `pi-extension/src/discipline/approve.ts` — `handleApprove` pushes `stage: <s> | run: <r>` after `appendStageEntry`.
+  - `pi-extension/src/stages/discuss-approve.ts` — `handleApproveDiscuss` pushes the same after `appendStageEntry`. The chained `handlePrd` overwrites on the next run.
+- **Test pinning.** New test in `pi-extension/test/index.test.ts` asserts the clear-on-`session_start` contract. The existing `handleStatus` test in `pi-extension/test/status.test.ts` is augmented to assert the status bar prefix. `makeUI` mocks in `approve.test.ts` and `discuss-approve.test.ts` gain a no-op `setStatus` so the 11 previously-failing happy-path tests stay green.
+
+### Fixed (Phase J.1 — `--velpari-stage` flag)
+
+- **`advanceStage` honors the `--velpari-stage` flag.** `pi-extension/src/core/state.ts:advanceStage` now reads the CLI flag via `pi?.getFlag?.("velpari-stage")` and uses it as a hard override of the target stage when present. Without this wire-up the flag was registered but had no effect on stage transitions (the only path that consults `STAGE_TRANSITIONS`). Tested in `state.test.ts`.
+
+### Infrastructure
+
+- **`scripts/e2e-preflight.sh` — robust TAP counting.** Counts `ok N` lines directly instead of the aggregated `# pass N` summary, which is inconsistent under parallel file execution by Node's `--test` runner. Threshold updated to 488.
+
+### Stats
+
+- 10 files changed, +100 / −11 in J.2; 4 files changed, +18 / −2 in J.1.
+- Unit tests: 488 pass + 0 fail + 0 todo.
+
+## [v0.5.0] — 2026-09-05 — Pi-native features + doc-hygiene doctest
+
+Three commits adding the documented Pi TUI entry-renderer hook, a CLI flag, and a doc-hygiene doctest. No behavior change to any handler; no new dependencies.
+
+### Added (Phase I.2 — custom `velpari-status` entry renderer)
+
+- **`registerEntryRenderer` integration.** `pi-extension/src/ui/entry-renderer.ts` registers a styled `velpari-status` entry renderer using Pi's official TUI primitives (`Box` + `Text`) from `@earendil-works/pi-tui`. The renderer is invoked by Pi when the user expands a `velpari-status` entry written by `discipline/status.ts` via `pi.appendEntry(...)`.
+  - Pattern: matches the `status-line.ts` example in `https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions`.
+  - `pi-extension/src/index.ts` calls `registerVelpariStatusRenderer(pi)` at extension load.
+  - The renderer shows runId, truncated mission, stage, and profile id collapsed; adds applicationType/domain/developmentMethod/regulated/outputVariant/updatedAt when expanded.
+
+### Fixed (Phase I.1 — `--velpari-skip-doctor` flag)
+
+- **`handleDoctor` honors the `--velpari-skip-doctor` flag.** `pi-extension/src/discipline/doctor.ts:handleDoctor` now reads the flag via `pi?.getFlag?.("velpari-skip-doctor")` and skips the doctor check pass when set. Tested in `doctor.test.ts`.
+
+### Test (Phase I.3 — doc-hygiene doctest)
+
+- **`doc-hygiene.test.ts`.** A new doctest scans the `Doc/` tree and the project root for stale references to `pi-extension/src/{commands,prd,rtm,feasibility,design,pseudocode,testplan,handoff,show}.ts` (which were moved/renamed in the v0.4.0 folder refactor). It also pins the layout probes that document the new folder structure (`core/`, `stages/`, `discipline/`, `view/`, `prompts/`, `ui/`). Two followup commits cleaned up the remaining stale references.
+
+### Stats
+
+- 3 commits: `5f6dca3` (I.1), `d885bf9` (I.2), `1eb2a09` (I.3).
+- Unit tests: 487 pass + 0 fail + 0 todo.
+
 ## [Unreleased]
 
 ### Changed (research-based profile workflow — 2026-09-05)
