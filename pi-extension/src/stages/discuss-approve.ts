@@ -21,7 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { advanceStage, loadState } from "../core/state.js";
+import { advanceStage, appendStageEntry, loadState } from "../core/state.js";
 import {
 	buildDiscussionPath,
 	buildGroupedDiscussionPath,
@@ -88,6 +88,7 @@ export async function handleApproveDiscuss(
 	// 5. Transition state: discussing -> discussed (via /velpari-approve-discuss),
 	//    then to drafting-prd (via /velpari-prd which handlePrd will trigger).
 	const next = advanceStage(state, "/velpari-approve-discuss", cwd);
+	appendStageEntry(pi, next);
 
 	// 6. Chain into PRD
 	ctx.ui.notify("Chaining into PRD stage...", "info");

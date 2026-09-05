@@ -27,7 +27,7 @@ test("handleStatus reports no run when state is empty", async () => {
 	try {
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleStatus(ctx, dir);
+		await handleStatus(ctx as never, undefined, dir);
 		const info = notifies.find((n) => n.level === "info");
 		assert.ok(info);
 		assert.match(info.msg, /No active Velpari run/);
@@ -42,7 +42,7 @@ test("handleStatus shows state fields when run is active", async () => {
 		createRun("Mission", dir);
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleStatus(ctx, dir);
+		await handleStatus(ctx as never, undefined, dir);
 		const info = notifies.find((n) => n.level === "info");
 		assert.ok(info);
 		assert.match(info.msg, /Mission/);
@@ -60,7 +60,7 @@ test("handleStatus includes history entries", async () => {
 		createRun("Mission", dir);
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleStatus(ctx, dir);
+		await handleStatus(ctx as never, undefined, dir);
 		const info = notifies.find((n) => n.level === "info");
 		assert.ok(info);
 		assert.match(info.msg, /\/velpari-discuss/);
@@ -87,7 +87,7 @@ test("handleStatus truncates long history (MAX_NOTIFY_LENGTH = 8000)", async () 
 
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleStatus(ctx, dir);
+		await handleStatus(ctx as never, undefined, dir);
 
 		const info = notifies.find((n) => n.level === "info");
 		assert.ok(info, "expected an info notification");

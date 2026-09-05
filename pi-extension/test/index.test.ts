@@ -10,15 +10,51 @@ interface RegisteredCommand {
 
 function makeMockPi() {
 	const commands = new Map<string, RegisteredCommand>();
-	const handlers = new Map<string, (event: unknown) => Promise<unknown>>();
+	const handlers = new Map<string, ((event: unknown) => Promise<unknown>)[]>();
+	const shortcuts = new Map<string, { description: string; handler: (ctx: unknown) => Promise<void> }>();
+	const flags = new Map<string, { description: string; type?: string; default?: unknown }>();
+	const sentUserMessages: string[] = [];
+	const entries: Array<{ customType: string; data: unknown }> = [];
+	const eventListeners = new Map<string, Array<(p: unknown) => void>>();
+	const fire = (event: string, payload: unknown) => {
+		const arr = eventListeners.get(event) ?? [];
+		for (const fn of arr) fn(payload);
+	};
 	return {
 		commands,
 		handlers,
+		shortcuts,
+		flags,
+		entries,
+		sentUserMessages,
 		registerCommand(name: string, def: RegisteredCommand) {
 			commands.set(name, def);
 		},
 		on(event: string, handler: (event: unknown) => Promise<unknown>) {
-			handlers.set(event, handler);
+			const arr = handlers.get(event) ?? [];
+			arr.push(handler);
+			handlers.set(event, arr);
+		},
+		registerShortcut(shortcut: string, def: { description: string; handler: (ctx: unknown) => Promise<void> }) {
+			shortcuts.set(shortcut, def);
+		},
+		registerFlag(name: string, def: { description: string; type?: string; default?: unknown }) {
+			flags.set(name, def);
+		},
+		getFlag(name: string): unknown {
+			return flags.get(name)?.default;
+		},
+		sendUserMessage(msg: string, _opts?: unknown) {
+			sentUserMessages.push(msg);
+		},
+		appendEntry(customType: string, data: unknown) {
+			entries.push({ customType, data });
+		},
+		registerEntryRenderer(_customType: string, _renderer: unknown) { /* no-op */ },
+		events: {
+			emit(event: string, payload: unknown) {
+				fire(event, payload);
+			},
 		},
 	};
 }
@@ -45,8 +81,9 @@ test("index registers session_before_compact hook", () => {
 test("compaction hook returns a compaction object", async () => {
 	const pi = makeMockPi();
 	index(pi as unknown as Parameters<typeof index>[0]);
-	const handler = pi.handlers.get("session_before_compact");
-	assert.ok(handler, "hook missing");
+	const handlers = pi.handlers.get("session_before_compact");
+	assert.ok(handlers && handlers.length > 0, "session_before_compact hook missing");
+	const handler = handlers[0]!;
 	const event = {
 		preparation: { firstKeptEntryId: "abc", tokensBefore: 1000 },
 	};

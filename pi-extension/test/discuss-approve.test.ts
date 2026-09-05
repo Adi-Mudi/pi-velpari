@@ -24,7 +24,13 @@ function makeUI(notifies: Array<{ msg: string; level: string }>) {
 }
 
 function makeMockPi() {
-	return { sentUserMessages: [] as string[], sendUserMessage(p: string) { this.sentUserMessages.push(p); } };
+	return {
+		sentUserMessages: [] as string[],
+		sendUserMessage(p: string) { this.sentUserMessages.push(p); },
+		// Phase E: appendStageEntry calls pi.appendEntry. Mock as no-op so
+		// the test rig stays compatible.
+		appendEntry(_type: string, _data: unknown) { /* no-op */ },
+	};
 }
 
 test("handleApproveDiscuss publishes working copy to Doc/", async () => {

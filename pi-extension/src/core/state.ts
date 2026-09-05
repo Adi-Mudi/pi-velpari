@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "./constants.js";
 import { PATHS, STAGE_TRANSITIONS } from "./constants.js";
 
@@ -126,4 +127,25 @@ export function publishToDoc(_source: string, _target: string, cwd: string = pro
 	void _target;
 	void cwd;
 	// Phase A: no-op.
+}
+
+/**
+ * Append the current run state to the session as a `velpari-state` entry.
+ *
+ * Phase E: implements the per-state persistence mechanism recommended in
+ * the Pi extensions doc §State Management — "store it in tool result
+ * `details` for proper branching support." With `pi.appendEntry`,
+ * session_fork / session_resume naturally inherit prior state.
+ *
+ * Callers: discipline/approve.ts and stages/discuss-approve.ts immediately
+ * after a successful `advanceStage`.
+ */
+export function appendStageEntry(pi: ExtensionAPI, state: RunState): void {
+	pi.appendEntry("velpari-state", {
+		runId: state.runId,
+		mission: state.mission,
+		stage: state.currentStage,
+		updatedAt: state.updatedAt,
+		history: state.history,
+	});
 }

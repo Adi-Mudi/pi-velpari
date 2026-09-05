@@ -25,6 +25,7 @@
     "typescript": "^5.4.0"
   },
   "keywords": [
+    "pi-package",
     "pi",
     "extension",
     "orchestration",

@@ -30,7 +30,7 @@ test("handleApprove refuses when in discussing stage (FR-59)", async () => {
 		// State is currently 'discussing'
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApprove(ctx, dir);
+		await handleApprove(ctx as never, undefined, dir);
 		const errored = notifies.some(
 			(n) => n.level === "error" && /approve-discuss/i.test(n.msg),
 		);
@@ -55,7 +55,7 @@ test("handleApprove publishes working copy for stages 2-7", async () => {
 		// The test documents the gate behavior.
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApprove(ctx, dir);
+		await handleApprove(ctx as never, undefined, dir);
 		// The handler refuses because state is 'discussing' (FR-59).
 		const errored = notifies.some((n) => n.level === "error");
 		assert.ok(errored, "expected handleApprove to error in discussing state");
@@ -71,7 +71,7 @@ test("handleApprove refuses when no run is active", async () => {
 		// No createRun — state stays 'none'
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApprove(ctx, dir);
+		await handleApprove(ctx as never, undefined, dir);
 		const errored = notifies.some((n) => n.level === "error");
 		assert.ok(errored, "expected an error when no run is active");
 	} finally {
@@ -100,7 +100,7 @@ test("handleApprove publishes working copy + transitions state for prd stage", a
 
 		const notifies: Array<{ msg: string; level: string }> = [];
 		const ctx = { ui: makeUI(notifies) } as never;
-		await handleApprove(ctx, dir);
+		await handleApprove(ctx as never, undefined, dir);
 
 		// Verify published copy exists at Doc/requirements/PRD_Mission.md (grouped layout).
 		const publishedPath = join(dir, "Doc", "requirements", "PRD_Mission.md");
@@ -135,7 +135,7 @@ test("handleApprove uses configured projectName for grouped output", async () =>
 		writeFileSync(join(workingDir, "PRD_Mission.md"), "# PRD content\n", "utf8");
 
 		const ctx = { ui: makeUI([]) } as never;
-		await handleApprove(ctx, dir);
+		await handleApprove(ctx as never, undefined, dir);
 
 		assert.ok(existsSync(join(dir, "Doc", "requirements", "PRD_ConfiguredApp.md")));
 		assert.equal(existsSync(join(dir, "Doc", "requirements", "PRD_Mission.md")), false);
@@ -216,7 +216,7 @@ for (const c of STAGE_CASES) {
 
 			const notifies: Array<{ msg: string; level: string }> = [];
 			const ctx = { ui: makeUI(notifies) } as never;
-			await handleApprove(ctx, dir);
+			await handleApprove(ctx as never, undefined, dir);
 
 			// Verify published copy exists at the grouped Doc/<category>/<artifact>_<project>.md
 			const groupedPath = join(dir, "Doc", c.publishedCategory, c.workingFile);

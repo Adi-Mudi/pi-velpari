@@ -1,8 +1,13 @@
 /**
- * /velpari-status handler (Phase 7 update; FR-09).
+ * /velpari-status handler (Phase 7 update; FR-09; Phase E entry-renderer).
  *
- * Pure read-only. Loads the current run state and emits a formatted
- * summary via ctx.ui.notify. Never modifies state.
+ * Pure read-only. Loads the current run state and emits a structured
+ * status entry via `pi.appendEntry`. Never modifies state.
+ *
+ * Phase E: switched the output from a single ctx.ui.notify blob (which
+ * truncated past ~8000 chars) to a `velpari-status` entry. The default Pi
+ * JSON renderer shows the entry; a styled Box+Text renderer is deferred
+ * to a follow-up until @earendil-works/pi-tui is added as a peer dep.
  *
  * Scans the grouped Doc/ layout for each artifact, falling back to
  * legacy flat Doc/ paths when present. Uses projectName from
@@ -11,7 +16,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadState } from "../core/state.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
@@ -43,6 +48,7 @@ const ARTIFACT_ORDER: ReadonlyArray<{ artifact: string; label: string }> = [
 
 export async function handleStatus(
 	ctx: ExtensionCommandContext,
+	pi?: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
 	const state = loadState(cwd);
@@ -133,7 +139,32 @@ export async function handleStatus(
 	}
 
 	const summary = lines.join("\n");
-	if (summary.length <= MAX_NOTIFY_LENGTH) {
+
+	if (pi) {
+		// Phase E: persist the status as a session entry. The default Pi
+		// JSON renderer shows it expandable in the TUI; a styled renderer
+		// is deferred until @earendil-works/pi-tui is added as a peer dep.
+		const profile = loadRequirementsProfile(cwd);
+		const profileMeta = compactProfileMetadata(profile);
+		pi.appendEntry("velpari-status", {
+			runId: state.runId,
+			mission: state.mission,
+			stage: state.currentStage,
+			updatedAt: state.updatedAt,
+			profileId: profileMeta?.profileId ?? "(none)",
+			profileKind: profileMeta?.profileKind ?? "(none)",
+			profileVersion: profileMeta?.profileVersion ?? "(none)",
+			applicationType: profileMeta?.applicationType ?? "(none)",
+			domain: profileMeta?.domain ?? "(none)",
+			developmentMethod: profileMeta?.developmentMethod ?? "(none)",
+			regulated: profileMeta?.regulated ?? false,
+			outputVariant: profileMeta?.outputVariant ?? "(none)",
+			body: summary,
+		});
+		ctx.ui.notify("Velpari status entry added. Expand it in the session tree for the full body.", "info");
+	} else if (summary.length <= MAX_NOTIFY_LENGTH) {
+		// Fallback: no `pi` available (test rig, RPC mode), emit the legacy
+		// single-blob notify with truncation, matching pre-Phase-E behavior.
 		ctx.ui.notify(summary, "info");
 	} else {
 		const TRUNCATION_MARKER = "\n... [truncated]";

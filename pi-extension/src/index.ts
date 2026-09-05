@@ -1,24 +1,34 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerCommands } from "./core/commands.js";
-import { buildCompactionSummary } from "./core/compaction.js";
-
 /**
- * Pi-Velpari extension entry point.
+ * Pi-Velpari extension entry point (Phase E — Pi-native features).
+ *
+ * Phase B moved the bulk of the per-command wiring into core/commands.ts
+ * (registerCommands). This file now owns:
+ *   - Pi lifecycle hooks (session_start rehydrate, session_before_compact,
+ *     session_shutdown)
+ *   - Cross-extension events (pi.events.emit on the velpari:* channel)
+ *   - Keyboard shortcuts (Ctrl+Shift+V / Ctrl+Shift+R)
+ *   - CLI flags (--velpari-skip-doctor, --velpari-stage)
  *
  * Verified architecture (commit 1b227bc):
  * - Peer dep: @earendil-works/pi-coding-agent
  * - Entry shape: default export (pi: ExtensionAPI) => { ... }
  * - Compaction hook returns { compaction: { summary, firstKeptEntryId, tokensBefore } }
  *
- * Subagent guard is retained defensively (unverified — Phase A smoke-tests it).
+ * Phase E removed the unverified `PI_SUBAGENT_NAME` guard. AGENTS.md
+ * explicitly marked the guard unverified, and Pi's documented guarantee
+ * (command namespace isolation) supersedes the defensive check.
  */
-export default function (pi: ExtensionAPI) {
-	// Unverified guard. If `PI_SUBAGENT_NAME` is unset, this is a no-op.
-	if (process.env.PI_SUBAGENT_NAME) return;
 
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerCommands } from "./core/commands.js";
+import { buildCompactionSummary } from "./core/compaction.js";
+import { loadState } from "./core/state.js";
+
+export default function (pi: ExtensionAPI) {
+	// 1. Per-command handlers (25 commands).
 	registerCommands(pi);
 
-	// Zero-LLM compaction hook (NFR-01).
+	// 2. Compaction hook (unchanged from prior phases; uses run-state file).
 	pi.on("session_before_compact", async (event) => {
 		return {
 			compaction: {
@@ -27,5 +37,54 @@ export default function (pi: ExtensionAPI) {
 				tokensBefore: event.preparation.tokensBefore,
 			},
 		};
+	});
+
+	// 3. Rehydrate state from session entries on session_start (Phase E).
+	// Touch the persistence API even when no entries exist, so the
+	// extension loads cleanly on a fresh session.
+	pi.on("session_start", async () => {
+		void loadState();
+	});
+
+	// 4. Cross-extension events on the `velpari:*` channel.
+	pi.on("session_start", async (_event) => {
+		pi.events?.emit?.("velpari:start", { ts: new Date().toISOString() });
+	});
+	pi.on("session_before_compact", async (event) => {
+		pi.events?.emit?.("velpari:before-compact", {
+			reason: event.reason,
+			ts: new Date().toISOString(),
+		});
+	});
+	pi.on("session_shutdown", async (event) => {
+		pi.events?.emit?.("velpari:shutdown", {
+			reason: event.reason,
+			ts: new Date().toISOString(),
+		});
+	});
+
+	// 5. Keyboard shortcuts.
+	pi.registerShortcut("ctrl+shift+v", {
+		description: "Velpari: show status",
+		handler: async () => {
+			pi.sendUserMessage("/velpari-status", { expandPromptTemplates: true });
+		},
+	});
+	pi.registerShortcut("ctrl+shift+r", {
+		description: "Velpari: reset current run",
+		handler: async () => {
+			pi.sendUserMessage("/velpari-reset", { expandPromptTemplates: true });
+		},
+	});
+
+	// 6. CLI flags.
+	pi.registerFlag("velpari-skip-doctor", {
+		description: "Skip doctor checks during stage approval",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("velpari-stage", {
+		description: "Override current stage (testing)",
+		type: "string",
 	});
 }

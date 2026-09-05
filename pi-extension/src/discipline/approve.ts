@@ -20,8 +20,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { advanceStage, loadState } from "../core/state.js";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { advanceStage, appendStageEntry, loadState } from "../core/state.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
 	buildRunDir,
@@ -68,6 +68,7 @@ function stageToArtifact(stage: Stage): {
 
 export async function handleApprove(
 	ctx: ExtensionCommandContext,
+	pi?: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
 	const state = loadState(cwd);
@@ -141,5 +142,6 @@ export async function handleApprove(
 
 	// Transition state via /velpari-approve
 	const next = advanceStage(state, "/velpari-approve", cwd);
+	if (pi) appendStageEntry(pi, next);
 	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
 }
