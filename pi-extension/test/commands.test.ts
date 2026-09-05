@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COMMAND_NAMES, registerCommands } from "../src/commands.js";
 
-test("COMMAND_NAMES has 23 entries", () => {
-	assert.equal(COMMAND_NAMES.length, 23);
+test("COMMAND_NAMES has 25 entries", () => {
+	assert.equal(COMMAND_NAMES.length, 25);
 });
 
 test("all command names start with 'velpari-'", () => {
@@ -32,7 +32,7 @@ test("registerCommands registers every name", () => {
 });
 
 test("every real handler is wired (no Phase A stubs remain)", () => {
-	// All 23 commands have REAL_HANDLERS entries now (Phase 5 complete).
+	// All 25 commands have REAL_HANDLERS entries now (Phase 7 complete).
 	// None should fall through to the "Phase A stub" message.
 	const calls: Array<{ msg: string; level: string }> = [];
 	const handlers = new Map<string, (a: string, ctx: unknown) => Promise<void>>();

@@ -92,7 +92,7 @@ test("handlePseudocode refuses when no design exists", async () => {
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
 		await handlePseudocode(ctx, pi as never, dir);
-		assert.ok(ui.notifies.some((n) => n.level === "error" && /cannot read input artifact/i.test(n.msg)));
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /cannot read design/i.test(n.msg)));
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });

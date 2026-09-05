@@ -1,15 +1,23 @@
 /**
- * /velpari-doctor handler (FR-12).
+ * /velpari-doctor handler (Phase 7 update; FR-12).
  *
  * Audits the Velpari setup:
  *  - .pi/velpari/files.json validity (NFR-04)
- *  - Doc/ artifacts present for completed stages (FR-22 traceability)
+ *  - Requirements profile presence + version (Phase 7)
+ *  - Doc/ artifact presence for completed stages, grouped + legacy (FR-22)
  *  - Secret scan over all artifacts (NFR-04)
- *  - Multiplexer detection (v2.0 — required for /velpari-discuss subagents)
- *  - Scout agent file presence + frontmatter (v2.0)
- *  - Stage skill markdown integrity (v2.0)
- *  - Best-effort peer dep check (v2.0)
+ *  - Multiplexer detection (required for /velpari-discuss subagents)
+ *  - Scout agent file presence + frontmatter
+ *  - Stage skill markdown integrity
+ *  - PSRS structural validation (Phase 7)
+ *  - RTM-to-PSRS traceability (Phase 7)
+ *  - Working/published separation (Phase 7)
+ *  - Best-effort peer dep check
  *  - Writes report to .IDE_Plans/velpari/doctor-report.md (NFR-05)
+ *
+ * Doctor is a reporter. It never auto-selects, fixes, or generates a
+ * profile. The configure-requirements command is the only entrypoint
+ * that mutates the profile.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -20,6 +28,18 @@ import { loadState } from "./state.js";
 import { PATHS } from "./constants.js";
 import { loadFilesConfig, validateFilesConfig } from "./config.js";
 import { SCOUT_AGENT_IDS } from "./agents-install.js";
+import {
+	loadRequirementsProfile,
+	REQUIREMENTS_PROFILE_VERSION,
+	validateRequirementsProfile,
+} from "./requirements-profile.js";
+import {
+	buildGroupedPath,
+	buildOutputPath,
+	GROUPED_CATEGORIES,
+	resolveDocArtifact,
+} from "./paths.js";
+import { renderPsrsSummary, validatePsrs } from "./psrs.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -59,17 +79,6 @@ export interface MultiplexerInfo {
 
 /**
  * Detect the active multiplexer by sniffing env vars.
- *
- * Order:
- *  1. `PI_SUBAGENT_MUX` (user-overridden, valid: cmux|tmux|zellij|wezterm)
- *  2. `TMUX` → tmux
- *  3. `ZELLIJ_PANE_ID` or `ZELLIJ_SESSION_NAME` → zellij
- *  4. `WEZTERM_PANE` (and `WEZTERM_EXECUTABLE`) → wezTerm
- *  5. `CMUX_PANE_ID` → cmux
- *  6. else unknown
- *
- * See https://github.com/HazAT/pi-interactive-subagents#install for the
- * supported multiplexer list.
  */
 export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerInfo {
 	const override = env.PI_SUBAGENT_MUX;
@@ -91,14 +100,12 @@ export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): Multipl
 
 /**
  * Best-effort lookup for pi-interactive-subagents package.
- * Tries several common locations; returns version if found.
  */
 export function detectInteractiveSubagentsVersion(cwd: string = process.cwd()): string | undefined {
 	const candidates = [
 		join(cwd, "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
 		join(cwd, "..", "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
 		join(cwd, "..", "..", "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
-		// Pi user-level extension location.
 		join(homedir(), ".pi", "agent", "extensions", "pi-interactive-subagents", "package.json"),
 	];
 	for (const candidate of candidates) {
@@ -116,7 +123,6 @@ export function detectInteractiveSubagentsVersion(cwd: string = process.cwd()): 
 
 /**
  * Lightweight YAML frontmatter parser (scalar values only).
- * Returns empty object if no frontmatter block.
  */
 function parseFrontmatter(markdown: string): Record<string, string> {
 	const match = markdown.match(/^---\n([\s\S]*?)\n---\n/);
@@ -135,9 +141,7 @@ function parseFrontmatter(markdown: string): Record<string, string> {
 const REQUIRED_AGENT_FIELDS = ["name", "description", "tools", "thinking", "session-mode", "auto-exit", "spawning"];
 
 /**
- * Per-stage scout agent ids (v2.0 — all 8 stages use 4 visible subagents each).
- * 9 stages total: discuss, prd, rtm, feasibility, design, pseudocode, testplan,
- * atomic-function (post-pipeline, optional), development-order (post-pipeline, optional).
+ * Per-stage scout agent ids (all 9 stages use 4 visible subagents each).
  */
 export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
 	discuss: ["extractor", "prd-checker", "rtm-checker", "web-search-agent"],
@@ -161,11 +165,6 @@ export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
 	"development-order": ["do-topology", "do-risk", "do-test", "do-value"],
 };
 
-/**
- * Stages that produce a stage skill markdown under skills/velpari-<stage>.md.
- * The 6 core stages (prd..testplan) plus discuss have skill markdowns; atomic-function
- * and development-order also have skill markdowns (added in Phase 5).
- */
 const STAGES_WITH_SKILL_MARKDOWN = [
 	"discuss",
 	"prd",
@@ -176,7 +175,139 @@ const STAGES_WITH_SKILL_MARKDOWN = [
 	"testplan",
 	"atomic-function",
 	"development-order",
+	"configure-requirements",
 ];
+
+/** PSRS structural check on the new grouped document. */
+function checkPsrs(cwd: string, projectName: string, lines: string[]): void {
+	const grouped = join(cwd, buildGroupedPath("PRD", projectName));
+	const legacy = join(cwd, buildOutputPath("PRD", projectName));
+	if (existsSync(grouped)) {
+		const content = readFileSync(grouped, "utf8");
+		const result = validatePsrs(content);
+		lines.push("### PSRS validation (grouped)");
+		lines.push(renderPsrsSummary(result));
+		lines.push("");
+		return;
+	}
+	if (existsSync(legacy)) {
+		lines.push("### PSRS validation (legacy)");
+		lines.push(
+			`- Legacy PSRS found at ${legacy}. ` +
+			"PSRS validation applies to new grouped documents; rerun the PRD stage to create a validated grouped copy.",
+		);
+		lines.push("");
+	}
+}
+
+/** RTM traceability check: every PSRS FR / NFR referenced by RTM. */
+function checkRtmTraceability(cwd: string, projectName: string, lines: string[]): void {
+	const psrsResolved = resolveDocArtifact("PRD", projectName, cwd);
+	const rtmResolved = resolveDocArtifact("RTM", projectName, cwd);
+	if (!psrsResolved) {
+		lines.push("### RTM traceability");
+		lines.push("- PSRS not found — skipping traceability check.");
+		lines.push("");
+		return;
+	}
+	if (!rtmResolved) {
+		lines.push("### RTM traceability");
+		lines.push("- RTM not found — skipping traceability check.");
+		lines.push("");
+		return;
+	}
+	const psrsContent = readFileSync(psrsResolved.path, "utf8");
+	const rtmContent = readFileSync(rtmResolved.path, "utf8");
+	const psrsIds = new Set<string>();
+	for (const m of psrsContent.matchAll(/\b(?:FR|NFR)-\d+\b/g)) psrsIds.add(m[0]);
+	for (const m of psrsContent.matchAll(/\bHF-\d+\b/g)) psrsIds.add(m[0]);
+
+	const rtmIds = new Set<string>();
+	for (const m of rtmContent.matchAll(/\b(?:FR|NFR|HF)-\d+\b/g)) rtmIds.add(m[0]);
+
+	const missing = Array.from(rtmIds).filter((id) => !psrsIds.has(id));
+	lines.push("### RTM traceability");
+	lines.push(`- PSRS path: ${psrsResolved.path} (${psrsResolved.layout})`);
+	lines.push(`- RTM path: ${rtmResolved.path} (${rtmResolved.layout})`);
+	lines.push(`- PSRS ids: ${psrsIds.size} | RTM ids: ${rtmIds.size}`);
+	if (missing.length > 0) {
+		lines.push(`- ✗ RTM references ${missing.length} unknown id(s): ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? "..." : ""}`);
+	} else {
+		lines.push(`- ✓ All RTM ids resolve in the PSRS.`);
+	}
+	lines.push("");
+}
+
+/** Working / published separation check. */
+function checkWorkingPublishedSeparation(cwd: string, projectName: string, lines: string[]): void {
+	const docsDir = join(cwd, "Doc");
+	const workingRoot = join(cwd, ".IDE_Plans", "velpari", "runs");
+	lines.push("### Working / published separation");
+	if (!existsSync(workingRoot)) {
+		lines.push("- No working runs present.");
+		lines.push("");
+		return;
+	}
+	let workingCount = 0;
+	let publishedCount = 0;
+	for (const entry of readdirSync(workingRoot)) {
+		const runDir = join(workingRoot, entry);
+		for (const cat of Object.values(GROUPED_CATEGORIES)) {
+			const wcDir = join(runDir, cat);
+			if (existsSync(wcDir)) {
+				const files = readdirSync(wcDir).filter((f) => f.endsWith(".md"));
+				workingCount += files.length;
+			}
+		}
+	}
+	if (existsSync(docsDir)) {
+		const recurse = (dir: string): number => {
+			let n = 0;
+			for (const e of readdirSync(dir, { withFileTypes: true })) {
+				if (e.isDirectory()) n += recurse(join(dir, e.name));
+				else if (e.name.endsWith(".md")) n += 1;
+			}
+			return n;
+		};
+		publishedCount = recurse(docsDir);
+	}
+	lines.push(`- Working copies under .IDE_Plans/velpari/runs/: ${workingCount}`);
+	lines.push(`- Published docs under Doc/: ${publishedCount}`);
+	lines.push(`- Grouped categories: ${Object.keys(GROUPED_CATEGORIES).length} → ${Object.values(new Set(Object.values(GROUPED_CATEGORIES))).join(", ")}`);
+	lines.push(`- Project under audit: ${projectName || "(none — projectName missing)"}`);
+	lines.push("");
+}
+
+/** Grouped/legacy path presence check per artifact. */
+function checkGroupedLegacyPaths(cwd: string, projectName: string, lines: string[]): void {
+	if (!projectName) {
+		lines.push("### Grouped / legacy paths");
+		lines.push("- Project name missing — skipping per-artifact scan.");
+		lines.push("");
+		return;
+	}
+	lines.push("### Grouped / legacy paths");
+	const artifacts = [
+		"PRD",
+		"RTM",
+		"feasibility-study",
+		"design",
+		"pseudocode",
+		"test-plan",
+		"test-cases",
+		"atomic-functions",
+		"development-order",
+	];
+	for (const a of artifacts) {
+		const grouped = join(cwd, buildGroupedPath(a, projectName));
+		const legacy = join(cwd, buildOutputPath(a, projectName));
+		const hasGrouped = existsSync(grouped);
+		const hasLegacy = existsSync(legacy);
+		const tag = hasGrouped ? "✓ grouped" : hasLegacy ? "✓ legacy" : "✗ missing";
+		lines.push(`- ${a}: ${tag} | grouped=${grouped} | legacy=${legacy}`);
+	}
+	lines.push("");
+}
 
 /**
  * Run the full audit. Returns the report markdown and writes it to disk.
@@ -187,7 +318,6 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	const statePath = join(cwd, PATHS.STATE_FILE);
 	const configPath = join(cwd, PATHS.CONFIG_DIR, "files.json");
 
-	// 1. State file
 	if (existsSync(statePath)) {
 		const state = loadState(cwd);
 		lines.push(`Run: ${state.runId}`);
@@ -199,7 +329,6 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	}
 	lines.push("");
 
-	// 2. Config validity
 	if (existsSync(configPath)) {
 		const config = loadFilesConfig(cwd);
 		const valid = validateFilesConfig(config);
@@ -209,13 +338,55 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	}
 	lines.push("");
 
-	// 3. Doc/ artifact presence + secret scan
+	// 3. Requirements profile (Phase 7).
+	lines.push("## Requirements profile");
+	const profile = loadRequirementsProfile(cwd);
+	if (!profile) {
+		lines.push("Profile: MISSING (run /velpari-configure-requirements)");
+	} else {
+		const ok = validateRequirementsProfile(profile);
+		lines.push(`Profile: ${ok ? "VALID" : "INVALID"} mode=${profile.profileKind} id=${profile.profileId} version=${profile.version} (expected ${REQUIREMENTS_PROFILE_VERSION})`);
+		lines.push(
+			`Application=${profile.applicationType} | Domain=${profile.domain} | Method=${profile.developmentMethod} | Regulated=${profile.regulated ? "yes" : "no"} | Security=${profile.securityLevel} | Variant=${profile.outputVariant}`,
+		);
+		lines.push(`Required sections: ${profile.requiredSections.join(", ") || "(none)"}`);
+		lines.push(`Research consent: ${profile.researchConsent ? "yes" : "no"} | Research source count: ${profile.researchSources.length}`);
+		lines.push(
+			`Doctor is report-only: it lists the active profile and research state but never selects, fixes, or mutates a profile.`,
+		);
+		if (profile.profileKind === "common-core") {
+			lines.push(
+				`Common PSRS core selected (id=${profile.profileId}); this is a real, valid choice and not a placeholder for a missing match.`,
+			);
+		}
+	}
+	lines.push("");
+
+	// 4. Doc/ artifact presence + secret scan + grouped/legacy paths.
 	const docDir = join(cwd, "Doc");
+	const projectName = (() => {
+		try {
+			const cfg = loadFilesConfig(cwd);
+			return validateFilesConfig(cfg) ? cfg.projectName : "";
+		} catch {
+			return "";
+		}
+	})();
+
 	lines.push("## Doc/ artifacts");
 	if (!existsSync(docDir)) {
 		lines.push("- Doc/ directory missing");
 	} else {
-		const files = readdirSync(docDir).filter((f) => f.endsWith(".md"));
+		const recurse = (dir: string, prefix: string): string[] => {
+			const out: string[] = [];
+			for (const e of readdirSync(dir, { withFileTypes: true })) {
+				const rel = `${prefix}${e.name}`;
+				if (e.isDirectory()) out.push(...recurse(join(dir, e.name), `${rel}/`));
+				else if (e.name.endsWith(".md")) out.push(rel);
+			}
+			return out;
+		};
+		const files = recurse(docDir, "");
 		if (files.length === 0) {
 			lines.push("- (no artifacts)");
 		}
@@ -241,7 +412,12 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	}
 	lines.push("");
 
-	// 4. Multiplexer (v2.0 — required for /velpari-discuss subagents)
+	checkGroupedLegacyPaths(cwd, projectName, lines);
+	checkWorkingPublishedSeparation(cwd, projectName, lines);
+	checkPsrs(cwd, projectName, lines);
+	checkRtmTraceability(cwd, projectName, lines);
+
+	// Multiplexer
 	lines.push("## Multiplexer (required for /velpari-discuss v2.0)");
 	const mux = detectMultiplexer();
 	lines.push(`Detected: ${mux.mux} (env: ${mux.source})`);
@@ -267,7 +443,7 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	}
 	lines.push("");
 
-	// 5. Scout agent files (v2.0 — covers all 9 stages)
+	// Scout agents
 	lines.push("## Scout agents (.pi/agents/)");
 	const agentsDir = join(cwd, ".pi", "agents");
 	let totalMissing = 0;
@@ -278,7 +454,7 @@ export function runDoctor(cwd: string = process.cwd()): string {
 		for (const id of scouts) {
 			const target = join(agentsDir, `${id}.md`);
 			if (!existsSync(target)) {
-				lines.push(`  ✗ ${id}.md MISSING (will auto-bootstrap on first /velpari-${stage === "discuss" ? "discuss" : stage})`);
+				lines.push(`  ✗ ${id}.md MISSING (will auto-bootstrap on first /velpari-${stage})`);
 				totalMissing++;
 				continue;
 			}
@@ -300,7 +476,7 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	);
 	lines.push("");
 
-	// 6. Stage skill markdown integrity (v2.0 — covers all 9 stages)
+	// Stage skill markdown integrity
 	lines.push("## Stage skills");
 	let totalSkillIssues = 0;
 	for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
@@ -312,29 +488,33 @@ export function runDoctor(cwd: string = process.cwd()): string {
 		}
 		const content = readFileSync(skillPath, "utf8");
 		const issues: string[] = [];
-		// Every stage skill should mention all of its scouts.
-		for (const agentName of ALL_STAGE_SCOUTS[stage] ?? []) {
-			if (!content.includes(agentName)) {
-				issues.push(`missing mention of agent '${agentName}'`);
+		const scoutsForStage = ALL_STAGE_SCOUTS[stage];
+		if (scoutsForStage) {
+			for (const agentName of scoutsForStage) {
+				if (!content.includes(agentName)) {
+					issues.push(`missing mention of agent '${agentName}'`);
+				}
 			}
 		}
 		if (content.includes("max_turns")) {
 			issues.push("contains removed v2.0 hallucination 'max_turns'");
 		}
-		if (!content.includes("pi-interactive-subagents")) {
-			issues.push("missing reference to pi-interactive-subagents");
-		}
-		if (!content.includes("caller_ping")) {
-			issues.push("missing reference to caller_ping");
-		}
-		if (!content.includes("AskUserQuestion")) {
-			issues.push("missing reference to AskUserQuestion");
-		}
-		if (!/Issue #19|zellij.*close-pane/i.test(content)) {
-			issues.push("missing reference to zellij close-pane workaround (Issue #19)");
+		if (stage !== "configure-requirements") {
+			if (!content.includes("pi-interactive-subagents")) {
+				issues.push("missing reference to pi-interactive-subagents");
+			}
+			if (!content.includes("caller_ping")) {
+				issues.push("missing reference to caller_ping");
+			}
+			if (!content.includes("AskUserQuestion")) {
+				issues.push("missing reference to AskUserQuestion");
+			}
+			if (!/Issue #19|zellij.*close-pane/i.test(content)) {
+				issues.push("missing reference to zellij close-pane workaround (Issue #19)");
+			}
 		}
 		if (issues.length === 0) {
-			lines.push(`✓ skills/velpari-${stage}.md: OK (mentions all ${ALL_STAGE_SCOUTS[stage]?.length ?? 0} agents, no max_turns, references pi-interactive-subagents + caller_ping + AskUserQuestion + zellij workaround)`);
+			lines.push(`✓ skills/velpari-${stage}.md: OK`);
 		} else {
 			lines.push(`✗ skills/velpari-${stage}.md: ${issues.length} issue(s)`);
 			for (const issue of issues) {
@@ -346,6 +526,8 @@ export function runDoctor(cwd: string = process.cwd()): string {
 	lines.push("");
 	lines.push(`Summary: ${STAGES_WITH_SKILL_MARKDOWN.length} stage skills checked, ${totalSkillIssues} issues.`);
 	lines.push("");
+
+	void SCOUT_AGENT_IDS;
 
 	return lines.join("\n");
 }

@@ -1,7 +1,7 @@
 /**
- * /velpari-feasibility handler (v2.0 / Phase 3 of all-stages refactor).
+ * /velpari-feasibility handler (Phase 7 update).
  *
- * Two-phase flow (matches discuss/prd/rtm pattern):
+ * Two-phase flow:
  *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
  *   2. Parent LLM (driven by skills/velpari-feasibility.md): spawn 4 subagents
  *      (feasibility-tech, feasibility-schedule, feasibility-cost, feasibility-risk)
@@ -10,10 +10,18 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "../src/config.js";
-import { buildOutputPath, buildRunDir } from "../src/paths.js";
-import { loadState } from "../src/state.js";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+import { loadFilesConfig } from "./config.js";
+import { loadState } from "./state.js";
+import {
+	buildRunDir,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "./paths.js";
+import {
+	compactProfileMetadata,
+	loadRequirementsProfile,
+} from "./requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
 
 const FEAS_SCOUTS = [
 	{ name: "feasibility-tech" },
@@ -27,7 +35,6 @@ export async function handleFeasibility(
 	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
@@ -40,14 +47,24 @@ export async function handleFeasibility(
 	}
 	const projectName = config.projectName;
 
-	// 2. Gate check: published RTM must exist.
-	const inputArtifactPath = join(cwd, buildOutputPath("RTM", projectName));
+	const resolved = resolveDocArtifact("RTM", projectName, cwd);
+	if (!resolved) {
+		ctx.ui.notify(
+			`Cannot read RTM for ${projectName}: not found at Doc/requirements/RTM_${projectName}.md or Doc/RTM_${projectName}.md. ` +
+				`Run /velpari-rtm and /velpari-approve first.`,
+			"error",
+		);
+		return;
+	}
+	const inputArtifactPath = resolved.path;
 
-	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
-	const feasDir = join(runDir, "feasibility");
-	const scoutsDir = join(feasDir, "scouts");
-	const workingCopyPath = join(feasDir, `feasibility-study_${projectName}.md`);
+	const feasWorkingDir = join(runDir, "feasibility");
+	const scoutsDir = join(feasWorkingDir, "scouts");
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, "feasibility-study", projectName);
+
+	const profile = loadRequirementsProfile(cwd);
+	const profileMetadata = compactProfileMetadata(profile);
 
 	const stageConfig: StageRunConfig = {
 		stage: "analyzing-feasibility",
@@ -59,10 +76,11 @@ export async function handleFeasibility(
 			reportPath: join(scoutsDir, `${s.name}-report.json`),
 		})),
 		inputArtifactPath,
-		workingCopyDir: feasDir,
+		workingCopyDir: feasWorkingDir,
 		workingCopyPath,
 		scoutsDir,
 		cwd,
+		profileMetadata,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

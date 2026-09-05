@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleApprove } from "../src/approve.js";
+import { saveFilesConfig } from "../src/config.js";
 import { createRun, clearRun } from "../src/state.js";
 
 function tempDir(): string {
@@ -101,9 +102,9 @@ test("handleApprove publishes working copy + transitions state for prd stage", a
 		const ctx = { ui: makeUI(notifies) } as never;
 		await handleApprove(ctx, dir);
 
-		// Verify published copy exists at Doc/PRD_Mission.md
-		const publishedPath = join(dir, "Doc", "PRD_Mission.md");
-		assert.ok(existsSync(publishedPath), "published copy not created at Doc/");
+		// Verify published copy exists at Doc/requirements/PRD_Mission.md (grouped layout).
+		const publishedPath = join(dir, "Doc", "requirements", "PRD_Mission.md");
+		assert.ok(existsSync(publishedPath), "published copy not created at Doc/requirements/");
 
 		// Verify state transitioned
 		const afterRaw = readFileSync(statePath, "utf8");
@@ -115,40 +116,77 @@ test("handleApprove publishes working copy + transitions state for prd stage", a
 	}
 });
 
+test("handleApprove uses configured projectName for grouped output", async () => {
+	const dir = tempDir();
+	try {
+		saveFilesConfig(
+			{ version: 3, projectName: "ConfiguredApp", inputDocuments: [], outputPaths: {}, excludedPaths: [] },
+			dir,
+		);
+		const state = createRun("Mission", dir);
+		const { writeFileSync, readFileSync, mkdirSync } = await import("node:fs");
+		const statePath = join(dir, ".IDE_Plans", "velpari", "state.json");
+		const raw = readFileSync(statePath, "utf8");
+		const patched = JSON.parse(raw);
+		patched.currentStage = "drafting-prd";
+		const workingDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "prd");
+		mkdirSync(workingDir, { recursive: true });
+		writeFileSync(statePath, JSON.stringify(patched, null, 2), "utf8");
+		writeFileSync(join(workingDir, "PRD_Mission.md"), "# PRD content\n", "utf8");
+
+		const ctx = { ui: makeUI([]) } as never;
+		await handleApprove(ctx, dir);
+
+		assert.ok(existsSync(join(dir, "Doc", "requirements", "PRD_ConfiguredApp.md")));
+		assert.equal(existsSync(join(dir, "Doc", "requirements", "PRD_Mission.md")), false);
+	} finally {
+		clearRun(dir);
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 // Parameterized happy-path test for all 6 stages (FR-08).
 // Exhaustive coverage of the stageToArtifact mapping in approve.ts.
+// Phase 7: each stage's working-copy category matches the grouped Doc/
+// subfolder. testplan uses "tests" as the new working-copy category.
 const STAGE_CASES: ReadonlyArray<{
 	stage: string;
 	nextStage: string;
 	workingDir: string;
 	artifact: string;
 	workingFile: string;
+	publishedCategory: string;
 	extraFiles?: string[];
+	extraCategory?: string;
 }> = [
-	{ stage: "drafting-prd", nextStage: "drafted-prd", workingDir: "prd", artifact: "PRD", workingFile: "PRD_Mission.md" },
-	{ stage: "building-rtm", nextStage: "built-rtm", workingDir: "rtm", artifact: "RTM", workingFile: "RTM_Mission.md" },
+	{ stage: "drafting-prd", nextStage: "drafted-prd", workingDir: "prd", artifact: "PRD", workingFile: "PRD_Mission.md", publishedCategory: "requirements" },
+	{ stage: "building-rtm", nextStage: "built-rtm", workingDir: "rtm", artifact: "RTM", workingFile: "RTM_Mission.md", publishedCategory: "requirements" },
 	{
 		stage: "analyzing-feasibility",
 		nextStage: "analyzed-feasibility",
 		workingDir: "feasibility",
 		artifact: "feasibility-study",
 		workingFile: "feasibility-study_Mission.md",
+		publishedCategory: "feasibility",
 	},
-	{ stage: "designing", nextStage: "designed", workingDir: "design", artifact: "design", workingFile: "design_Mission.md" },
+	{ stage: "designing", nextStage: "designed", workingDir: "design", artifact: "design", workingFile: "design_Mission.md", publishedCategory: "design" },
 	{
 		stage: "writing-pseudocode",
 		nextStage: "wrote-pseudocode",
 		workingDir: "pseudocode",
 		artifact: "pseudocode",
 		workingFile: "pseudocode_Mission.md",
+		publishedCategory: "pseudocode",
 	},
 	{
 		stage: "planning-tests",
 		nextStage: "planned-tests",
-		workingDir: "testplan",
+		workingDir: "tests",
 		artifact: "test-plan",
 		workingFile: "test-plan_Mission.md",
+		publishedCategory: "tests",
 		extraFiles: ["test-cases_Mission.md"],
+		extraCategory: "tests",
 	},
 ];
 
@@ -180,11 +218,12 @@ for (const c of STAGE_CASES) {
 			const ctx = { ui: makeUI(notifies) } as never;
 			await handleApprove(ctx, dir);
 
-			// Verify published copy exists
-			assert.ok(existsSync(join(dir, "Doc", c.workingFile)), `${c.workingFile} not published`);
-			if (c.extraFiles) {
+			// Verify published copy exists at the grouped Doc/<category>/<artifact>_<project>.md
+			const groupedPath = join(dir, "Doc", c.publishedCategory, c.workingFile);
+			assert.ok(existsSync(groupedPath), `${groupedPath} not published`);
+			if (c.extraFiles && c.extraCategory) {
 				for (const f of c.extraFiles) {
-					assert.ok(existsSync(join(dir, "Doc", f)), `${f} not published`);
+					assert.ok(existsSync(join(dir, "Doc", c.extraCategory, f)), `${f} not published`);
 				}
 			}
 

@@ -22,6 +22,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { Stage } from "./constants.js";
 import { ensureStageAgents, formatScoutAgentsInstalledMessage } from "./agents-install.js";
 import { buildStagePrompt, type ScoutSlot } from "./prompt.js";
+import type { CompactProfileMetadata } from "./requirements-profile.js";
 
 /**
  * Configuration for a single stage run.
@@ -72,6 +73,12 @@ export interface StageRunConfig {
 	 * `## Interview Answers`. Defaults to empty.
 	 */
 	answers?: readonly string[];
+	/**
+	 * Optional (Phase 7): compact profile metadata injected into the
+	 * stage prompt. Only the compact projection is carried — never the
+	 * full profile. When absent, the prompt omits the profile block.
+	 */
+	profileMetadata?: CompactProfileMetadata | null;
 }
 
 /**
@@ -139,6 +146,7 @@ export async function runStageWithScouts(
 			runId: config.runId,
 			answers: config.answers ?? [],
 			webSearchAllowed: config.webSearchAllowed ?? false,
+			profileMetadata: config.profileMetadata ?? null,
 			paths: {
 				scouts: [...config.scouts],
 				inputArtifact: config.inputArtifactPath,

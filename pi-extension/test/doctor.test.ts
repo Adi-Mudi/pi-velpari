@@ -123,14 +123,19 @@ test("runDoctor warns when no multiplexer is detected", () => {
 	const dir = tempDir();
 	const origMux = process.env.PI_SUBAGENT_MUX;
 	const origTmux = process.env.TMUX;
-	const origZellij = process.env.ZELLIJ_PANE_ID;
+	const origZellijPane = process.env.ZELLIJ_PANE_ID;
+	const origZellijSession = process.env.ZELLIJ_SESSION_NAME;
 	const origWezterm = process.env.WEZTERM_PANE;
-	const origCmux = process.env.CMUX_PANE_ID;
+	const origCmuxPane = process.env.CMUX_PANE_ID;
+	const origCmuxSession = process.env.CMUX_SESSION_NAME;
 	delete process.env.PI_SUBAGENT_MUX;
 	delete process.env.TMUX;
 	delete process.env.ZELLIJ_PANE_ID;
+	delete process.env.ZELLIJ_SESSION_NAME;
 	delete process.env.WEZTERM_PANE;
+	delete process.env.WEZTERM_EXECUTABLE;
 	delete process.env.CMUX_PANE_ID;
+	delete process.env.CMUX_SESSION_NAME;
 	try {
 		const report = runDoctor(dir);
 		assert.match(report, /Detected: unknown/);
@@ -138,9 +143,11 @@ test("runDoctor warns when no multiplexer is detected", () => {
 	} finally {
 		if (origMux !== undefined) process.env.PI_SUBAGENT_MUX = origMux;
 		if (origTmux !== undefined) process.env.TMUX = origTmux;
-		if (origZellij !== undefined) process.env.ZELLIJ_PANE_ID = origZellij;
+		if (origZellijPane !== undefined) process.env.ZELLIJ_PANE_ID = origZellijPane;
+		if (origZellijSession !== undefined) process.env.ZELLIJ_SESSION_NAME = origZellijSession;
 		if (origWezterm !== undefined) process.env.WEZTERM_PANE = origWezterm;
-		if (origCmux !== undefined) process.env.CMUX_PANE_ID = origCmux;
+		if (origCmuxPane !== undefined) process.env.CMUX_PANE_ID = origCmuxPane;
+		if (origCmuxSession !== undefined) process.env.CMUX_SESSION_NAME = origCmuxSession;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -286,7 +293,7 @@ test("runDoctor enumerates Scout agents for all 9 stages (Phase 6)", () => {
 	}
 });
 
-test("runDoctor checks Stage skills for all 9 stages (Phase 6)", () => {
+test("runDoctor checks Stage skills for all 10 stages (Phase 7: adds configure-requirements)", () => {
 	const cwd = resolve(__dirname, "..", "..", "..");
 	const report = runDoctor(cwd);
 	// Every stage's skill markdown should be checked.
@@ -300,6 +307,7 @@ test("runDoctor checks Stage skills for all 9 stages (Phase 6)", () => {
 		"testplan",
 		"atomic-function",
 		"development-order",
+		"configure-requirements",
 	]) {
 		assert.ok(
 			report.includes(`skills/velpari-${stage}.md`),
@@ -314,8 +322,135 @@ test("runDoctor Scout agents summary counts all 36 scouts (9 stages × 4)", () =
 	assert.match(report, /36 scouts expected across 9 stages/);
 });
 
-test("runDoctor Stage skills summary covers all 9 skills", () => {
+test("runDoctor Stage skills summary covers all 10 skills (Phase 7)", () => {
 	const cwd = resolve(__dirname, "..", "..", "..");
 	const report = runDoctor(cwd);
-	assert.match(report, /9 stage skills checked/);
+	assert.match(report, /10 stage skills checked/);
+});
+
+// ---------------------------------------------------------------------------
+// Profile reporting (research-based profile workflow, 2026-09-05)
+// ---------------------------------------------------------------------------
+
+import { mkdirSync as _mkdirSync } from "node:fs";
+import {
+	REQUIREMENTS_PROFILE_VERSION,
+	composeProfile,
+	findBuiltInProfile,
+} from "../src/requirements-profile.js";
+
+test("runDoctor reports Profile MISSING when no profile JSON exists", () => {
+	const dir = tempDir();
+	try {
+		const report = runDoctor(dir);
+		assert.match(report, /## Requirements profile/);
+		assert.match(report, /Profile: MISSING/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("runDoctor reports Profile VALID with id + version + mode", () => {
+	const dir = tempDir();
+	try {
+		const built = findBuiltInProfile("banking-web-v1")!;
+		const profile = composeProfile(built, {
+			what: "x",
+			who: "y",
+			problem: "z",
+			novelty: "new-product",
+			platforms: [],
+			sensitiveData: false,
+			externalSystems: false,
+			existingCodebase: false,
+			applicationType: built.applicationType,
+			domain: built.domain,
+			developmentMethod: built.developmentMethod,
+			securityLevel: built.securityLevel,
+			regulated: built.regulated,
+		}, false, []);
+		const cfgDir = join(dir, ".pi", "velpari");
+		_mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "requirements-profile.json"), JSON.stringify(profile, null, 2), "utf8");
+		const report = runDoctor(dir);
+		assert.match(report, /## Requirements profile/);
+		assert.match(report, /Profile: VALID mode=built-in id=banking-web-v1/);
+		assert.match(report, /version=/);
+		assert.match(report, new RegExp(`expected ${REQUIREMENTS_PROFILE_VERSION}`));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("runDoctor reports common-core profile as a real, valid choice", () => {
+	const dir = tempDir();
+	try {
+		const profile = composeProfile(findBuiltInProfile("core-psrs-v1")!, {
+			what: "x",
+			who: "y",
+			problem: "z",
+			novelty: "new-product",
+			platforms: [],
+			sensitiveData: false,
+			externalSystems: false,
+			existingCodebase: false,
+			applicationType: "other",
+			domain: "general",
+			developmentMethod: "agile",
+			securityLevel: "medium",
+			regulated: false,
+		}, false, []);
+		const cfgDir = join(dir, ".pi", "velpari");
+		_mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "requirements-profile.json"), JSON.stringify(profile, null, 2), "utf8");
+		const report = runDoctor(dir);
+		assert.match(report, /Profile: VALID mode=common-core id=core-psrs-v1/);
+		assert.match(report, /Common PSRS core selected/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("runDoctor reports research consent + source count + report-only stance", () => {
+	const dir = tempDir();
+	try {
+		const built = findBuiltInProfile("banking-web-v1")!;
+		const profile = composeProfile(built, {
+			what: "x",
+			who: "y",
+			problem: "z",
+			novelty: "new-product",
+			platforms: [],
+			sensitiveData: false,
+			externalSystems: false,
+			existingCodebase: false,
+			applicationType: built.applicationType,
+			domain: built.domain,
+			developmentMethod: built.developmentMethod,
+			securityLevel: built.securityLevel,
+			regulated: built.regulated,
+		}, true, ["https://example.com/a", "https://example.com/b"]);
+		const cfgDir = join(dir, ".pi", "velpari");
+		_mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "requirements-profile.json"), JSON.stringify(profile, null, 2), "utf8");
+		const report = runDoctor(dir);
+		assert.match(report, /Research consent: yes/);
+		assert.match(report, /Research source count: 2/);
+		assert.match(report, /Doctor is report-only/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("runDoctor still shows MISSING when profile JSON is malformed", () => {
+	const dir = tempDir();
+	try {
+		const cfgDir = join(dir, ".pi", "velpari");
+		_mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "requirements-profile.json"), "{bad json", "utf8");
+		const report = runDoctor(dir);
+		assert.match(report, /Profile: MISSING/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

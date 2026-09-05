@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Stage } from "./constants.js";
+import type { CompactProfileMetadata } from "./requirements-profile.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +111,11 @@ export interface BuildStagePromptInput {
 	runId: string | undefined;
 	answers: readonly string[];
 	webSearchAllowed: boolean;
+	/**
+	 * Optional (Phase 7): compact profile metadata. Rendered into a
+	 * dedicated profile block. When null/undefined the block is omitted.
+	 */
+	profileMetadata?: CompactProfileMetadata | null;
 	paths: {
 		/** Ordered list of scout agents (preferred over the legacy hardcoded fields). */
 		scouts?: ScoutSlot[];
@@ -161,6 +167,24 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 	const webSearchLine = input.webSearchAllowed
 		? `Web search: ALLOWED (spawn web-search-agent subagent).\n`
 		: `Web search: NOT ALLOWED (skip web-search-agent subagent).\n`;
+
+	// Phase 7: render compact profile metadata (only the compact projection).
+	let profileSection = "";
+	if (input.profileMetadata) {
+		const p = input.profileMetadata;
+		profileSection = [
+			`## Profile (compact)`,
+			``,
+			`Profile id: ${p.profileId}`,
+			`Profile version: ${p.profileVersion}`,
+			`Application type: ${p.applicationType}`,
+			`Domain: ${p.domain}`,
+			`Development method: ${p.developmentMethod}`,
+			`Regulated: ${p.regulated ? "yes" : "no"}`,
+			`Output variant: ${p.outputVariant}`,
+			``,
+		].join("\n");
+	}
 
 	// Render scout report paths: prefer the new `scouts` array; fall back to the
 	// legacy hardcoded discuss-stage fields if `scouts` is not provided.
@@ -240,7 +264,7 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 			].join("\n")
 		: "";
 
-	return [metadata, answersSection, flagsSection, inputContentSection, skill]
+	return [metadata, profileSection, answersSection, flagsSection, inputContentSection, skill]
 		.filter((s) => s.length > 0)
 		.join("\n");
 }

@@ -10,6 +10,8 @@ import { handleTestplan } from "./testplan.js";
 import { handleAtomicFunction } from "./atomic-function.js";
 import { handleDevelopmentOrder } from "./development-order.js";
 import { handleApprove } from "./approve.js";
+import { handlePrdRtm } from "./prd-rtm.js";
+import { handleConfigureRequirements } from "./configure-requirements.js";
 import { runHandoff } from "./handoff.js";
 import {
 	showDiscussion,
@@ -27,8 +29,9 @@ import { handleDoctor } from "./doctor.js";
 import { loadState } from "./state.js";
 
 /**
- * All 23 commands. Phase B wires 4 of them (discuss, prd, rtm, approve-discuss)
- * to real handlers; the remaining 19 keep stub handlers until later phases.
+ * All 25 commands. Adds /velpari-configure-requirements and
+ * /velpari-prd-rtm on top of the 22 existing stage + discipline +
+ * view commands (Phase 7 / Requirements Factory).
  */
 export const COMMAND_NAMES = [
 	// Stage commands (9)
@@ -41,14 +44,17 @@ export const COMMAND_NAMES = [
 	"velpari-testplan",
 	"velpari-atomic-function",
 	"velpari-development-order",
-	// Discipline commands (7)
+	// Discipline commands (8)
 	"velpari-approve",
 	"velpari-approve-discuss",
 	"velpari-status",
 	"velpari-reset",
 	"velpari-configure-inputs",
+	"velpari-configure-requirements",
 	"velpari-doctor",
 	"velpari-handoff",
+	// Wrapper command (1)
+	"velpari-prd-rtm",
 	// View commands (7)
 	"velpari-show-discussion",
 	"velpari-show-prd",
@@ -63,7 +69,6 @@ export type CommandName = (typeof COMMAND_NAMES)[number];
 
 // v2.0: handlers may receive `pi` (ExtensionAPI) so they can call
 // pi.sendUserMessage to hand off a prompt to the parent LLM.
-// Most handlers currently ignore it; velpari-discuss uses it.
 type RealHandler = (args: string, ctx: unknown, pi?: ExtensionAPI) => Promise<void>;
 const REAL_HANDLERS: Record<string, RealHandler> = {
 	"velpari-discuss": async (args, ctx, pi) => {
@@ -106,6 +111,12 @@ const REAL_HANDLERS: Record<string, RealHandler> = {
 	},
 	"velpari-approve": async (_args, ctx) => {
 		await handleApprove(ctx as never);
+	},
+	"velpari-prd-rtm": async (_args, ctx, pi) => {
+		await handlePrdRtm(ctx as never, pi as never);
+	},
+	"velpari-configure-requirements": async (_args, ctx, pi) => {
+		await handleConfigureRequirements(ctx as never, pi as never);
 	},
 	"velpari-handoff": async (_args, ctx) => {
 		const state = loadState();
@@ -152,12 +163,12 @@ export function registerCommands(pi: ExtensionAPI): void {
 		pi.registerCommand(name, {
 			description:
 				realHandler !== undefined
-					? `Real handler for /${name} (Phase B).`
+					? `Real handler for /${name} (Phase 7).`
 					: `Stub handler for /${name} (implemented in a later phase).`,
 			handler: realHandler
 				? async (args, ctx) => realHandler(args, ctx, pi)
 				: async (args, ctx) => {
-						ctx.ui.notify(`/${name}: Phase A stub. Args: ${args ?? "(none)"}`, "info");
+						ctx.ui.notify(`/${name}: stub. Args: ${args ?? "(none)"}`, "info");
 					},
 		});
 	}

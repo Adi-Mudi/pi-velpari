@@ -5,22 +5,27 @@ description: Pi-Velpari RTM stage — orchestrate 4 visible subagents (rtm-requi
 
 # RTM Stage
 
-Derive the Requirements Traceability Matrix (RTM) from the PRD. The handler
-has already validated the gate (PRD must exist) and embedded the PRD path
-in the prompt. Your job is to spawn 4 subagents in parallel, read their
-reports, and write the working-copy RTM.
+Derive the Requirements Traceability Matrix (RTM) from the PSRS. RTM
+remains a separate document from PSRS (see `Doc/velpari-requirements-
+orchestration-design.md` §6 — RTM maps requirements to design,
+implementation, helper functions, and test cases, while PSRS defines
+what the system must do). The handler has already validated the gate
+(PSRS must exist) and embedded its path in the prompt. Your job is to
+spawn 4 subagents in parallel, read their reports, and write the
+working-copy RTM.
 
 ## Goal
 
 By the end of this stage, `<workingCopy>` (`RTM_<projectName>.md`) has the
 full traceability table, the user has approved the preview, and
-`/velpari-approve` can publish the artifact to `Doc/RTM_<projectName>.md`
-without surprises.
+`/velpari-approve` can publish the artifact to
+`Doc/requirements/RTM_<projectName>.md` (grouped layout) without
+surprises.
 
 ## Sequence
 
 ```
-PRD (already in prompt as inputArtifact)
+PSRS (already in prompt as inputArtifact)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -61,7 +66,7 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
 - **Working directory** — Pass `cwd: <runDir>` so scouts can use relative paths.
 - **Explicit output path** — Each scout's `task:` MUST include the exact
   artifact path it must write.
-- **Task content** — Pass the PRD path (`<inputArtifact>`), the cross-
+- **Task content** — Pass the PSRS path (`<inputArtifact>`), the cross-
   references (tracer/linker/coverage reports for the consolidator), and the
   scout's own report path.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
@@ -151,21 +156,30 @@ Write the working copy as `RTM_<projectName>.md` at `<workingCopy>`:
 ## Helper Function Dedup (FR-27, FR-30)
 
 Each row that references a helper function uses the `HF-NN` id from the
-PRD's `## Helper Functions` section. Dedup key is `name + file path`.
+PSRS's `## Helper Function Candidates` section. Dedup key is `name + file path`.
 
-If the PRD introduces a new helper function, it must also be referenced
+If the PSRS introduces a new helper function, it must also be referenced
 from at least one FR-N row. Helper functions not referenced from any FR-N
 are flagged in the doctor report.
 
 ## Coverage Check (NFR-04)
 
-Every FR-N and NFR-N in the PRD must appear in the RTM. Every test case
-listed must trace to at least one FR-N or NFR-N. Drift is a defect.
+Every FR-N and NFR-N in the PSRS must appear in the RTM. Every test case
+listed must trace to at least one FR-N or NFR-N. Drift is a defect that
+Doctor reports as part of the PSRS-to-RTM traceability section.
 
 ## Project-Name Substitution (FR-67, NFR-15)
 
-Use `projectName` from the PRD (or `.pi/velpari/files.json`) in all
+Use `projectName` from the PSRS (or `.pi/velpari/files.json`) in all
 output paths. Never hardcode "Pi-Velpari" in any file path.
+
+## Path layout (Phase 7)
+
+- Working copy: `<runDir>/rtm/RTM_<projectName>.md` (grouped working-copy layout)
+- Published copy after approval: `Doc/requirements/RTM_<projectName>.md`
+
+Legacy flat path `Doc/RTM_<projectName>.md` is still readable as fallback
+but new writes go to the grouped layout.
 
 ## Preview Gate
 

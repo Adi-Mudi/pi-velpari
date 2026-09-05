@@ -1,17 +1,17 @@
 /**
- * /velpari-show-* handlers.
+ * /velpari-show-* handlers (Phase 7 update).
  *
  * 7 read-only commands that print a published Doc/ artifact to the TUI.
  * Never modifies state. Never writes files.
  *
- * Map:
- *   show-discussion -> Doc/discussion-<topic-slug>.md
- *   show-prd        -> Doc/PRD_<projectName>.md
- *   show-rtm        -> Doc/RTM_<projectName>.md
- *   show-feasibility -> Doc/feasibility-study_<projectName>.md
- *   show-design     -> Doc/design_<projectName>.md
- *   show-pseudocode -> Doc/pseudocode_<projectName>.md
- *   show-testplan   -> Doc/test-plan_<projectName>.md + Doc/test-cases_<projectName>.md
+ * Map (grouped layout; legacy flat Doc/ layout used as fallback):
+ *   show-discussion  -> Doc/discussion/discussion-<topic-slug>.md
+ *   show-prd         -> Doc/requirements/PRD_<projectName>.md
+ *   show-rtm         -> Doc/requirements/RTM_<projectName>.md
+ *   show-feasibility -> Doc/feasibility/feasibility-study_<projectName>.md
+ *   show-design      -> Doc/design/design_<projectName>.md
+ *   show-pseudocode  -> Doc/pseudocode/pseudocode_<projectName>.md
+ *   show-testplan    -> Doc/tests/test-plan_<projectName>.md + Doc/tests/test-cases_<projectName>.md
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -19,21 +19,24 @@ import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadFilesConfig, validateFilesConfig } from "./config.js";
 import { loadState } from "./state.js";
-import { buildDiscussionPath, buildOutputPath, slugify } from "./paths.js";
+import {
+	buildGroupedDiscussionPath,
+	buildGroupedPath,
+	resolveDiscussionArtifact,
+	resolveDocArtifact,
+	slugify,
+} from "./paths.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
-function emit(ctx: ExtensionCommandContext, content: string, fallback: string): void {
+function emit(ctx: ExtensionCommandContext, content: string): void {
 	if (content.length <= MAX_NOTIFY_LENGTH) {
 		ctx.ui.notify(content, "info");
 	} else {
-		// Reserve room for the truncation marker so the total emitted length
-		// does not exceed MAX_NOTIFY_LENGTH.
 		const TRUNCATION_MARKER = "\n... [truncated]";
 		const truncated = content.slice(0, MAX_NOTIFY_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
 		ctx.ui.notify(truncated, "info");
 	}
-	void fallback;
 }
 
 function getProjectName(ctx: ExtensionCommandContext, cwd: string): string | null {
@@ -45,13 +48,21 @@ function getProjectName(ctx: ExtensionCommandContext, cwd: string): string | nul
 	return config.projectName;
 }
 
-function readAndPrint(ctx: ExtensionCommandContext, absPath: string, label: string): void {
-	if (!existsSync(absPath)) {
-		ctx.ui.notify(`${label} not found at ${absPath}.`, "error");
+function readAndPrint(
+	ctx: ExtensionCommandContext,
+	resolved: { path: string; layout: "grouped" | "legacy" } | null,
+	label: string,
+): void {
+	if (!resolved) {
+		ctx.ui.notify(`${label} not found (checked grouped + legacy Doc/ layouts).`, "error");
 		return;
 	}
-	const content = readFileSync(absPath, "utf8");
-	emit(ctx, content, label);
+	const content = readFileSync(resolved.path, "utf8");
+	const suffix = resolved.layout === "legacy" ? " (legacy flat path)" : "";
+	emit(ctx, content);
+	if (resolved.layout === "legacy") {
+		ctx.ui.notify(`Note: ${label} found at legacy flat path ${resolved.path}${suffix}.`, "info");
+	}
 }
 
 export async function showDiscussion(
@@ -64,8 +75,10 @@ export async function showDiscussion(
 		return;
 	}
 	const topicSlug = slugify(state.mission);
-	const absPath = join(cwd, buildDiscussionPath(topicSlug));
-	readAndPrint(ctx, absPath, `Discussion (${topicSlug})`);
+	const resolved = resolveDiscussionArtifact(topicSlug, cwd);
+	const grouped = join(cwd, buildGroupedDiscussionPath(topicSlug));
+	void grouped;
+	readAndPrint(ctx, resolved, `Discussion (${topicSlug})`);
 }
 
 export async function showPrd(
@@ -74,8 +87,8 @@ export async function showPrd(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const absPath = join(cwd, buildOutputPath("PRD", projectName));
-	readAndPrint(ctx, absPath, `PRD (${projectName})`);
+	const resolved = resolveDocArtifact("PRD", projectName, cwd);
+	readAndPrint(ctx, resolved, `PRD (${projectName})`);
 }
 
 export async function showRtm(
@@ -84,8 +97,8 @@ export async function showRtm(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const absPath = join(cwd, buildOutputPath("RTM", projectName));
-	readAndPrint(ctx, absPath, `RTM (${projectName})`);
+	const resolved = resolveDocArtifact("RTM", projectName, cwd);
+	readAndPrint(ctx, resolved, `RTM (${projectName})`);
 }
 
 export async function showFeasibility(
@@ -94,8 +107,8 @@ export async function showFeasibility(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const absPath = join(cwd, buildOutputPath("feasibility-study", projectName));
-	readAndPrint(ctx, absPath, `Feasibility study (${projectName})`);
+	const resolved = resolveDocArtifact("feasibility-study", projectName, cwd);
+	readAndPrint(ctx, resolved, `Feasibility study (${projectName})`);
 }
 
 export async function showDesign(
@@ -104,8 +117,8 @@ export async function showDesign(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const absPath = join(cwd, buildOutputPath("design", projectName));
-	readAndPrint(ctx, absPath, `Design (${projectName})`);
+	const resolved = resolveDocArtifact("design", projectName, cwd);
+	readAndPrint(ctx, resolved, `Design (${projectName})`);
 }
 
 export async function showPseudocode(
@@ -114,8 +127,8 @@ export async function showPseudocode(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const absPath = join(cwd, buildOutputPath("pseudocode", projectName));
-	readAndPrint(ctx, absPath, `Pseudocode (${projectName})`);
+	const resolved = resolveDocArtifact("pseudocode", projectName, cwd);
+	readAndPrint(ctx, resolved, `Pseudocode (${projectName})`);
 }
 
 export async function showTestplan(
@@ -124,13 +137,10 @@ export async function showTestplan(
 ): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	const planPath = join(cwd, buildOutputPath("test-plan", projectName));
-	const casesPath = join(cwd, buildOutputPath("test-cases", projectName));
+	const planPath = resolveDocArtifact("test-plan", projectName, cwd);
+	const casesPath = resolveDocArtifact("test-cases", projectName, cwd);
 
-	const planExists = existsSync(planPath);
-	const casesExists = existsSync(casesPath);
-
-	if (!planExists && !casesExists) {
+	if (!planPath && !casesPath) {
 		ctx.ui.notify(
 			`Neither test-plan nor test-cases found for ${projectName}. ` +
 				`Run /velpari-testplan first.`,
@@ -140,17 +150,17 @@ export async function showTestplan(
 	}
 
 	const parts: string[] = [];
-	if (planExists) {
-		parts.push(`# Test Plan\n${readFileSync(planPath, "utf8")}`);
+	if (planPath) {
+		parts.push(`# Test Plan\n${readFileSync(planPath.path, "utf8")}`);
 	} else {
-		parts.push(`# Test Plan (missing at ${planPath})`);
+		parts.push(`# Test Plan (missing; expected at ${join(cwd, buildGroupedPath("test-plan", projectName))})`);
 	}
-	if (casesExists) {
-		parts.push(`# Test Cases\n${readFileSync(casesPath, "utf8")}`);
+	if (casesPath) {
+		parts.push(`# Test Cases\n${readFileSync(casesPath.path, "utf8")}`);
 	} else {
-		parts.push(`# Test Cases (missing at ${casesPath})`);
+		parts.push(`# Test Cases (missing; expected at ${join(cwd, buildGroupedPath("test-cases", projectName))})`);
 	}
 
 	const combined = parts.join("\n\n---\n\n");
-	emit(ctx, combined, "Test plan + cases");
+	emit(ctx, combined);
 }

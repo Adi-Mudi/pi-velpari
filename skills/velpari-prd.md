@@ -1,21 +1,41 @@
 ---
 name: velpari-prd
-description: Pi-Velpari PRD stage — orchestrate 4 visible subagents (fr-extractor, nfr-checker, helper-detector, consolidator) to convert discussion notes into a formal PRD, write the working copy, show preview gate.
+description: Pi-Velpari PRD stage — orchestrate 4 visible subagents (fr-extractor, nfr-checker, helper-detector, consolidator) to convert discussion notes into a PSRS (Product and Software Requirements Specification), write the working copy at the grouped path, show preview gate.
 ---
 
 # PRD Stage
 
-Convert the discussion notes into a formal Product Requirements Document
-(PRD). The handler has already validated the gate (discussion must exist) and
-embedded the discussion-notes path in the prompt. Your job is to spawn 4
-subagents in parallel, read their reports, and write the working-copy PRD.
+Convert the discussion notes into a formal PSRS (Product and Software
+Requirements Specification). The document keeps the file name
+`PRD_<projectName>.md` for compatibility — only its internal structure is
+the PSRS shape. The handler has already validated the gate (discussion
+must exist) and embedded the discussion-notes path in the prompt. Your
+job is to spawn 4 subagents in parallel, read their reports, and write
+the working-copy PSRS at the grouped working-copy path.
 
 ## Goal
 
-By the end of this stage, `<workingCopy>` (`PRD_<projectName>.md`) has every
-required section filled, the user has approved the preview, and
-`/velpari-approve` can publish the artifact to `Doc/PRD_<projectName>.md`
-without surprises.
+By the end of this stage:
+- `<workingCopy>` (`PRD_<projectName>.md`) has every required PSRS
+  section filled.
+- The user has approved the preview.
+- `/velpari-approve` can publish the artifact to
+  `Doc/requirements/PRD_<projectName>.md` (grouped layout) without
+  surprises.
+
+## Compact profile metadata (when present)
+
+When the user has run `/velpari-configure-requirements`, the prompt
+includes a `## Profile (compact)` block with the selected profile id,
+version, application type, domain, development method, regulated flag,
+and output variant. Use it to:
+- Add required sections mandated by the profile (e.g. "security",
+  "audit", "compliance") as explicit subsections inside the PSRS.
+- Tag FRs / NFRs that belong to a profile-required section.
+- Do NOT invent requirements just because the profile lists a section.
+  The trace back to the discussion is still mandatory (zero-hallucination).
+
+If no profile is present, follow the common PSRS structure only.
 
 ## Sequence
 
@@ -33,7 +53,7 @@ spawn 4 subagents in parallel via subagent() tool:
 read 4 reports
         │
         ▼
-merge reports into final PRD structure (FRs, NFRs, Helpers)
+merge reports into final PSRS structure (FRs, NFRs, Helpers)
         │
         ▼
 write working copy <workingCopy>
@@ -119,79 +139,158 @@ works in the background.
 | `stalled` | Parent lost trust in the run's health |
 | `running` | Fallback for backends without child snapshots |
 
-## Merge into final PRD
+## Merge into final PSRS
 
 After all 4 scouts complete:
 
 1. Read the consolidator's report — it has FRs, NFRs, Helpers, conflicts.
 2. (Optional, if gaps remain) Use `AskUserQuestion` to ask 1-3 follow-up
    questions. Cap iterations at 3 rounds.
-3. Build the PRD markdown structure (see "Output Format" below).
-4. Write to `<workingCopy>`.
+3. Build the PSRS markdown structure (see "Output Format" below).
+4. Write to `<workingCopy>` (grouped working-copy path).
 
-## Output Format
+## Output Format (PSRS)
 
-Write the working copy as `PRD_<projectName>.md` at `<workingCopy>`:
+Write the working copy as `PRD_<projectName>.md` at `<workingCopy>`.
+The document header MUST include the PSRS YAML frontmatter and the
+mandatory sections in this order. Doctor validates the structure.
 
 ```markdown
-# Product Requirements Document — <projectName>
+---
+documentType: product-software-requirements
+version: 1.0.0
+status: draft
+profile: <profileId>
+profileVersion: 1.0.0
+mission: <mission>
+projectName: <projectName>
+---
+
+# Product and Software Requirements Specification — <projectName>
 
 ## 1. Objective
 <one paragraph summary>
 
-## 2. Background & Context
-<why this exists>
+## 2. Problem
+<what problem this solves>
 
-## 3. User Personas
+## 3. System Actors
 <primary, secondary, tertiary users>
 
-## 4. Key Features & Requirements
+## 4. Scope
+<in-scope / out-of-scope summary>
 
-### 4.1 Functional Requirements
+## 5. MVP
+### MVP Goal
+<one paragraph>
 
-| ID | Title | Priority | Acceptance | NFRs |
+### MVP Users
+<primary users for the first release>
+
+### MVP Requirements
+- FR-01
+- FR-02
+
+### Explicitly Not in MVP
+- <item>
+
+### MVP Exit Criteria
+- <measurable criterion>
+
+## 6. Phases
+### Phase 0 — Foundation
+#### Goal
+#### Requirements
+#### Acceptance Criteria
+#### Dependencies
+#### Risks
+#### Out of Scope
+
+### Phase 1 — MVP
+<same shape as Phase 0>
+
+### Phase 2 — Essential improvements
+<same shape>
+
+### Phase 3 — Advanced features
+<same shape>
+
+### Phase 4 — Scale and optimization
+<same shape>
+
+## 7. Functional Requirements
+
+| ID | Requirement | Priority | Acceptance | Verification |
 |---|---|---|---|---|
-| FR-01 | <title> | must | <acceptance> | NFR-1, NFR-2 |
+| FR-01 | <title> | must | <acceptance> | Integration test |
 | FR-02 | ... | ... | ... | ... |
 
-### 4.2 Non-Functional Requirements
+## 8. Non-Functional Requirements
 
-| ID | Category | Metric | Applies To |
+| ID | Category | Requirement | Verification |
 |---|---|---|---|
-| NFR-01 | performance | <metric> | FR-1, FR-3 |
-| ... | | | |
+| NFR-01 | performance | <metric> | Performance test |
 
-## 5. Constraints
+## 9. Data and Interfaces
+
+| ID | Type | Name | Requirement | Source |
+|---|---|---|---|---|
+| DATA-01 | Entity | Expense | amount + category + owner + ts | FR-01 |
+
+## 10. Errors and Edge Cases
+
+| ID | Condition | Expected Behavior |
+|---|---|---|
+| ERR-01 | amount <= 0 | reject with validation error |
+
+## 11. Constraints
 <numbered list>
 
-## 6. Out of Scope
+## 12. Dependencies and Risks
 <numbered list>
 
-## 7. Glossary
-<terms and definitions>
+## 13. Out of Scope
+<numbered list>
 
-## 8. Acceptance Criteria
+## 14. Open Questions
+
+| ID | Question | Impact | Owner | Status |
+|---|---|---|---|---|
+| Q-01 | <question> | <impact> | <owner> | Open |
+
+## 15. Acceptance Criteria
 <numbered list, each verifiable>
 
-## 9. Helper Functions
+## 16. Helper Function Candidates
 
-| ID | Name | File Path | Signature | Purpose | FR Deps |
-|---|---|---|---|---|---|
-| HF-01 | <name> | <path> | <sig> | <purpose> | FR-1, FR-2 |
-| ... | | | | | |
+| ID | Name | Purpose | Source Requirements | Inputs | Outputs | Errors | Testable |
+|---|---|---|---|---|---|---|---|
+| HF-01 | validateExpense | Validate expense data. | FR-01 | amount | validated | invalid amount | yes |
+
+## 17. Change Log
+- <date> <author> <change>
 ```
 
 ## Zero-Hallucination Rule (FR-22)
 
 Every FR-N, NFR-N, and HF-NN entry must trace back to a statement in the
 discussion notes (`<inputArtifact>`). If the discussion does not mention
-something, do not invent it.
+something, do not invent it. Profile-required sections must be present
+but may be empty or reference open questions.
 
 ## Project-Name Substitution (FR-67, NFR-15)
 
 Read `projectName` from `.pi/velpari/files.json` (also available in the
 stage prompt's framework context if captured there). Use it in all output
 paths. Never hardcode "Pi-Velpari" in any file path.
+
+## Path layout (Phase 7)
+
+- Working copy: `<runDir>/prd/PRD_<projectName>.md` (grouped working-copy layout)
+- Published copy after approval: `Doc/requirements/PRD_<projectName>.md`
+
+Legacy flat path `Doc/PRD_<projectName>.md` is still readable as fallback
+but new writes go to the grouped layout.
 
 ## Preview Gate
 

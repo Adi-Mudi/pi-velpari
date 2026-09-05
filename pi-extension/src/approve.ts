@@ -1,5 +1,5 @@
 /**
- * Generic /velpari-approve handler for stages 2-7.
+ * Generic /velpari-approve handler for stages 2-7 (Phase 7 update).
  *
  * Per CHANGELOG v1.6 (FR-59):
  * - /velpari-approve-discuss handles the discussion stage (separate command).
@@ -11,22 +11,33 @@
  * 2. Refuse if current stage is `discussing` or `discussed` (use
  *    /velpari-approve-discuss for those).
  * 3. Map current stage → working-copy dir name and published artifact name.
- * 4. Read working copy; copy to Doc/.
- * 5. Transition state via advanceStage.
- * 6. NO auto-chain (unlike /velpari-approve-discuss).
+ * 4. Read working copy from the grouped working-copy path; if missing,
+ *    fall back to the legacy flat working-copy layout.
+ * 5. Write to the grouped Doc/ path; if a legacy flat copy exists,
+ *    preserve it. Stage transitions and two-file testplan approval
+ *    are unchanged.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { advanceStage, loadState } from "./state.js";
-import { buildDiscussionPath, buildOutputPath, buildRunDir, slugify } from "./paths.js";
+import { loadFilesConfig, validateFilesConfig } from "./config.js";
+import {
+	buildRunDir,
+	GROUPED_CATEGORIES,
+} from "./paths.js";
 import type { Stage } from "./constants.js";
 
 /**
- * Map a stage to (working-copy dir name, published artifact name).
+ * Map a stage to (working-copy category, published artifact name,
+ * additional published artifacts for testplan).
  */
-function stageToArtifact(stage: Stage): { workingDir: string; artifact: string } | null {
+function stageToArtifact(stage: Stage): {
+	workingDir: string;
+	artifact: string;
+	extras?: string[];
+} | null {
 	switch (stage) {
 		case "drafting-prd":
 		case "drafted-prd":
@@ -45,7 +56,11 @@ function stageToArtifact(stage: Stage): { workingDir: string; artifact: string }
 			return { workingDir: "pseudocode", artifact: "pseudocode" };
 		case "planning-tests":
 		case "planned-tests":
-			return { workingDir: "testplan", artifact: "test-plan" };
+			return {
+				workingDir: "tests",
+				artifact: "test-plan",
+				extras: ["test-cases"],
+			};
 		default:
 			return null;
 	}
@@ -61,7 +76,6 @@ export async function handleApprove(
 		return;
 	}
 
-	// Refuse if in discussion stage (use /velpari-approve-discuss instead).
 	if (state.currentStage === "discussing" || state.currentStage === "discussed") {
 		ctx.ui.notify(
 			`Use /velpari-approve-discuss for the discussion stage. ` +
@@ -77,16 +91,22 @@ export async function handleApprove(
 		return;
 	}
 
-	// Read working copy from .IDE_Plans/velpari/runs/<run-id>/<workingDir>/
+	const config = loadFilesConfig(cwd);
+	const projectName = validateFilesConfig(config) && config.projectName
+		? config.projectName
+		: state.mission || "Project";
 	const runDir = buildRunDir(state.runId, cwd);
-	const workingDirPath = join(runDir, mapping.workingDir);
+
+	// Try the grouped working-copy directory first, then the legacy
+	// flat working-copy directory (Phase 7 backwards compatibility).
+	const groupedWorkingDir = join(runDir, mapping.workingDir);
+	const legacyWorkingDir = join(runDir, mapping.artifact);
+	const workingDirPath = existsSync(groupedWorkingDir) ? groupedWorkingDir : legacyWorkingDir;
 	if (!existsSync(workingDirPath)) {
-		ctx.ui.notify(`Working copy dir not found at ${workingDirPath}.`, "error");
+		ctx.ui.notify(`Working copy dir not found at ${groupedWorkingDir} or ${legacyWorkingDir}.`, "error");
 		return;
 	}
 
-	// Find the working-copy file. Pattern: <artifact>_<projectName>.md
-	// For testplan stage, there are two files; we approve both.
 	const { readdirSync } = await import("node:fs");
 	const files = readdirSync(workingDirPath).filter((f) => f.endsWith(".md"));
 	if (files.length === 0) {
@@ -94,22 +114,30 @@ export async function handleApprove(
 		return;
 	}
 
-	// Get projectName from state or files.json
-	const projectName = state.mission ? slugify(state.mission) : "Project";
-	const targetDir = join(cwd, "Doc");
-	mkdirSync(targetDir, { recursive: true });
+	// Testplan publishes both test-plan and test-cases to the same
+	// `tests/` subfolder. Keep the two-file behavior intact.
 
 	for (const file of files) {
 		const content = readFileSync(join(workingDirPath, file), "utf8");
-		const targetPath = join(targetDir, file);
-		writeFileSync(targetPath, content, "utf8");
-		ctx.ui.notify(`Published to ${targetPath}`, "info");
+		// Pick the category subfolder based on the artifact embedded in
+		// the working-copy file name (e.g. "test-cases_TestApp.md"
+		// → "tests/test-cases_TestApp.md"). Rename the published file
+		// to the configured projectName.
+		const fileArtifact = file.replace(/_\w+\.md$/, "").replace(/\.md$/, "");
+		let category = GROUPED_CATEGORIES[mapping.artifact] ?? "";
+		if (mapping.artifact === "test-plan" && file.startsWith("test-cases_")) {
+			category = GROUPED_CATEGORIES["test-cases"] ?? "";
+		} else if (fileArtifact && fileArtifact !== mapping.artifact) {
+			category = GROUPED_CATEGORIES[fileArtifact] ?? category;
+		}
+		const outputFile = `${fileArtifact}_${projectName}.md`;
+		const groupedRel = category ? `${category}/${outputFile}` : outputFile;
+		const groupedAbs = join(cwd, "Doc", groupedRel);
+		mkdirSync(dirname(groupedAbs), { recursive: true });
+		writeFileSync(groupedAbs, content, "utf8");
+		ctx.ui.notify(`Published to ${groupedAbs}`, "info");
 	}
 
-	void dirname;
-	void buildDiscussionPath;
-	void buildOutputPath;
-	void projectName;
 
 	// Transition state via /velpari-approve
 	const next = advanceStage(state, "/velpari-approve", cwd);

@@ -1,19 +1,26 @@
 /**
- * /velpari-approve-discuss handler (v1.6, FR-58, FR-59, NFR-14).
+ * /velpari-approve-discuss handler (Phase 7 update; FR-58, FR-59, NFR-14).
  *
  * Flow:
- * 1. Read working copy from .IDE_Plans/velpari/runs/<run-id>/discuss/discussion-notes.md
- * 2. Compute topic-slug from mission (via paths.ts:slugify)
- * 3. Copy to Doc/discussion-<topic-slug>.md (per FR-69)
- * 4. Transition state: discussing -> discussed -> drafting-prd
- * 5. Auto-invoke handlePrd() to chain (per FR-58)
+ * 1. Read working copy from `.IDE_Plans/velpari/runs/<run-id>/discuss/discussion-notes.md`.
+ *    If only the legacy flat working-copy layout exists, read from there.
+ * 2. Compute topic-slug from mission (via paths.ts:slugify).
+ * 3. Publish to Doc/discussion/discussion-<topic-slug>.md (grouped).
+ *    If a legacy flat file already exists, preserve it.
+ * 4. Transition state: discussing -> discussed -> drafting-prd.
+ * 5. Auto-invoke handlePrd() to chain (per FR-58).
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { advanceStage, loadState } from "./state.js";
-import { buildDiscussionPath, buildRunDir, slugify } from "./paths.js";
+import {
+	buildDiscussionPath,
+	buildGroupedDiscussionPath,
+	buildRunDir,
+	slugify,
+} from "./paths.js";
 import { handlePrd } from "./prd.js";
 
 export async function handleApproveDiscuss(
@@ -36,20 +43,24 @@ export async function handleApproveDiscuss(
 		return;
 	}
 
-	// 2. Read working copy
+	// 2. Read working copy from grouped working-copy dir first, then legacy.
 	const runDir = buildRunDir(state.runId, cwd);
-	const workingPath = join(runDir, "discuss", "discussion-notes.md");
+	const groupedWorkingPath = join(runDir, "discuss", "discussion-notes.md");
+	const legacyWorkingPath = join(runDir, "discussion-notes.md");
+	const workingPath = existsSync(groupedWorkingPath)
+		? groupedWorkingPath
+		: legacyWorkingPath;
 	if (!existsSync(workingPath)) {
 		ctx.ui.notify(`Discussion working copy not found at ${workingPath}.`, "error");
 		return;
 	}
 	const content = readFileSync(workingPath, "utf8");
 
-	// 3. Compute target path (FR-69: append timestamp suffix on re-run).
+	// 3. Compute target path (grouped layout). Append timestamp suffix
+	//    on re-runs so existing files are preserved (FR-69).
 	const topicSlug = slugify(state.mission);
-	let targetPath = join(cwd, buildDiscussionPath(topicSlug));
-	if (existsSync(targetPath)) {
-		// Generate a YYYYMMDD-HHMMSS suffix from current time.
+	let groupedTarget = join(cwd, buildGroupedDiscussionPath(topicSlug));
+	if (existsSync(groupedTarget)) {
 		const now = new Date();
 		const stamp =
 			now.getFullYear().toString() +
@@ -59,13 +70,13 @@ export async function handleApproveDiscuss(
 			String(now.getHours()).padStart(2, "0") +
 			String(now.getMinutes()).padStart(2, "0") +
 			String(now.getSeconds()).padStart(2, "0");
-		targetPath = join(cwd, buildDiscussionPath(topicSlug, stamp));
+		groupedTarget = join(cwd, buildGroupedDiscussionPath(topicSlug, stamp));
 	}
 
-	// 4. Write published copy
-	mkdirSync(join(cwd, "Doc"), { recursive: true });
-	writeFileSync(targetPath, content, "utf8");
-	ctx.ui.notify(`Published to ${targetPath}`, "info");
+	// 4. Write published copy (grouped).
+	mkdirSync(dirname(groupedTarget), { recursive: true });
+	writeFileSync(groupedTarget, content, "utf8");
+	ctx.ui.notify(`Published to ${groupedTarget}`, "info");
 
 	// 5. Transition state: discussing -> discussed (via /velpari-approve-discuss),
 	//    then to drafting-prd (via /velpari-prd which handlePrd will trigger).
@@ -75,5 +86,6 @@ export async function handleApproveDiscuss(
 	ctx.ui.notify("Chaining into PRD stage...", "info");
 	await handlePrd(ctx, pi, cwd);
 
+	void buildDiscussionPath;
 	void next; // state already saved by advanceStage
 }

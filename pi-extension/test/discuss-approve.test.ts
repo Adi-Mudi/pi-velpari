@@ -52,8 +52,8 @@ test("handleApproveDiscuss publishes working copy to Doc/", async () => {
 		const ctx = { ui: makeUI(notifies) } as never;
 		await handleApproveDiscuss(ctx, makeMockPi() as never, dir);
 
-		// Published copy exists at Doc/discussion-<topic-slug>.md
-		const expectedPath = join(dir, "Doc", "discussion-test-mission.md");
+		// Published copy exists at Doc/discussion/discussion-<topic-slug>.md (grouped layout).
+		const expectedPath = join(dir, "Doc", "discussion", "discussion-test-mission.md");
 		assert.ok(existsSync(expectedPath), "published copy not created");
 		const content = readFileSync(expectedPath, "utf8");
 		assert.match(content, /Test Mission/);
@@ -131,10 +131,10 @@ test("handleApproveDiscuss appends timestamp suffix on re-run (FR-69)", async ()
 		await handleApproveDiscuss(ctx2, makeMockPi() as never, dir);
 
 		// Expect at least one of:
-		//   Doc/discussion-same-topic-<timestamp>.md
-		//   Doc/discussion-same-topic.md  (overwrite, also acceptable per FR-69)
+		//   Doc/discussion/discussion-same-topic-<timestamp>.md
+		//   Doc/discussion/discussion-same-topic.md  (overwrite, also acceptable per FR-69)
 		const { readdirSync } = await import("node:fs");
-		const docs = readdirSync(join(dir, "Doc"));
+		const docs = readdirSync(join(dir, "Doc", "discussion"));
 		const matching = docs.filter((f) => f.startsWith("discussion-same-topic"));
 		assert.ok(matching.length >= 1, "at least one discussion-same-topic file should exist");
 	} finally {

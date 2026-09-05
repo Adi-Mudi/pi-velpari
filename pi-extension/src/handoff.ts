@@ -1,10 +1,12 @@
 /**
- * /velpari-handoff handler.
+ * /velpari-handoff handler (Phase 7 update).
  *
  * Flow:
  * 1. Verify state is at `planned-tests` or `ordered-development`
  * 2. Read projectName from .pi/velpari/files.json
- * 3. Scan 7 required Doc/ artifacts + 2 optional ones (FR-34)
+ * 3. Scan 7 required Doc/ artifacts + 2 optional ones (FR-34).
+ *    Each artifact is resolved with grouped layout first and legacy
+ *    flat layout fallback.
  * 4. Build architect-inputs.json with versioned schema
  * 5. Validate against our schema mirror of Senai's expected shape
  * 6. Preview gate (FR-23)
@@ -16,7 +18,11 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { advanceStage, loadState, type RunState } from "./state.js";
-import { buildOutputPath } from "./paths.js";
+import {
+	buildGroupedPath,
+	buildOutputPath,
+	resolveDocArtifact,
+} from "./paths.js";
 import { loadFilesConfig, validateFilesConfig } from "./config.js";
 
 export type DocumentType =
@@ -61,6 +67,8 @@ const OPTIONAL_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = 
 /**
  * Read all approved Doc/ artifacts. Returns the documents array.
  * Required artifacts that are missing throw an error listing them.
+ * Each artifact path prefers the grouped layout and falls back to the
+ * legacy flat layout (Phase 7 backwards compatibility).
  */
 export function readApprovedArtifacts(
 	projectName: string,
@@ -70,20 +78,20 @@ export function readApprovedArtifacts(
 	const missing: string[] = [];
 
 	for (const { type, artifact } of REQUIRED_TYPES) {
-		const relPath = buildOutputPath(artifact, projectName);
-		const absPath = join(cwd, relPath);
-		if (existsSync(absPath)) {
-			docs.push({ type, path: relPath });
+		const resolved = resolveDocArtifact(artifact, projectName, cwd);
+		if (resolved) {
+			// Persist the actual on-disk path (absolute) so downstream
+			// tooling can read it without re-deriving the layout.
+			docs.push({ type, path: resolved.path });
 		} else {
-			missing.push(relPath);
+			missing.push(`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))})`);
 		}
 	}
 
 	for (const { type, artifact } of OPTIONAL_TYPES) {
-		const relPath = buildOutputPath(artifact, projectName);
-		const absPath = join(cwd, relPath);
-		if (existsSync(absPath)) {
-			docs.push({ type, path: relPath });
+		const resolved = resolveDocArtifact(artifact, projectName, cwd);
+		if (resolved) {
+			docs.push({ type, path: resolved.path });
 		}
 	}
 
@@ -139,7 +147,6 @@ export async function runHandoff(
 	ctx: ExtensionCommandContext,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	// 1. Verify state
 	if (state.currentStage === "none") {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
 		return;
@@ -153,7 +160,6 @@ export async function runHandoff(
 		return;
 	}
 
-	// 2. Read projectName
 	const config = loadFilesConfig(cwd);
 	if (!validateFilesConfig(config)) {
 		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
@@ -161,7 +167,6 @@ export async function runHandoff(
 	}
 	const projectName = config.projectName;
 
-	// 3. Scan Doc/ artifacts
 	let documents: ArchitectDocument[];
 	try {
 		documents = readApprovedArtifacts(projectName, cwd);
@@ -170,7 +175,6 @@ export async function runHandoff(
 		return;
 	}
 
-	// 4. Build JSON
 	const inputs: ArchitectInputs = {
 		version: 1,
 		projectName,
@@ -179,7 +183,6 @@ export async function runHandoff(
 		documents,
 	};
 
-	// 5. Validate
 	try {
 		validateSenaiSchema(inputs);
 	} catch (err) {
@@ -187,7 +190,6 @@ export async function runHandoff(
 		return;
 	}
 
-	// 6. Preview gate
 	const targetPath = join(cwd, ".pi", "senai", "architect-inputs.json");
 	const confirmed = await ctx.ui.confirm(
 		"Publish handoff?",
@@ -198,12 +200,11 @@ export async function runHandoff(
 		return;
 	}
 
-	// 7. Write
 	mkdirSync(dirname(targetPath), { recursive: true });
 	writeFileSync(targetPath, JSON.stringify(inputs, null, 2), "utf8");
 	ctx.ui.notify(`Handoff written to ${targetPath}`, "info");
 
-	// 8. Transition state
 	const next = advanceStage(state, "/velpari-handoff", cwd);
 	void next;
+	void existsSync;
 }

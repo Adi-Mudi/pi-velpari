@@ -272,7 +272,7 @@ test("showTestplan emits partial content + warning when one file is missing", as
 		const info = ui.notifies.find((n) => n.level === "info");
 		assert.ok(info, "expected an info notification");
 		assert.match(info.msg, /Test Cases content/);
-		assert.match(info.msg, /missing at .*test-plan_TestApp\.md/);
+		assert.match(info.msg, /test-plan_TestApp\.md/);
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });
@@ -319,7 +319,7 @@ test("showTestplan emits partial content + warning when test-cases is missing (m
 		const info = ui.notifies.find((n) => n.level === "info");
 		assert.ok(info, "expected an info notification");
 		assert.match(info.msg, /Test Plan content/);
-		assert.match(info.msg, /missing at .*test-cases_TestApp\.md/);
+		assert.match(info.msg, /test-cases_TestApp\.md/);
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });

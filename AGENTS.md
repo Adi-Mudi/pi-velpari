@@ -6,7 +6,7 @@ Agent-focused guidance for working on the `pi-velpari` Pi extension. Parallels `
 
 ## Project layout
 
-- `.pi/velpari/` — Velpari's local config (currently only `files.json`, written by `/velpari-configure-inputs`).
+- `.pi/velpari/` — Velpari's local project config (`files.json` for framework/inputs and `requirements-profile.json` for the selected requirements profile).
 - `.IDE_Plans/velpari/` — run state, run history, doctor reports. Not a standard Pi directory; Velpari-specific convention.
 - `Doc/` — published artifacts (the artifacts of record).
 - `.pi/senai/architect-inputs.json` — Velpari's handoff target, consumed by Senai.
@@ -95,16 +95,20 @@ npm test
 │       ├── prd-checker.md
 │       ├── rtm-checker.md
 │       └── web-search-agent.md
-├── Doc/                       # human-facing docs
-│   ├── PRD.md                 # source PRD (with FR-01..FR-36, NFR-01..NFR-11, ## Helper Functions)
-│   ├── RTM_Pi-Velpari.md      # requirements traceability matrix (47 requirements, 163 test cases)
-│   ├── feasibility-study.md   # 5-dimension feasibility
-│   ├── design.md              # high-level design (19 source modules)
-│   ├── pseudocode.md          # algorithm pseudocode (12 scout agents + handoff extension)
-│   ├── test-plan.md           # test strategy (19 test files)
-│   ├── test-cases.md          # test cases
-│   ├── velpari-sequence.md    # 9-stage sequence flow + scout pattern
-│   └── step-by-step-guide.md  # hands-on walkthrough
+├── Doc/                       # published artifacts (artifacts of record)
+│   ├── requirements/          # PRD/PSRS + RTM outputs
+│   ├── discussion/            # discussion notes
+│   ├── feasibility/          # feasibility studies
+│   ├── design/                # design documents
+│   ├── pseudocode/            # pseudocode documents
+│   ├── tests/                 # test plans and test cases
+│   ├── atomic-functions/      # optional atomic-function output
+│   ├── development-order/     # optional development-order output
+│   ├── PRD.md                  # legacy source PRD (readable fallback)
+│   ├── RTM_Pi-Velpari.md       # legacy source RTM (readable fallback)
+│   ├── velpari-requirements-orchestration-design.md
+│   ├── velpari-sequence.md
+│   └── step-by-step-guide.md
 └── .IDE_Plans/                # temporary planning artifacts and run state
     └── *.md
 ```
@@ -150,25 +154,31 @@ Run artifacts (working copies):
     └── test-cases.md
 ```
 
-Published copies (in `Doc/`):
+Published copies (new grouped layout, in `Doc/`):
 ```
 Doc/
-├── discussion-notes.md
-├── PRD_Pi-Velpari.md
-├── RTM_Pi-Velpari.md
-├── feasibility-study.md
-├── design.md
-├── pseudocode.md
-├── test-plan.md
-└── test-cases.md
+├── discussion/discussion-<topic-slug>.md
+├── requirements/
+│   ├── PRD_<projectName>.md
+│   └── RTM_<projectName>.md
+├── feasibility/feasibility-study_<projectName>.md
+├── design/design_<projectName>.md
+├── pseudocode/pseudocode_<projectName>.md
+├── tests/
+│   ├── test-plan_<projectName>.md
+│   └── test-cases_<projectName>.md
+├── atomic-functions/atomic-functions_<projectName>.md
+└── development-order/development-order_<projectName>.md
 ```
+
+Legacy flat `Doc/PRD*.md`, `Doc/RTM*.md`, and other old filenames remain readable as fallback paths.
 
 ## Stage workflow
 
 | Stage transition | Command that triggers it |
 |---|---|
 | `none` → `discussing` | `/velpari-discuss <mission>` |
-| `discussing` → `discussed` → `drafting-prd` | `/velpari-approve` |
+| `discussing` → `discussed` → `drafting-prd` | `/velpari-approve-discuss` |
 | `discussed` → `drafting-prd` | `/velpari-prd` |
 | `drafting-prd` → `drafted-prd` → `building-rtm` | `/velpari-approve` |
 | `drafted-prd` → `building-rtm` | `/velpari-rtm` |
@@ -192,15 +202,19 @@ Stage transitions are defined in `constants.ts` as `STAGE_TRANSITIONS`.
 - **Core 7 (required):** `/velpari-discuss`, `/velpari-prd`, `/velpari-rtm`, `/velpari-feasibility`, `/velpari-design`, `/velpari-pseudocode`, `/velpari-testplan`
 - **Post-pipeline 2 (optional):** `/velpari-atomic-function`, `/velpari-development-order`
 
-### Discipline commands (6)
+### Discipline commands (8)
 
-`/velpari-approve`, `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-doctor`, `/velpari-handoff`
+`/velpari-approve`, `/velpari-approve-discuss`, `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-configure-requirements`, `/velpari-doctor`, `/velpari-handoff`
+
+### Wrapper command (1)
+
+`/velpari-prd-rtm` — calls `/velpari-prd` and `/velpari-rtm` in sequence. Does not duplicate stage logic. Does not auto-approve.
 
 ### View commands (7)
 
 `/velpari-show-discussion`, `/velpari-show-prd`, `/velpari-show-rtm`, `/velpari-show-feasibility`, `/velpari-show-design`, `/velpari-show-pseudocode`, `/velpari-show-testplan`
 
-Total: 22 commands.
+Total: 25 commands.
 
 ## Coding conventions
 
@@ -213,11 +227,15 @@ Total: 22 commands.
 - **Per-command doc scope is the source of truth.** Every stage command's reads and writes are declared in `commands.ts:COMMAND_SCOPE`. Before any LLM call, `checkDocScope` validates that every required input exists and is non-empty. The PRD row for the command, sequence doc §11, design §3.7, pseudocode §17, and test cases §35 must all agree. Drift is a defect.
 - **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. Do not add architecture-related commands to Velpari in v1.x. The rationale is in `Doc/design.md` §7.7 and `Doc/PRD.md` (FR-47).
 - **No runtime dependency on Senai.** `package.json` does not list Senai. TUI patterns are re-implemented in `pi-extension/src/ui/` using Pi's TUI primitives. Either extension can be removed or refactored without breaking the other. (FR-55)
-- **Uniform subagent pattern.** All 12 scout agents follow the `ScoutContract` defined in `pi-extension/src/contracts.ts`. Use `pi-extension/src/scout.ts:spawnScout()` to spawn any scout — do not write bespoke spawn logic per scout. Same 30-second timeout, same JSON output envelope, same picker UI. (FR-54, NFR-13)
+- **Uniform subagent pattern.** All 36 scout agents follow the `subagent()` invocation via `@earendil-works/pi-interactive-subagents`. Each stage handler passes `agent:`, `cwd:`, `task:` and `auto-exit: true`. Use `pi-extension/src/stage-runner.ts:runStageWithScouts()` for any stage that spawns subagents. No in-process scout API.
 - **Framework is one-time setup.** Framework/tech-stack is captured in `/velpari-configure-inputs`, persisted in `.pi/velpari/files.json:framework`, and injected into every stage prompt. It is NOT a pipeline stage. Do not add a `/velpari-framework` command. (FR-49)
 - **WEB SEARCH AGENT is user-prompted.** After the multi-turn interview, the user is asked "do you want a web search?" (yes/no). Do not auto-invoke the web search. The decision is per-discussion. (FR-52)
-- **Discussion approval uses `/velpari-approve-discuss`, NOT `/velpari-approve`** (v1.6). The discussion stage has its own dedicated approve command. `/velpari-approve-discuss` publishes `Doc/discussion-notes.md` and **auto-invokes `/velpari-prd`** to chain into the PRD stage. `/velpari-approve` errors when in discussion stage. Use `/velpari-approve` only for stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan). (FR-58, FR-59, NFR-14)
-- **Output documents use `projectName` suffix** (v1.7). All output file names are derived from the `projectName` captured in `/velpari-configure-inputs`. Example: `Doc/PRD_TodoApp.md`, not `Doc/PRD_Pi-Velpari.md`. Discussion is per-topic: `Doc/discussion-{topic-slug}.md`. Use `pi-extension/src/paths.ts:buildOutputPath()` and `buildDiscussionPath()` for the naming logic. Never hardcode "Pi-Velpari" in any file path. (FR-67..FR-71, NFR-15)
+- **Discussion approval uses `/velpari-approve-discuss`, NOT `/velpari-approve`** (v1.6). The discussion stage has its own dedicated approve command. `/velpari-approve-discuss` publishes `Doc/discussion/discussion-<topic-slug>.md` and **auto-invokes `/velpari-prd`** to chain into the PRD stage. `/velpari-approve` errors when in discussion stage. Use `/velpari-approve` only for stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan). (FR-58, FR-59, NFR-14)
+- **Output documents use `projectName` suffix** (v1.7). All output file names are derived from the `projectName` captured in `/velpari-configure-inputs`. Example: `Doc/requirements/PRD_TodoApp.md`, not `Doc/PRD_Pi-Velpari.md`. Discussion is per-topic: `Doc/discussion/discussion-{topic-slug}.md`. Use `pi-extension/src/paths.ts:buildGroupedPath()` and `resolveDocArtifact()` for the naming + lookup logic. Never hardcode "Pi-Velpari" in any file path. (FR-67..FR-71, NFR-15)
+- **Grouped Doc/ layout (Phase 7 / Requirements Factory).** New writes go to category subfolders under `Doc/` (`Doc/discussion/`, `Doc/requirements/`, `Doc/feasibility/`, `Doc/design/`, `Doc/pseudocode/`, `Doc/tests/`, `Doc/atomic-functions/`, `Doc/development-order/`). Legacy flat paths remain readable as fallback everywhere; nothing is moved, deleted, or overwritten. Use `pi-extension/src/paths.ts:resolveDocArtifact()` for cross-layout reads.
+- **PSRS shape (Phase 7).** The PRD document is a combined Product and Software Requirements Specification. Keep the file name `PRD_<projectName>.md` for compatibility. Required sections (validated by `pi-extension/src/psrs.ts`): Objective, Problem, System Actors, Scope, MVP, Phases, Functional Requirements, Non-Functional Requirements, Data and Interfaces, Errors and Edge Cases, Constraints, Dependencies and Risks, Out of Scope, Open Questions, Acceptance Criteria, Helper Function Candidates. RTM is a separate document.
+- **Requirements profile (Phase 7, v1.1).** `/velpari-configure-requirements` is the only entrypoint that mutates `.pi/velpari/requirements-profile.json`. The handler uses native Pi selectors (`ctx.ui.select(title, options)`) for fixed choices, `ctx.ui.input(title, placeholder)` for free text, and `ctx.ui.confirm(title, message)` for yes/no. Profile selection is **optional**. Web-research consent is collected immediately after the answers and before recommendations; the research prompt explicitly states `Profile selection: PENDING`, says `MUST NOT save or write a profile`, and never includes a final selected profile id. The handler surfaces up to three deterministic `ProfileRecommendation` entries: the **common PSRS core** (`core-psrs-v1`, always present, a real choice) plus up to two closest built-in profiles, each with a 0–100 score, reasons, and trade-offs. When no built-in matches exactly, the handler offers `Use common PSRS core` / `Use closest built-in profile` / `Update Velpari` / `Stop` via native selector — no fake custom-profile action. Doctor reports profile mode (`common-core` or `built-in`), id, version, research consent + source count, and the report-only stance; it never selects, fixes, or mutates a profile.
+- **Stage runner carries only compact profile metadata.** `StageRunConfig.profileMetadata` is a `CompactProfileMetadata` projection, never the full profile. The prompt renders it as a `## Profile (compact)` block; the block is omitted when the field is absent.
 - No subagent-spawning code anywhere. If you find yourself reaching for a subagent API, re-read the design principles.
 
 ## Testing
@@ -280,6 +298,7 @@ When changing behavior, update both code-facing docs (`README.md`, `CHANGELOG.md
 - `Doc/velpari-sequence.md` — 9-stage sequence flow + scout pattern + §11 sub-sequence table.
 - `Doc/step-by-step-guide.md` — hands-on walkthrough (includes §0a on gates).
 - `Doc/architecture-discussion.md` — study-only architecture doc with pending decisions list (v1.4).
+- `Doc/velpari-requirements-orchestration-design.md` — Phase 7 Requirements Factory design (PSRS, profiles, grouped paths, Doctor, wrapper command). Source of truth for the shape added in Phase 7.
 
 ## Branches
 

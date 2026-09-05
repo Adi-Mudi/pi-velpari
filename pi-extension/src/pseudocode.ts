@@ -1,5 +1,5 @@
 /**
- * /velpari-pseudocode handler (v2.0 / Phase 4 of all-stages refactor).
+ * /velpari-pseudocode handler (Phase 7 update).
  *
  * Two-phase flow:
  *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
@@ -11,10 +11,18 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "../src/config.js";
-import { buildOutputPath, buildRunDir } from "../src/paths.js";
-import { loadState } from "../src/state.js";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+import { loadFilesConfig } from "./config.js";
+import { loadState } from "./state.js";
+import {
+	buildRunDir,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "./paths.js";
+import {
+	compactProfileMetadata,
+	loadRequirementsProfile,
+} from "./requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
 
 const PSEUDO_SCOUTS = [
 	{ name: "pseudo-algorithm-extractor" },
@@ -28,7 +36,6 @@ export async function handlePseudocode(
 	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
@@ -41,14 +48,24 @@ export async function handlePseudocode(
 	}
 	const projectName = config.projectName;
 
-	// 2. Gate check: published design must exist.
-	const inputArtifactPath = join(cwd, buildOutputPath("design", projectName));
+	const resolved = resolveDocArtifact("design", projectName, cwd);
+	if (!resolved) {
+		ctx.ui.notify(
+			`Cannot read design for ${projectName}: not found at Doc/design/design_${projectName}.md or Doc/design_${projectName}.md. ` +
+				`Run /velpari-design and /velpari-approve first.`,
+			"error",
+		);
+		return;
+	}
+	const inputArtifactPath = resolved.path;
 
-	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
-	const pseudoDir = join(runDir, "pseudocode");
-	const scoutsDir = join(pseudoDir, "scouts");
-	const workingCopyPath = join(pseudoDir, `pseudocode_${projectName}.md`);
+	const pseudoWorkingDir = join(runDir, "pseudocode");
+	const scoutsDir = join(pseudoWorkingDir, "scouts");
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, "pseudocode", projectName);
+
+	const profile = loadRequirementsProfile(cwd);
+	const profileMetadata = compactProfileMetadata(profile);
 
 	const stageConfig: StageRunConfig = {
 		stage: "writing-pseudocode",
@@ -60,10 +77,11 @@ export async function handlePseudocode(
 			reportPath: join(scoutsDir, `${s.name}-report.json`),
 		})),
 		inputArtifactPath,
-		workingCopyDir: pseudoDir,
+		workingCopyDir: pseudoWorkingDir,
 		workingCopyPath,
 		scoutsDir,
 		cwd,
+		profileMetadata,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

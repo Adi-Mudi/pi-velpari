@@ -92,7 +92,7 @@ test("handleTestplan refuses when no pseudocode exists", async () => {
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
 		await handleTestplan(ctx, pi as never, dir);
-		assert.ok(ui.notifies.some((n) => n.level === "error" && /cannot read input artifact/i.test(n.msg)));
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /cannot read pseudocode/i.test(n.msg)));
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });
@@ -162,7 +162,8 @@ test("handleTestplan does NOT write either working copy (LLM's job)", async () =
 		const ctx = { ui, cwd: dir } as never;
 		await handleTestplan(ctx, pi as never, dir);
 		const state = loadState(dir);
-		const tpDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "testplan");
+		// Phase 7: working-copy category renamed from "testplan" to "tests".
+		const tpDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "tests");
 		assert.equal(existsSync(join(tpDir, "test-plan_TestApp.md")), false);
 		assert.equal(existsSync(join(tpDir, "test-cases_TestApp.md")), false);
 	} finally {
@@ -285,7 +286,8 @@ test("handleTestplan does not crash when the testplan output dir already has sta
 	try {
 		setupValidRun(dir);
 		const state = loadState(dir);
-		const tpDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "testplan");
+		// Phase 7: working-copy category renamed from "testplan" to "tests".
+		const tpDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "tests");
 		mkdirSync(tpDir, { recursive: true });
 		writeFileSync(join(tpDir, "stale.txt"), "stale", "utf8");
 		const ui = makeMockUI();

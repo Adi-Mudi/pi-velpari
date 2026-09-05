@@ -1,5 +1,5 @@
 /**
- * /velpari-testplan handler (v2.0 / Phase 4 of all-stages refactor).
+ * /velpari-testplan handler (Phase 7 update).
  *
  * Two-phase flow:
  *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
@@ -11,14 +11,24 @@
  *
  * Note: This stage produces TWO working copies (test-plan + test-cases).
  * The handler passes both paths to stage-runner via `additionalWorkingCopies`.
+ * The working-copy category folder is renamed from `testplan` to `tests`
+ * to match the grouped Doc/ layout (Phase 7).
  */
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "../src/config.js";
-import { buildOutputPath, buildRunDir } from "../src/paths.js";
-import { loadState } from "../src/state.js";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+import { loadFilesConfig } from "./config.js";
+import { loadState } from "./state.js";
+import {
+	buildRunDir,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "./paths.js";
+import {
+	compactProfileMetadata,
+	loadRequirementsProfile,
+} from "./requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
 
 const TESTPLAN_SCOUTS = [
 	{ name: "testplan-strategy-designer" },
@@ -45,16 +55,28 @@ export async function handleTestplan(
 	}
 	const projectName = config.projectName;
 
-	// 2. Gate check: published pseudocode must exist.
-	const inputArtifactPath = join(cwd, buildOutputPath("pseudocode", projectName));
+	// 2. Gate check: published pseudocode must exist (grouped first, legacy fallback).
+	const resolved = resolveDocArtifact("pseudocode", projectName, cwd);
+	if (!resolved) {
+		ctx.ui.notify(
+			`Cannot read pseudocode for ${projectName}: not found at Doc/pseudocode/pseudocode_${projectName}.md or Doc/pseudocode_${projectName}.md. ` +
+				`Run /velpari-pseudocode and /velpari-approve first.`,
+			"error",
+		);
+		return;
+	}
+	const inputArtifactPath = resolved.path;
 
-	// 3. Build artifact paths.
+	// 3. Build artifact paths. The working-copy category is "tests"
+	//    (matches the grouped Doc/ subfolder).
 	const runDir = buildRunDir(state.runId, cwd);
-	const testplanDir = join(runDir, "testplan");
-	const scoutsDir = join(testplanDir, "scouts");
-	// Two working copies for this stage.
-	const workingCopyPath = join(testplanDir, `test-plan_${projectName}.md`);
-	const additionalWorkingCopies = [join(testplanDir, `test-cases_${projectName}.md`)];
+	const testplanWorkingDir = join(runDir, "tests");
+	const scoutsDir = join(testplanWorkingDir, "scouts");
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, "test-plan", projectName);
+	const additionalWorkingCopies = [buildWorkingGroupedPath(cwd, state.runId, "test-cases", projectName)];
+
+	const profile = loadRequirementsProfile(cwd);
+	const profileMetadata = compactProfileMetadata(profile);
 
 	const stageConfig: StageRunConfig = {
 		stage: "planning-tests",
@@ -66,11 +88,12 @@ export async function handleTestplan(
 			reportPath: join(scoutsDir, `${s.name}-report.json`),
 		})),
 		inputArtifactPath,
-		workingCopyDir: testplanDir,
+		workingCopyDir: testplanWorkingDir,
 		workingCopyPath,
 		scoutsDir,
 		additionalWorkingCopies,
 		cwd,
+		profileMetadata,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

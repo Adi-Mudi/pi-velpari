@@ -111,7 +111,7 @@ test("handleAtomicFunction refuses when one of the 7 published artifacts is miss
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
 		await handleAtomicFunction(ctx, pi as never, dir);
-		assert.ok(ui.notifies.some((n) => n.level === "error" && /missing artifacts/i.test(n.msg)));
+		assert.ok(ui.notifies.some((n) => n.level === "error" && /missing test-plan/i.test(n.msg)));
 		assert.equal(pi.sent.length, 0);
 	} finally {
 		clearRun(dir);

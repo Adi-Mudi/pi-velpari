@@ -1,5 +1,5 @@
 /**
- * /velpari-design handler (v2.0 / Phase 4 of all-stages refactor).
+ * /velpari-design handler (Phase 7 update).
  *
  * Two-phase flow:
  *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
@@ -11,10 +11,18 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "../src/config.js";
-import { buildOutputPath, buildRunDir } from "../src/paths.js";
-import { loadState } from "../src/state.js";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+import { loadFilesConfig } from "./config.js";
+import { loadState } from "./state.js";
+import {
+	buildRunDir,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "./paths.js";
+import {
+	compactProfileMetadata,
+	loadRequirementsProfile,
+} from "./requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
 
 const DESIGN_SCOUTS = [
 	{ name: "design-module-decomposer" },
@@ -28,7 +36,6 @@ export async function handleDesign(
 	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
-	// 1. Load state + config.
 	const state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-discuss first.", "error");
@@ -41,14 +48,24 @@ export async function handleDesign(
 	}
 	const projectName = config.projectName;
 
-	// 2. Gate check: published feasibility study must exist.
-	const inputArtifactPath = join(cwd, buildOutputPath("feasibility-study", projectName));
+	const resolved = resolveDocArtifact("feasibility-study", projectName, cwd);
+	if (!resolved) {
+		ctx.ui.notify(
+			`Cannot read feasibility-study for ${projectName}: not found at Doc/feasibility/feasibility-study_${projectName}.md or Doc/feasibility-study_${projectName}.md. ` +
+				`Run /velpari-feasibility and /velpari-approve first.`,
+			"error",
+		);
+		return;
+	}
+	const inputArtifactPath = resolved.path;
 
-	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
-	const designDir = join(runDir, "design");
-	const scoutsDir = join(designDir, "scouts");
-	const workingCopyPath = join(designDir, `design_${projectName}.md`);
+	const designWorkingDir = join(runDir, "design");
+	const scoutsDir = join(designWorkingDir, "scouts");
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, "design", projectName);
+
+	const profile = loadRequirementsProfile(cwd);
+	const profileMetadata = compactProfileMetadata(profile);
 
 	const stageConfig: StageRunConfig = {
 		stage: "designing",
@@ -60,10 +77,11 @@ export async function handleDesign(
 			reportPath: join(scoutsDir, `${s.name}-report.json`),
 		})),
 		inputArtifactPath,
-		workingCopyDir: designDir,
+		workingCopyDir: designWorkingDir,
 		workingCopyPath,
 		scoutsDir,
 		cwd,
+		profileMetadata,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

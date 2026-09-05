@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (research-based profile workflow — 2026-09-05)
+
+Implements the approved `profile_workflow_plan_20260904_2349_v1.0.md`. PSRS structure, RTM structure, grouped `Doc/` paths, stage transitions, and command names are unchanged.
+
+- **Common PSRS core profile.** `core-psrs-v1` is now a first-class, versioned, deterministic profile in the built-in library. Its applicationType is `other`, domain `general`, developmentMethod `agile`, regulated `false`, securityLevel `medium`, outputVariant `standard`. A common-core selection is a real, valid choice — never a fallback for missing matches.
+- **`ProfileRecommendation` type + scoring.** `recommendProfiles(answers)` returns up to three deterministic recommendations: the common PSRS core plus up to two closest built-in profiles. Each carries a 0–100 score, reasons, and trade-offs. Sort order: `score DESC, profileId ASC`.
+- **`compactProfileMetadata` gains `profileKind`.** The compact projection now includes `"common-core" | "built-in"`.
+- **Persisted profile shape (v1.1.0).** `version = "1.1.0"`. New `profileKind` field. v1.0.0 profiles still load only if the user manually migrates them; the validator enforces the v1.1.0 shape. `REQUIREMENTS_PROFILE_VERSION` bumped.
+- **Native Pi selectors.** `/velpari-configure-requirements` uses `ctx.ui.select(title, options)` for novelty, application type, domain, development method, security level, regulated (via confirm), profile recommendation, and fallback actions. Free text stays on `ctx.ui.input(title, placeholder)`; yes/no stays on `ctx.ui.confirm(title, message)`. Tests mock `select`.
+- **Research BEFORE final profile selection.** Web-research consent (`ctx.ui.confirm`) is now collected immediately after the answers, before any recommendation list or saving. The research prompt explicitly states `Profile selection: PENDING`, says `MUST NOT save or write a profile`, and never includes a final selected profile id. Findings remain suggestions only. If consent is granted but `pi` is absent, the handler skips the handoff with a warning and still saves the profile with `researchConsent: true` and empty `researchSources`.
+- **`closestBuiltInProfile(answers)` helper.** Deterministic lookup used by the fallback action `Use closest built-in profile`.
+- **`runFallbackActions(ctx, cwd)` helper.** Surfaces the four documented fallback actions via native `ctx.ui.select`. No fake custom-profile action. Returns `"core" | "closest" | "stop" | undefined`.
+- **Doctor is report-only.** `doctor.ts` adds profile mode, id, version-with-expected-comparison, research consent + source count, and the explicit "Doctor is report-only" note. It also reports when a common-core profile is in use. Doctor never selects, fixes, or mutates a profile.
+- **`suggestProfiles` excludes common core.** The deterministic match list keeps the original behaviour (built-ins only). Use `recommendProfiles` for the user-facing list that always includes the common core.
+
+### Added (Phase 7 — Velpari Requirements Factory, 2026-09-04)
+
+Implements the design documented in `Doc/velpari-requirements-orchestration-design.md`.
+
+**New commands (2):**
+
+- **`/velpari-configure-requirements`** — captures the project's requirements profile (application type, domain, development method, regulated flag, security level, required sections, conditional questions) via dynamic core + conditional questions; suggests matching built-in profiles with reasons (deterministic, sorted by profileId); explicitly requires the user's confirmation before saving; asks for web-research consent and, on consent, hands a compact research prompt to the parent LLM via `pi.sendUserMessage` (the extension never fetches the web itself, never adds dependencies, never spawns subagents from this handler). If no profile matches, the handler reports the gap and the documented options — it never invents a profile. Profile persisted at `.pi/velpari/requirements-profile.json`.
+- **`/velpari-prd-rtm`** — wrapper that calls `handlePrd` then `handleRtm` in sequence. The wrapper does not duplicate stage logic, does not auto-approve, and can be skipped in favor of the independent `/velpari-prd` + `/velpari-rtm` calls.
+
+**New modules (4):**
+
+- `pi-extension/src/requirements-profile.ts` — versioned profile schema, deterministic profile library, suggest/match logic, save/load, compact-metadata projection, `validateRequirementsProfile` strict guard, `buildConditionalQuestions` for banking/healthcare/AI/regulated extensions.
+- `pi-extension/src/psrs.ts` — pure PSRS structural validator (frontmatter, 16 required sections, FR/NFR/HF dedup + duplicates, open-questions + IDs, helper traceability, placeholder detection, MVP/Phases presence + thin-section warning, acceptance/verification aggregation, renderPsrsSummary).
+- `pi-extension/src/configure-requirements.ts` — handler for `/velpari-configure-requirements`; calls existing helpers + builds the compact research handoff prompt.
+- `pi-extension/src/prd-rtm.ts` — wrapper for `/velpari-prd-rtm`; calls `handlePrd` then `handleRtm`.
+
+**Grouped category layout (new writes):**
+
+`Doc/` documents are now organized into category subfolders for new writes:
+
+```
+Doc/
+├── discussion/discussion-<topic>.md
+├── requirements/PRD_<project>.md        (combined PSRS)
+├── requirements/RTM_<project>.md
+├── feasibility/feasibility-study_<project>.md
+├── design/design_<project>.md
+├── pseudocode/pseudocode_<project>.md
+├── tests/test-plan_<project>.md
+├── tests/test-cases_<project>.md
+├── atomic-functions/atomic-functions_<project>.md
+└── development-order/development-order_<project>.md
+```
+
+Legacy flat paths (`Doc/PRD_<project>.md`, `Doc/discussion-<slug>.md`, etc.) remain readable everywhere as fallback. Nothing is moved, deleted, or overwritten. Working copies under `.IDE_Plans/velpari/runs/<run-id>/` use the matching category folder name (`prd/`, `rtm/`, `tests/`, etc.).
+
+**PSRS shape (preserves the `PRD_<project>.md` file name):**
+
+`/velpari-prd` produces a document with mandatory sections: Objective, Problem, System Actors, Scope, MVP, Phases, Functional Requirements, Non-Functional Requirements, Data and Interfaces, Errors and Edge Cases, Constraints, Dependencies and Risks, Out of Scope, Open Questions, Acceptance Criteria, Helper Function Candidates, plus YAML frontmatter (`documentType: product-software-requirements`, `version`, `status`, `profile`, `profileVersion`, `mission`, `projectName`). RTM remains a separate document and reads the PSRS.
+
+**Stage runner + prompt:**
+
+- `StageRunConfig.profileMetadata` — compact profile projection injected into the stage prompt as a `## Profile (compact)` block. Only the compact projection is carried, never the full profile.
+- `BuildStagePromptInput.profileMetadata` — same projection rendered into the prompt.
+- Profile absence → block omitted, prompt unchanged.
+
+**Updated handlers + doctor + status + show + handoff:**
+
+- `prd.ts`, `rtm.ts`, `feasibility.ts`, `design.ts`, `pseudocode.ts`, `testplan.ts`, `atomic-function.ts`, `development-order.ts` — read input artifacts from grouped layout first, fall back to legacy flat path; write working copies to grouped working-copy layout; pass `profileMetadata` to the stage runner.
+- `approve.ts` — publishes to grouped Doc/<category>/ (testplan keeps the two-file approval); reads working copies from grouped working-copy dir first, falls back to legacy flat.
+- `discuss-approve.ts` — publishes discussion to `Doc/discussion/discussion-<topic-slug>.md` with timestamp-suffix fallback for re-runs.
+- `show.ts`, `status.ts`, `handoff.ts` — resolveDocArtifact + resolveDiscussionArtifact (grouped first, legacy fallback).
+- `doctor.ts` — adds profile presence/version/mismatch, grouped/legacy paths, PSRS structural validation, RTM-to-PSRS traceability, working/published separation, MVP/phases coverage checks. Doctor remains a reporter; it never auto-selects, fixes, or generates a profile.
+
+**Paths module (`pi-extension/src/paths.ts`):**
+
+- `buildGroupedPath(artifact, projectName)` → `Doc/<category>/<artifact>_<project>.md`
+- `buildGroupedDiscussionPath(topicSlug)` → `Doc/discussion/discussion-<slug>.md`
+- `buildWorkingGroupedPath(cwd, runId, artifact, projectName)` → grouped working-copy path
+- `resolveDocArtifact` / `resolveDiscussionArtifact` — `{ path, layout: "grouped" | "legacy" }` resolution with grouped-first, legacy fallback.
+- `GROUPED_CATEGORIES` / `WORKING_GROUPED_CATEGORIES` — single source of truth for the category map.
+- `buildOutputPath` / `buildDiscussionPath` — preserved for back-compat.
+
+**New skill markdown:**
+
+- `skills/velpari-configure-requirements.md` — describes the deterministic profile selection flow + web-research consent rules + output contract + hard rules.
+- `skills/velpari-prd.md`, `skills/velpari-rtm.md` — updated to describe PSRS structure, grouped working/published paths, and the compact profile metadata block.
+
+**Test count: 424 passing** (was 347; +77 net). New test files:
+
+- `pi-extension/test/requirements-profile.test.ts` (32 tests) — schema validation, save/load round-trip, deterministic suggestion, library sanity, conditional questions, compact projection.
+- `pi-extension/test/psrs.test.ts` (28 tests) — frontmatter, headings, FR/NFR/HF dedup, open-questions, placeholders, MVP/phases thin-section, acceptance/verification aggregation.
+- `pi-extension/test/configure-requirements.test.ts` (12 tests) — happy path, gap reporting, cancel, override, research consent (with and without `ExtensionAPI`), re-run existing profile.
+- `pi-extension/test/paths.test.ts` (existing) — extended with grouped-path builders, category map, resolveDocArtifact/resolveDiscussionArtifact.
+- `pi-extension/test/prompt.test.ts` (existing) — extended with `## Profile (compact)` rendering + absence behavior.
+
+**Pre-existing unrelated changes preserved (per task instructions):**
+
+- `.IDE_Plans/git_init_plan_20260823_1755_v1.0.md` — marked deleted in `git status`; left untouched.
+- `pi-extension/test/e2e/README.md`, `pi-extension/test/e2e/_setup.ts`, `pi-extension/test/e2e/doctor.e2e.test.ts` — pre-existing modifications; left untouched.
+- `Doc/velpari-requirements-orchestration-design.md` — untracked file referenced as the design source; left untouched.
+
 ### Changed (all-stages visible subagents, 2026-09-03 to 2026-09-04)
 
 Extended the v2.0 visible-subagent pattern from `/velpari-discuss` to **all 9 stage commands**. Each stage now spawns 4 real subagents in parallel visible multiplexer panes via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. Total: **36 subagent definitions** across 9 stages.

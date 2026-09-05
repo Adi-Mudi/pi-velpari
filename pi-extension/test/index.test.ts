@@ -27,10 +27,10 @@ test("index exports a default function", () => {
 	assert.equal(typeof index, "function");
 });
 
-test("index registers all 23 commands via ExtensionAPI", () => {
+test("index registers all 25 commands via ExtensionAPI", () => {
 	const pi = makeMockPi();
 	index(pi as unknown as Parameters<typeof index>[0]);
-	assert.equal(pi.commands.size, COMMAND_NAMES.length, "expected all 23 commands to register");
+	assert.equal(pi.commands.size, COMMAND_NAMES.length, "expected all 25 commands to register");
 	for (const name of COMMAND_NAMES) {
 		assert.ok(pi.commands.has(name), `missing command: ${name}`);
 	}

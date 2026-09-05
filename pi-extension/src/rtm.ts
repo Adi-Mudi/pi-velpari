@@ -1,19 +1,31 @@
 /**
- * /velpari-rtm handler (v2.0 / Phase 3 of all-stages refactor).
+ * /velpari-rtm handler (Phase 7 — Requirements Factory).
  *
  * Two-phase flow (matches discuss/prd pattern at a25e975 / 4f68d05):
  *   1. Handler: gate check + bootstrap agents + build prompt + hand off via pi.sendUserMessage.
  *   2. Parent LLM (driven by skills/velpari-rtm.md): spawn 4 subagents
  *      (rtm-requirement-tracer, rtm-test-case-linker, rtm-coverage-analyzer,
  *      rtm-consolidator) in parallel, write RTM_<project>.md, show preview gate.
+ *
+ * The RTM remains a separate document (Velpari Requirements Factory
+ * design §6). It reads the published PSRS first, preferring the
+ * grouped Doc/ layout and falling back to the legacy flat path.
  */
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "../src/config.js";
-import { buildOutputPath, buildRunDir } from "../src/paths.js";
-import { loadState } from "../src/state.js";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
+import { loadFilesConfig } from "./config.js";
+import { loadState } from "./state.js";
+import {
+	buildRunDir,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "./paths.js";
+import {
+	compactProfileMetadata,
+	loadRequirementsProfile,
+} from "./requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
 
 const RTM_SCOUTS = [
 	{ name: "rtm-requirement-tracer" },
@@ -40,14 +52,27 @@ export async function handleRtm(
 	}
 	const projectName = config.projectName;
 
-	// 2. Gate check: published PRD must exist.
-	const inputArtifactPath = join(cwd, buildOutputPath("PRD", projectName));
+	// 2. Gate check: published PSRS must exist (grouped first, legacy fallback).
+	const resolved = resolveDocArtifact("PRD", projectName, cwd);
+	if (!resolved) {
+		ctx.ui.notify(
+			`Cannot read PSRS for ${projectName}: not found at Doc/requirements/PRD_${projectName}.md or Doc/PRD_${projectName}.md. ` +
+				`Run /velpari-prd and /velpari-approve first.`,
+			"error",
+		);
+		return;
+	}
+	const inputArtifactPath = resolved.path;
 
 	// 3. Build artifact paths.
 	const runDir = buildRunDir(state.runId, cwd);
-	const rtmDir = join(runDir, "rtm");
-	const scoutsDir = join(rtmDir, "scouts");
-	const workingCopyPath = join(rtmDir, `RTM_${projectName}.md`);
+	const rtmWorkingPath = buildWorkingGroupedPath(cwd, state.runId, "RTM", projectName);
+	const rtmWorkingDir = join(runDir, "rtm");
+	const scoutsDir = join(rtmWorkingDir, "scouts");
+	const workingCopyPath = rtmWorkingPath;
+
+	const profile = loadRequirementsProfile(cwd);
+	const profileMetadata = compactProfileMetadata(profile);
 
 	const stageConfig: StageRunConfig = {
 		stage: "building-rtm",
@@ -59,10 +84,11 @@ export async function handleRtm(
 			reportPath: join(scoutsDir, `${s.name}-report.json`),
 		})),
 		inputArtifactPath,
-		workingCopyDir: rtmDir,
+		workingCopyDir: rtmWorkingDir,
 		workingCopyPath,
 		scoutsDir,
 		cwd,
+		profileMetadata,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

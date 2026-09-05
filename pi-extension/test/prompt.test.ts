@@ -182,6 +182,51 @@ test("buildStagePrompt includes scout paths", () => {
 	assert.match(prompt, /Discussion notes \(working copy\): \/path\/discussion-notes\.md/);
 });
 
+test("buildStagePrompt renders compact profile metadata when provided", () => {
+	const prompt = buildStagePrompt({
+		stage: "drafting-prd",
+		mission: "M",
+		framework: undefined,
+		runId: "x",
+		answers: [],
+		webSearchAllowed: false,
+		profileMetadata: {
+			profileId: "banking-web-v1",
+			profileKind: "built-in",
+			profileVersion: "1.1.0",
+			applicationType: "web",
+			domain: "banking",
+			developmentMethod: "regulated",
+			regulated: true,
+			outputVariant: "compliance",
+		},
+		paths: { workingCopy: "/tmp/x" },
+	});
+	assert.match(prompt, /## Profile \(compact\)/);
+	assert.match(prompt, /Profile id: banking-web-v1/);
+	assert.match(prompt, /Profile version: 1\.1\.0/);
+	assert.match(prompt, /Application type: web/);
+	assert.match(prompt, /Domain: banking/);
+	assert.match(prompt, /Regulated: yes/);
+	assert.match(prompt, /Output variant: compliance/);
+});
+
+test("buildStagePrompt omits the actual profile metadata block when profileMetadata is absent", () => {
+	const prompt = buildStagePrompt({
+		stage: "drafting-prd",
+		mission: "M",
+		framework: undefined,
+		runId: undefined,
+		answers: [],
+		webSearchAllowed: false,
+		paths: { workingCopy: "/tmp/x" },
+	});
+	// The profile metadata block uses "Profile id:" + "Profile version:" lines.
+	// The skill markdown also describes the feature but never emits "Profile id:".
+	assert.doesNotMatch(prompt, /Profile id: /);
+	assert.doesNotMatch(prompt, /Profile version: /);
+});
+
 test("buildStagePrompt includes the stage skill content", () => {
 	const prompt = buildStagePrompt({
 		stage: "discussing",
