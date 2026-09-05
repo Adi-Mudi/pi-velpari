@@ -24,10 +24,17 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCommands } from "./core/commands.js";
 import { buildCompactionSummary } from "./core/compaction.js";
 import { loadState } from "./core/state.js";
+import { registerVelpariStatusRenderer } from "./ui/entry-renderer.js";
 
 export default function (pi: ExtensionAPI) {
 	// 1. Per-command handlers (25 commands).
 	registerCommands(pi);
+
+	// 1b. v0.5.0 Phase I.2: register the custom velpari-status entry
+	// renderer (Box+Text via @earendil-works/pi-tui). Without this,
+	// Pi uses the default JSON renderer for "velpari-status" entries
+	// emitted by discipline/status.ts.
+	registerVelpariStatusRenderer(pi);
 
 	// 2. Compaction hook (unchanged from prior phases; uses run-state file).
 	pi.on("session_before_compact", async (event) => {

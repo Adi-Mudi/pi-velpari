@@ -15,6 +15,8 @@ function makeMockPi() {
 	const flags = new Map<string, { description: string; type?: string; default?: unknown }>();
 	const sentUserMessages: string[] = [];
 	const entries: Array<{ customType: string; data: unknown }> = [];
+	// v0.5.0 Phase I.2: track registered entry renderers.
+	const entryRenderers = new Map<string, unknown>();
 	// Phase E contract surfaces: events listeners (who subscribed) and
 	// emitted payloads (what was sent). Tests use these.
 	const eventListeners = new Map<string, Array<(p: unknown) => void>>();
@@ -32,6 +34,7 @@ function makeMockPi() {
 		shortcuts,
 		flags,
 		entries,
+		entryRenderers,
 		sentUserMessages,
 		registerCommand(name: string, def: RegisteredCommand) {
 			commands.set(name, def);
@@ -56,7 +59,9 @@ function makeMockPi() {
 		appendEntry(customType: string, data: unknown) {
 			entries.push({ customType, data });
 		},
-		registerEntryRenderer(_customType: string, _renderer: unknown) { /* no-op */ },
+		registerEntryRenderer(customType: string, renderer: unknown) {
+			entryRenderers.set(customType, renderer);
+		},
 		events: {
 			on(event: string, fn: (payload: unknown) => void) {
 				const arr = eventListeners.get(event) ?? [];
@@ -310,4 +315,66 @@ test("index emits velpari:shutdown on session_shutdown", async () => {
 	const emitted = (pi.events.emitted.get("velpari:shutdown") ?? []) as Array<Record<string, unknown>>;
 	assert.equal(emitted.length, 1, "velpari:shutdown must fire");
 	assert.equal(emitted[0]?.reason, "quit");
+});
+
+// ---------------------------------------------------------------------------
+// v0.5.0 Phase I.2 followup — custom velpari-status entry renderer.
+//
+// index.ts now calls registerVelpariStatusRenderer(pi) at extension load,
+// which delegates to pi.registerEntryRenderer("velpari-status", fn).
+// The two tests below pin (a) the registration is in place and
+// (b) invoking the captured renderer with a sample entry returns
+// a value (a pi-tui Box component) without throwing.
+// ---------------------------------------------------------------------------
+
+test("index registers a velpari-status entry renderer", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const renderer = pi.entryRenderers.get("velpari-status");
+	assert.ok(renderer, "velpari-status entry renderer must be registered");
+	assert.equal(typeof renderer, "function", "renderer must be a function");
+});
+
+test("velpari-status renderer returns a pi-tui Box for a sample entry", () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	const renderer = pi.entryRenderers.get("velpari-status") as (
+		entry: unknown,
+		options: { expanded: boolean },
+		theme: {
+			bold: (s: string) => string;
+			dim: (s: string) => string;
+			fg: (_: string, s: string) => string;
+			muted: (s: string) => string;
+		},
+	) => unknown;
+	assert.ok(renderer, "renderer must be registered");
+	const sample = {
+		customType: "velpari-status",
+		data: {
+			runId: "2026-09-05-test",
+			mission: "A reasonable mission for a test",
+			stage: "discussed",
+			updatedAt: "2026-09-05T16:30:00Z",
+			profileId: "core-psrs-v1",
+			profileKind: "common-core",
+			profileVersion: "1.1.0",
+			applicationType: "other",
+			domain: "general",
+			developmentMethod: "agile",
+			regulated: false,
+			outputVariant: "standard",
+		},
+	};
+	const theme = {
+		bold: (s: string) => `*${s}*`,
+		dim: (s: string) => s,
+		fg: (_: string, s: string) => s,
+		muted: (s: string) => s,
+	};
+	// Call both collapsed and expanded; the renderer must not throw.
+	const collapsed = renderer(sample, { expanded: false }, theme);
+	const expanded = renderer(sample, { expanded: true }, theme);
+	assert.ok(collapsed, "collapsed render must produce a value");
+	assert.ok(expanded, "expanded render must produce a value");
 });
