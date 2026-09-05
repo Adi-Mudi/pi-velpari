@@ -189,6 +189,44 @@ test("loadRequirementsProfile returns null on malformed JSON", () => {
 	}
 });
 
+test("loadRequirementsProfile migrates v1.0.0 to current schema (migrateLegacyProfile contract)", () => {
+	// Phase C follow-up: directly assert the migration contract. The test
+	// writes a v1.0.0-shaped JSON (no `profileKind`, no `version: 1.1.0`),
+	// calls loadRequirementsProfile, and asserts the migrated result has
+	// `version === REQUIREMENTS_PROFILE_VERSION` and `profileKind === "built-in"`.
+	const dir = tempDir();
+	try {
+		const v100 = {
+			version: "1.0.0",
+			profileId: "banking-web-v1",
+			applicationType: "web",
+			domain: "banking",
+			developmentMethod: "regulated",
+			regulated: true,
+			securityLevel: "high",
+			requiredSections: ["security", "audit"],
+			conditionalQuestions: [],
+			outputVariant: "compliance",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			researchConsent: false,
+			researchSources: [],
+			// intentionally NO profileKind — this is the field the legacy
+			// migration is expected to back-fill as "built-in".
+		};
+		const cfgDir = join(dir, ".pi", "velpari");
+		mkdirSync(cfgDir, { recursive: true });
+		writeFileSync(join(cfgDir, "requirements-profile.json"), JSON.stringify(v100, null, 2), "utf8");
+
+		const migrated = loadRequirementsProfile(dir);
+		assert.ok(migrated, "v1.0.0 profile must migrate and load");
+		assert.equal(migrated!.version, REQUIREMENTS_PROFILE_VERSION);
+		assert.equal(migrated!.profileKind, "built-in");
+		assert.equal(migrated!.profileId, "banking-web-v1");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("saveRequirementsProfile creates parent dirs as needed", () => {
 	const dir = tempDir();
 	try {
