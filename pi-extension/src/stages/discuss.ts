@@ -32,11 +32,11 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { ensureScoutAgents, formatScoutAgentsInstalledMessage } from "./agents-install.js";
-import { loadFilesConfig } from "./config.js";
-import { buildStagePrompt } from "./prompt.js";
-import { buildRunDir, slugify } from "./paths.js";
-import { createRun, loadState } from "./state.js";
+import { ensureScoutAgents, formatScoutAgentsInstalledMessage } from "../core/agents-install.js";
+import { loadFilesConfig } from "../core/config.js";
+import { buildStagePrompt } from "../core/prompt.js";
+import { buildRunDir, slugify } from "../core/paths.js";
+import { createRun, loadState } from "../core/state.js";
 
 /**
  * The 6 fixed interview questions asked one at a time via `ctx.ui.input`.

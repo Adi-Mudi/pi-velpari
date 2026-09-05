@@ -17,13 +17,13 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { advanceStage, loadState, type RunState } from "./state.js";
+import { advanceStage, loadState, type RunState } from "../core/state.js";
 import {
 	buildGroupedPath,
 	buildOutputPath,
 	resolveDocArtifact,
-} from "./paths.js";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
+} from "../core/paths.js";
+import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 
 export type DocumentType =
 	| "PRD"

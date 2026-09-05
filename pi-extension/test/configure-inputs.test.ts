@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleConfigureInputs } from "../src/configure-inputs.js";
+import { handleConfigureInputs } from "../src/discipline/configure-inputs.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-configure-"));

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleReset } from "../src/reset.js";
-import { createRun, clearRun, loadState } from "../src/state.js";
+import { handleReset } from "../src/discipline/reset.js";
+import { createRun, clearRun, loadState } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-reset-"));

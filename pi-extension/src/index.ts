@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerCommands } from "./commands.js";
-import { buildCompactionSummary } from "./compaction.js";
+import { registerCommands } from "./core/commands.js";
+import { buildCompactionSummary } from "./core/compaction.js";
 
 /**
  * Pi-Velpari extension entry point.

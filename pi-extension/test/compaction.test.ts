@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildCompactionSummary } from "../src/compaction.js";
-import { createRun, clearRun } from "../src/state.js";
+import { buildCompactionSummary } from "../src/core/compaction.js";
+import { createRun, clearRun } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-compaction-"));

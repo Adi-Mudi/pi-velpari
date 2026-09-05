@@ -17,15 +17,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
-import { loadState } from "./state.js";
+import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { loadState } from "../core/state.js";
 import {
 	buildGroupedDiscussionPath,
 	buildGroupedPath,
 	resolveDiscussionArtifact,
 	resolveDocArtifact,
 	slugify,
-} from "./paths.js";
+} from "../core/paths.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 

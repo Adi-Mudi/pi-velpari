@@ -11,9 +11,9 @@ import {
 	showDesign,
 	showPseudocode,
 	showTestplan,
-} from "../src/show.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun } from "../src/state.js";
+} from "../src/view/show.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-show-"));

@@ -12,8 +12,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadState } from "./state.js";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
+import { loadState } from "../core/state.js";
+import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
 	GROUPED_CATEGORIES,
 	buildGroupedDiscussionPath,
@@ -21,11 +21,11 @@ import {
 	resolveDiscussionArtifact,
 	resolveDocArtifact,
 	slugify,
-} from "./paths.js";
+} from "../core/paths.js";
 import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
-} from "./requirements-profile.js";
+} from "../core/requirements-profile.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 

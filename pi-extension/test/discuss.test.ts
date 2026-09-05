@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleDiscuss } from "../src/discuss.js";
-import { clearRun, loadState } from "../src/state.js";
+import { handleDiscuss } from "../src/stages/discuss.js";
+import { clearRun, loadState } from "../src/core/state.js";
 
 interface MockUI {
 	inputResults: string[];

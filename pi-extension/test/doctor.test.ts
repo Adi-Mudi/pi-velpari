@@ -8,7 +8,7 @@ import {
 	detectInteractiveSubagentsVersion,
 	detectMultiplexer,
 	runDoctor,
-} from "../src/doctor.js";
+} from "../src/discipline/doctor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -337,7 +337,7 @@ import {
 	REQUIREMENTS_PROFILE_VERSION,
 	composeProfile,
 	findBuiltInProfile,
-} from "../src/requirements-profile.js";
+} from "../src/core/requirements-profile.js";
 
 test("runDoctor reports Profile MISSING when no profile JSON exists", () => {
 	const dir = tempDir();

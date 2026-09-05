@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handlePrd } from "../src/prd.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun } from "../src/state.js";
+import { handlePrd } from "../src/stages/prd.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun } from "../src/core/state.js";
 
 interface MockUI {
 	notifies: Array<{ msg: string; level: string }>;
@@ -208,7 +208,7 @@ test("handlePrd does NOT write the working copy (LLM's job)", async () => {
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
 		await handlePrd(ctx, pi as never, dir);
-		const state = (await import("../src/state.js")).loadState(dir);
+		const state = (await import("../src/core/state.js")).loadState(dir);
 		const workingCopy = join(
 			dir,
 			".IDE_Plans",
@@ -232,9 +232,9 @@ test("handlePrd does NOT mutate state.stage (orthogonal to approval)", async () 
 		const ui = makeMockUI();
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
-		const before = (await import("../src/state.js")).loadState(dir);
+		const before = (await import("../src/core/state.js")).loadState(dir);
 		await handlePrd(ctx, pi as never, dir);
-		const after = (await import("../src/state.js")).loadState(dir);
+		const after = (await import("../src/core/state.js")).loadState(dir);
 		assert.equal(after.currentStage, before.currentStage, "state.stage must not change");
 	} finally {
 		clearRun(dir);
@@ -250,7 +250,7 @@ test("handlePrd creates the scouts directory before handing off", async () => {
 		const pi = makeMockPi();
 		const ctx = { ui, cwd: dir } as never;
 		await handlePrd(ctx, pi as never, dir);
-		const state = (await import("../src/state.js")).loadState(dir);
+		const state = (await import("../src/core/state.js")).loadState(dir);
 		const scoutsDir = join(dir, ".IDE_Plans", "velpari", "runs", state.runId, "prd", "scouts");
 		assert.ok(existsSync(scoutsDir), "scouts dir should exist before LLM spawns subagents");
 	} finally {
@@ -289,7 +289,7 @@ test("handlePrd preserves unicode mission in prompt", async () => {
 		// Mission gets slugified by slugify() — write the discussion at the slugified path.
 		mkdirSync(join(dir, "Doc"), { recursive: true });
 		// slugify("café 🚀 naïve") ≈ "caf-na-ve" — write to the slugified name.
-		const { slugify } = await import("../src/paths.js");
+		const { slugify } = await import("../src/core/paths.js");
 		const slug = slugify("café 🚀 naïve");
 		writeFileSync(join(dir, "Doc", `discussion-${slug}.md`), "# stub\n", "utf8");
 		const ui = makeMockUI();

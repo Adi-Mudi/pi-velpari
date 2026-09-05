@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleStatus } from "../src/status.js";
-import { createRun, clearRun } from "../src/state.js";
+import { handleStatus } from "../src/discipline/status.js";
+import { createRun, clearRun } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-status-"));

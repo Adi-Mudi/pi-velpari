@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleApproveDiscuss } from "../src/discuss-approve.js";
-import { createRun, clearRun, loadState } from "../src/state.js";
-import { saveFilesConfig } from "../src/config.js";
+import { handleApproveDiscuss } from "../src/stages/discuss-approve.js";
+import { createRun, clearRun, loadState } from "../src/core/state.js";
+import { saveFilesConfig } from "../src/core/config.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-discuss-approve-"));

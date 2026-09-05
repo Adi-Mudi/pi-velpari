@@ -11,7 +11,7 @@ import {
 	renderPsrsSummary,
 	validatePsrs,
 	bodyHasPlaceholder,
-} from "../src/psrs.js";
+} from "../src/core/psrs.js";
 
 const VALID_PSRS = `---
 documentType: product-software-requirements

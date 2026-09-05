@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runStageWithScouts, type StageRunConfig } from "../src/stage-runner.js";
-import { ensureStageAgents } from "../src/agents-install.js";
+import { runStageWithScouts, type StageRunConfig } from "../src/core/stage-runner.js";
+import { ensureStageAgents } from "../src/core/agents-install.js";
 
 interface MockUI {
 	notifies: Array<{ msg: string; level: string }>;

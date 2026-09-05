@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COMMAND_NAMES, registerCommands } from "../src/commands.js";
+import { COMMAND_NAMES, registerCommands } from "../src/core/commands.js";
 
 test("COMMAND_NAMES has 25 entries", () => {
 	assert.equal(COMMAND_NAMES.length, 25);

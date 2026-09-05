@@ -7,7 +7,7 @@ import {
 	SCOUT_AGENT_IDS,
 	ensureScoutAgents,
 	formatScoutAgentsInstalledMessage,
-} from "../src/agents-install.js";
+} from "../src/core/agents-install.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-agents-"));

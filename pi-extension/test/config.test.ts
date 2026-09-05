@@ -9,7 +9,7 @@ import {
 	validateFilesConfig,
 	runFilesDiscovery,
 	type FilesConfig,
-} from "../src/config.js";
+} from "../src/core/config.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-config-"));

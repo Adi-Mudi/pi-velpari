@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STAGE_TRANSITIONS, PATHS } from "../src/constants.js";
+import { STAGE_TRANSITIONS, PATHS } from "../src/core/constants.js";
 
 test("STAGE_TRANSITIONS is non-empty", () => {
 	assert.ok(STAGE_TRANSITIONS.length > 0);

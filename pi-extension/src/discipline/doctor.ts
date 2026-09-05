@@ -24,22 +24,22 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadState } from "./state.js";
-import { PATHS } from "./constants.js";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
-import { SCOUT_AGENT_IDS } from "./agents-install.js";
+import { loadState } from "../core/state.js";
+import { PATHS } from "../core/constants.js";
+import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { SCOUT_AGENT_IDS } from "../core/agents-install.js";
 import {
 	loadRequirementsProfile,
 	REQUIREMENTS_PROFILE_VERSION,
 	validateRequirementsProfile,
-} from "./requirements-profile.js";
+} from "../core/requirements-profile.js";
 import {
 	buildGroupedPath,
 	buildOutputPath,
 	GROUPED_CATEGORIES,
 	resolveDocArtifact,
-} from "./paths.js";
-import { renderPsrsSummary, validatePsrs } from "./psrs.js";
+} from "../core/paths.js";
+import { renderPsrsSummary, validatePsrs } from "../core/psrs.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 

@@ -7,7 +7,7 @@ import {
 	handleConfigureRequirements,
 	buildResearchPrompt,
 	runFallbackActions,
-} from "../src/configure-requirements.js";
+} from "../src/discipline/configure-requirements.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-configure-req-"));

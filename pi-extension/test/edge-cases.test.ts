@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleDiscuss } from "../src/discuss.js";
-import { clearRun, loadState } from "../src/state.js";
-import { ensureScoutAgents } from "../src/agents-install.js";
-import { buildStagePrompt } from "../src/prompt.js";
+import { handleDiscuss } from "../src/stages/discuss.js";
+import { clearRun, loadState } from "../src/core/state.js";
+import { ensureScoutAgents } from "../src/core/agents-install.js";
+import { buildStagePrompt } from "../src/core/prompt.js";
 
 interface MockUI {
 	inputResults: string[];

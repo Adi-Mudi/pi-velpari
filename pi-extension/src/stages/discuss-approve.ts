@@ -14,13 +14,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { advanceStage, loadState } from "./state.js";
+import { advanceStage, loadState } from "../core/state.js";
 import {
 	buildDiscussionPath,
 	buildGroupedDiscussionPath,
 	buildRunDir,
 	slugify,
-} from "./paths.js";
+} from "../core/paths.js";
 import { handlePrd } from "./prd.js";
 
 export async function handleApproveDiscuss(

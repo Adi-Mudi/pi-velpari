@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig, saveFilesConfig, type FilesConfig } from "./config.js";
+import { loadFilesConfig, saveFilesConfig, type FilesConfig } from "../core/config.js";
 
 async function ask(
 	ctx: ExtensionCommandContext,

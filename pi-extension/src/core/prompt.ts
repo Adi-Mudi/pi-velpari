@@ -45,12 +45,14 @@ const STAGE_SKILL: Record<Stage, string | undefined> = {
 };
 
 /**
- * Resolve the path to a skill markdown file. Tries the dist layout first
- * (dist/pi-extension/src → repo root, 3 levels up) and falls back to the
- * source layout (pi-extension/src → repo root, 2 levels up).
+ * Resolve the path to a skill markdown file. Tries multiple layouts:
+ *  - dist/pi-extension/src/core/ → repo root (Phase A layout, 4 levels up)
+ *  - dist/pi-extension/src/     → repo root (legacy, 3 levels up)
+ *  - pi-extension/src/core/     → repo root (source, 2 levels up)
  */
 export function resolveSkillPath(skillName: string): string {
 	const candidates = [
+		resolve(__dirname, "../../../..", "skills", `velpari-${skillName}.md`),
 		resolve(__dirname, "../../..", "skills", `velpari-${skillName}.md`),
 		resolve(__dirname, "../..", "skills", `velpari-${skillName}.md`),
 	];

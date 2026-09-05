@@ -15,7 +15,7 @@ import {
 	GROUPED_CATEGORIES,
 	resolveDocArtifact,
 	resolveDiscussionArtifact,
-} from "../src/paths.js";
+} from "../src/core/paths.js";
 
 test("slugify returns 'untitled' for empty input", () => {
 	assert.equal(slugify(""), "untitled");

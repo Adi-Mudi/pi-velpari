@@ -1,18 +1,18 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { handleDiscuss } from "./discuss.js";
-import { handlePrd } from "./prd.js";
-import { handleRtm } from "./rtm.js";
-import { handleApproveDiscuss } from "./discuss-approve.js";
-import { handleFeasibility } from "./feasibility.js";
-import { handleDesign } from "./design.js";
-import { handlePseudocode } from "./pseudocode.js";
-import { handleTestplan } from "./testplan.js";
-import { handleAtomicFunction } from "./atomic-function.js";
-import { handleDevelopmentOrder } from "./development-order.js";
-import { handleApprove } from "./approve.js";
-import { handlePrdRtm } from "./prd-rtm.js";
-import { handleConfigureRequirements } from "./configure-requirements.js";
-import { runHandoff } from "./handoff.js";
+import { handleDiscuss } from "../stages/discuss.js";
+import { handlePrd } from "../stages/prd.js";
+import { handleRtm } from "../stages/rtm.js";
+import { handleApproveDiscuss } from "../stages/discuss-approve.js";
+import { handleFeasibility } from "../stages/feasibility.js";
+import { handleDesign } from "../stages/design.js";
+import { handlePseudocode } from "../stages/pseudocode.js";
+import { handleTestplan } from "../stages/testplan.js";
+import { handleAtomicFunction } from "../stages/atomic-function.js";
+import { handleDevelopmentOrder } from "../stages/development-order.js";
+import { handleApprove } from "../discipline/approve.js";
+import { handlePrdRtm } from "../stages/prd-rtm.js";
+import { handleConfigureRequirements } from "../discipline/configure-requirements.js";
+import { runHandoff } from "../discipline/handoff.js";
 import {
 	showDiscussion,
 	showPrd,
@@ -21,11 +21,11 @@ import {
 	showDesign,
 	showPseudocode,
 	showTestplan,
-} from "./show.js";
-import { handleStatus } from "./status.js";
-import { handleReset } from "./reset.js";
-import { handleConfigureInputs } from "./configure-inputs.js";
-import { handleDoctor } from "./doctor.js";
+} from "../view/show.js";
+import { handleStatus } from "../discipline/status.js";
+import { handleReset } from "../discipline/reset.js";
+import { handleConfigureInputs } from "../discipline/configure-inputs.js";
+import { handleDoctor } from "../discipline/doctor.js";
 import { loadState } from "./state.js";
 
 /**

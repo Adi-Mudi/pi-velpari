@@ -21,13 +21,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { advanceStage, loadState } from "./state.js";
-import { loadFilesConfig, validateFilesConfig } from "./config.js";
+import { advanceStage, loadState } from "../core/state.js";
+import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
 	buildRunDir,
 	GROUPED_CATEGORIES,
-} from "./paths.js";
-import type { Stage } from "./constants.js";
+} from "../core/paths.js";
+import type { Stage } from "../core/constants.js";
 
 /**
  * Map a stage to (working-copy category, published artifact name,

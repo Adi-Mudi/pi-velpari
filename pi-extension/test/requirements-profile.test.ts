@@ -25,7 +25,7 @@ import {
 	type BuiltInProfile,
 	type RequirementsAnswers,
 	type RequirementsProfile,
-} from "../src/requirements-profile.js";
+} from "../src/core/requirements-profile.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-profile-"));

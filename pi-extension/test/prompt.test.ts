@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildStagePrompt, loadStageSkill } from "../src/prompt.js";
+import { buildStagePrompt, loadStageSkill } from "../src/core/prompt.js";
 
 test("loadStageSkill returns content for discussing stage", () => {
 	const result = loadStageSkill("discussing");

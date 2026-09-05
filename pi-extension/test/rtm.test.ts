@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleRtm } from "../src/rtm.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun, loadState } from "../src/state.js";
+import { handleRtm } from "../src/stages/rtm.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun, loadState } from "../src/core/state.js";
 
 interface MockUI {
 	notifies: Array<{ msg: string; level: string }>;

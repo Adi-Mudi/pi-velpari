@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { clearRun, loadState } from "./state.js";
+import { clearRun, loadState } from "../core/state.js";
 
 export async function handleReset(
 	ctx: ExtensionCommandContext,

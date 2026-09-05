@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleApprove } from "../src/approve.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun } from "../src/state.js";
+import { handleApprove } from "../src/discipline/approve.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-approve-"));

@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleAtomicFunction } from "../src/atomic-function.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun, loadState } from "../src/state.js";
+import { handleAtomicFunction } from "../src/stages/atomic-function.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun, loadState } from "../src/core/state.js";
 
 interface MockUI {
 	notifies: Array<{ msg: string; level: string }>;
@@ -237,7 +237,7 @@ test("handleAtomicFunction preserves unicode mission verbatim in prompt", async 
 	try {
 		setupValidRun(dir, "X", "café 🚀 naïve");
 		// Mission gets slugified by slugify() — write the discussion at the slugified path.
-		const { slugify } = await import("../src/paths.js");
+		const { slugify } = await import("../src/core/paths.js");
 		const slug = slugify("café 🚀 naïve");
 		const discussionPath = join(dir, "Doc", `discussion-${slug}.md`);
 		if (!existsSync(discussionPath)) {
@@ -261,7 +261,7 @@ test("handleAtomicFunction handles very long mission (>2KB) without error", asyn
 		const longMission = "M".repeat(2000);
 		setupValidRun(dir, "X", longMission);
 		// Long mission slugifies to "m-m-m..." — make sure discussion file is present.
-		const { slugify } = await import("../src/paths.js");
+		const { slugify } = await import("../src/core/paths.js");
 		const slug = slugify(longMission);
 		const discussionPath = join(dir, "Doc", `discussion-${slug}.md`);
 		if (!existsSync(discussionPath)) {

@@ -33,7 +33,11 @@ export interface EnsureScoutAgentsResult {
  */
 function bundledAgentPath(agentId: ScoutAgentId): string {
 	const candidates = [
+		// Phase A: new core/ layout — dist/pi-extension/src/core → repo root → skills/agents
+		resolve(__dirname, "../../../..", "skills", "agents", `${agentId}.md`),
+		// Legacy: dist/pi-extension/src → repo root → skills/agents
 		resolve(__dirname, "../../..", "skills", "agents", `${agentId}.md`),
+		// Legacy: src layout — pi-extension/src/core → repo root → skills/agents
 		resolve(__dirname, "../..", "skills", "agents", `${agentId}.md`),
 	];
 	for (const candidate of candidates) {

@@ -19,20 +19,20 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadFilesConfig } from "./config.js";
-import { loadState } from "./state.js";
+import { loadFilesConfig } from "../core/config.js";
+import { loadState } from "../core/state.js";
 import {
 	buildGroupedDiscussionPath,
 	buildRunDir,
 	buildWorkingGroupedPath,
 	resolveDiscussionArtifact,
 	slugify,
-} from "./paths.js";
+} from "../core/paths.js";
 import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
-} from "./requirements-profile.js";
-import { runStageWithScouts, type StageRunConfig } from "./stage-runner.js";
+} from "../core/requirements-profile.js";
+import { runStageWithScouts, type StageRunConfig } from "../core/stage-runner.js";
 
 const PRD_SCOUTS = [
 	{ name: "fr-extractor" },

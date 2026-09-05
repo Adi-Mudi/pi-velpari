@@ -8,9 +8,9 @@ import {
 	validateSenaiSchema,
 	readApprovedArtifacts,
 	type ArchitectInputs,
-} from "../src/handoff.js";
-import { saveFilesConfig } from "../src/config.js";
-import { createRun, clearRun, loadState, saveState } from "../src/state.js";
+} from "../src/discipline/handoff.js";
+import { saveFilesConfig } from "../src/core/config.js";
+import { createRun, clearRun, loadState, saveState } from "../src/core/state.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-handoff-"));

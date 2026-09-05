@@ -57,7 +57,7 @@ import {
 	type RequirementsAnswers,
 	type RequirementsProfile,
 	type SecurityLevel,
-} from "./requirements-profile.js";
+} from "../core/requirements-profile.js";
 
 
 
