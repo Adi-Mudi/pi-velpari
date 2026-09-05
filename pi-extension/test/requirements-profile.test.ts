@@ -5,27 +5,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	APPLICATION_TYPES,
-	COMMON_PSRS_CORE_PROFILE,
-	COMMON_PSRS_CORE_PROFILE_ID,
 	DEVELOPMENT_METHODS,
 	DOMAINS,
 	PROFILE_SECTIONS,
 	REQUIREMENTS_PROFILE_VERSION,
-	buildConditionalQuestions,
-	closestBuiltInProfile,
 	compactProfileMetadata,
-	composeProfile,
-	findBuiltInProfile,
-	getBuiltInProfiles,
 	loadRequirementsProfile,
-	recommendProfiles,
 	saveRequirementsProfile,
-	suggestProfiles,
 	validateRequirementsProfile,
 	type BuiltInProfile,
 	type RequirementsAnswers,
 	type RequirementsProfile,
-} from "../src/core/requirements-profile.js";
+} from "../src/core/profile.js";
+
+import {
+	COMMON_PSRS_CORE_PROFILE,
+	COMMON_PSRS_CORE_PROFILE_ID,
+	buildConditionalQuestions,
+	closestBuiltInProfile,
+	composeProfile,
+	findBuiltInProfile,
+	getBuiltInProfiles,
+	recommendProfiles,
+	suggestProfiles,
+} from "../src/core/profiles-library.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-profile-"));

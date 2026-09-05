@@ -3,11 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	handleConfigureRequirements,
-	buildResearchPrompt,
-	runFallbackActions,
-} from "../src/discipline/configure-requirements.js";
+import { handleConfigureRequirements } from "../src/discipline/configure-requirements/index.js";
+import { buildResearchPrompt } from "../src/discipline/configure-requirements/research.js";
+import { runFallbackActions } from "../src/discipline/configure-requirements/recommend.js";
 
 function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-configure-req-"));

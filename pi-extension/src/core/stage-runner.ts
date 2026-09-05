@@ -22,7 +22,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import type { Stage } from "./constants.js";
 import { ensureStageAgents, formatScoutAgentsInstalledMessage } from "./agents-install.js";
 import { buildStagePrompt, type ScoutSlot } from "./prompt.js";
-import type { CompactProfileMetadata } from "./requirements-profile.js";
+import type { CompactProfileMetadata } from "./profile.js";
 
 /**
  * Configuration for a single stage run.

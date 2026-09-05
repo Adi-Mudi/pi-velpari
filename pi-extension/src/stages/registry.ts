@@ -40,7 +40,7 @@ import { loadState } from "../core/state.js";
 import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
-} from "../core/requirements-profile.js";
+} from "../core/profile.js";
 import { runStageWithScouts, type StageRunConfig } from "../core/stage-runner.js";
 
 /** Stages that route through the registry. (Discuss is bespoke.) */

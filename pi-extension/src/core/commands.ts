@@ -11,7 +11,7 @@ import { handleAtomicFunction } from "../stages/atomic-function.js";
 import { handleDevelopmentOrder } from "../stages/development-order.js";
 import { handleApprove } from "../discipline/approve.js";
 import { handlePrdRtm } from "../stages/prd-rtm.js";
-import { handleConfigureRequirements } from "../discipline/configure-requirements.js";
+import { handleConfigureRequirements } from "../discipline/configure-requirements/index.js";
 import { runHandoff } from "../discipline/handoff.js";
 import {
 	showDiscussion,

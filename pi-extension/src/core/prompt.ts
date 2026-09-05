@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Stage } from "./constants.js";
-import type { CompactProfileMetadata } from "./requirements-profile.js";
+import type { CompactProfileMetadata } from "./profile.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

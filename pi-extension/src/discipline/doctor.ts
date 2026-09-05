@@ -32,7 +32,7 @@ import {
 	loadRequirementsProfile,
 	REQUIREMENTS_PROFILE_VERSION,
 	validateRequirementsProfile,
-} from "../core/requirements-profile.js";
+} from "../core/profile.js";
 import {
 	buildGroupedPath,
 	buildOutputPath,

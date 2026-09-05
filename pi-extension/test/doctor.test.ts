@@ -333,11 +333,8 @@ test("runDoctor Stage skills summary covers all 10 skills (Phase 7)", () => {
 // ---------------------------------------------------------------------------
 
 import { mkdirSync as _mkdirSync } from "node:fs";
-import {
-	REQUIREMENTS_PROFILE_VERSION,
-	composeProfile,
-	findBuiltInProfile,
-} from "../src/core/requirements-profile.js";
+import { REQUIREMENTS_PROFILE_VERSION } from "../src/core/profile.js";
+import { composeProfile, findBuiltInProfile } from "../src/core/profiles-library.js";
 
 test("runDoctor reports Profile MISSING when no profile JSON exists", () => {
 	const dir = tempDir();

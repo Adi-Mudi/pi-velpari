@@ -25,7 +25,7 @@ import {
 import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
-} from "../core/requirements-profile.js";
+} from "../core/profile.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
