@@ -19,6 +19,7 @@
  * (command namespace isolation) supersedes the defensive check.
  */
 
+import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCommands } from "./core/commands.js";
 import { buildCompactionSummary } from "./core/compaction.js";
@@ -38,6 +39,13 @@ export default function (pi: ExtensionAPI) {
 			},
 		};
 	});
+
+	// 2b. Phase F: contribute the project's `skills/` directory as an
+	// additional Pi resource path. Pi's auto-discovery may already find
+	// this, but the explicit registration documents the contract.
+	pi.on("resources_discover", async () => ({
+		skillPaths: [join(process.cwd(), "skills")],
+	}));
 
 	// 3. Rehydrate state from session entries on session_start (Phase E).
 	// Touch the persistence API even when no entries exist, so the

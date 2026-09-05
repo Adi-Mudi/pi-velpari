@@ -28,22 +28,17 @@ export interface EnsureScoutAgentsResult {
 
 /**
  * Resolve the path to a bundled agent file in `skills/agents/<id>.md`.
- * Handles both the dist layout (dist/pi-extension/src → repo root, 3 levels)
- * and the source layout (pi-extension/src → repo root, 2 levels).
+ *
+ * Phase F: collapsed the multi-candidate probe chain into a single 4-level-up
+ * probe. The dist layout (dist/pi-extension/src/core/agents-install.js)
+ * walks 4 levels up to the repo root, then into skills/agents/<id>.md.
+ * Phase A's earlier 3-level and 2-level candidates are dead paths now
+ * (no source-only consumers remain).
  */
 export function bundledAgentPath(agentId: ScoutAgentId): string {
-	const candidates = [
-		// Phase A: new core/ layout — dist/pi-extension/src/core → repo root → skills/agents
-		resolve(__dirname, "../../../..", "skills", "agents", `${agentId}.md`),
-		// Legacy: dist/pi-extension/src → repo root → skills/agents
-		resolve(__dirname, "../../..", "skills", "agents", `${agentId}.md`),
-		// Legacy: src layout — pi-extension/src/core → repo root → skills/agents
-		resolve(__dirname, "../..", "skills", "agents", `${agentId}.md`),
-	];
-	for (const candidate of candidates) {
-		if (existsSync(candidate)) return candidate;
-	}
-	return candidates[0]!;
+	const bundled = resolve(__dirname, "../../../..", "skills", "agents", `${agentId}.md`);
+	if (existsSync(bundled)) return bundled;
+	return bundled;
 }
 
 /**

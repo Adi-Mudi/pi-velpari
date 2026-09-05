@@ -45,21 +45,15 @@ const STAGE_SKILL: Record<Stage, string | undefined> = {
 };
 
 /**
- * Resolve the path to a skill markdown file. Tries multiple layouts:
- *  - dist/pi-extension/src/core/ → repo root (Phase A layout, 4 levels up)
- *  - dist/pi-extension/src/     → repo root (legacy, 3 levels up)
- *  - pi-extension/src/core/     → repo root (source, 2 levels up)
+ * Resolve the path to a skill markdown file. Phase F collapsed the
+ * multi-layout probe chain into a single 4-level-up probe (from the
+ * dist layout dist/pi-extension/src/core/prompt.js) — the same working
+ * candidate as Phase A's bundledAgentPath.
  */
 export function resolveSkillPath(skillName: string): string {
-	const candidates = [
-		resolve(__dirname, "../../../..", "skills", `velpari-${skillName}.md`),
-		resolve(__dirname, "../../..", "skills", `velpari-${skillName}.md`),
-		resolve(__dirname, "../..", "skills", `velpari-${skillName}.md`),
-	];
-	for (const candidate of candidates) {
-		if (existsSync(candidate)) return candidate;
-	}
-	return candidates[0]!;
+	const bundled = resolve(__dirname, "../../../..", "skills", `velpari-${skillName}.md`);
+	if (existsSync(bundled)) return bundled;
+	return bundled;
 }
 
 /**
