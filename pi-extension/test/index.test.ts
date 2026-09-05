@@ -21,6 +21,9 @@ function makeMockPi() {
 	// emitted payloads (what was sent). Tests use these.
 	const eventListeners = new Map<string, Array<(p: unknown) => void>>();
 	const emittedLog = new Map<string, Array<unknown>>();
+	// v0.5.1 Phase J.2: track the documented ctx.ui.setStatus(key, text)
+	// calls. undefined text means the extension cleared its status bar.
+	const statuses = new Map<string, string | undefined>();
 	const fire = (event: string, payload: unknown) => {
 		const log = emittedLog.get(event) ?? [];
 		log.push(payload);
@@ -36,6 +39,7 @@ function makeMockPi() {
 		entries,
 		entryRenderers,
 		sentUserMessages,
+		statuses,
 		registerCommand(name: string, def: RegisteredCommand) {
 			commands.set(name, def);
 		},
@@ -377,4 +381,42 @@ test("velpari-status renderer returns a pi-tui Box for a sample entry", () => {
 	const expanded = renderer(sample, { expanded: true }, theme);
 	assert.ok(collapsed, "collapsed render must produce a value");
 	assert.ok(expanded, "expanded render must produce a value");
+});
+
+// ---------------------------------------------------------------------------
+// v0.5.1 Phase J.2 — TUI footer status bar via ctx.ui.setStatus.
+//
+// Per official Pi docs (docs/extensions.md, docs/tui.md, examples/
+// extensions/status-line.ts), the status-bar API is
+// `ctx.ui.setStatus(key, text)`. Passing `undefined` clears the status
+// for that key. We test the canonical clear-on-session-start behavior:
+// when a prior session left a "velpari" status bar visible, the new
+// session must clear it before any command runs.
+// ---------------------------------------------------------------------------
+
+test("index clears any leftover velpari status bar on session_start", async () => {
+	const pi = makeMockPi();
+	index(pi as unknown as Parameters<typeof index>[0]);
+	// Pre-stage a stale velpari status bar left over from a prior session.
+	pi.statuses.set("velpari", "STALE: prior session");
+	const startHandlers = (pi.handlers.get("session_start") ?? []) as Array<
+		(event: unknown, ctx: unknown) => Promise<unknown>
+	>;
+	assert.ok(startHandlers.length >= 1, "session_start handler must be registered");
+	// Drive every registered handler with a fake ctx that captures
+	// ctx.ui.setStatus calls into our pi.statuses Map.
+	const fakeCtx = {
+		ui: {
+			setStatus(key: string, text: string | undefined) {
+				pi.statuses.set(key, text);
+			},
+		},
+	};
+	for (const handler of startHandlers) await handler({}, fakeCtx);
+	// The clear call sets the key to undefined.
+	assert.equal(
+		pi.statuses.get("velpari"),
+		undefined,
+		"session_start must clear stale velpari status",
+	);
 });

@@ -56,9 +56,12 @@ export default function (pi: ExtensionAPI) {
 
 	// 3. Rehydrate state from session entries on session_start (Phase E).
 	// Touch the persistence API even when no entries exist, so the
-	// extension loads cleanly on a fresh session.
-	pi.on("session_start", async () => {
+	// extension loads cleanly on a fresh session. v0.5.1 Phase J.2 also
+	// clears any leftover velpari status bar from a prior session via
+	// the documented `ctx.ui.setStatus(key, undefined)` API.
+	pi.on("session_start", async (_event, ctx) => {
 		void loadState();
+		ctx?.ui?.setStatus?.("velpari", undefined);
 	});
 
 	// 4. Cross-extension events on the `velpari:*` channel.

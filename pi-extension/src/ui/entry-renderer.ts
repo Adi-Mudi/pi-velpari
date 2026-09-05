@@ -34,7 +34,7 @@ export interface VelpariStatusEntryData {
 }
 
 /** Truncate `s` to `n` chars, append ellipsis if longer. */
-function truncate(s: string, n: number): string {
+export function truncate(s: string, n: number): string {
 	if (s.length <= n) return s;
 	return `${s.slice(0, n - 1)}…`;
 }

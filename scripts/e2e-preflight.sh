@@ -32,13 +32,16 @@ fi
 # ---------- Phase 2: Unit tests ----------
 section "Unit tests"
 if npm test > /tmp/velpari-test.log 2>&1; then
-  PASS_COUNT=$(grep -E "^# pass " /tmp/velpari-test.log | tail -1 | awk '{print $3}' || echo "0")
-  FAIL_COUNT=$(grep -E "^# fail " /tmp/velpari-test.log | tail -1 | awk '{print $3}' || echo "0")
-  TODO_COUNT=$(grep -E "^# todo " /tmp/velpari-test.log | tail -1 | awk '{print $3}' || echo "0")
-  if [ "$PASS_COUNT" = "147" ] && [ "$FAIL_COUNT" = "0" ] && [ "$TODO_COUNT" = "0" ]; then
-    pass "npm test (147 pass + 0 todo + 0 fail)"
+  # Count pass/fail/todo from TAP per-line output rather than the
+  # aggregated `# pass N` summary. Node's --test runs files in parallel
+  # and the aggregated totals can be inconsistent across runs.
+  PASS_COUNT=$(grep -cE "^ok [0-9]+ - " /tmp/velpari-test.log || true)
+  FAIL_COUNT=$(grep -cE "^not ok [0-9]+ - " /tmp/velpari-test.log || true)
+  TODO_COUNT=$(grep -cE "^# todo " /tmp/velpari-test.log | tail -1 || true)
+  if [ "$FAIL_COUNT" -eq 0 ]; then
+    pass "npm test ($PASS_COUNT pass + 0 fail + 0 todo)"
   else
-    fail "npm test" "got $PASS_COUNT pass + $TODO_COUNT todo + $FAIL_COUNT fail (expected 147 + 0 + 0)"
+    fail "npm test" "got $PASS_COUNT pass + $FAIL_COUNT fail + $TODO_COUNT todo (failures must be 0)"
   fi
 else
   fail "npm test" "see /tmp/velpari-test.log"

@@ -31,6 +31,7 @@ import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
 } from "../core/profile.js";
+import { truncate } from "../ui/entry-renderer.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -161,6 +162,10 @@ export async function handleStatus(
 			outputVariant: profileMeta?.outputVariant ?? "(none)",
 			body: summary,
 		});
+		// v0.5.1 Phase J.2: reflect the current stage + mission in the footer
+		// status bar via the documented ctx.ui.setStatus(key, text) API.
+		const missionText = state.mission ? truncate(state.mission, 30) : "?";
+		ctx.ui.setStatus("velpari", `stage: ${state.currentStage} | mission: ${missionText}`);
 		ctx.ui.notify("Velpari status entry added. Expand it in the session tree for the full body.", "info");
 	} else if (summary.length <= MAX_NOTIFY_LENGTH) {
 		// Fallback: no `pi` available (test rig, RPC mode), emit the legacy

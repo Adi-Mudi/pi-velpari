@@ -11,7 +11,10 @@ function tempDir(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-status-"));
 }
 
-function makeUI(notifies: Array<{ msg: string; level: string }>) {
+function makeUI(
+	notifies: Array<{ msg: string; level: string }>,
+	statuses?: Map<string, string | undefined>,
+) {
 	return {
 		notifies,
 		async confirm(_t: string, _m: string) {
@@ -19,6 +22,9 @@ function makeUI(notifies: Array<{ msg: string; level: string }>) {
 		},
 		notify(msg: string, level: string) {
 			notifies.push({ msg, level });
+		},
+		setStatus(key: string, text: string | undefined) {
+			statuses?.set(key, text);
 		},
 	};
 }
@@ -135,7 +141,11 @@ test("handleStatus appends a velpari-status entry when pi is provided", async ()
 				captured.push({ customType, data });
 			},
 		};
-		const ui = makeUI([] as never);
+		// v0.5.1 Phase J.2: capture ctx.ui.setStatus calls. Per official Pi
+		// docs, the status-bar API is ctx.ui.setStatus(key, text), not
+		// pi.setStatus(...).
+		const statuses = new Map<string, string | undefined>();
+		const ui = makeUI([] as never, statuses);
 		const ctx = { ui } as never;
 		await handleStatus(ctx, pi as never, dir);
 
@@ -153,6 +163,12 @@ test("handleStatus appends a velpari-status entry when pi is provided", async ()
 		// Body must contain the markdown summary, not the entry envelope.
 		assert.ok(typeof data.body === "string", "body must be a string");
 		assert.match(data.body as string, /Mission: mission-X/);
+		// v0.5.1 Phase J.2: handleStatus must also push a footer status bar
+		// with the current stage and mission. createRun starts the run at
+		// stage "discussing", so assert the status bar prefix.
+		const statusBar = statuses.get("velpari");
+		assert.ok(typeof statusBar === "string", "handleStatus must call ctx.ui.setStatus('velpari', ...)");
+		assert.match(statusBar!, /^stage: discussing \| mission: mission-X$/);
 	} finally {
 		clearRun(dir);
 		rmSync(dir, { recursive: true, force: true });

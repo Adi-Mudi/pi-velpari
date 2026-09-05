@@ -20,6 +20,13 @@ function makeUI(notifies: Array<{ msg: string; level: string }>) {
 		notify(msg: string, level: string) {
 			notifies.push({ msg, level });
 		},
+		// v0.5.1 Phase J.2: handleApprove pushes a footer status bar via
+		// the documented ctx.ui.setStatus(key, text) API. No-op mock.
+		setStatus(_key: string, _text: string | undefined) {
+			// intentionally empty: tests assert on state + publishes, not the
+			// status bar text. The status bar contract is pinned by
+			// status.test.ts and index.test.ts.
+		},
 	};
 }
 

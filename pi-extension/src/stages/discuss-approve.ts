@@ -89,6 +89,9 @@ export async function handleApproveDiscuss(
 	//    then to drafting-prd (via /velpari-prd which handlePrd will trigger).
 	const next = advanceStage(state, "/velpari-approve-discuss", cwd, pi);
 	appendStageEntry(pi, next);
+	// v0.5.1 Phase J.2: reflect the discussion-approved stage in the footer
+	// status bar via the documented ctx.ui.setStatus(key, text) API.
+	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
 
 	// 6. Chain into PRD
 	ctx.ui.notify("Chaining into PRD stage...", "info");

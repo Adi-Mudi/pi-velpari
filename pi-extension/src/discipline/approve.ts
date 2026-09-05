@@ -143,5 +143,8 @@ export async function handleApprove(
 	// Transition state via /velpari-approve
 	const next = advanceStage(state, "/velpari-approve", cwd, pi);
 	if (pi) appendStageEntry(pi, next);
+	// v0.5.1 Phase J.2: reflect the new stage in the footer status bar
+	// via the documented ctx.ui.setStatus(key, text) API.
+	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
 	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
 }
