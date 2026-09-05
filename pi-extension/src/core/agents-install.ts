@@ -31,7 +31,7 @@ export interface EnsureScoutAgentsResult {
  * Handles both the dist layout (dist/pi-extension/src → repo root, 3 levels)
  * and the source layout (pi-extension/src → repo root, 2 levels).
  */
-function bundledAgentPath(agentId: ScoutAgentId): string {
+export function bundledAgentPath(agentId: ScoutAgentId): string {
 	const candidates = [
 		// Phase A: new core/ layout — dist/pi-extension/src/core → repo root → skills/agents
 		resolve(__dirname, "../../../..", "skills", "agents", `${agentId}.md`),
