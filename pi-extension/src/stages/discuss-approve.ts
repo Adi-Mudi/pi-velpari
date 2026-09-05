@@ -87,7 +87,7 @@ export async function handleApproveDiscuss(
 
 	// 5. Transition state: discussing -> discussed (via /velpari-approve-discuss),
 	//    then to drafting-prd (via /velpari-prd which handlePrd will trigger).
-	const next = advanceStage(state, "/velpari-approve-discuss", cwd);
+	const next = advanceStage(state, "/velpari-approve-discuss", cwd, pi);
 	appendStageEntry(pi, next);
 
 	// 6. Chain into PRD

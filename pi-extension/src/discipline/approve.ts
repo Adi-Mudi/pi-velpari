@@ -141,7 +141,7 @@ export async function handleApprove(
 
 
 	// Transition state via /velpari-approve
-	const next = advanceStage(state, "/velpari-approve", cwd);
+	const next = advanceStage(state, "/velpari-approve", cwd, pi);
 	if (pi) appendStageEntry(pi, next);
 	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
 }

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	advanceStage,
 	appendStageEntry,
 	clearRun,
 	createRun,
@@ -34,7 +35,7 @@ test("saveState + loadState round-trip", () => {
 			version: 1,
 			runId: "2026-09-02-test",
 			mission: "test mission",
-			currentStage: "discussing",
+			currentStage: "discussed",
 			history: [],
 			updatedAt: "2026-09-02T00:00:00Z",
 		};
@@ -110,4 +111,61 @@ test("appendStageEntry uses customType 'velpari-state' with the documented field
 	assert.equal(data.stage, state.currentStage);
 	assert.equal(data.updatedAt, state.updatedAt);
 	assert.deepEqual(data.history, state.history);
+});
+
+// ---------------------------------------------------------------------------
+// v0.5.1 Phase J.1 — --velpari-stage flag wiring.
+//
+// advanceStage now accepts an optional `pi` parameter. When the
+// `velpari-stage` flag is set to a non-empty string, the override
+// replaces the computed transition target. The command itself is still
+// recorded in history so the audit trail is preserved.
+// ---------------------------------------------------------------------------
+
+test("advanceStage honors --velpari-stage flag when set", () => {
+	const dir = tempDir();
+	try {
+		// Build a state at "discussing" so /velpari-approve would normally
+		// transition to "drafted-prd". With the override flag set to
+		// "planned-tests", the override wins.
+		const state: RunState = {
+			version: 1,
+			runId: "test-run",
+			mission: "Test Mission",
+			currentStage: "discussed",
+			history: [],
+			updatedAt: "2026-09-05T00:00:00Z",
+		};
+		const pi = {
+			getFlag: (name: string) => (name === "velpari-stage" ? "planned-tests" : undefined),
+		};
+		const next = advanceStage(state, "/velpari-approve", dir, pi as never);
+		assert.equal(next.currentStage, "planned-tests");
+		// Command is still the one that was invoked; the override only
+		// changes the target stage.
+		assert.equal(next.history.at(-1)!.command, "/velpari-approve");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("advanceStage falls back to STAGE_TRANSITIONS when --velpari-stage is not set", () => {
+	const dir = tempDir();
+	try {
+		// Start at "drafting-prd" (after /velpari-prd). /velpari-approve
+		// normally transitions to "drafted-prd".
+		const state: RunState = {
+			version: 1,
+			runId: "test-run",
+			mission: "Test Mission",
+			currentStage: "drafting-prd",
+			history: [],
+			updatedAt: "2026-09-05T00:00:00Z",
+		};
+		const pi = { getFlag: () => undefined };
+		const next = advanceStage(state, "/velpari-approve", dir, pi as never);
+		assert.equal(next.currentStage, "drafted-prd");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

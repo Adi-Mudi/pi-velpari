@@ -86,23 +86,38 @@ export function createRun(mission: string, cwd: string = process.cwd()): RunStat
  * Advance the state to the next stage. Looks up the transition in
  * STAGE_TRANSITIONS, updates currentStage, appends to history, persists.
  * Throws if the transition is not allowed from the current state.
+ *
+ * v0.5.1 Phase J.1: the optional `pi` parameter honors the
+ * `--velpari-stage` flag (registered in index.ts). When the flag is set
+ * to a non-empty string, the override replaces the computed transition
+ * target. The command itself is still recorded in history so the audit
+ * trail is preserved. This is a test affordance for CI / scripted
+ * scenarios that need to skip ahead to a specific stage.
  */
-export function advanceStage(state: RunState, command: string, cwd: string = process.cwd()): RunState {
+export function advanceStage(
+	state: RunState,
+	command: string,
+	cwd: string = process.cwd(),
+	pi?: ExtensionAPI,
+): RunState {
 	void cwd;
+	const stageOverride = pi?.getFlag?.("velpari-stage");
 	const transition = STAGE_TRANSITIONS.find(
 		(t) => t.from === state.currentStage && t.command === command,
 	);
-	if (!transition) {
+	if (!stageOverride && !transition) {
 		throw new Error(
 			`Cannot transition from "${state.currentStage}" via "${command}". ` +
 				`No matching transition in STAGE_TRANSITIONS.`,
 		);
 	}
+	const targetStage: Stage =
+		(stageOverride as Stage | undefined) ?? transition!.to;
 	const now = new Date().toISOString();
 	const next: RunState = {
 		...state,
-		currentStage: transition.to,
-		history: [...state.history, { stage: transition.to, command, timestamp: now }],
+		currentStage: targetStage,
+		history: [...state.history, { stage: targetStage, command, timestamp: now }],
 		updatedAt: now,
 	};
 	saveState(next, cwd);
