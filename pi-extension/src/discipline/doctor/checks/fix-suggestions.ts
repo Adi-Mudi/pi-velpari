@@ -67,6 +67,20 @@ export const SUGGESTIONS = {
 	"setup-rtm": "Run `/velpari-rtm` (after PRD).",
 	"setup-profile": "Run `/velpari-configure-requirements`.",
 	"setup-approve": "Run `/velpari-approve-discuss` after discussion.",
+
+	// Official-extension readiness (Phase 5 of official-extension plan)
+	"official.missing-pi-package-keyword":
+		'Add "pi-package" to package.json:keywords for gallery discovery.',
+	"official.missing-pi-extensions":
+		'Add pi.extensions array to package.json pointing at "./pi-extension/src/index.ts".',
+	"official.missing-subagents-dep":
+		'Add "pi-interactive-subagents": ">=3.7.2" to peerDependencies (bare name, matches HazAT\'s actual package).',
+	"official.missing-npmignore":
+		"Create .npmignore excluding .IDE_Plans/, Doc/, tests, and .github/.",
+	"official.wrong-install-name":
+		'Update README.md install line from "pi install npm:pi-velpari" to "pi install npm:@Adi-Mudi/pi-velpari".',
+	"official.missing-package-json":
+		"package.json is missing at the project root. Run doctor from inside the pi-velpari repo, or restore the file.",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

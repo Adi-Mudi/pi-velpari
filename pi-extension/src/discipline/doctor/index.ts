@@ -46,6 +46,7 @@ import { checkSetupProgress } from "./checks/setup-progress.js";
 import { checkSubagentExtension } from "./checks/subagent-extension.js";
 import { checkStrayFiles } from "./checks/stray-files.js";
 import { checkWebToolLock } from "./checks/web-tool-lock.js";
+import { checkOfficialReadiness } from "./checks/official-readiness.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
@@ -253,6 +254,7 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkScoutAgentsSection(cwd),
 		checkStageSkillsSection(cwd),
 		checkSecretScan(cwd),
+		checkOfficialReadiness(cwd),
 	];
 
 	// Phase 5: prepend an "Action items" callout so errors and warnings
