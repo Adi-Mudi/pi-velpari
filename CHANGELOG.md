@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.0] — 2026-09-06 — First official pi extension release
+
+Conversion to an official pi package, installable via `pi install npm:@Adi-Mudi/pi-velpari` and discoverable on the [pi.dev/packages](https://pi.dev/packages) gallery.
+
+### Added
+
+- **`package.json` hardening.** `keywords: ["pi-package", ...]` for gallery discovery. `author`, `homepage`, `bugs`, `repository`, `engines` fields. `pi` manifest expanded with `skills: ["./skills"]`. `dependencies` block added (then dropped — see Changed). Pin core peer deps to `"*"` per official pi docs (`@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`, `typebox`).
+- **`.npmignore`** — 32 lines excluding `Doc/`, `.IDE_Plans/`, `DevPlan/`, `deliver/`, `.github/`, `.pi/`, `.tmp/`, `scripts/`, `dist/`, `pi-extension/test/`, editor cruft. Result: 108 files / 140.9 kB compressed / 520.3 kB unpacked.
+- **`pi-extension/src/discipline/doctor/checks/official-readiness.ts`** — new 7-sub-check audit (`/velpari-doctor` now flags package.json keyword, pi.extensions manifest, peer dep, .npmignore, README install name, repository URL, peer-dep pinning). 6 new `official.*` fingerprints in `fix-suggestions.ts`.
+- **`CONTRIBUTING.md`** — repo-governance content extracted from the old `GIT_INSTALL.md` (branch protection, pre-push hook, CODEOWNERS, PAT workflow, troubleshooting).
+- **`pi-extension/test/doctor-official-readiness.test.ts`** — 10 new tests locking the official-readiness contract.
+
+### Changed
+
+- **Install docs rewritten.** `README.md` "Install" section now uses only the official `pi install npm:@Adi-Mudi/pi-velpari` command, with a focused "Required peer dependency" subsection and a clearly-labelled "Local development (optional)" subsection for hot-reload. `AGENTS.md` "Development symlink" section trimmed to a single paragraph pointing at the README.
+- **`pi-interactive-subagents` peer-dep clarified.** Moved from `peerDependenciesMeta.optional` to a plain `peerDependencies` entry with the correct bare name (`pi-interactive-subagents`, no `@earendil-works/` scope). The package is not on the npm registry — it lives at `github.com/HazAT/pi-interactive-subagents` and is installed via `pi install git:github.com/HazAT/pi-interactive-subagents`.
+- **`fix-suggestions.ts:subagent-ext-missing`** updated to the correct install command.
+
+### Removed
+
+- **`GIT_INSTALL.md`** — the old hand-edited `settings.json` + `git:` install workflow. Replaced by the README "Install" section (canonical) and CONTRIBUTING.md (governance).
+
+### Stats
+
+- **587 unit tests** (was 577) across 53 test files.
+- **6 phase commits** on `feat/official-extension` branch (no pushes).
+- All phase gates (build clean + tests pass + `npm publish --dry-run` clean) satisfied before this entry was cut.
+
 ## [Unreleased] — `/velpari-doctor` v3 upgrade
 
 Full upgrade of the audit command. Replaces the free-form markdown auditor with a structured `DiagnosticReport` (4-state status model + verdict banner + summary counts), adds a setup-progress guide that names the next command for first-time users, attaches a `→ Fix:` suggestion to every actionable item (centralized in `checks/fix-suggestions.ts`), switches the report write to crash-safe `io/atomic-write.ts`, adds 4 new checks (sub-agent extension, stray files, web-tool lock, agent file integrity), and expands the secret scan from 4 patterns in `Doc/` to 7 patterns across `Doc/`, `.pi/agents/`, `.pi/skills/`, `.pi/velpari/`. A top-of-report **Action items** callout lists every error/warning with its fix so they survive TUI truncation. Preceded by a Phase 0 architecture alignment that moved `src/` into a layered model (DOMAIN → IO → HOOKS → STAGES → DISCIPLINE → VIEW → UI → COMMANDS).
