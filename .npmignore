@@ -1,0 +1,32 @@
+# Source-only TS path: shipped via pi's built-in loader
+# Exclude dev artifacts and project-local state from npm tarball
+
+# Plan + design + scratch
+.IDE_Plans/
+Doc/
+DevPlan/
+deliver/
+
+# CI / GitHub
+.github/
+
+# Project-local runtime state
+.pi/
+.tmp/
+
+# Scripts (e2e harness lives outside the published package)
+scripts/
+
+# Build output (we ship source TS, not compiled JS)
+dist/
+
+# Tests (run from source via `npm test` after clone)
+pi-extension/test/
+*.test.ts
+*.test.js
+
+# Editor + OS
+.vscode/
+.idea/
+.DS_Store
+*.log
