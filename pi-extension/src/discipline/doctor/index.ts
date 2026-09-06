@@ -42,6 +42,7 @@ import {
 import { checkRequirementsProfileSection } from "./checks/profile.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
 import { checkSubagentExtension } from "./checks/subagent-extension.js";
+import { checkStrayFiles } from "./checks/stray-files.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
@@ -282,6 +283,7 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkRtmTraceabilitySection(cwd, projectName),
 		buildMultiplexerSection(cwd),
 		checkSubagentExtension(),
+		checkStrayFiles(cwd),
 		checkScoutAgentsSection(cwd),
 		checkStageSkillsSection(cwd),
 		buildDocSecretScanSection(cwd),
