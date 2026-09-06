@@ -1,9 +1,9 @@
 {
-  "name": "pi-velpari",
+  "name": "@Adi-Mudi/pi-velpari",
   "version": "1.0.0",
   "description": "Stage-gated pre-production orchestration for Pi",
   "type": "module",
-  "main": "./dist/pi-extension/src/index.js",
+  "main": "./pi-extension/src/index.ts",
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test --test-force-exit dist/pi-extension/test/*.test.js",
@@ -39,7 +39,7 @@
   "license": "MIT",
   "pi": {
     "extensions": [
-      "./dist/pi-extension/src/index.js"
+      "./pi-extension/src/index.ts"
     ]
   }
 }
