@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleDiscuss } from "../src/stages/discuss.js";
 import { clearRun, loadState } from "../src/core/state.js";
-import { ensureScoutAgents } from "../src/core/agents-install.js";
+import { ensureScoutAgents } from "../src/io/agents-install.js";
 import { buildStagePrompt } from "../src/core/prompt.js";
 
 interface MockUI {

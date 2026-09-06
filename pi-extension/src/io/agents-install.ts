@@ -30,7 +30,7 @@ export interface EnsureScoutAgentsResult {
  * Resolve the path to a bundled agent file in `skills/agents/<id>.md`.
  *
  * Phase F: collapsed the multi-candidate probe chain into a single 4-level-up
- * probe. The dist layout (dist/pi-extension/src/core/agents-install.js)
+ * probe. The dist layout (dist/pi-extension/src/io/agents-install.js)
  * walks 4 levels up to the repo root, then into skills/agents/<id>.md.
  * Phase A's earlier 3-level and 2-level candidates are dead paths now
  * (no source-only consumers remain).

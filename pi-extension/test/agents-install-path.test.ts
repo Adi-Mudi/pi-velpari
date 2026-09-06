@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { bundledAgentPath } from "../src/core/agents-install.js";
+import { bundledAgentPath } from "../src/io/agents-install.js";
 
 test("bundledAgentPath returns a path inside skills/agents/", () => {
 	const resolved = bundledAgentPath("extractor");

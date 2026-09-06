@@ -42,7 +42,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { ensureScoutAgents, formatScoutAgentsInstalledMessage } from "../core/agents-install.js";
+import { ensureScoutAgents, formatScoutAgentsInstalledMessage } from "../io/agents-install.js";
 import { loadFilesConfig } from "../core/config.js";
 import { buildStagePrompt } from "../core/prompt.js";
 import { buildRunDir, slugify } from "../core/paths.js";

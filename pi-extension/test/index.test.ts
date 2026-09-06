@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import index from "../src/index.js";
-import { COMMAND_NAMES } from "../src/core/commands.js";
+import { COMMAND_NAMES } from "../src/commands/index.js";
 
 interface RegisteredCommand {
 	description: string;

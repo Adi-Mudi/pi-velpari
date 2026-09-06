@@ -1,8 +1,10 @@
 /**
- * Pi-Velpari extension entry point (Phase E — Pi-native features).
+ * Pi-Velpari extension entry point (Phase E — Pi-native features; Phase 0
+ * restructured to layered architecture).
  *
- * Phase B moved the bulk of the per-command wiring into core/commands.ts
- * (registerCommands). This file now owns:
+ * Phase 0 moved the per-command wiring into commands/index.ts
+ * (registerCommands). The hooks composer scaffold lives in hooks/index.ts
+ * (expanded in Phase F). This file now owns:
  *   - Pi lifecycle hooks (session_start rehydrate, session_before_compact,
  *     session_shutdown)
  *   - Cross-extension events (pi.events.emit on the velpari:* channel)
@@ -21,14 +23,18 @@
 
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerCommands } from "./core/commands.js";
+import { registerCommands } from "./commands/index.js";
 import { buildCompactionSummary } from "./core/compaction.js";
+import { registerHooks } from "./hooks/index.js";
 import { loadState } from "./core/state.js";
 import { registerVelpariStatusRenderer } from "./ui/entry-renderer.js";
 
 export default function (pi: ExtensionAPI) {
 	// 1. Per-command handlers (25 commands).
 	registerCommands(pi);
+
+	// 1a. Lifecycle hooks (Phase 0 scaffold; expanded in Phase F).
+	registerHooks(pi);
 
 	// 1b. v0.5.0 Phase I.2: register the custom velpari-status entry
 	// renderer (Box+Text via @earendil-works/pi-tui). Without this,

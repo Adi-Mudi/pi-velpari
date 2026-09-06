@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runStageWithScouts, type StageRunConfig } from "../src/core/stage-runner.js";
-import { ensureStageAgents } from "../src/core/agents-install.js";
+import { ensureStageAgents } from "../src/io/agents-install.js";
 
 interface MockUI {
 	notifies: Array<{ msg: string; level: string }>;

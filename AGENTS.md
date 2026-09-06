@@ -45,6 +45,25 @@ npm test
 - `npm run build` — compiles `pi-extension/src/**/*.ts` to `dist/pi-extension/`.
 - `npm test` — builds, then runs `node --test dist/pi-extension/test/**/*.test.js`.
 
+## Layered architecture
+
+`pi-extension/src/` is organized into 8 layers, mirroring Senai's `architecture-upgrade` convention. Each layer has a single concern and a strict dependency direction: lower-numbered layers can be imported by higher-numbered ones, never the reverse.
+
+| # | Layer | Folder | Rule |
+|---|---|---|---|
+| 1 | **Domain** | `core/` | Pure logic only. No IO. Touches `node:path` only for string-building. |
+| 2 | **IO** | `io/` | Every `fs.write*Sync` lives here. Atomic writes mandatory for `state.json` and any artifact. |
+| 3 | **Hooks** | `hooks/` | One file per lifecycle event (`session_start`, `resources_discover`, `session_shutdown`). Imports only from `core/` and `io/`. |
+| 4 | **Stages** | `stages/` | One file per stage handler. Imports from `core/`, `io/`, `commands/`. |
+| 5 | **Discipline** | `discipline/` | Ops / approval / setup / doctor. Imports from any lower layer. Never directly from `io/` (goes through `commands/`). |
+| 6 | **View** | `view/` | Read-only display. No mutation. `readFileSync` is OK; writes are not. |
+| 7 | **UI** | `ui/` | TUI widgets. Imports only from `@earendil-works/pi-tui` and `core/`. Never touches IO directly. |
+| 8 | **Commands** | `commands/` | Composition root (`index.ts` exports `registerCommands`). Imports from all other layers; orchestrator only. |
+
+**Layering is enforced by `pi-extension/test/architecture-alignment.test.ts`** — it asserts no source file imports the moved paths (`core/agents-install`, `core/commands`). Adding a new layer requires adding a corresponding assertion.
+
+The `prompts/` placeholder folder was removed in Phase 0; future prompt modules live alongside `core/prompt.ts`.
+
 ## Project structure
 
 ```text
