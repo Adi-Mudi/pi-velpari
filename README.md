@@ -78,22 +78,32 @@ Velpari splits pre-production work into seven explicit stages. Each stage produc
 
 ## Install
 
-The extension is loaded automatically by Pi. Two install modes are supported:
-
-- **Project-local (development):** copy or symlink the extension into `.pi/extensions/pi-velpari/`. Pi auto-discovers from this directory.
-- **npm-distributed (release):** users run `pi install npm:pi-velpari`. The package's `package.json` declares its entry point under the `pi.extensions` field (Pi reads this when installing).
-
-**Required peer dependency:** Velpari requires the [`@earendil-works/pi-interactive-subagents`](https://github.com/HazAT/pi-interactive-subagents) extension (≥3.7.2) to be installed alongside Velpari. It provides the `subagent` tool the parent LLM uses to spawn the 4 discussion scouts (`NEW EXTRACTOR`, `PRD CHECKER`, `RTM CHECKER`, optional `WEB SEARCH AGENT`) in **visible multiplexer panes**. Without it installed, `/velpari-discuss` will fail to spawn scouts and the working copy will not be written. Install via Pi's package manager:
+Install via pi's package manager:
 
 ```bash
-pi install npm:@earendil-works/pi-interactive-subagents
+pi install npm:@Adi-Mudi/pi-velpari
 ```
 
-The 4 scout agent definitions (`.pi/agents/{extractor,prd-checker,rtm-checker,web-search-agent}.md`) are auto-bootstrapped by `/velpari-discuss` on first use from the bundled `skills/agents/*.md` files. No separate install step needed for the agents.
+Pi downloads the package, runs `npm install`, and loads the extension automatically. The 4 scout agent definitions are auto-bootstrapped from bundled files on first `/velpari-discuss`.
+
+### Required peer dependency
+
+Velpari requires [`pi-interactive-subagents`](https://github.com/HazAT/pi-interactive-subagents) (≥3.7.2) to be installed alongside Velpari. It provides the `subagent` tool the parent LLM uses to spawn the 4 discussion scouts (`NEW EXTRACTOR`, `PRD CHECKER`, `RTM CHECKER`, optional `WEB SEARCH AGENT`) in **visible multiplexer panes**. Without it installed, `/velpari-discuss` will fail to spawn scouts and the working copy will not be written.
 
 ```bash
+pi install git:github.com/HazAT/pi-interactive-subagents
+```
+
+### Local development (optional)
+
+For active development with hot-reload:
+
+```bash
+git clone https://github.com/Adi-Mudi/pi-velpari
+cd pi-velpari
 npm install
-npm test
+npm run build
+ln -sf "$(pwd)/dist/pi-extension/src" ~/.pi/agent/extensions/pi-velpari
 ```
 
 ## Quickstart
@@ -231,7 +241,7 @@ npm test
 1. **Zero hallucination.** Every claim in every artifact traces back to a user-provided statement in a discussion note or to an earlier approved artifact. The LLM never invents requirements, design decisions, or test cases.
 2. **Confirm-then-write.** No file under `Doc/` is written without a user-facing preview and explicit `/velpari-approve`.
 3. **Stage gates are enforced.** A stage cannot start until its prerequisites are approved. Transitions are defined in `constants.ts:STAGE_TRANSITIONS`.
-4. **Scout pattern in all 9 stage commands.** All 9 stage commands spawn 4 visible subagents in parallel via the `subagent` tool from `@earendil-works/pi-interactive-subagents` — 36 scout agents total. Mirrors Senai's plan-stage scout pattern.
+4. **Scout pattern in all 9 stage commands.** All 9 stage commands spawn 4 visible subagents in parallel via the `subagent` tool from `pi-interactive-subagents` — 36 scout agents total. Mirrors Senai's plan-stage scout pattern.
 5. **Helper ↔ atomic relationship.** Helper candidates are tracked in the PSRS's `## Helper Function Candidates` section. Atomic functions are tracked in `Doc/atomic-functions/atomic-functions_<projectName>.md`. Atomic functions are strictly leaf nodes; helper functions may call atomic functions. The dependency is bidirectional.
 6. **Optional stages stay optional.** `/velpari-atomic-function` and `/velpari-development-order` can be invoked in any order or skipped entirely. `/velpari-handoff` works with or without their output.
 7. **Mirrors Senai's discipline.** Same state-gated runs, same working/published copy separation, same doctor audit, same single-source-of-truth state file, same scout-pattern UI.
@@ -312,7 +322,7 @@ Tests are in `pi-extension/test/` and use Node's built-in test runner.
 
 ## See also
 
-- [`Pi-Orchestra_v4`](https://github.com/HazAT/pi-interactive-subagents) — the downstream production-phase extension.
+- [`pi-senai`](https://github.com/Adi-Mudi/pi-senai) — the downstream production-phase extension.
 
 ## License
 
