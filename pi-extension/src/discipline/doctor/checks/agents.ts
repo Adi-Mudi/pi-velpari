@@ -8,13 +8,14 @@
  *     plus the v2.0 machinery (pi-interactive-subagents, caller_ping,
  *     AskUserQuestion, zellij workaround).
  *
- * Split into two pure helpers:
- *   - checkScoutAgentFiles(cwd, lines)  → also exposes .lastSummary
- *   - checkStageSkillMarkdowns(cwd, lines) → returns issue count
+ * Phase 1: returns DiagnosticSections instead of mutating a shared
+ * `lines` array. Replaces the mutable `scoutAgentCheck` summary
+ * object with two `info` items in the returned section.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -79,62 +80,86 @@ export function parseFrontmatter(markdown: string): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// Scout-agent file check
+// Scout-agent section
 // ---------------------------------------------------------------------------
-
-/** Most-recent summary, exposed so the orchestrator can print a single line. */
-export const scoutAgentCheck = { missing: 0, badFrontmatter: 0 };
 
 /**
  * Walk every stage in ALL_STAGE_SCOUTS, check each agent file's
- * presence + frontmatter. Records counts in `scoutAgentCheck` for the
- * orchestrator's summary line.
+ * presence + frontmatter. Returns a DiagnosticSection whose items
+ * describe each missing or malformed file; a final summary item
+ * reports total counts.
  */
-export function checkScoutAgentFiles(cwd: string, lines: string[]): void {
+export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
 	const agentsDir = join(cwd, ".pi", "agents");
 	let totalMissing = 0;
 	let totalBadFrontmatter = 0;
+
 	for (const stage of Object.keys(ALL_STAGE_SCOUTS)) {
 		const scouts = ALL_STAGE_SCOUTS[stage]!;
-		lines.push(`### /velpari-${stage} (${scouts.length} scouts)`);
 		for (const id of scouts) {
 			const target = join(agentsDir, `${id}.md`);
 			if (!existsSync(target)) {
-				lines.push(`  ✗ ${id}.md MISSING (will auto-bootstrap on first /velpari-${stage})`);
 				totalMissing++;
+				items.push({
+					status: "warning",
+					message: `${id}.md (${stage}) MISSING — will auto-bootstrap on first /velpari-${stage}.`,
+					suggestion: `Run any /velpari-${stage} command to trigger auto-install, or place the file manually at \`.pi/agents/${id}.md\`.`,
+				});
 				continue;
 			}
 			const content = readFileSync(target, "utf8");
 			const fm = parseFrontmatter(content);
 			const missing = REQUIRED_AGENT_FIELDS.filter((f) => !fm[f]);
 			if (missing.length > 0) {
-				lines.push(`  ✗ ${id}.md frontmatter missing: ${missing.join(", ")}`);
 				totalBadFrontmatter++;
+				items.push({
+					status: "error",
+					message: `${id}.md (${stage}) frontmatter missing fields: ${missing.join(", ")}`,
+					suggestion: `Add the missing frontmatter fields to \`.pi/agents/${id}.md\`. Required: ${REQUIRED_AGENT_FIELDS.join(", ")}.`,
+				});
 			} else {
-				lines.push(`  ✓ ${id}.md (frontmatter OK)`);
+				items.push({
+					status: "ok",
+					message: `${id}.md (${stage}) frontmatter OK`,
+				});
 			}
 		}
 	}
-	scoutAgentCheck.missing = totalMissing;
-	scoutAgentCheck.badFrontmatter = totalBadFrontmatter;
+
+	const totalScouts = Object.values(ALL_STAGE_SCOUTS).flat().length;
+	const totalStages = Object.keys(ALL_STAGE_SCOUTS).length;
+	const stageList = Object.keys(ALL_STAGE_SCOUTS).join(", ");
+	items.push({
+		status: totalMissing === 0 && totalBadFrontmatter === 0 ? "ok" : "info",
+		message: `Scout agents summary: ${totalScouts} scouts across ${totalStages} stages (${stageList}) — ${totalMissing} missing, ${totalBadFrontmatter} with bad frontmatter.`,
+	});
+
+	return { title: "Scout agents (.pi/agents/)", items };
 }
 
 // ---------------------------------------------------------------------------
-// Stage skill markdown integrity check
+// Stage skill markdown integrity section
 // ---------------------------------------------------------------------------
 
 /**
  * Walk every stage in STAGES_WITH_SKILL_MARKDOWN, check that the skill
  * file exists, mentions every scout, and references the v2.0 machinery.
- * Returns the issue count (the orchestrator prints a summary line).
+ * Returns a DiagnosticSection.
  */
-export function checkStageSkillMarkdowns(cwd: string, lines: string[]): number {
-	let totalSkillIssues = 0;
+export function checkStageSkillsSection(cwd: string): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
+	let totalIssues = 0;
+
 	for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
 		const skillPath = join(cwd, "skills", `velpari-${stage}.md`);
 		if (!existsSync(skillPath)) {
-			lines.push(`✗ skills/velpari-${stage}.md MISSING`);
-			totalSkillIssues++;
+			totalIssues++;
+			items.push({
+				status: "error",
+				message: `skills/velpari-${stage}.md MISSING`,
+				suggestion: "Restore the skill markdown from the bundled `skills/` directory or git history.",
+			});
 			continue;
 		}
 		const content = readFileSync(skillPath, "utf8");
@@ -164,15 +189,27 @@ export function checkStageSkillMarkdowns(cwd: string, lines: string[]): number {
 				issues.push("missing reference to zellij close-pane workaround (Issue #19)");
 			}
 		}
+
 		if (issues.length === 0) {
-			lines.push(`✓ skills/velpari-${stage}.md: OK`);
+			items.push({
+				status: "ok",
+				message: `skills/velpari-${stage}.md: OK`,
+			});
 		} else {
-			lines.push(`✗ skills/velpari-${stage}.md: ${issues.length} issue(s)`);
-			for (const issue of issues) {
-				lines.push(`  - ${issue}`);
-			}
-			totalSkillIssues += issues.length;
+			totalIssues += issues.length;
+			items.push({
+				status: "error",
+				message: `skills/velpari-${stage}.md: ${issues.length} issue(s)`,
+				details: issues,
+				suggestion: `Fix the listed contract checks in skills/velpari-${stage}.md.`,
+			});
 		}
 	}
-	return totalSkillIssues;
+
+	items.push({
+		status: totalIssues === 0 ? "ok" : "info",
+		message: `Stage skills summary: ${STAGES_WITH_SKILL_MARKDOWN.length} checked (${STAGES_WITH_SKILL_MARKDOWN.join(", ")}), ${totalIssues} contract issue(s).`,
+	});
+
+	return { title: "Stage skills", items };
 }

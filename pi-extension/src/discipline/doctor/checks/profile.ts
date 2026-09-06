@@ -5,6 +5,9 @@
  * the current schema version. Doctor is report-only — it never selects,
  * fixes, or mutates a profile. configure-requirements is the only
  * mutation entrypoint.
+ *
+ * Phase 1: returns a DiagnosticSection instead of mutating a shared
+ * `lines` array.
  */
 
 import {
@@ -12,30 +15,39 @@ import {
 	loadRequirementsProfile,
 	validateRequirementsProfile,
 } from "../../../core/profile.js";
+import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-export function checkRequirementsProfile(cwd: string, lines: string[]): void {
+export function checkRequirementsProfileSection(cwd: string): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
 	const profile = loadRequirementsProfile(cwd);
+
 	if (!profile) {
-		lines.push("Profile: MISSING (run /velpari-configure-requirements)");
-		return;
+		items.push({
+			status: "info",
+			message: "Profile: MISSING (run /velpari-configure-requirements)",
+			suggestion: "Run `/velpari-configure-requirements` to capture the requirements profile.",
+		});
+		return { title: "Requirements profile", items };
 	}
+
 	const ok = validateRequirementsProfile(profile);
-	lines.push(
-		`Profile: ${ok ? "VALID" : "INVALID"} mode=${profile.profileKind} id=${profile.profileId} version=${profile.version} (expected ${REQUIREMENTS_PROFILE_VERSION})`,
-	);
-	lines.push(
-		`Application=${profile.applicationType} | Domain=${profile.domain} | Method=${profile.developmentMethod} | Regulated=${profile.regulated ? "yes" : "no"} | Security=${profile.securityLevel} | Variant=${profile.outputVariant}`,
-	);
-	lines.push(`Required sections: ${profile.requiredSections.join(", ") || "(none)"}`);
-	lines.push(
-		`Research consent: ${profile.researchConsent ? "yes" : "no"} | Research source count: ${profile.researchSources.length}`,
-	);
-	lines.push(
-		`Doctor is report-only: it lists the active profile and research state but never selects, fixes, or mutates a profile.`,
-	);
+	items.push({
+		status: ok ? "ok" : "error",
+		message: `Profile: ${ok ? "VALID" : "INVALID"} mode=${profile.profileKind} id=${profile.profileId} version=${profile.version} (expected ${REQUIREMENTS_PROFILE_VERSION})`,
+		details: [
+			`Application=${profile.applicationType} | Domain=${profile.domain} | Method=${profile.developmentMethod} | Regulated=${profile.regulated ? "yes" : "no"} | Security=${profile.securityLevel} | Variant=${profile.outputVariant}`,
+			`Required sections: ${profile.requiredSections.join(", ") || "(none)"}`,
+			`Research consent: ${profile.researchConsent ? "yes" : "no"} | Research source count: ${profile.researchSources.length}`,
+			"Doctor is report-only: it lists the active profile and research state but never selects, fixes, or mutates a profile.",
+		],
+	});
+
 	if (profile.profileKind === "common-core") {
-		lines.push(
-			`Common PSRS core selected (id=${profile.profileId}); this is a real, valid choice and not a placeholder for a missing match.`,
-		);
+		items.push({
+			status: "info",
+			message: `Common PSRS core selected (id=${profile.profileId}); this is a real, valid choice and not a placeholder for a missing match.`,
+		});
 	}
+
+	return { title: "Requirements profile", items };
 }

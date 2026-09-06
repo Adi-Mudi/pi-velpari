@@ -3,28 +3,49 @@
  *
  * Reads the published PSRS and RTM, extracts all FR-N / NFR-N / HF-N
  * ids from each, and verifies that every RTM id is referenced from the
- * PSRS. Results are pushed into `lines`.
+ * PSRS.
+ *
+ * Phase 1: returns a DiagnosticSection.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveDocArtifact } from "../../../core/paths.js";
+import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-export function checkRtmTraceability(cwd: string, projectName: string, lines: string[]): void {
+export function checkRtmTraceabilitySection(cwd: string, projectName: string): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
+
+	if (!projectName) {
+		items.push({
+			status: "info",
+			message: "RTM traceability skipped — project name missing.",
+			suggestion: "Run `/velpari-configure-inputs` to set the project name.",
+		});
+		return { title: "RTM traceability", items };
+	}
+
 	const psrsResolved = resolveDocArtifact("PRD", projectName, cwd);
 	const rtmResolved = resolveDocArtifact("RTM", projectName, cwd);
+
 	if (!psrsResolved) {
-		lines.push("### RTM traceability");
-		lines.push("- PSRS not found — skipping traceability check.");
-		lines.push("");
-		return;
+		items.push({
+			status: "info",
+			message: "PSRS not found — skipping traceability check.",
+			suggestion: "Run `/velpari-prd` first; the RTM traces requirements back to the PSRS.",
+		});
+		return { title: "RTM traceability", items };
 	}
+
 	if (!rtmResolved) {
-		lines.push("### RTM traceability");
-		lines.push("- RTM not found — skipping traceability check.");
-		lines.push("");
-		return;
+		items.push({
+			status: "info",
+			message: "RTM not found — skipping traceability check.",
+			suggestion: "Run `/velpari-rtm` after the PRD stage.",
+		});
+		return { title: "RTM traceability", items };
 	}
+
 	const psrsContent = readFileSync(psrsResolved.path, "utf8");
 	const rtmContent = readFileSync(rtmResolved.path, "utf8");
 	const psrsIds = new Set<string>();
@@ -35,15 +56,31 @@ export function checkRtmTraceability(cwd: string, projectName: string, lines: st
 	for (const m of rtmContent.matchAll(/\b(?:FR|NFR|HF)-\d+\b/g)) rtmIds.add(m[0]);
 
 	const missing = Array.from(rtmIds).filter((id) => !psrsIds.has(id));
-	lines.push("### RTM traceability");
-	lines.push(`- PSRS path: ${psrsResolved.path} (${psrsResolved.layout})`);
-	lines.push(`- RTM path: ${rtmResolved.path} (${rtmResolved.layout})`);
-	lines.push(`- PSRS ids: ${psrsIds.size} | RTM ids: ${rtmIds.size}`);
+	const truncated = missing.slice(0, 20).join(", ") + (missing.length > 20 ? "..." : "");
+
 	if (missing.length > 0) {
-		lines.push(`- ✗ RTM references ${missing.length} unknown id(s): ${missing.slice(0, 20).join(", ")}${missing.length > 20 ? "..." : ""}`);
+		items.push({
+			status: "error",
+			message: `RTM references ${missing.length} unknown id(s) not present in the PSRS.`,
+			details: [
+				`PSRS path: ${psrsResolved.path} (${psrsResolved.layout})`,
+				`RTM path: ${rtmResolved.path} (${rtmResolved.layout})`,
+				`PSRS ids: ${psrsIds.size} | RTM ids: ${rtmIds.size}`,
+				`Unknown ids: ${truncated}`,
+			],
+			suggestion: "Either add the missing ids to the PSRS or remove them from the RTM. Traceability is bidirectional.",
+		});
 	} else {
-		lines.push(`- ✓ All RTM ids resolve in the PSRS.`);
+		items.push({
+			status: "ok",
+			message: "All RTM ids resolve in the PSRS.",
+			details: [
+				`PSRS path: ${psrsResolved.path} (${psrsResolved.layout})`,
+				`RTM path: ${rtmResolved.path} (${rtmResolved.layout})`,
+				`PSRS ids: ${psrsIds.size} | RTM ids: ${rtmIds.size}`,
+			],
+		});
 	}
-	lines.push("");
-	void join;
+
+	return { title: "RTM traceability", items };
 }

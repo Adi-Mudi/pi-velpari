@@ -2,25 +2,33 @@
  * Working vs published separation check.
  *
  * Counts markdown files in the working-copy tree
- * (`<runDir>/<category>/`) and the published tree (`Doc/`),
- * then prints a single summary line per project.
+ * (`<runDir>/<category>/`) and the published tree (`Doc/`).
+ *
+ * Phase 1: returns a DiagnosticSection.
  */
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { GROUPED_CATEGORIES } from "../../../core/paths.js";
+import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-export function checkWorkingPublishedSeparation(cwd: string, projectName: string, lines: string[]): void {
+export function checkWorkingPublishedSeparationSection(
+	cwd: string,
+	projectName: string,
+): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
 	const docsDir = join(cwd, "Doc");
 	const workingRoot = join(cwd, ".IDE_Plans", "velpari", "runs");
-	lines.push("### Working / published separation");
+
 	if (!existsSync(workingRoot)) {
-		lines.push("- No working runs present.");
-		lines.push("");
-		return;
+		items.push({
+			status: "info",
+			message: "No working runs present under `.IDE_Plans/velpari/runs/`.",
+		});
+		return { title: "Working / published separation", items };
 	}
+
 	let workingCount = 0;
-	let publishedCount = 0;
 	for (const entry of readdirSync(workingRoot)) {
 		const runDir = join(workingRoot, entry);
 		for (const cat of Object.values(GROUPED_CATEGORIES)) {
@@ -31,6 +39,8 @@ export function checkWorkingPublishedSeparation(cwd: string, projectName: string
 			}
 		}
 	}
+
+	let publishedCount = 0;
 	if (existsSync(docsDir)) {
 		const recurse = (dir: string): number => {
 			let n = 0;
@@ -42,11 +52,17 @@ export function checkWorkingPublishedSeparation(cwd: string, projectName: string
 		};
 		publishedCount = recurse(docsDir);
 	}
-	lines.push(`- Working copies under .IDE_Plans/velpari/runs/: ${workingCount}`);
-	lines.push(`- Published docs under Doc/: ${publishedCount}`);
+
 	const groupedKeys = Object.keys(GROUPED_CATEGORIES);
 	const groupedCats = Object.values(new Set(Object.values(GROUPED_CATEGORIES))).join(", ");
-	lines.push(`- Grouped categories: ${groupedKeys.length} -> ${groupedCats}`);
-	lines.push(`- Project under audit: ${projectName || "(none - projectName missing)"}`);
-	lines.push("");
+	items.push({
+		status: "ok",
+		message: `Working copies: ${workingCount} | Published docs: ${publishedCount}`,
+		details: [
+			`Grouped categories (${groupedKeys.length}): ${groupedCats}`,
+			`Project under audit: ${projectName || "(none — projectName missing)"}`,
+		],
+	});
+
+	return { title: "Working / published separation", items };
 }
