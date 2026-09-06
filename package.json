@@ -26,13 +26,11 @@
     "test:e2e:tier2": "RUN_E2E=1 RUN_LLM_E2E=1 node --test --test-force-exit --test-timeout=300000 dist/pi-extension/test/e2e/*.test.js",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@earendil-works/pi-interactive-subagents": ">=3.7.2"
-  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
-    "typebox": "*"
+    "typebox": "*",
+    "pi-interactive-subagents": ">=3.7.2"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
