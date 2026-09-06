@@ -40,6 +40,7 @@ import {
 	checkStageSkillsSection,
 } from "./checks/agents.js";
 import { checkRequirementsProfileSection } from "./checks/profile.js";
+import { checkSetupProgress } from "./checks/setup-progress.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
  * Each is sourced from its own check submodule so callers can import
@@ -268,6 +269,7 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 	const projectName = readProjectName(cwd);
 
 	const sections: DiagnosticSection[] = [
+		checkSetupProgress(cwd),
 		buildStateSection(cwd),
 		buildConfigSection(cwd),
 		checkRequirementsProfileSection(cwd),

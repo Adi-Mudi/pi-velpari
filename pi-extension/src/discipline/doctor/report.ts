@@ -12,9 +12,9 @@
  * prepend an "Action items" callout so errors survive TUI truncation.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PATHS } from "../../core/constants.js";
+import { atomicWriteFile } from "../../io/atomic-write.js";
 import { iconFor, type DiagnosticReport } from "./_types.js";
 
 /**
@@ -56,14 +56,11 @@ export function formatDiagnosticReport(report: DiagnosticReport): string {
 }
 
 /**
- * Write the doctor report to disk. Creates parent directories as needed.
- * Caller passes the DiagnosticReport produced by runDoctor.
- *
- * Phase 2 will replace writeFileSync with atomicWriteFile.
+ * Write the doctor report to disk. Atomic — a crash mid-write leaves no
+ * half-written file. Caller passes the DiagnosticReport produced by runDoctor.
  */
 export function writeDoctorReport(report: DiagnosticReport, cwd: string = process.cwd()): void {
 	const text = formatDiagnosticReport(report);
 	const reportPath = join(cwd, PATHS.DOCTOR_REPORT);
-	mkdirSync(dirname(reportPath), { recursive: true });
-	writeFileSync(reportPath, text, "utf8");
+	atomicWriteFile(reportPath, text, "utf8");
 }
