@@ -20,7 +20,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "./constants.js";
-import { ensureStageAgents, formatScoutAgentsInstalledMessage } from "./agents-install.js";
+import { ensureStageAgents, formatScoutAgentsInstalledMessage } from "../io/agents-install.js";
 import { buildStagePrompt, type ScoutSlot } from "./prompt.js";
 import type { CompactProfileMetadata } from "./profile.js";
 

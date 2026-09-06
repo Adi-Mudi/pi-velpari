@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — `/velpari-doctor` v3 upgrade
+
+Full upgrade of the audit command. Replaces the free-form markdown auditor with a structured `DiagnosticReport` (4-state status model + verdict banner + summary counts), adds a setup-progress guide that names the next command for first-time users, attaches a `→ Fix:` suggestion to every actionable item (centralized in `checks/fix-suggestions.ts`), switches the report write to crash-safe `io/atomic-write.ts`, adds 4 new checks (sub-agent extension, stray files, web-tool lock, agent file integrity), and expands the secret scan from 4 patterns in `Doc/` to 7 patterns across `Doc/`, `.pi/agents/`, `.pi/skills/`, `.pi/velpari/`. A top-of-report **Action items** callout lists every error/warning with its fix so they survive TUI truncation. Preceded by a Phase 0 architecture alignment that moved `src/` into a layered model (DOMAIN → IO → HOOKS → STAGES → DISCIPLINE → VIEW → UI → COMMANDS).
+
+### Phase 0 — Architecture alignment (no behavior change)
+
+- Move `core/agents-install.ts` → `io/agents-install.ts` (agent bootstrap is IO-flavored).
+- Move `core/commands.ts` → `commands/index.ts` (composition root in its own layer).
+- Add empty `hooks/` composer `registerHooks(pi)` for Phase F.
+- Remove empty `prompts/` placeholder.
+- New "Layered architecture" section in `AGENTS.md` with the 8-layer rule.
+- `test/architecture-alignment.test.ts` — 12 tests lock the structure.
+
+### Phase 1 — Status model + summary + verdict
+
+- New `doctor/_types.ts`: `DiagnosticStatus`, `DiagnosticItem`, `DiagnosticSection`, `DiagnosticReport`, `iconFor`, `summarize`.
+- All 7 check files refactored to return `DiagnosticSection` instead of mutating a shared `lines` array.
+- `runDoctor(cwd)` returns `DiagnosticReport` (was `string`).
+- `writeDoctorReport` formats the report via `formatDiagnosticReport` with title + summary line + verdict banner + per-item icons.
+- `handleDoctor` emits a 1-line summary notify and writes the full report to disk.
+- Fixed pre-existing bug: `PsrsValidationResult.valid` → `PsrsValidationResult.ok`.
+- `test/doctor-types.test.ts` — 8 new tests for the type contract.
+
+### Phase 2 — Setup progress + atomic writes
+
+- New `io/atomic-write.ts`: `atomicWriteFile` + `atomicWriteJson` (temp + atomic rename).
+- `writeDoctorReport` now goes through `atomicWriteFile` (replaces `writeFileSync`).
+- New `doctor/checks/setup-progress.ts`: 6-step guide (configure inputs → discuss → prd → rtm → profile → first approve), each step ok or info (never error), with a trailing "Next:" item.
+- `runDoctor` pushes setup-progress as the first section.
+- `test/io-atomic-write.test.ts` (9 tests) + `test/doctor-setup-progress.test.ts` (9 tests).
+
+### Phase 3 — Per-issue fix suggestions
+
+- New `doctor/checks/fix-suggestions.ts`: `SUGGESTIONS` table with 25 fingerprints + `suggestionFor(key)` lookup. Throws on unknown keys (typo guard).
+- Refactored 7 check files + 5 inline builders to route suggestions through `suggestionFor()`.
+- `report.ts` already renders `   → Fix: <suggestion>` per item (Phase 1).
+- `test/doctor-fix-suggestions.test.ts` — 6 tests.
+
+### Phase 4 — New checks (one per sub-phase)
+
+- **Phase 4a — Sub-agent extension:** `checks/subagent-extension.ts` audits `~/.pi/agent/settings.json` for `pi-interactive-subagents` presence + version ≥ 3.7.2 + no competing providers + no dead local-path entries. 8 tests.
+- **Phase 4b — Stray files:** `checks/stray-files.ts` walks project root + `.IDE_Plans/velpari/runs/` for `tmp_*.sh` / `tmp_*.ts`. 7 tests.
+- **Phase 4c — Web-tool lock:** `checks/web-tool-lock.ts` flags any agent carrying `websearch`/`fetchurl` unless its name is `web-search-agent`. Extended `parseFrontmatter` in `agents.ts` to handle YAML-list `tools:` style. 8 tests.
+- **Phase 4d — Agent file integrity:** `checkAgentFileIntegrity` in `checks/agents.ts` audits filename ↔ `name:` match, tools known, thinking valid, session-mode valid, auto-exit/spawning boolean, body non-empty. New `KNOWN_TOOL_NAMES`, `VALID_THINKING_LEVELS`, `VALID_SESSION_MODES`, `VALID_AUTO_EXIT`, `VALID_SPAWNING` exports. 10 tests.
+
+### Phase 5 — Expanded secret scan + action items + docs
+
+- Refactored `checks/secrets.ts` into `checkSecretScan(cwd)`. 7 patterns over 4 locations (`Doc/**/*.md`, `.pi/agents/*.md`, `.pi/skills/*/SKILL.md`, `.pi/velpari/*.json`): AWS, GitHub PAT, OpenAI, Google API, PEM private key, Bearer token, generic `key=value`.
+- Removed the inline Doc-only secret scan from `appendDocArtifactsSection`. The new `checkSecretScan` is its own section.
+- New top-of-report **Action items** callout in `runDoctor`: lists every error + warning with its `suggestion` so they survive TUI truncation.
+- `README.md` "Doctor sections" subsection updated with the 17-section enumeration.
+- `test/doctor-secret-scan.test.ts` — 8 tests covering all 7 patterns + scope.
+
+### Stats
+
+- **560 unit tests** (baseline was 486) across 51 test files.
+- **9 phase commits** on `doctor-upgrade` branch (no pushes).
+- All phase gates (build clean + tests pass) satisfied before the next phase started.
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 

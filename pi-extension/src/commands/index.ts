@@ -26,7 +26,7 @@ import { handleStatus } from "../discipline/status.js";
 import { handleReset } from "../discipline/reset.js";
 import { handleConfigureInputs } from "../discipline/configure-inputs.js";
 import { handleDoctor } from "../discipline/doctor/index.js";
-import { loadState } from "./state.js";
+import { loadState } from "../core/state.js";
 
 /**
  * All 25 commands. Adds /velpari-configure-requirements and
