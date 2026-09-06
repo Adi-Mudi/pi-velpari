@@ -30,7 +30,7 @@ It mirrors Pi-Senai's discipline model (state-gated runs, working/published copy
 - **Package manager:** npm
 - **Build:** `tsc` (see `tsconfig.json`)
 - **Target layout:** ESM under `dist/`
-- **Peer dependencies:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-interactive-subagents` (≥3.7.2 — provides the `subagent` tool for visible subagent panes).
+- **Peer dependencies:** `@earendil-works/pi-coding-agent`, `pi-interactive-subagents` (≥3.7.2 — provides the `subagent` tool for visible subagent panes).
 - **No runtime dependencies.** No test framework, no linter.
 
 ## Build and test
@@ -195,7 +195,7 @@ The `prompts/` placeholder folder was removed in Phase 0; future prompt modules 
 1. **Zero hallucination.** Every claim in every artifact traces back to a user-provided statement in a discussion note or to an earlier approved artifact. Stage skill markdown enforces this; doctor validates it via cross-reference.
 2. **Confirm-then-write.** No file under `Doc/` is written without a user-facing preview and explicit `/velpari-approve`. Working copies in `.IDE_Plans/velpari/runs/` are written freely; published copies in `Doc/` are only produced on approval.
 3. **Stage gates are enforced.** A stage cannot start until its prerequisites are approved. The transition table in `constants.ts:STAGE_TRANSITIONS` is the single source of truth.
-4. **Scout pattern via real visible subagents (v2.0 — all 9 stages).** All 9 stage commands (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) use 4 parallel subagents (36 total scouts) via the `subagent` tool from `@earendil-works/pi-interactive-subagents`. They run in **visible multiplexer panes**. Agent definitions live in `.pi/agents/*.md`, auto-bootstrapped from bundled `skills/agents/*.md` files by `agents-install.ts:ensureStageAgents` on first use. Each scout writes its report to `<runDir>/<stage>/scouts/<name>-report.json`. The parent LLM orchestrates spawning, waiting, optional iterative follow-up rounds, and writes the working-copy artifact. Stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan) follow the pattern; the optional post-pipeline stages (atomic-function, development-order) also follow it. Discussion, approve-discuss, approve, handoff, show-*, status, reset, configure-inputs, doctor are NOT visible-subagent stages.
+4. **Scout pattern via real visible subagents (v2.0 — all 9 stages).** All 9 stage commands (discuss, prd, rtm, feasibility, design, pseudocode, testplan, atomic-function, development-order) use 4 parallel subagents (36 total scouts) via the `subagent` tool from `pi-interactive-subagents`. They run in **visible multiplexer panes**. Agent definitions live in `.pi/agents/*.md`, auto-bootstrapped from bundled `skills/agents/*.md` files by `agents-install.ts:ensureStageAgents` on first use. Each scout writes its report to `<runDir>/<stage>/scouts/<name>-report.json`. The parent LLM orchestrates spawning, waiting, optional iterative follow-up rounds, and writes the working-copy artifact. Stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan) follow the pattern; the optional post-pipeline stages (atomic-function, development-order) also follow it. Discussion, approve-discuss, approve, handoff, show-*, status, reset, configure-inputs, doctor are NOT visible-subagent stages.
 5. **Helper ↔ atomic relationship.** Helper functions are tracked in `Doc/PRD_Pi-Velpari.md` (`## Helper Functions` section). Atomic functions are tracked in `Doc/atomic-functions.md`. Atomic functions are strictly leaf nodes; helper functions may call atomic functions. The dependency is bidirectional.
 6. **Optional stages stay optional.** `/velpari-atomic-function` and `/velpari-development-order` are post-pipeline stages that can be invoked in any order or skipped entirely. `/velpari-handoff` works with or without their output.
 7. **Deterministic, not creative.** File paths, file formats, state JSON shape, stage transitions, and the handoff schema are all fixed by code. Only the artifact contents vary per run.
@@ -304,7 +304,7 @@ Total: 25 commands.
 - **Per-command doc scope is the source of truth.** Every stage command's reads and writes are declared in `commands.ts:COMMAND_SCOPE`. Before any LLM call, `checkDocScope` validates that every required input exists and is non-empty. The PRD row for the command, sequence doc §11, design §3.7, pseudocode §17, and test cases §35 must all agree. Drift is a defect.
 - **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. Do not add architecture-related commands to Velpari in v1.x. The rationale is in `Doc/design.md` §7.7 and `Doc/PRD.md` (FR-47).
 - **No runtime dependency on Senai.** `package.json` does not list Senai. TUI patterns are re-implemented in `pi-extension/src/ui/` using Pi's TUI primitives. Either extension can be removed or refactored without breaking the other. (FR-55)
-- **Uniform subagent pattern.** All 36 scout agents follow the `subagent()` invocation via `@earendil-works/pi-interactive-subagents`. Each stage handler passes `agent:`, `cwd:`, `task:` and `auto-exit: true`. Use `pi-extension/src/stage-runner.ts:runStageWithScouts()` for any stage that spawns subagents. No in-process scout API.
+- **Uniform subagent pattern.** All 36 scout agents follow the `subagent()` invocation via `pi-interactive-subagents`. Each stage handler passes `agent:`, `cwd:`, `task:` and `auto-exit: true`. Use `pi-extension/src/stage-runner.ts:runStageWithScouts()` for any stage that spawns subagents. No in-process scout API.
 - **Framework is one-time setup.** Framework/tech-stack is captured in `/velpari-configure-inputs`, persisted in `.pi/velpari/files.json:framework`, and injected into every stage prompt. It is NOT a pipeline stage. Do not add a `/velpari-framework` command. (FR-49)
 - **WEB SEARCH AGENT is user-prompted.** After the multi-turn interview, the user is asked "do you want a web search?" (yes/no). Do not auto-invoke the web search. The decision is per-discussion. (FR-52)
 - **Discussion approval uses `/velpari-approve-discuss`, NOT `/velpari-approve`** (v1.6). The discussion stage has its own dedicated approve command. `/velpari-approve-discuss` publishes `Doc/discussion/discussion-<topic-slug>.md` and **auto-invokes `/velpari-prd`** to chain into the PRD stage. `/velpari-approve` errors when in discussion stage. Use `/velpari-approve` only for stages 2–7 (prd, rtm, feasibility, design, pseudocode, testplan). (FR-58, FR-59, NFR-14)
@@ -327,35 +327,17 @@ Total: 25 commands.
 
 ## Extension loading
 
-The extension has a guard against loading inside subagent processes. **This guard is unverified** — `PI_SUBAGENT_NAME` is not documented in the official Pi extension API (verified 2026-09-02 against github.com/earendil-works/pi). The guard is kept as a defensive check; Phase A includes a smoke test to confirm whether the env var is set inside a subagent.
+The extension has a guard against loading inside subagent processes:
 
 ```typescript
 if (process.env.PI_SUBAGENT_NAME) return;
 ```
 
-If the smoke test fails, remove the guard and rely on the in-session command registration model (Pi does not pass `/velpari-*` commands to subagents because subagents run their own command namespace).
+**This guard is unverified** — `PI_SUBAGENT_NAME` is not documented in the official Pi extension API (verified 2026-09-02 against github.com/earendil-works/pi). The guard is kept as a defensive check. If it ever breaks a real subagent spawn, remove it and rely on the in-session command registration model (Pi does not pass `/velpari-*` commands to subagents because subagents run their own command namespace).
 
-## Development symlink
+## Install (canonical)
 
-For local testing, the extension can be symlinked into Pi. **Symlink the built directory** (`dist/pi-extension/src/`), NOT a single file or the project root — Pi auto-discovers `index.{ts,js}` inside the symlinked directory, and the relative imports (`./commands.js`, `./state.js`, etc.) resolve correctly only when siblings are present.
-
-Per the official docs:
-- Single-file extensions: `~/.pi/agent/extensions/*.ts` (one file only — no relative imports)
-- Multi-file extensions: `~/.pi/agent/extensions/*/index.{ts,js}` (subdirectory with index entry)
-
-```bash
-mkdir -p ~/.pi/agent/extensions
-ln -sf /path/to/Pi-Velpari/dist/pi-extension/src ~/.pi/agent/extensions/pi-velpari
-```
-
-After code changes, run `npm run build` (the symlink auto-reflects the new dist) and restart Pi or run `/reload`.
-
-For project-local install instead of global:
-
-```bash
-mkdir -p .pi/extensions
-ln -sf /path/to/Pi-Velpari/dist/pi-extension/src .pi/extensions/pi-velpari
-```
+The canonical install path is `pi install npm:@Adi-Mudi/pi-velpari`. For local dev with hot-reload, build then symlink `dist/pi-extension/src` to `~/.pi/agent/extensions/pi-velpari`. Both paths are equivalent; the npm install is canonical. See `README.md` "Install" section for the full sequence.
 
 ## Cross-extension compatibility
 
