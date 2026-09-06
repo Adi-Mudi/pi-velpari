@@ -43,6 +43,7 @@ import { checkRequirementsProfileSection } from "./checks/profile.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
 import { checkSubagentExtension } from "./checks/subagent-extension.js";
 import { checkStrayFiles } from "./checks/stray-files.js";
+import { checkWebToolLock } from "./checks/web-tool-lock.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
@@ -284,6 +285,7 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		buildMultiplexerSection(cwd),
 		checkSubagentExtension(),
 		checkStrayFiles(cwd),
+		checkWebToolLock(cwd),
 		checkScoutAgentsSection(cwd),
 		checkStageSkillsSection(cwd),
 		buildDocSecretScanSection(cwd),

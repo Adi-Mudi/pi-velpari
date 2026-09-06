@@ -71,10 +71,20 @@ export function parseFrontmatter(markdown: string): Record<string, string> {
 	if (!match) return {};
 	const block = match[1]!;
 	const result: Record<string, string> = {};
+	let lastKey: string | null = null;
 	for (const line of block.split("\n")) {
-		const m = line.match(/^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
-		if (m) {
-			result[m[1]!] = m[2]!.trim();
+		const kv = line.match(/^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+		if (kv) {
+			const key = kv[1]!;
+			const value = kv[2]!.trim();
+			result[key] = value;
+			lastKey = value === "" ? key : null;
+			continue;
+		}
+		// Indented list item under the last key (YAML list style).
+		const li = line.match(/^\s+-\s+(.*)$/);
+		if (li && lastKey) {
+			result[lastKey] = `${result[lastKey] ?? ""},${li[1]!.trim()}`.replace(/^,/, "");
 		}
 	}
 	return result;
