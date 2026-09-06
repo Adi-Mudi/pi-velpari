@@ -38,6 +38,7 @@ import { detectMultiplexer, detectInteractiveSubagentsVersion } from "./checks/m
 import {
 	checkScoutAgentsSection,
 	checkStageSkillsSection,
+	checkAgentFileIntegrity,
 } from "./checks/agents.js";
 import { checkRequirementsProfileSection } from "./checks/profile.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
@@ -286,6 +287,7 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkSubagentExtension(),
 		checkStrayFiles(cwd),
 		checkWebToolLock(cwd),
+		checkAgentFileIntegrity(cwd),
 		checkScoutAgentsSection(cwd),
 		checkStageSkillsSection(cwd),
 		buildDocSecretScanSection(cwd),

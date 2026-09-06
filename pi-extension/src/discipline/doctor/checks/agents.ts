@@ -25,6 +25,31 @@ import { suggestionFor } from "./fix-suggestions.js";
 export const REQUIRED_AGENT_FIELDS = ["name", "description", "tools", "thinking", "session-mode", "auto-exit", "spawning"];
 
 /**
+ * Known pi tool names. Mirrors Senai's `_types.ts`. Anything outside
+ * this set in an agent's `tools:` is a typo that blocks scout startup.
+ */
+export const KNOWN_TOOL_NAMES: Set<string> = new Set([
+	"read", "write", "edit", "bash", "grep", "find", "ls",
+	"askuserquestion", "intercom", "subagent",
+	"taskcreate", "taskexecute", "taskget", "tasklist", "taskoutput", "taskstop", "taskupdate",
+	"websearch", "fetchurl",
+]);
+
+/** Valid pi thinking levels. */
+export const VALID_THINKING_LEVELS: Set<string> = new Set([
+	"off", "minimal", "low", "medium", "high", "xhigh", "max",
+]);
+
+/** Valid `session-mode:` values per pi's agent frontmatter spec. */
+export const VALID_SESSION_MODES: Set<string> = new Set(["standalone", "lineage-only"]);
+
+/** Valid `auto-exit:` values. */
+export const VALID_AUTO_EXIT: Set<string> = new Set(["true", "false"]);
+
+/** Valid `spawning:` values. */
+export const VALID_SPAWNING: Set<string> = new Set(["true", "false"]);
+
+/**
  * Per-stage scout agent ids (all 9 stages use 4 visible subagents each).
  */
 export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
@@ -223,4 +248,143 @@ export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 	});
 
 	return { title: "Stage skills", items };
+}
+
+// ---------------------------------------------------------------------------
+// Agent file integrity (Phase 4d)
+// ---------------------------------------------------------------------------
+
+import { readdirSync } from "node:fs";
+
+/**
+ * Per-file integrity audit of `.pi/agents/*.md`. Catches typos and
+ * invalid frontmatter values that block scout startup but slip past
+ * the "required fields present" check.
+ */
+export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
+	const agentsDir = join(cwd, ".pi", "agents");
+
+	if (!existsSync(agentsDir)) {
+		items.push({
+			status: "ok",
+			message: "No .pi/agents/ directory — nothing to audit.",
+		});
+		return { title: "Agent file integrity", items };
+	}
+
+	const files = readdirSync(agentsDir, { encoding: "utf8" }).filter(
+		(name) => typeof name === "string" && name.endsWith(".md"),
+	);
+	let errors = 0;
+	let warnings = 0;
+
+	for (const filename of files) {
+		const target = join(agentsDir, filename);
+		const content = readFileSync(target, "utf8");
+		const fm = parseFrontmatter(content);
+		const stem = filename.replace(/\.md$/, "");
+
+		// 1. Filename vs name: frontmatter match.
+		if (fm.name && fm.name !== stem) {
+			errors++;
+			items.push({
+				status: "error",
+				message: `${filename}: \`name:\` ("${fm.name}") does not match filename ("${stem}").`,
+				suggestion: `Rename the file or update \`name:\` to "${stem}".`,
+			});
+		}
+
+		// 2. tools: values are in KNOWN_TOOL_NAMES.
+		if (fm.tools) {
+			const tools = fm.tools
+				.split(/[\s,[\]]+/)
+				.map((t) => t.trim())
+				.filter(Boolean);
+			const unknown = tools.filter((t) => !KNOWN_TOOL_NAMES.has(t));
+			if (unknown.length > 0) {
+				errors++;
+				items.push({
+					status: "error",
+					message: `${filename}: unknown tool(s) in \`tools:\`: ${unknown.join(", ")}`,
+					details: [
+						`Known tools: ${Array.from(KNOWN_TOOL_NAMES).sort().join(", ")}`,
+					],
+					suggestion: "Fix the typo or remove the unknown tool.",
+				});
+			}
+		}
+
+		// 3. thinking: is in VALID_THINKING_LEVELS.
+		if (fm.thinking && !VALID_THINKING_LEVELS.has(fm.thinking)) {
+			errors++;
+			items.push({
+				status: "error",
+				message: `${filename}: invalid \`thinking:\` value "${fm.thinking}".`,
+				details: [`Valid levels: ${Array.from(VALID_THINKING_LEVELS).join(", ")}`],
+				suggestion: `Set \`thinking:\` to one of: ${Array.from(VALID_THINKING_LEVELS).join(", ")}.`,
+			});
+		}
+
+		// 4. session-mode: is in VALID_SESSION_MODES.
+		if (fm["session-mode"] && !VALID_SESSION_MODES.has(fm["session-mode"])) {
+			errors++;
+			items.push({
+				status: "error",
+				message: `${filename}: invalid \`session-mode:\` value "${fm["session-mode"]}".`,
+				details: [`Valid values: ${Array.from(VALID_SESSION_MODES).join(", ")}`],
+				suggestion: `Set \`session-mode:\` to "${Array.from(VALID_SESSION_MODES).join("\" or \"")}".`,
+			});
+		}
+
+		// 5. auto-exit: is a known boolean string.
+		if (fm["auto-exit"] && !VALID_AUTO_EXIT.has(fm["auto-exit"])) {
+			warnings++;
+			items.push({
+				status: "warning",
+				message: `${filename}: \`auto-exit:\` value "${fm["auto-exit"]}" is not a boolean.`,
+				suggestion: 'Set `auto-exit: true` or `auto-exit: false`.',
+			});
+		}
+
+		// 6. spawning: is a known boolean string.
+		if (fm.spawning && !VALID_SPAWNING.has(fm.spawning)) {
+			warnings++;
+			items.push({
+				status: "warning",
+				message: `${filename}: \`spawning:\` value "${fm.spawning}" is not a boolean.`,
+				suggestion: 'Set `spawning: true` or `spawning: false`.',
+			});
+		}
+
+		// 7. Body is non-empty (anything after the frontmatter closer).
+		const body = content.replace(/^---[\s\S]*?---\n?/, "").trim();
+		if (body.length === 0) {
+			warnings++;
+			items.push({
+				status: "warning",
+				message: `${filename}: body is empty after frontmatter.`,
+				suggestion: "Add at least one paragraph describing the agent's mandate.",
+			});
+		}
+	}
+
+	if (files.length === 0) {
+		items.push({
+			status: "ok",
+			message: "No agent files present — nothing to audit.",
+		});
+	} else if (errors === 0 && warnings === 0) {
+		items.push({
+			status: "ok",
+			message: `Agent file integrity OK: ${files.length} file(s) checked, 0 issues.`,
+		});
+	} else {
+		items.push({
+			status: errors > 0 ? "error" : "warning",
+			message: `Agent file integrity: ${errors} error(s), ${warnings} warning(s) across ${files.length} file(s).`,
+		});
+	}
+
+	return { title: "Agent file integrity", items };
 }
