@@ -17,6 +17,7 @@ import { loadState } from "../../../core/state.js";
 import { loadFilesConfig } from "../../../core/config.js";
 import { loadRequirementsProfile } from "../../../core/profile.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 export function checkSetupProgress(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
@@ -34,7 +35,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		message: filesDone
 			? "1. Project files configured — done"
 			: "1. Project files configured — pending",
-		suggestion: filesDone ? undefined : "Run `/velpari-configure-inputs`.",
+		suggestion: filesDone ? undefined : suggestionFor("setup-files"),
 	});
 
 	// Step 2-4 + 6 depend on the run state.
@@ -55,7 +56,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		suggestion:
 			stage !== "none" && stage !== "discussing"
 				? undefined
-				: "Run `/velpari-discuss <mission>`.",
+				: suggestionFor("setup-discuss"),
 	});
 
 	const prdDone =
@@ -74,7 +75,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	items.push({
 		status: prdDone ? "ok" : "info",
 		message: prdDone ? "3. PRD drafted — done" : "3. PRD drafted — pending",
-		suggestion: prdDone ? undefined : "Run `/velpari-prd` (after discussion).",
+		suggestion: prdDone ? undefined : suggestionFor("setup-prd"),
 	});
 
 	const rtmDone =
@@ -91,7 +92,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	items.push({
 		status: rtmDone ? "ok" : "info",
 		message: rtmDone ? "4. RTM built — done" : "4. RTM built — pending",
-		suggestion: rtmDone ? undefined : "Run `/velpari-rtm` (after PRD).",
+		suggestion: rtmDone ? undefined : suggestionFor("setup-rtm"),
 	});
 
 	// Step 5 — requirements profile (optional).
@@ -107,7 +108,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		message: profile
 			? "5. Requirements profile configured — done"
 			: "5. Requirements profile configured — pending (optional)",
-		suggestion: profile ? undefined : "Run `/velpari-configure-requirements`.",
+		suggestion: profile ? undefined : suggestionFor("setup-profile"),
 	});
 
 	// Step 6 — first approve.
@@ -117,7 +118,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		message: approved
 			? "6. First approve done — ready for the pipeline"
 			: "6. First approve — pending",
-		suggestion: approved ? undefined : "Run `/velpari-approve-discuss` after discussion.",
+		suggestion: approved ? undefined : suggestionFor("setup-approve"),
 	});
 
 	// Top-of-section summary line that names the single next command.

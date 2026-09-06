@@ -41,6 +41,7 @@ import {
 } from "./checks/agents.js";
 import { checkRequirementsProfileSection } from "./checks/profile.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
+import { suggestionFor } from "./checks/fix-suggestions.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
  * Each is sourced from its own check submodule so callers can import
@@ -100,7 +101,7 @@ function buildStateSection(cwd: string): DiagnosticSection {
 		items.push({
 			status: "info",
 			message: "No active run. State: empty.",
-			suggestion: "Run `/velpari-discuss <mission>` to start a run.",
+			suggestion: suggestionFor("no-active-run"),
 		});
 	}
 	return { title: "Run state", items };
@@ -115,13 +116,13 @@ function buildConfigSection(cwd: string): DiagnosticSection {
 		items.push({
 			status: valid ? "ok" : "error",
 			message: `Config: ${valid ? "VALID" : "INVALID"} (projectName="${config.projectName}")`,
-			suggestion: valid ? undefined : "Edit `.pi/velpari/files.json` to fix the schema.",
+			suggestion: valid ? undefined : suggestionFor("config-invalid"),
 		});
 	} else {
 		items.push({
 			status: "info",
 			message: "Config: MISSING",
-			suggestion: "Run `/velpari-configure-inputs`.",
+			suggestion: suggestionFor("config-missing"),
 		});
 	}
 	return { title: "Config", items };
@@ -134,7 +135,7 @@ function buildDocArtifactsSection(cwd: string): DiagnosticSection {
 		items.push({
 			status: "info",
 			message: "Doc/ directory missing",
-			suggestion: "It will be created when you publish the first artifact via `/velpari-approve`.",
+			suggestion: suggestionFor("doc-dir-missing"),
 		});
 		return { title: "Doc/ artifacts", items };
 	}
@@ -176,7 +177,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 		details: ["Required for /velpari-discuss v2.0 visible subagents."],
 		suggestion:
 			mux.mux === "unknown"
-				? "Start pi inside tmux, zellij, wezterm, or cmux."
+				? suggestionFor("unknown-multiplexer")
 				: undefined,
 	});
 
@@ -190,7 +191,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 		items.push({
 			status: "warning",
 			message: "pi-interactive-subagents: NOT FOUND (peer dep required for visible subagents)",
-			suggestion: "Install: `pi install git:github.com/HazAT/pi-interactive-subagents`",
+			suggestion: suggestionFor("subagent-ext-missing"),
 		});
 	}
 
@@ -205,7 +206,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 			status: "warning",
 			message: "zellij known bug [pi-interactive-subagents Issue #19]: `zellij action close-pane` closes the FOCUSED pane, not the target.",
 			details: [
-				"During the discussion stage, do NOT manually focus a subagent pane.",
+				suggestionFor("zellij-close-pane"),
 				"cmux/tmux/wezterm are not affected.",
 			],
 		});
@@ -245,7 +246,7 @@ function buildDocSecretScanSection(cwd: string): DiagnosticSection {
 			status: "warning",
 			message: `Secret scan (NFR-04): ${hits.length} potential secret(s) in Doc/.`,
 			details: hits,
-			suggestion: "Move secrets to environment variables. Never commit them.",
+			suggestion: suggestionFor("secret-detected"),
 		});
 	} else {
 		items.push({

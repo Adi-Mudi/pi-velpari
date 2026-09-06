@@ -16,6 +16,7 @@ import {
 	validateRequirementsProfile,
 } from "../../../core/profile.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 export function checkRequirementsProfileSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
@@ -25,7 +26,7 @@ export function checkRequirementsProfileSection(cwd: string): DiagnosticSection 
 		items.push({
 			status: "info",
 			message: "Profile: MISSING (run /velpari-configure-requirements)",
-			suggestion: "Run `/velpari-configure-requirements` to capture the requirements profile.",
+			suggestion: suggestionFor("profile-missing"),
 		});
 		return { title: "Requirements profile", items };
 	}

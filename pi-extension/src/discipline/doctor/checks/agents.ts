@@ -16,6 +16,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -104,7 +105,7 @@ export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
 				items.push({
 					status: "warning",
 					message: `${id}.md (${stage}) MISSING — will auto-bootstrap on first /velpari-${stage}.`,
-					suggestion: `Run any /velpari-${stage} command to trigger auto-install, or place the file manually at \`.pi/agents/${id}.md\`.`,
+					suggestion: suggestionFor("scout-agent-missing"),
 				});
 				continue;
 			}
@@ -116,7 +117,7 @@ export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
 				items.push({
 					status: "error",
 					message: `${id}.md (${stage}) frontmatter missing fields: ${missing.join(", ")}`,
-					suggestion: `Add the missing frontmatter fields to \`.pi/agents/${id}.md\`. Required: ${REQUIRED_AGENT_FIELDS.join(", ")}.`,
+					suggestion: suggestionFor("scout-agent-bad-frontmatter"),
 				});
 			} else {
 				items.push({
@@ -158,7 +159,7 @@ export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 			items.push({
 				status: "error",
 				message: `skills/velpari-${stage}.md MISSING`,
-				suggestion: "Restore the skill markdown from the bundled `skills/` directory or git history.",
+				suggestion: suggestionFor("skill-missing"),
 			});
 			continue;
 		}
@@ -201,7 +202,7 @@ export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 				status: "error",
 				message: `skills/velpari-${stage}.md: ${issues.length} issue(s)`,
 				details: issues,
-				suggestion: `Fix the listed contract checks in skills/velpari-${stage}.md.`,
+				suggestion: suggestionFor("skill-bad-contract"),
 			});
 		}
 	}

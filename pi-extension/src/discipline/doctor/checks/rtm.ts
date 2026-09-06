@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveDocArtifact } from "../../../core/paths.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 export function checkRtmTraceabilitySection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
@@ -20,7 +21,7 @@ export function checkRtmTraceabilitySection(cwd: string, projectName: string): D
 		items.push({
 			status: "info",
 			message: "RTM traceability skipped — project name missing.",
-			suggestion: "Run `/velpari-configure-inputs` to set the project name.",
+			suggestion: suggestionFor("project-name-missing"),
 		});
 		return { title: "RTM traceability", items };
 	}
@@ -32,7 +33,7 @@ export function checkRtmTraceabilitySection(cwd: string, projectName: string): D
 		items.push({
 			status: "info",
 			message: "PSRS not found — skipping traceability check.",
-			suggestion: "Run `/velpari-prd` first; the RTM traces requirements back to the PSRS.",
+			suggestion: suggestionFor("psrs-missing"),
 		});
 		return { title: "RTM traceability", items };
 	}
@@ -41,7 +42,7 @@ export function checkRtmTraceabilitySection(cwd: string, projectName: string): D
 		items.push({
 			status: "info",
 			message: "RTM not found — skipping traceability check.",
-			suggestion: "Run `/velpari-rtm` after the PRD stage.",
+			suggestion: suggestionFor("rtm-missing"),
 		});
 		return { title: "RTM traceability", items };
 	}
@@ -68,7 +69,7 @@ export function checkRtmTraceabilitySection(cwd: string, projectName: string): D
 				`PSRS ids: ${psrsIds.size} | RTM ids: ${rtmIds.size}`,
 				`Unknown ids: ${truncated}`,
 			],
-			suggestion: "Either add the missing ids to the PSRS or remove them from the RTM. Traceability is bidirectional.",
+			suggestion: suggestionFor("rtm-unknown-id"),
 		});
 	} else {
 		items.push({

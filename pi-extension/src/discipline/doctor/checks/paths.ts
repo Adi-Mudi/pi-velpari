@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { buildGroupedPath, buildOutputPath } from "../../../core/paths.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 const ARTIFACTS: ReadonlyArray<string> = [
 	"PRD",
@@ -35,7 +36,7 @@ export function checkGroupedLegacyPathsSection(
 		items.push({
 			status: "info",
 			message: "Grouped / legacy paths skipped — project name missing.",
-			suggestion: "Run `/velpari-configure-inputs` to set the project name.",
+			suggestion: suggestionFor("project-name-missing"),
 		});
 		return { title: "Grouped / legacy paths", items };
 	}
@@ -57,13 +58,13 @@ export function checkGroupedLegacyPathsSection(
 				status: "info",
 				message: `${a}: legacy only — rerun the stage to produce the grouped copy.`,
 				details: [`path=${legacy}`],
-				suggestion: `Rerun the corresponding stage command (e.g. /velpari-${kebabStage(a)}) to regenerate in the grouped layout.`,
+				suggestion: suggestionFor("artifact-legacy-only"),
 			});
 		} else {
 			items.push({
 				status: "info",
 				message: `${a}: missing (not yet produced by this run).`,
-				suggestion: `Run the matching stage command to generate ${a}.`,
+				suggestion: suggestionFor("artifact-missing"),
 			});
 		}
 	}

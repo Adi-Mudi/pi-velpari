@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { buildGroupedPath, buildOutputPath } from "../../../core/paths.js";
 import { renderPsrsSummary, validatePsrs } from "../../../core/psrs.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
+import { suggestionFor } from "./fix-suggestions.js";
 
 export function checkPsrsSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
@@ -21,7 +22,7 @@ export function checkPsrsSection(cwd: string, projectName: string): DiagnosticSe
 		items.push({
 			status: "info",
 			message: "PSRS validation skipped — project name missing. Run `/velpari-configure-inputs` first.",
-			suggestion: "Run `/velpari-configure-inputs` to set the project name.",
+			suggestion: suggestionFor("project-name-missing"),
 		});
 		return { title: "PSRS validation", items };
 	}
@@ -44,7 +45,7 @@ export function checkPsrsSection(cwd: string, projectName: string): DiagnosticSe
 		items.push({
 			status: "info",
 			message: `Legacy PSRS found at ${legacy}. PSRS validation applies to new grouped documents; rerun the PRD stage to create a validated grouped copy.`,
-			suggestion: "Rerun `/velpari-prd` to regenerate the grouped PSRS with current schema.",
+			suggestion: suggestionFor("psrs-legacy-only"),
 		});
 		return { title: "PSRS validation", items };
 	}
@@ -52,7 +53,7 @@ export function checkPsrsSection(cwd: string, projectName: string): DiagnosticSe
 	items.push({
 		status: "info",
 		message: "PSRS not found yet. It will be created when you run `/velpari-prd` after `/velpari-discuss`.",
-		suggestion: "Run `/velpari-discuss <mission>` first, then `/velpari-prd`.",
+		suggestion: suggestionFor("psrs-missing"),
 	});
 	return { title: "PSRS validation", items };
 }
