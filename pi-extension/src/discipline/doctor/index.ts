@@ -41,6 +41,7 @@ import {
 	checkAgentFileIntegrity,
 } from "./checks/agents.js";
 import { checkRequirementsProfileSection } from "./checks/profile.js";
+import { checkSecretScan } from "./checks/secrets.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
 import { checkSubagentExtension } from "./checks/subagent-extension.js";
 import { checkStrayFiles } from "./checks/stray-files.js";
@@ -219,48 +220,9 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 	return { title: "Multiplexer (required for /velpari-discuss v2.0)", items };
 }
 
-// Inline secret scan for Doc/ only; Phase 5 expands scope.
-function buildDocSecretScanSection(cwd: string): DiagnosticSection {
-	const items: DiagnosticItem[] = [];
-	const docDir = join(cwd, "Doc");
-	if (!existsSync(docDir)) {
-		return { title: "Secret scan (Doc/)", items };
-	}
-
-	const recurse = (dir: string): string[] => {
-		const out: string[] = [];
-		for (const e of readdirSync(dir, { withFileTypes: true })) {
-			if (e.isDirectory()) out.push(...recurse(join(dir, e.name)));
-			else if (e.name.endsWith(".md")) out.push(join(dir, e.name));
-		}
-		return out;
-	};
-
-	const hits: string[] = [];
-	for (const filePath of recurse(docDir)) {
-		const content = readFileSync(filePath, "utf8");
-		const scanHits = scanForSecrets(content);
-		for (const h of scanHits) {
-			hits.push(`  - ${h.pattern} at line ${h.line} in ${filePath.replace(`${cwd}/`, "")}`);
-		}
-	}
-
-	if (hits.length > 0) {
-		items.push({
-			status: "warning",
-			message: `Secret scan (NFR-04): ${hits.length} potential secret(s) in Doc/.`,
-			details: hits,
-			suggestion: suggestionFor("secret-detected"),
-		});
-	} else {
-		items.push({
-			status: "ok",
-			message: "Secret scan: no secrets detected in Doc/.",
-		});
-	}
-
-	return { title: "Secret scan (Doc/)", items };
-}
+// ---------------------------------------------------------------------------
+// runDoctor — assembles the report.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // runDoctor — assembles the report.
@@ -290,11 +252,48 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkAgentFileIntegrity(cwd),
 		checkScoutAgentsSection(cwd),
 		checkStageSkillsSection(cwd),
-		buildDocSecretScanSection(cwd),
+		checkSecretScan(cwd),
 	];
 
-	const { summary, ok } = summarize(sections);
-	return { ok, summary, sections };
+	// Phase 5: prepend an "Action items" callout so errors and warnings
+	// survive TUI truncation. Built AFTER the main sections so it sees
+	// every actionable item.
+	const actionItems = buildActionItemsSection(sections);
+	const finalSections = [actionItems, ...sections];
+
+	const { summary, ok } = summarize(finalSections);
+	return { ok, summary, sections: finalSections };
+}
+
+/**
+ * Build a top-of-report "Action items" callout listing every error
+ * and warning item with its suggestion. Useful when the full report
+ * is truncated by the TUI notify (8000-char cap).
+ */
+function buildActionItemsSection(sections: DiagnosticSection[]): DiagnosticSection {
+	const items: DiagnosticItem[] = [];
+	for (const section of sections) {
+		for (const item of section.items) {
+			if (item.status !== "error" && item.status !== "warning") continue;
+			const fix = item.suggestion ? ` → Fix: ${item.suggestion}` : "";
+			items.push({
+				status: item.status,
+				message: `${section.title}: ${item.message}${fix}`,
+			});
+		}
+	}
+	if (items.length === 0) {
+		return {
+			title: "Action items",
+			items: [
+				{
+					status: "ok",
+					message: "No errors or warnings — nothing to fix.",
+				},
+			],
+		};
+	}
+	return { title: "Action items", items };
 }
 
 /** Maximum length of the notify that the handler pushes to the TUI. */

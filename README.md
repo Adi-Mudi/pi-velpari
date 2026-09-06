@@ -197,7 +197,25 @@ npm test
 - `/velpari-reset` — discard current run.
 - `/velpari-configure-inputs` — capture `projectName` + framework, persisted in `.pi/velpari/files.json`.
 - `/velpari-configure-requirements` — capture the requirements profile, persisted in `.pi/velpari/requirements-profile.json`.
-- `/velpari-doctor` — audit setup (profile + PSRS + RTM traceability + grouped/legacy paths), save report.
+- `/velpari-doctor` — audit setup, save report. The doctor checks 17 sections:
+  1. **Action items** (top-of-report callout) — every error/warning with its fix
+  2. **Setup progress** — first-time-user guide naming the next command
+  3. **Run state** — current run id, mission, stage, history length
+  4. **Config** — `.pi/velpari/files.json` validity + projectName
+  5. **Requirements profile** — mode, id, version, research consent
+  6. **Doc/ artifacts** — markdown inventory under Doc/
+  7. **Grouped / legacy paths** — per-artifact presence across layouts
+  8. **Working / published separation** — working-copy vs Doc/ counts
+  9. **PSRS validation** — structural shape against the schema
+  10. **RTM traceability** — every RTM id resolves in the PSRS
+  11. **Multiplexer** — tmux / zellij / wezterm / cmux detection + Issue #19 warning
+  12. **Sub-agent extension** — pi-interactive-subagents presence + version
+  13. **Stray files** — `tmp_*.sh` / `tmp_*.ts` debris in project + runs/
+  14. **Web-tool lock** — only `web-search-agent` may carry `websearch`/`fetchurl`
+  15. **Agent file integrity** — filename ↔ `name:`, tools, thinking, session-mode, body
+  16. **Scout agents** — every stage's 4 scouts present + frontmatter OK
+  17. **Stage skills** — every skill markdown references its scouts + v2.0 machinery
+  Plus **Secret scan** across `Doc/`, `.pi/agents/`, `.pi/skills/`, `.pi/velpari/` with 7 patterns. Every actionable item carries a `→ Fix: <suggestion>` hint. Report is written via `atomic-write.ts`; verdict banner flips to ❌ on any error.
 - `/velpari-handoff` — package artifacts for Senai.
 
 ### Wrapper command (1)

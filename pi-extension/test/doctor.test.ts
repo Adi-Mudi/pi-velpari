@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -503,8 +503,49 @@ test("runDoctor still shows MISSING when profile JSON is malformed", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleDoctor — summary-line notify (Phase 1)
+// Action items callout (Phase 5)
 // ---------------------------------------------------------------------------
+
+test("runDoctor prepends an Action items section listing every error/warning with its fix", () => {
+	const dir = tempDir();
+	try {
+		// Stage a bad-frontmatter scout agent to force an error.
+		const agentsDir = join(dir, ".pi", "agents");
+		mkdirSync(agentsDir, { recursive: true });
+		writeFileSync(
+			join(agentsDir, "extractor.md"),
+			"---\nname: extractor\n---\nbody\n",
+			"utf8",
+		);
+		const report = runDoctor(dir);
+		const actionItems = report.sections.find((s) => s.title === "Action items");
+		assert.ok(actionItems, "expected an Action items section as the first section");
+		assert.equal(report.sections[0]!.title, "Action items");
+		const errorItems = actionItems.items.filter((it) => it.status === "error");
+		assert.ok(errorItems.length >= 1, "expected at least one error in Action items");
+		for (const it of errorItems) {
+			assert.match(it.message, /→ Fix:/);
+		}
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("runDoctor Action items is the first section regardless of content", () => {
+	const dir = tempDir();
+	try {
+		const report = runDoctor(dir);
+		assert.equal(report.sections[0]!.title, "Action items");
+		// On a fresh tmpdir the action-items callout contains real
+		// errors/warnings (multiplexer + scout agents + stage skills),
+		// not the "nothing to fix" fallback. Either way, the section
+		// must exist and be first.
+		const actionItems = report.sections[0]!;
+		assert.ok(actionItems.items.length >= 1);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 test("handleDoctor emits a summary notify and writes the formatted report", async () => {
 	const dir = tempDir();

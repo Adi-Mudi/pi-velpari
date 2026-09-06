@@ -106,18 +106,25 @@ The `prompts/` placeholder folder was removed in Phase 0; future prompt modules 
 │   │   ├── approve.ts             # /velpari-approve (stages 2–7)
 │   │   ├── status.ts              # /velpari-status (Phase E: switched to pi.appendEntry)
 │   │   ├── reset.ts               # /velpari-reset
-│   │   ├── doctor/                # Phase D — split into orchestrator + 7 checks + report
+│   │   ├── doctor/                # v3 (Phase 0–5): structured DiagnosticReport + verdict
 │   │   │   ├── index.ts           # runDoctor + handleDoctor + re-exports
-│   │   │   ├── report.ts          # writeDoctorReport
+│   │   │   ├── _types.ts          # DiagnosticStatus / Item / Section / Report
+│   │   │   ├── _helpers.ts        # (reserved for shared helpers)
+│   │   │   ├── report.ts          # writeDoctorReport + formatDiagnosticReport
 │   │   │   └── checks/
-│   │   │       ├── secrets.ts     # scanForSecrets
-│   │   │       ├── multiplexer.ts # detectMultiplexer + detectInteractiveSubagentsVersion
-│   │   │       ├── psrs.ts        # checkPsrs
-│   │   │       ├── rtm.ts         # checkRtmTraceability
-│   │   │       ├── agents.ts      # scout file presence + skill markdown integrity
-│   │   │       ├── paths.ts       # grouped/legacy path presence per artifact
-│   │   │       ├── working-published.ts
-│   │   │       └── profile.ts     # requirements profile presence
+│   │   │       ├── fix-suggestions.ts       # SUGGESTIONS table + suggestionFor()
+│   │   │       ├── setup-progress.ts        # 6-step first-time-user guide
+│   │   │       ├── secrets.ts               # scanForSecrets + checkSecretScan (Phase 5)
+│   │   │       ├── multiplexer.ts           # detectMultiplexer + detectInteractiveSubagentsVersion
+│   │   │       ├── subagent-extension.ts    # Phase 4a: pi package list health
+│   │   │       ├── stray-files.ts           # Phase 4b: tmp_*.sh / tmp_*.ts debris
+│   │   │       ├── web-tool-lock.ts         # Phase 4c: websearch/fetchurl lock
+│   │   │       ├── agents.ts                # scout file presence + skill markdown integrity + file integrity
+│   │   │       ├── psrs.ts                  # checkPsrsSection
+│   │   │       ├── rtm.ts                   # checkRtmTraceabilitySection
+│   │   │       ├── paths.ts                 # checkGroupedLegacyPathsSection
+│   │   │       ├── working-published.ts     # checkWorkingPublishedSeparationSection
+│   │   │       └── profile.ts               # checkRequirementsProfileSection
 │   │   ├── handoff.ts             # /velpari-handoff (Senai export)
 │   │   ├── configure-inputs.ts    # /velpari-configure-inputs
 │   │   └── configure-requirements/   # Phase C split — interview + research + recommend + UI
