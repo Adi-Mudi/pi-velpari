@@ -1,0 +1,4 @@
+# Default code owners: the repo owner reviews all changes.
+# To require code-owner approval in branch protection, check
+# "Require review from Code Owners" on the main rule.
+* @Adi-Mudi
