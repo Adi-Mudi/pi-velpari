@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [v1.0.0] — 2026-09-06 — First official pi extension release
 
-Conversion to an official pi package, installable via `pi install npm:@Adi-Mudi/pi-velpari` and discoverable on the [pi.dev/packages](https://pi.dev/packages) gallery.
+Conversion to an official pi package, installable via `pi install npm:@adi-mudi/pi-velpari` and discoverable on the [pi.dev/packages](https://pi.dev/packages) gallery.
 
 ### Added
 
@@ -16,7 +16,7 @@ Conversion to an official pi package, installable via `pi install npm:@Adi-Mudi/
 
 ### Changed
 
-- **Install docs rewritten.** `README.md` "Install" section now uses only the official `pi install npm:@Adi-Mudi/pi-velpari` command, with a focused "Required peer dependency" subsection and a clearly-labelled "Local development (optional)" subsection for hot-reload. `AGENTS.md` "Development symlink" section trimmed to a single paragraph pointing at the README.
+- **Install docs rewritten.** `README.md` "Install" section now uses only the official `pi install npm:@adi-mudi/pi-velpari` command, with a focused "Required peer dependency" subsection and a clearly-labelled "Local development (optional)" subsection for hot-reload. `AGENTS.md` "Development symlink" section trimmed to a single paragraph pointing at the README.
 - **`pi-interactive-subagents` peer-dep clarified.** Moved from `peerDependenciesMeta.optional` to a plain `peerDependencies` entry with the correct bare name (`pi-interactive-subagents`, no `@earendil-works/` scope). The package is not on the npm registry — it lives at `github.com/HazAT/pi-interactive-subagents` and is installed via `pi install git:github.com/HazAT/pi-interactive-subagents`.
 - **`fix-suggestions.ts:subagent-ext-missing`** updated to the correct install command.
 

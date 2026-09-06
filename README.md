@@ -81,7 +81,7 @@ Velpari splits pre-production work into seven explicit stages. Each stage produc
 Install via pi's package manager:
 
 ```bash
-pi install npm:@Adi-Mudi/pi-velpari
+pi install npm:@adi-mudi/pi-velpari
 ```
 
 Pi downloads the package, runs `npm install`, and loads the extension automatically. The 4 scout agent definitions are auto-bootstrapped from bundled files on first `/velpari-discuss`.

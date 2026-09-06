@@ -27,7 +27,7 @@ function writePkg(
 	overrides: Record<string, unknown> = {},
 ): void {
 	const base = {
-		name: "@Adi-Mudi/pi-velpari",
+		name: "@adi-mudi/pi-velpari",
 		version: "1.0.0",
 		keywords: ["pi-package", "pi"],
 		pi: { extensions: ["./pi-extension/src/index.ts"] },
@@ -62,7 +62,7 @@ test("official-readiness: happy path — all required sub-checks pass (info item
 		writeNpmignore(dir);
 		writeReadme(
 			dir,
-			"## Install\n\n```bash\npi install npm:@Adi-Mudi/pi-velpari\n```\n",
+			"## Install\n\n```bash\npi install npm:@adi-mudi/pi-velpari\n```\n",
 		);
 		const section = checkOfficialReadiness(dir);
 		// The 5 required sub-checks must be `ok`. The 2 informational ones
@@ -90,7 +90,7 @@ test("official-readiness: missing pi-package keyword → error with suggestion",
 	try {
 		writePkg(dir, { keywords: ["pi", "extension"] });
 		writeNpmignore(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		const section = checkOfficialReadiness(dir);
 		const item = findItem(section, "pi-package");
 		assert.ok(item, "expected an item mentioning the keyword");
@@ -106,7 +106,7 @@ test("official-readiness: missing pi.extensions → error with suggestion", () =
 	try {
 		writePkg(dir, { pi: { skills: ["./skills"] } });
 		writeNpmignore(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		const section = checkOfficialReadiness(dir);
 		const item = findItem(section, "pi.extensions");
 		assert.ok(item);
@@ -128,7 +128,7 @@ test("official-readiness: missing pi-interactive-subagents peer dep → warning 
 			},
 		});
 		writeNpmignore(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		const section = checkOfficialReadiness(dir);
 		const item = findItem(section, "peerDependencies is missing");
 		assert.ok(item);
@@ -143,7 +143,7 @@ test("official-readiness: missing .npmignore → warning with suggestion", () =>
 	const dir = tempDir();
 	try {
 		writePkg(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		// no .npmignore
 		const section = checkOfficialReadiness(dir);
 		const item = findItem(section, ".npmignore missing");
@@ -183,7 +183,7 @@ test("official-readiness: pinned peer dep ranges produce ok items", () => {
 			},
 		});
 		writeNpmignore(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		const section = checkOfficialReadiness(dir);
 		const codingAgent = findItem(section, "pi-coding-agent");
 		assert.ok(codingAgent);
@@ -211,7 +211,7 @@ test("official-readiness: missing repository.url → info item (no suggestion)",
 	try {
 		writePkg(dir, { repository: undefined });
 		writeNpmignore(dir);
-		writeReadme(dir, "pi install npm:@Adi-Mudi/pi-velpari\n");
+		writeReadme(dir, "pi install npm:@adi-mudi/pi-velpari\n");
 		const section = checkOfficialReadiness(dir);
 		const item = findItem(section, "repository.url not set");
 		assert.ok(item);

@@ -1,5 +1,5 @@
 {
-  "name": "@Adi-Mudi/pi-velpari",
+  "name": "@adi-mudi/pi-velpari",
   "version": "1.0.0",
   "description": "Stage-gated pre-production orchestration for Pi — Discussion → PRD → RTM → Feasibility → Design → Pseudocode → Test Plan, with 4-scout visible subagents per stage and structured doctor audit.",
   "type": "module",

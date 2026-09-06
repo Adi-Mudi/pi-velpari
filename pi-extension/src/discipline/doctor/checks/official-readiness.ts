@@ -14,7 +14,7 @@
  *   6. Core peer deps (`pi-coding-agent`, `pi-tui`, `typebox`)
  *      are pinned to a non-`*` range                           — info
  *   7. `README.md` install line uses the correct package name
- *      `npm:@Adi-Mudi/pi-velpari`                               — warning
+ *      `npm:@adi-mudi/pi-velpari`                               — warning
  *
  * Every actionable item carries a `→ Fix:` suggestion from
  * `fix-suggestions.ts`. Info items are FYI only.
@@ -26,7 +26,7 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
 const PROJECT_NAME = "pi-velpari";
-const SCOPED_PACKAGE_NAME = "@Adi-Mudi/pi-velpari";
+const SCOPED_PACKAGE_NAME = "@adi-mudi/pi-velpari";
 const REQUIRED_KEYWORD = "pi-package";
 const SUBAGENTS_NAME = "pi-interactive-subagents";
 const SUBAGENTS_MIN_VERSION = "3.7.2";

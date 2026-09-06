@@ -337,7 +337,7 @@ if (process.env.PI_SUBAGENT_NAME) return;
 
 ## Install (canonical)
 
-The canonical install path is `pi install npm:@Adi-Mudi/pi-velpari`. For local dev with hot-reload, build then symlink `dist/pi-extension/src` to `~/.pi/agent/extensions/pi-velpari`. Both paths are equivalent; the npm install is canonical. See `README.md` "Install" section for the full sequence.
+The canonical install path is `pi install npm:@adi-mudi/pi-velpari`. For local dev with hot-reload, build then symlink `dist/pi-extension/src` to `~/.pi/agent/extensions/pi-velpari`. Both paths are equivalent; the npm install is canonical. See `README.md` "Install" section for the full sequence.
 
 ## Cross-extension compatibility
 

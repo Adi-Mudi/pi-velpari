@@ -78,7 +78,7 @@ export const SUGGESTIONS = {
 	"official.missing-npmignore":
 		"Create .npmignore excluding .IDE_Plans/, Doc/, tests, and .github/.",
 	"official.wrong-install-name":
-		'Update README.md install line from "pi install npm:pi-velpari" to "pi install npm:@Adi-Mudi/pi-velpari".',
+		'Update README.md install line from "pi install npm:pi-velpari" to "pi install npm:@adi-mudi/pi-velpari".',
 	"official.missing-package-json":
 		"package.json is missing at the project root. Run doctor from inside the pi-velpari repo, or restore the file.",
 } as const;
