@@ -1,0 +1,58 @@
+{
+  "name": "@adi-mudi/pi-velpari",
+  "version": "1.0.1",
+  "description": "Stage-gated pre-production orchestration for Pi — Brainstorm → PRD → RTM → Feasibility → Design → Pseudocode → Test Plan, with 4-scout visible subagents per stage and structured doctor audit.",
+  "type": "module",
+  "main": "./pi-extension/src/index.ts",
+  "license": "MIT",
+  "author": {
+    "name": "Adi-Mudi",
+    "url": "https://github.com/Adi-Mudi"
+  },
+  "homepage": "https://github.com/Adi-Mudi/pi-velpari#readme",
+  "bugs": "https://github.com/Adi-Mudi/pi-velpari/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Adi-Mudi/pi-velpari.git"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pi": ">=0.74.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test $(find dist/pi-extension/test -name '*.test.js' -not -path '*/e2e/*')",
+    "test:e2e": "npm run build && RUN_E2E=1 node --test --test-force-exit --test-timeout=180000 dist/pi-extension/test/e2e/*.test.js",
+    "test:e2e:tier2": "RUN_E2E=1 RUN_LLM_E2E=1 node --test --test-force-exit --test-timeout=300000 dist/pi-extension/test/e2e/*.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*",
+    "pi-interactive-subagents": ">=3.7.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "^0.85.0",
+    "@types/node": "^20.0.0",
+    "typebox": "^1.3.27",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "extension",
+    "orchestration",
+    "prd",
+    "rtm"
+  ],
+  "pi": {
+    "extensions": [
+      "./pi-extension/src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}
