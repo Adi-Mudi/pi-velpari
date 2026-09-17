@@ -106,7 +106,7 @@ describe("e2e/doctor", () => {
 			const expectedSections = [
 				"## Requirements profile",
 				"## Doc/ artifacts",
-				"## Multiplexer (required for /velpari-brainstorm v2.0)",
+				"## Multiplexer (required for /velpari-brainstorm v2.1)",
 				"## Scout agents (.pi/agents/)",
 				"## Stage skills",
 			];

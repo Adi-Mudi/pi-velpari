@@ -20,9 +20,9 @@ By the end of this stage:
   section filled (20 sections, including User Stories, Success Metrics,
   and Glossary).
 - The user has approved the preview.
-- `/velpari-approve` can publish the artifact to
+- the `velpari_stage_publish` tool can publish the artifact to
   `Doc/requirements/PRD_<projectName>.md` (grouped layout) without
-  surprises.
+  surprises. `/velpari-prd-approve` remains as the manual fallback.
 
 ## Compact profile metadata (when present)
 
@@ -63,7 +63,7 @@ write working copy <workingCopy>
 AskUserQuestion "Publish preview?" (header "Publish", question ends with ?)
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Subagent conventions
@@ -357,9 +357,9 @@ Revision rules:
    Major (X.0.0) when anything is deprecated or an acceptance criterion
    changes.
 4. **Change Log entry required.** Add a new entry under `## 20. Change
-   Log` describing the revision. `/velpari-approve` blocks publishing a
-   revision with no new Change Log entry, dropped IDs, or a missing
-   version bump.
+   Log` describing the revision. The `velpari_stage_publish` tool (which
+   same gate chain as `/velpari-prd-approve`) blocks publishing a revision
+   with no new Change Log entry, dropped IDs, or a missing version bump.
 5. **New rows start `proposed`.** New rows in the User Stories, Success
    Metrics, Functional Requirements, and Non-Functional Requirements
    tables default to status `proposed`. Full lifecycle: `proposed |
@@ -370,19 +370,11 @@ each scout to compare the published baseline against the new brainstorm
 notes and report add / modify / deprecate proposals, which you merge
 into the revised working copy.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which sections to revise
-
-(Use AskUserQuestion with 3 options, header `Publish`, question ending with `?`.)
-
-If yes → tell the user: "Run /velpari-approve to publish."
-If no → ask which sections to revise, iterate, repeat the preview.
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-prd-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
@@ -391,8 +383,9 @@ If no → ask which sections to revise, iterate, repeat the preview.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
   `drafting-prd` via `createRun()`. The next state transition
-  (`drafted-prd`) happens in `/velpari-approve`. You only write the
-  working copy artifact.
+  (`drafted-prd`) happens in the `velpari_stage_publish` tool (which
+  same gate chain as `/velpari-prd-approve`). You only write the working
+  copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome (working copy written, preview approved) and the artifact path.
   Never paste the PRD content into the message.

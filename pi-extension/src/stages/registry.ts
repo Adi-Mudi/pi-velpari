@@ -1,7 +1,7 @@
 /**
  * Stage registry — single source of truth for the 8 stage handlers
- * (prd, rtm, feasibility, design, pseudocode, testplan, atomic-function,
- * development-order).
+ * (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan,
+ * development-order, final-design).
  *
  * Each `StageSpec` captures every per-stage data item that previously lived
  * inline in each handler file: which Stage enum value drives the current
@@ -24,10 +24,13 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "../core/constants.js";
 import { nextCommandsFor } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
+import { loadOverlay } from "../core/standards-overlay.js";
+import { bootstrapOverlayScouts } from "../io/agents-install.js";
 import {
 	buildGroupedPath as _buildGroupedPath,
 	buildOutputPath,
@@ -45,6 +48,12 @@ import {
 	type VelpariRole,
 } from "../core/agents-config.js";
 import type { ScoutSlot } from "../core/prompt.js";
+import { findPackageRoot } from "../core/paths.js";
+import {
+	deriveAtomicProfile,
+	shouldRunReviewer,
+	type AtomicProfile,
+} from "../core/atomic-tier.js";
 import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
@@ -92,29 +101,16 @@ export const STAGE_GATE: Record<StageKey, readonly Stage[]> = {
 	rtm: ["drafted-prd", "building-rtm"],
 	feasibility: ["built-rtm", "analyzing-feasibility"],
 	"architecture-generator": ["analyzed-feasibility", "designing"],
-	pseudocode: ["designed", "writing-pseudocode"],
+	// Stage 6 — runs after Design (Stage 5) is approved; or while own draft is open (redraft).
+	"atomic-function": ["designed", "analyzing-atomic-functions"],
+	// Stage 7 — runs after Atomic Functions (Stage 6) is approved; or while own draft is open.
+	pseudocode: ["analyzed-atomic-functions", "writing-pseudocode"],
+	// Stage 8 — runs after Pseudocode (Stage 7) is approved; or while own draft is open.
 	testplan: ["wrote-pseudocode", "planning-tests"],
-	// Optional post-pipeline stages: allowed once design is approved
-	// (or while their own draft is open).
-	"atomic-function": [
-		"designed",
-		"writing-pseudocode",
-		"wrote-pseudocode",
-		"planning-tests",
-		"planned-tests",
-		"analyzing-atomic-functions",
-		"analyzed-atomic-functions",
-		"ordering-development",
-		"ordered-development",
-		"handoff-ready",
-	],
-	"development-order": [
-		"analyzed-atomic-functions",
-		"ordering-development",
-		"ordered-development",
-		"handoff-ready",
-	],
-	"final-design": ["planned-tests", "finalizing-design"],
+	// Stage 9 — runs after Test Plan (Stage 8) is approved; or while own draft is open.
+	"development-order": ["planned-tests", "ordering-development"],
+	// Stage 10 — runs after Development Order (Stage 9) is approved; or while own draft is open.
+	"final-design": ["ordered-development", "finalizing-design"],
 };
 
 /** A single input artifact for a stage. */
@@ -154,6 +150,19 @@ export interface StageSpec {
 	 * resolved names are rendered into the prompt's conditional block.
 	 */
 	conditionalAgents?: readonly string[];
+	/**
+	 * Optional post-reviewers (Phase 7 of the custom-role upgrade).
+	 * Spawned by the parent LLM AFTER the working copy is written and
+	 * BEFORE the user-facing preview gate. They validate the working
+	 * copy (e.g. pseudocode-reviewer checks tier compliance). Empty
+	 * array = no post-reviewers (default for every stage).
+	 *
+	 * The reviewer agents are custom roles (defined in
+	 * `.pi/velpari/custom-roles.json`); when the project's `.pi/agents/`
+	 * does not have the reviewer file yet, the parent LLM skips the
+	 * spawn with a friendly notice and the stage proceeds normally.
+	 */
+	postReviewers?: readonly string[];
 	/** Working-copy category subfolder under <runDir>/ (e.g. "prd", "tests"). */
 	workingCopyCategory: string;
 	/** Working-copy artifact name (passed to buildWorkingGroupedPath). */
@@ -177,7 +186,6 @@ export interface StageSpec {
 
 const grouped = (cwd: string, category: string, file: string) =>
 	join(cwd, "Doc", category, file);
-const legacy = (cwd: string, file: string) => join(cwd, "Doc", file);
 
 const prdMissingError: MissingInputMessageFormatter = ({ cwd, mission }) => {
 	// Preserve the pre-refactor wording: prd used to fall through to
@@ -197,7 +205,7 @@ const docMissingError = (
 	previousCommand: string,
 ): string => {
 	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot read ${humanName} for ${projectName}: not found at ${cwd}/${groupedPath} or ${cwd}/${buildOutputPath(artifact, projectName)}. Run ${previousCommand} and /velpari-approve first.`;
+	return `Cannot read ${humanName} for ${projectName}: not found at ${cwd}/${groupedPath} or ${cwd}/${buildOutputPath(artifact, projectName)}. Run ${previousCommand} and the publish tool first.`;
 };
 
 export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
@@ -252,10 +260,13 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		stageEnum: "designing",
 		skillName: "architecture-generator",
 		scouts: [
+			"design-style-selector",
 			"design-module-decomposer",
 			"design-contract-definer",
 			"design-data-flow-mapper",
 			"design-error-definer",
+			// Plan D — adversarial reviewer (tier + overlay gated).
+			"design-reviewer",
 		],
 		workingCopyCategory: "design",
 		workingCopyArtifact: "design",
@@ -270,53 +281,22 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			),
 	},
 
-	pseudocode: {
-		key: "pseudocode",
-		stageEnum: "writing-pseudocode",
-		skillName: "pseudocode",
-		scouts: [
-			"pseudo-algorithm-extractor",
-			"pseudo-edge-case-handler",
-			"pseudo-complexity-analyzer",
-			"pseudo-consolidator",
-		],
-		workingCopyCategory: "pseudocode",
-		workingCopyArtifact: "pseudocode",
-		inputs: [{ kind: "doc", artifact: "design", label: "design" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("design", "design", projectName, cwd, "/velpari-architecture-generator"),
-	},
-
-	testplan: {
-		key: "testplan",
-		stageEnum: "planning-tests",
-		skillName: "testplan",
-		scouts: [
-			"testplan-strategy-designer",
-			"testplan-unit-test-generator",
-			"testplan-integration-test-generator",
-			"testplan-coverage-tracer",
-		],
-		workingCopyCategory: "tests",
-		workingCopyArtifact: "test-plan",
-		additionalWorkingCopies: ["test-cases"],
-		inputs: [{ kind: "doc", artifact: "pseudocode", label: "pseudocode" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("pseudocode", "pseudocode", projectName, cwd, "/velpari-pseudocode"),
-	},
-
 	"atomic-function": {
 		key: "atomic-function",
-		// Atomic-function is optional post-pipeline — no Stage enum value.
-		// Use "ordered-development" as a placeholder so buildStagePrompt succeeds.
-		// (kept identical to the pre-refactor atomic-function.ts behaviour)
-		stageEnum: "ordered-development",
+		// Stage 6 — required post-design. Runs from `designed` (upstream) or `analyzing-atomic-functions` (own redraft).
+		stageEnum: "analyzing-atomic-functions",
 		skillName: "atomic-function",
 		scouts: [
 			"af-source-rtm",
-			"af-source-pseudocode",
+			"af-source-design",
 			"af-source-prd",
-			"af-source-testcases",
+			"af-source-feas",
+			// Phase 3 of reviewer plan — adversarial reviewer is the 5th scout.
+			// Spawned by the parent LLM after the 4 source scouts + draft merge,
+			// before the preview gate. Tier + overlay gate is applied by the
+			// filterReviewerSlot helper inside runStage (see below) — the slot
+			// is removed when shouldRunReviewer returns false.
+			"reviewer",
 		],
 		workingCopyCategory: "atomic-function",
 		workingCopyArtifact: "atomic-functions",
@@ -326,27 +306,80 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "RTM", label: "RTM" },
 			{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" },
 			{ kind: "doc", artifact: "design", label: "design" },
-			{ kind: "doc", artifact: "pseudocode", label: "pseudocode" },
-			{ kind: "doc", artifact: "test-plan", label: "test-plan" },
-			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 		],
 		formatMissingError: ({ cwd, projectName }) =>
 			atomicMissingError(projectName, cwd),
 	},
 
+	pseudocode: {
+		key: "pseudocode",
+		// Stage 7 — runs after Atomic Functions (Stage 6) is approved; or while own draft is open.
+		stageEnum: "writing-pseudocode",
+		skillName: "pseudocode",
+		scouts: [
+			"pseudo-algorithm-extractor",
+			"pseudo-edge-case-handler",
+			"pseudo-complexity-analyzer",
+			"pseudo-consolidator",
+			// Plan D — adversarial reviewer (tier + overlay gated).
+			"pseudocode-reviewer",
+		],
+		// Custom-role upgrade (Phase 7): the pseudocode-reviewer sub-agent
+		// validates the working copy against the tier rubric before the
+		// user-facing preview. Generated via `/velpari-generate-sub-agents
+		// --custom`. Missing reviewer file = skipped with a friendly notice.
+		postReviewers: ["pseudocode-reviewer"],
+		workingCopyCategory: "pseudocode",
+		workingCopyArtifact: "pseudocode",
+		inputs: [
+			{ kind: "doc", artifact: "design", label: "design" },
+			{ kind: "doc", artifact: "atomic-functions", label: "atomic-functions" },
+		],
+		formatMissingError: ({ cwd, projectName }) =>
+			docMissingError("atomic-functions", "atomic-functions", projectName, cwd, "/velpari-atomic-function"),
+	},
+
+	testplan: {
+		key: "testplan",
+		// Stage 8 — runs after Pseudocode (Stage 7) is approved; or while own draft is open.
+		stageEnum: "planning-tests",
+		skillName: "testplan",
+		scouts: [
+			"testplan-strategy-designer",
+			"testplan-unit-test-generator",
+			"testplan-integration-test-generator",
+			"testplan-coverage-tracer",
+			// Plan D — adversarial reviewer (tier + overlay gated).
+			"testplan-reviewer",
+		],
+		workingCopyCategory: "tests",
+		workingCopyArtifact: "test-plan",
+		additionalWorkingCopies: ["test-cases"],
+		inputs: [
+			{ kind: "doc", artifact: "pseudocode", label: "pseudocode" },
+			{ kind: "doc", artifact: "atomic-functions", label: "atomic-functions" },
+		],
+		formatMissingError: ({ cwd, projectName }) =>
+			docMissingError("pseudocode", "pseudocode", projectName, cwd, "/velpari-pseudocode"),
+	},
+
 	"development-order": {
 		key: "development-order",
-		stageEnum: "ordered-development",
+		// Stage 9 — runs after Test Plan (Stage 8) is approved; or while own draft is open.
+		stageEnum: "ordering-development",
 		skillName: "development-order",
 		scouts: ["do-topology", "do-risk", "do-test", "do-value"],
 		workingCopyCategory: "development-order",
 		workingCopyArtifact: "development-order",
 		inputs: [
 			{ kind: "doc", artifact: "design", label: "design" },
+			{ kind: "doc", artifact: "PRD", label: "PRD" },
 			{ kind: "doc", artifact: "RTM", label: "RTM" },
 			{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" },
-			{ kind: "doc", artifact: "PRD", label: "PRD" },
+			{ kind: "doc", artifact: "atomic-functions", label: "atomic-functions" },
+			{ kind: "doc", artifact: "pseudocode", label: "pseudocode" },
 			{ kind: "doc", artifact: "test-plan", label: "test-plan" },
+			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 		],
 		formatMissingError: ({ cwd, projectName }) =>
 			devOrderMissingError(projectName, cwd),
@@ -354,6 +387,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 
 	"final-design": {
 		key: "final-design",
+		// Stage 10 — runs after Development Order (Stage 9) is approved; or while own draft is open.
 		stageEnum: "finalizing-design",
 		skillName: "design",
 		scouts: [
@@ -366,9 +400,11 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		workingCopyArtifact: "final-design",
 		inputs: [
 			{ kind: "doc", artifact: "design", label: "design" },
+			{ kind: "doc", artifact: "atomic-functions", label: "atomic-functions" },
 			{ kind: "doc", artifact: "pseudocode", label: "pseudocode" },
 			{ kind: "doc", artifact: "test-plan", label: "test-plan" },
 			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
+			{ kind: "doc", artifact: "development-order", label: "development-order" },
 		],
 		formatMissingError: ({ cwd, projectName }) =>
 			finalDesignMissingError(projectName, cwd),
@@ -376,35 +412,37 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 };
 
 // ---------------------------------------------------------------------------
-// Atomic-function and development-order error messages — preserve the
-// pre-refactor byte-for-byte wording. The "first failing input" is picked
-// by walking the required list in order; that matches the pre-refactor
-// handler, which emitted the same message for whichever artifact came first.
+// Atomic-function, development-order, final-design error messages. The
+// "first failing input" is picked by walking the required list in order;
+// that mirrors the pre-refactor handler, which emitted the same message for
+// whichever artifact came first.
 // ---------------------------------------------------------------------------
 
-const FEAS_REQUIRED_ORDER = [
+const AF_REQUIRED_ORDER = [
 	"PRD",
 	"RTM",
 	"feasibility-study",
 	"design",
-	"pseudocode",
-	"test-plan",
-	"test-cases",
 ] as const;
 
 const DO_REQUIRED_ORDER = [
 	"design",
+	"PRD",
 	"RTM",
 	"feasibility-study",
-	"PRD",
+	"atomic-functions",
+	"pseudocode",
 	"test-plan",
+	"test-cases",
 ] as const;
 
 const FINAL_DESIGN_REQUIRED_ORDER = [
 	"design",
+	"atomic-functions",
 	"pseudocode",
 	"test-plan",
 	"test-cases",
+	"development-order",
 ] as const;
 
 function firstMissingArtifact(
@@ -426,21 +464,21 @@ function firstMissingArtifact(
 }
 
 function atomicMissingError(projectName: string, cwd: string): string {
-	const artifact = firstMissingArtifact(projectName, cwd, FEAS_REQUIRED_ORDER);
+	const artifact = firstMissingArtifact(projectName, cwd, AF_REQUIRED_ORDER);
 	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run atomic-function: missing ${artifact} at ${cwd}/${groupedPath}. All previous stages (prd, rtm, feasibility, design, pseudocode, testplan) must be published.`;
+	return `Cannot run atomic-function: missing ${artifact} at ${cwd}/${groupedPath}. All previous stages (prd, rtm, feasibility, design) must be published.`;
 }
 
 function devOrderMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, DO_REQUIRED_ORDER);
 	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run development-order: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, testplan) must be published. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run development-order: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. Path tried: ${cwd}/${groupedPath}.`;
 }
 
 function finalDesignMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, FINAL_DESIGN_REQUIRED_ORDER);
 	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run final-design: missing ${artifact}. The test plan must be approved before the final design consolidation runs. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run final-design: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. Path tried: ${cwd}/${groupedPath}.`;
 }
 
 export interface ResolveInputsDeps {
@@ -556,6 +594,91 @@ export function buildScoutSlots(
 }
 
 /**
+ * Map a stage to its reviewer role id. `undefined` for stages that have
+ * no reviewer (Plan D — generalization to atomic-function / pseudocode /
+ * testplan / design; the other stages pass through unchanged).
+ *
+ *   atomic-function           → "reviewer"
+ *   pseudocode                → "pseudocode-reviewer"
+ *   testplan                  → "testplan-reviewer"
+ *   architecture-generator    → "design-reviewer"
+ *   everything else           → undefined (no reviewer)
+ */
+const REVIEWER_BY_STAGE: Readonly<Record<StageKey, string | undefined>> = {
+	"atomic-function": "reviewer",
+	pseudocode: "pseudocode-reviewer",
+	testplan: "testplan-reviewer",
+	"architecture-generator": "design-reviewer",
+	prd: undefined,
+	rtm: undefined,
+	feasibility: undefined,
+	"development-order": undefined,
+	"final-design": undefined,
+};
+
+/**
+ * Filter the reviewer scout slot out when the tier + overlay gate says
+ * the reviewer should not run for this stage iteration.
+ *
+ * Plan D — generalized to all 4 reviewer stages. Each stage has a
+ * specific reviewer role (see REVIEWER_BY_STAGE); other stages pass
+ * through unchanged. The gate logic is identical for every reviewer
+ * stage (delegated to core/atomic-tier.ts:shouldRunReviewer).
+ *
+ * Decision logic (delegated to core/atomic-tier.ts:shouldRunReviewer):
+ *   - reviewerMode = "never"       → reviewer slot removed (overrides all)
+ *   - reviewerMode = "always"      → reviewer slot kept
+ *   - overlay.requiresReviewer     → reviewer slot kept (overrides tier)
+ *   - tier ∈ {intermediate, advanced} → reviewer slot kept (tier default)
+ *   - tier ∈ {entry, basic}         → reviewer slot removed
+ */
+export function filterReviewerSlot(
+	scouts: readonly ScoutSlot[],
+	stageKey: StageKey,
+	profile: AtomicProfile,
+	overlayRequiresReviewer: boolean,
+): ScoutSlot[] {
+	const reviewerRole = REVIEWER_BY_STAGE[stageKey];
+	if (!reviewerRole) return [...scouts];
+	if (!scouts.some((s) => s.name === reviewerRole)) return [...scouts];
+	const runReviewer = shouldRunReviewer({
+		profile,
+		overlayRequiresReviewer,
+		reviewerMode: profile.reviewerMode,
+	});
+	if (runReviewer) return [...scouts];
+	return scouts.filter((s) => s.name !== reviewerRole);
+}
+
+/**
+ * Look up the `requiresReviewer` flag from the standards catalogue for the
+ * given overlay id. Reads `skills/standards/catalogue.json` directly
+ * (avoids a layering dependency on the higher-level catalogue loader).
+ * Returns false on any parse error or unknown overlay.
+ */
+export function overlayRequiresReviewerFor(
+	_cwd: string,
+	overlayId: string,
+): boolean {
+	try {
+		const path = join(
+			findPackageRoot(fileURLToPath(import.meta.url)),
+			"skills",
+			"standards",
+			"catalogue.json",
+		);
+		const raw = readFileSync(path, "utf8");
+		const parsed = JSON.parse(raw) as {
+			overlays?: Array<{ id: string; requiresReviewer?: boolean }>;
+		};
+		const entry = parsed.overlays?.find((o) => o.id === overlayId);
+		return entry?.requiresReviewer === true;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Generic stage runner used by every DRYed handler under stages/.
  *
  * Steps mirror the pre-refactor per-stage handlers exactly, so behaviour is
@@ -648,6 +771,15 @@ export async function runStage(
 	const profile = loadRequirementsProfile(cwd);
 	const profileMetadata = compactProfileMetadata(profile);
 
+	// 4a. Load atomic-function tier profile (ISO/IEC 29110 + IEC 61508/IEC 62304).
+	// Tier-driven schema: the same atomic-function stage serves Entry / Basic /
+	// Intermediate / Advanced projects; the prompt declares which fields are
+	// required at the selected tier. Defaults when absent — backward compatible.
+	const atomicProfile: AtomicProfile =
+		stageKey === "atomic-function"
+			? deriveAtomicProfile(config)
+			: { tier: "basic", safetyClass: "A", sil: "none", overlayId: null };
+
 	// 4b. Bootstrap + resolve conditional agents (feasibility v2): installed
 	// like wave scouts, but spawned only when the skill's conditions are met.
 	let conditionalAgents: StageRunConfig["conditionalAgents"];
@@ -660,6 +792,38 @@ export async function runStage(
 		}));
 	}
 
+	// 4c. Phase 5: overlay conditional scouts. When the active standards
+	// overlay declares `extraScouts`, append them to the spawn list and
+	// resolve their agent names via agents.json (overlay-* roles fall back
+	// to the role name itself). The parent LLM sees them in the prompt's
+	// conditional block and spawns them alongside the 4 base scouts.
+	let overlayRequiresReviewer = false;
+	if (state.standardsProfile) {
+		const overlay = loadOverlay(cwd, state.standardsProfile.id);
+		if (overlay && overlay.extraScouts.length > 0) {
+			const overlayRoles = overlay.extraScouts.map((s) => s.role);
+			// Overlay scouts are not bundled agents — bootstrap by copying
+			// the overlay's scout markdown files into the project agents dir.
+			bootstrapOverlayScouts(state.standardsProfile.id, overlayRoles, cwd);
+		}
+		// Phase 3 of reviewer plan: read requiresReviewer flag from the
+		// catalogue.json entry for the active overlay (medical / industrial
+		// / financial / cloud all set this true). Drives the reviewer tier
+		// gate: if true, the reviewer slot is kept regardless of tier.
+		overlayRequiresReviewer = overlayRequiresReviewerFor(cwd, state.standardsProfile.id);
+	}
+
+	// 4d. Phase 3 of reviewer plan: apply the tier + overlay gate to the
+	// scout slot list. For atomic-function only, remove the `reviewer` slot
+	// when shouldRunReviewer returns false. Other stages pass through.
+	const allScouts = buildScoutSlots(spec, scoutsDir, cwd);
+	const gatedScouts = filterReviewerSlot(
+		allScouts,
+		stageKey,
+		atomicProfile,
+		overlayRequiresReviewer,
+	);
+
 	// 5. Compose StageRunConfig and hand off.
 	const stageConfig: StageRunConfig = {
 		stage: spec.stageEnum,
@@ -667,7 +831,7 @@ export async function runStage(
 		mission: state.mission,
 		framework: config.framework?.language,
 		runId: state.runId,
-		scouts: buildScoutSlots(spec, scoutsDir, cwd),
+		scouts: gatedScouts,
 		inputArtifactPath: inputs.inputArtifactPath,
 		inputArtifactContent: inputs.inputArtifactContent,
 		workingCopyDir,
@@ -678,6 +842,7 @@ export async function runStage(
 		cwd,
 		profileMetadata,
 		updateMode,
+		atomicProfile,
 	};
 
 	await runStageWithScouts(stageConfig, ctx, pi);

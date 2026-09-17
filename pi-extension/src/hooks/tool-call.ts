@@ -10,7 +10,7 @@
  *      (STAGE_FOLDERS), edit/write outside that stage's run folder is
  *      blocked. The working copy may only be written inside
  *      `<runDir>/<stage>/`; publishing happens exclusively via
- *      /velpari-approve (Doc/ is NOT exempt).
+ *      the publish tool (Doc/ is NOT exempt).
  *   3. Scout spawn guard: during an in-progress scout stage, every
  *      `subagent` spawn must name a `-report.json` path in its task so the
  *      scout's report is declared up front. ("Scout said done but wrote
@@ -55,7 +55,7 @@ export function guardStageMutation(
 		block: true,
 		reason:
 			`Locked: stage "${state.currentStage}" in progress. ` +
-			`Finish it (working copy → /velpari-approve) or /velpari-reset.\n` +
+			`Finish it (working copy → preview → velpari_stage_publish tool) or /velpari-reset.\n` +
 			`Target allowed only under ${relative(cwd, allowedRoot)}/.`,
 	};
 }

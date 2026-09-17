@@ -18,24 +18,28 @@ By the end of this stage:
 - `<primaryWorkingCopy>` = `test-plan_<projectName>.md` (strategy + summary)
 - `<additionalWorkingCopy>` = `test-cases_<projectName>.md` (specific test cases)
 
-Both exist, the user has approved the preview, and `/velpari-approve` can
-publish both to `Doc/test-plan_<projectName>.md` and
-`Doc/test-cases_<projectName>.md` without surprises.
+Both exist, the user has approved the preview, and the
+`velpari_stage_publish` tool can publish both to
+`Doc/test-plan_<projectName>.md` and `Doc/test-cases_<projectName>.md`
+without surprises. `/velpari-testplan-approve` remains as the manual fallback.
 
 ## Sequence
 
 ```
-pseudocode (already in prompt as inputArtifact)
+pseudocode + atomic functions (concatenated into prompt by handler):
+  - Doc/pseudocode_<projectName>.md
+  - Doc/atomic-functions_<projectName>.md
         │
         ▼
-spawn 4 subagents in parallel via subagent() tool:
-  ├─ testplan-strategy-designer        → <scoutReportDir>/testplan-strategy-designer-report.json
+spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:
+  ├─ testplan-strategy-designer         → <scoutReportDir>/testplan-strategy-designer-report.json
   ├─ testplan-unit-test-generator      → <scoutReportDir>/testplan-unit-test-generator-report.json
   ├─ testplan-integration-test-generator → <scoutReportDir>/testplan-integration-test-generator-report.json
   └─ testplan-coverage-tracer          → <scoutReportDir>/testplan-coverage-tracer-report.json
+  └─ testplan-reviewer (gated)          → <scoutReportDir>/testplan-reviewer-report.json
         │
-        ▼ (wait for all 4 — see Synchronization rules below)
-read 4 reports
+        ▼ (wait for all 5 — see Synchronization rules below)
+read 4 source reports + 1 reviewer verdict
         │
         ▼
 build test plan markdown (strategy + summary) → write <primaryWorkingCopy>
@@ -47,7 +51,7 @@ build test cases markdown (specific TCs)     → write <additionalWorkingCopy>
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Subagent conventions
@@ -230,21 +234,16 @@ Revision rules:
    row.
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
-4. **Change Log entry required in BOTH files.** `/velpari-approve`
-   blocks publishing without a new Change Log entry.
+4. **Change Log entry required in BOTH files.** The
+   `velpari_stage_publish` tool (which same gate chain as `/velpari-testplan-approve`) blocks publishing without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
-## Preview Gate
+## Publish (auto on both working copies ready)
 
-After writing BOTH working copies, ask the user:
+When BOTH working copies exist (`test -s <primaryWorkingCopy>` + `test -s <additionalWorkingCopy>`), call the `velpari_stage_publish` tool (no parameters). It publishes both working copies (test-plan + test-cases), runs the post-publish doctor audit, and advances the stage. If the tool reports gate/doctor errors, fix the working copies and call it again.
 
-> Publish preview?
-> - yes — both working copies are ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which sections to revise
-
-If yes → tell the user: "Run /velpari-approve to publish both files."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-testplan-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
@@ -253,8 +252,9 @@ If yes → tell the user: "Run /velpari-approve to publish both files."
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
   `planning-tests` via `createRun()`. The next state transition
-  (`planned-tests`) happens in `/velpari-approve`. You only write the
-  working copy artifacts.
+  (`planned-tests`) happens in the `velpari_stage_publish` tool (which
+  same gate chain as `/velpari-testplan-approve`). You only write the working
+  copy artifacts.
 - **Write BOTH files.** `<primaryWorkingCopy>` (test-plan) AND
   `<additionalWorkingCopy>` (test-cases). Both must exist before the
   preview gate.

@@ -14,23 +14,26 @@ reports, and write the working-copy pseudocode.
 
 By the end of this stage, `<workingCopy>` (`pseudocode_<projectName>.md`)
 has every module's functions documented, the user has approved the
-preview, and `/velpari-approve` can publish the artifact to
-`Doc/pseudocode_<projectName>.md` without surprises.
+preview, and the `velpari_stage_publish` tool can publish the artifact
+to `Doc/pseudocode_<projectName>.md` without surprises. `/velpari-pseudocode-approve` remains as the manual fallback.
 
 ## Sequence
 
 ```
-design (already in prompt as inputArtifact)
+design + atomic functions (concatenated into prompt by handler):
+  - Doc/design_<projectName>.md
+  - Doc/atomic-functions_<projectName>.md
         │
         ▼
-spawn 4 subagents in parallel via subagent() tool:
-  ├─ pseudo-algorithm-extractor  → <scoutReportDir>/pseudo-algorithm-extractor-report.json
-  ├─ pseudo-edge-case-handler   → <scoutReportDir>/pseudo-edge-case-handler-report.json
-  ├─ pseudo-complexity-analyzer  → <scoutReportDir>/pseudo-complexity-analyzer-report.json
-  └─ pseudo-consolidator        → <scoutReportDir>/pseudo-consolidator-report.json
+spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:
+  ├─ pseudo-algorithm-extractor     → <scoutReportDir>/pseudo-algorithm-extractor-report.json
+  ├─ pseudo-edge-case-handler       → <scoutReportDir>/pseudo-edge-case-handler-report.json
+  ├─ pseudo-complexity-analyzer     → <scoutReportDir>/pseudo-complexity-analyzer-report.json
+  ├─ pseudo-consolidator            → <scoutReportDir>/pseudo-consolidator-report.json
+  └─ pseudo-reviewer (gated)        → <scoutReportDir>/pseudo-reviewer-report.json
         │
-        ▼ (wait for all 4 — see Synchronization rules below)
-read 4 reports
+        ▼ (wait for all 5 — see Synchronization rules below)
+read 4 source reports + 1 reviewer verdict
         │
         ▼
 build pseudocode markdown from the 4 reports
@@ -42,7 +45,7 @@ write working copy <workingCopy>
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Subagent conventions
@@ -200,21 +203,17 @@ Revision rules:
    `deprecated` with a reason. Never delete it.
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
-4. **Change Log entry required.** `/velpari-approve` blocks publishing
+4. **Change Log entry required.** The `velpari_stage_publish` tool
+   (same gate chain as `/velpari-pseudocode-approve`) blocks publishing
    without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + pseudocode-reviewer verdict + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which functions to revise
-
-If yes → tell the user: "Run /velpari-approve to publish."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudocode-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
@@ -223,8 +222,9 @@ If yes → tell the user: "Run /velpari-approve to publish."
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
   `writing-pseudocode` via `createRun()`. The next state transition
-  (`wrote-pseudocode`) happens in `/velpari-approve`. You only write the
-  working copy artifact.
+  (`wrote-pseudocode`) happens in the `velpari_stage_publish` tool (which
+  same gate chain as `/velpari-pseudocode-approve`). You only write the working copy
+  artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the pseudocode content.
 

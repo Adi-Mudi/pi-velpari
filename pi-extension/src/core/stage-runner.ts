@@ -13,17 +13,18 @@
  * Phase 2 (parent LLM, driven by the stage's skill markdown):
  *   spawn N subagents in parallel via `subagent()` tool,
  *   wait, read reports, optionally iterate, write working copy,
- *   show preview gate, tell user to run `/velpari-approve`.
+ *   show preview gate, on preview-yes call the `velpari_stage_publish`
+ *   tool (which runs `handleApprove` and advances the stage).
  */
 
 import { mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "./constants.js";
 import { loadAgentConfig, resolveAgentName } from "./agents-config.js";
-import { ensureStageAgents, formatScoutAgentsInstalledMessage } from "../io/agents-install.js";
+import { ensureStageAgents } from "../io/agents-install.js";
 import { buildStagePrompt, type ScoutSlot } from "./prompt.js";
 import type { CompactProfileMetadata } from "./profile.js";
+import type { AtomicProfile } from "./atomic-tier.js";
 
 /**
  * Configuration for a single stage run.
@@ -97,6 +98,14 @@ export interface StageRunConfig {
 	 * LLM knows the resolved agent names.
 	 */
 	conditionalAgents?: readonly { role: string; agentName: string }[];
+	/**
+	 * Optional (atomic-function stage only): tier profile loaded from
+	 * `.pi/velpari/files.json:atomic` (ISO/IEC 29110 + IEC 61508/IEC 62304).
+	 * Rendered as a `## Atomic Profile` block so the parent LLM knows which
+	 * fields are required at the selected tier. Defaults applied by the
+	 * registry when absent.
+	 */
+	atomicProfile?: AtomicProfile | null;
 }
 
 /**
@@ -111,7 +120,8 @@ export interface StageRunConfig {
  *
  * The handler does NOT:
  *  - Write the working copy (LLM's job).
- *  - Mutate `state.stage` (advance is `/velpari-approve`'s job).
+ *  - Mutate `state.stage` (advance is the `velpari_stage_publish` tool's
+ *    job, which calls `the publish tool` internally).
  *
  * If the user declines the gate or any precondition fails, the handler
  * returns early without calling `pi.sendUserMessage`.
@@ -170,6 +180,7 @@ export async function runStageWithScouts(
 			profileMetadata: config.profileMetadata ?? null,
 			updateMode: config.updateMode ?? null,
 			conditionalAgents: config.conditionalAgents ?? null,
+			atomicProfile: config.atomicProfile ?? null,
 			paths: {
 				scouts: [...config.scouts],
 				inputArtifact: config.inputArtifactPath,
@@ -201,7 +212,7 @@ export async function runStageWithScouts(
 			`Scout reports: ${config.scoutsDir}\n` +
 			`Working copy target: ${config.workingCopyPath}\n` +
 			`The parent LLM is now orchestrating the ${config.scouts.length} subagents (visible panes). ` +
-			`When the working copy is ready, run /velpari-approve to publish.`,
+			`When the working copy is ready and the user confirms the preview, publish via the velpari_stage_publish tool.`,
 		"info",
 	);
 

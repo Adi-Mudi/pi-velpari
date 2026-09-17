@@ -1,9 +1,11 @@
 .IDE_Plans/
 node_modules/
 dist/
+coverage/
 .pi/velpari/
 .pi/senai/
 .pi/architecture-library/
 skills/senai-*.md
 *.log
 .DS_Store
+pi-session-*.html

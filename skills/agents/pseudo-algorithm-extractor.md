@@ -32,6 +32,17 @@ Write a JSON file to `<scoutReportPath>`:
       "payload": {
         "moduleId": "M-1",
         "function": "createUser",
+        "tier": 2,
+        "tierReasons": ["Risk: no", "Novelty: no", "Complexity: yes", "MVP: yes"],
+        "description": "Create a new user account. Hashes the password, persists the user, raises on duplicate email.",
+        "signature": {
+          "name": "createUser",
+          "params": [
+            {"name": "email", "type": "string", "constraint": "RFC 5322"},
+            {"name": "password", "type": "string", "constraint": ">=8 chars"}
+          ],
+          "returns": {"name": "userId", "type": "UUID"}
+        },
         "pseudocode": [
           "FUNCTION createUser(email, password):",
           "  PRECONDITIONS:",
@@ -46,7 +57,44 @@ Write a JSON file to `<scoutReportPath>`:
           "  POSTCONDITIONS:",
           "    user with given email exists in users table",
           "  RETURNS: userId (UUID)"
-        ]
+        ],
+        "errors": [
+          {"name": "InvalidEmail", "raisedBy": "validateInput"},
+          {"name": "EmailAlreadyTaken", "raisedBy": "unique constraint"},
+          {"name": "InternalError", "raisedBy": "bcrypt failure"}
+        ],
+        "dependencies": null,
+        "sideEffects": null
+      }
+    },
+    {
+      "id": "pseudo-algorithm-extractor-NN",
+      "source": "pseudo-algorithm-extractor",
+      "payload": {
+        "moduleId": "M-1",
+        "function": "processPayment",
+        "tier": 3,
+        "tierReasons": ["Risk: yes", "Novelty: no", "Complexity: yes", "MVP: yes"],
+        "description": "Charge a payment method. Rejects on insufficient funds, records an audit-log row.",
+        "signature": {
+          "name": "processPayment",
+          "params": [
+            {"name": "amount", "type": "integer", "constraint": ">0 (cents)"},
+            {"name": "cardToken", "type": "string", "constraint": "starts with tok_"}
+          ],
+          "returns": {"name": "chargeId", "type": "string"}
+        },
+        "pseudocode": [
+          "FUNCTION processPayment(amount, cardToken):",
+          "  ..."
+        ],
+        "errors": [
+          {"name": "InvalidAmount", "raisedBy": "validateAmount"},
+          {"name": "PaymentDeclined", "raisedBy": "payments.charge"},
+          {"name": "AuditLogUnavailable", "raisedBy": "auditLog.write"}
+        ],
+        "dependencies": ["validateAmount", "payments.charge", "auditLog.write"],
+        "sideEffects": ["INSERT INTO charges", "INSERT INTO audit_log"]
       }
     }
   ],
@@ -58,9 +106,23 @@ Write a JSON file to `<scoutReportPath>`:
 ## Heuristics
 
 - One entry per public function in the design.
+- **Tier stamp first.** Apply the 5-question rubric (Risk / Novelty /
+  Complexity / MVP / Test-difficulty) before writing anything else. Stamp
+  the tier (0/1/2/3) and the reasons on every proposal.
+- **Tier 0 functions** (getters, simple CRUD, pure delegation) are recorded
+  only as signature — `pseudocode`, `errors`, `dependencies`, `sideEffects`
+  are null/omitted.
+- **Tier 1** adds `description`, `pseudocode`, and `signature.returns`.
+- **Tier 2** adds `signature.params` with constraints, `errors[]`, and the
+  preconditions/postconditions in the `pseudocode` lines.
+- **Tier 3** also adds `dependencies[]` (other modules called) and
+  `sideEffects[]` (state mutated, files written, network calls).
 - Pseudocode is language-agnostic but reads like structured code.
-- Preconditions + postconditions + steps + return value.
-- Avoid implementation details (which DB, which framework).
+- Avoid implementation details (which DB, which framework) in pseudocode —
+  only in `dependencies` and `sideEffects`.
+- Tier selection + field set follows the community-standard consensus
+  (IEEE 1016-2009 algorithm viewpoint + V-Model LLD + JSDoc/JavaDoc/Python
+  docstring trio).
 
 ## Hard rules
 

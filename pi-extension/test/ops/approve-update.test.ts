@@ -1,5 +1,5 @@
 /**
- * /velpari-approve revision gate tests (living documents).
+ * Revision gate tests (living documents) — exercised via handleApprove.
  *
  * Asserts:
  *   - fresh publish (no published copy) still works (regression)
@@ -171,13 +171,16 @@ function reenterDraftingPrd(workingContent: string): void {
 
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-approve-update-"));
+	// v1.2.1 opt-out for minimal-cwd test fixtures.
+	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
+	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
 });
 
-describe("/velpari-approve — revision gate", () => {
+describe("publish — revision gate", () => {
 	it("fresh publish still works when no published copy exists (regression)", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
 		await handleApprove(makeCtx(), undefined, tmpDir);

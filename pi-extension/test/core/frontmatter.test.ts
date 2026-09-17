@@ -71,7 +71,18 @@ describe("withArtifactFrontmatter", () => {
 		const out = withArtifactFrontmatter("# RTM\n", INPUT);
 		const parsed = parseFrontmatterBlock(out);
 		assert.ok(parsed);
-		for (const field of ARTIFACT_FRONTMATTER_FIELDS) {
+		// `supersedes` is only present on UPDATE publishes (Phase 7
+		// of the architecture-generator upgrade plan), so a fresh
+		// publish with no `supersedes` input does not emit it.
+		// `sunset` is only present when set (v1.2.2), so a fresh
+		// publish with no `sunset` input does not emit it either.
+		// `deprecatedAt` is only present after the sunset auto-archive
+		// (v1.3.0), so a fresh publish with no archive action does
+		// not emit it.
+		const expected = (ARTIFACT_FRONTMATTER_FIELDS as readonly string[]).filter(
+			(f) => f !== "supersedes" && f !== "sunset" && f !== "deprecatedAt",
+		);
+		for (const field of expected) {
 			assert.ok(field in parsed.fields, `missing ${field}`);
 		}
 		assert.equal(parsed.fields.artifact, "RTM");
@@ -80,6 +91,21 @@ describe("withArtifactFrontmatter", () => {
 		assert.equal(parsed.fields.created, NOW);
 		assert.equal(parsed.fields.updated, NOW);
 		assert.equal(parsed.body, "# RTM\n");
+	});
+
+	it("Phase 7: writes supersedes when input.supersedes is set", () => {
+		const out = withArtifactFrontmatter(
+			"# RTM v2\n",
+			{ ...INPUT, supersedes: "RTM_v1_2026-09-13" },
+		);
+		const parsed = parseFrontmatterBlock(out)!;
+		assert.equal(parsed.fields.supersedes, "RTM_v1_2026-09-13");
+	});
+
+	it("Phase 7: supersedes is absent when input.supersedes is undefined", () => {
+		const out = withArtifactFrontmatter("# RTM v2\n", INPUT);
+		const parsed = parseFrontmatterBlock(out)!;
+		assert.equal(parsed.fields.supersedes, undefined);
 	});
 
 	it("preserves existing fields and never overwrites them", () => {
@@ -132,11 +158,37 @@ describe("missingFrontmatterFields", () => {
 			"run",
 			"created",
 			"updated",
+			"supersedes",
+			"sunset",
+			"deprecatedAt",
 		]);
 	});
 
 	it("returns empty when the block is complete", () => {
-		const out = withArtifactFrontmatter("# T\n", INPUT);
+		const out = withArtifactFrontmatter(
+			"# T\n",
+			{ ...INPUT, supersedes: "x", sunset: "2099-01-01", deprecatedAt: "2026-09-14" },
+		);
 		assert.deepEqual(missingFrontmatterFields(out), []);
+	});
+
+	it("reports supersedes missing for a fresh publish without one", () => {
+		const out = withArtifactFrontmatter("# T\n", INPUT);
+		const missing = missingFrontmatterFields(out);
+		assert.deepEqual(missing, ["supersedes", "sunset", "deprecatedAt"]);
+	});
+
+	it("v1.2.2: writes sunset when input.sunset is set", () => {
+		const out = withArtifactFrontmatter("# T\n", { ...INPUT, supersedes: "x", sunset: "2026-12-31" });
+		const parsed = parseFrontmatterBlock(out);
+		assert.ok(parsed);
+		assert.equal(parsed.fields.sunset, "2026-12-31");
+	});
+
+	it("v1.2.2: omits sunset when input.sunset is undefined", () => {
+		const out = withArtifactFrontmatter("# T\n", INPUT);
+		const parsed = parseFrontmatterBlock(out);
+		assert.ok(parsed);
+		assert.equal(parsed.fields.sunset, undefined);
 	});
 });

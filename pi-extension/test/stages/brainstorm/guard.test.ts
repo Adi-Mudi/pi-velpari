@@ -19,6 +19,7 @@ import {
 	guardDispatchCount,
 	guardNotesContent,
 	guardSeedInput,
+	guardStageForBrainstorm,
 	VELPARI_BRAINSTORM_DISPATCH_CAP,
 } from "../../../src/stages/brainstorm/guard.js";
 import type { RunState } from "../../../src/core/state.js";
@@ -271,5 +272,53 @@ describe("guardBrainstormMutation", () => {
 			guardBrainstormMutation("read", { path: "src/index.ts" }, makeState(), CWD),
 			undefined,
 		);
+	});
+});
+
+/**
+ * guardStageForBrainstorm (v2.2) — single-shot brainstorm per run.
+ *
+ * Covers the re-run guard: only `none` (fresh) and `brainstorming` (resume)
+ * are allowed. Anything else names the next command via `nextCommandsFor`.
+ */
+describe("guardStageForBrainstorm (v2.2)", () => {
+	it("allows fresh start (currentStage === none)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "none" }));
+		assert.equal(res.ok, true);
+	});
+
+	it("allows resume (currentStage === brainstorming)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstorming" }));
+		assert.equal(res.ok, true);
+	});
+
+	it("blocks after brainstorm approved (currentStage === brainstormed)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstormed" }));
+		assert.equal(res.ok, false);
+		assert.match(res.reason!, /brainstormed/);
+		assert.match(res.reason!, /\/velpari-prd/);
+		assert.match(res.reason!, /\/velpari-reset/);
+	});
+
+	it("blocks during PRD drafting (currentStage === drafting-prd)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "drafting-prd" }));
+		assert.equal(res.ok, false);
+		// Auto-publish mode hides the per-stage approve commands from the live
+	// command surface during a brainstorm,
+		// but the guard still names the canonical command for clarity.
+		assert.match(res.reason!, /drafting-prd/);
+	});
+
+	it("blocks near handoff (currentStage === planned-tests)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "planned-tests" }));
+		assert.equal(res.ok, false);
+		// In the industry-standard order, planned-tests → development-order (Stage 9) is the next step.
+		assert.match(res.reason!, /\/velpari-development-order/);
+	});
+
+	it("blocks past handoff (currentStage === handoff-ready) with reset hint", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "handoff-ready" }));
+		assert.equal(res.ok, false);
+		assert.match(res.reason!, /\/velpari-reset/);
 	});
 });

@@ -45,6 +45,9 @@ Write a JSON file to `<scoutReportPath>`:
       }
     }
   ],
+  "mermaidC4Context": "C4Context\n  title System Context — <projectName>\n  Person(user, \"End user\")\n  System(system, \"<projectName>\")\n  System_Ext(extA, \"<external system>\")\n  Rel(user, system, \"Uses\")",
+  "mermaidC4Container": "C4Container\n  title Container view — <projectName>\n  Person(user, \"End user\")\n  System_Boundary(c1, \"<projectName>\") { Container(app, \"Web app\", \"<tech>\") }\n  System_Ext(extA, \"<external system>\")\n  Rel(user, app, \"Uses\")",
+  "mermaidC4Component": "C4Component\n  title <projectName> — components\n  Container(app, \"Web app\", \"<tech>\")\n  Container_Boundary(api, \"API\") { Component(c, \"Core\", \"<tech>\") }\n  Rel(app, c, \"Calls\")",
   "source": "design-data-flow-mapper",
   "timestamp": "ISO-8601"
 }
@@ -56,6 +59,20 @@ Write a JSON file to `<scoutReportPath>`:
 - For each scenario, list the modules in invocation order.
 - Note data stores (DBs, caches, queues) touched along the way.
 - Flag any synchronous calls that could be async.
+- **Phase 6: also produce three Mermaid C4 diagrams** in dedicated
+  fields. The parent LLM renders these into the design doc's §14
+  (Diagrams (C4)). The three diagrams are required; missing any one
+  is an error at publish time.
+
+  - `mermaidC4Context` — System Context (C4 Level 1)
+  - `mermaidC4Container` — Container view (C4 Level 2)
+  - `mermaidC4Component` — Component view (C4 Level 3) for the
+    largest non-trivial container
+
+  Use the C4 Mermaid syntax (`C4Context`, `C4Container`,
+  `C4Component`) with `Person`, `System`, `System_Ext`, `System_Boundary`,
+  `Container`, `ContainerDb`, `Component`, `Rel` keywords. Keep each
+  diagram under 50 lines.
 
 ## Hard rules
 

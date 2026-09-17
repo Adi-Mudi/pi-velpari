@@ -10,12 +10,10 @@
  *   3. guardNotesContent blocks on missing/empty/_TBD_ sections
  *   4. clean path: publishes Doc/brainstorm/brainstorm-<slug>.md, writes the
  *      audit log, clears the 4 brainstorm session fields, advances the
- *      stage, and chains into handlePrd
+ *      stage, and surfaces a "Next: /velpari-prd" hint (no auto-chain
+ *      to the PRD handler — v1.6.2 dropped the auto-chain so each stage
+ *      boundary is a manual confirm-then-write step)
  *   5. idempotency: a second approve call fails at the stage check
- *
- * The chain into handlePrd runs the real registry runStage: with a seeded
- * files.json (projectName) it proceeds to pi.sendUserMessage (captured by
- * the mock); nothing in the chain throws under these mocks.
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -204,7 +202,7 @@ describe("handleApproveBrainstorm", () => {
 		assert.equal(loadState(tmpDir).currentStage, "brainstorming");
 	});
 
-	it("clean path: publishes, writes audit log, clears session fields, advances, chains", async () => {
+	it("clean path: publishes, writes audit log, clears session fields, advances, shows next-command hint (no auto-chain)", async () => {
 		let state = createRun(MISSION, tmpDir);
 		state = confirmUnderstanding(state, tmpDir);
 		state = setScansSelected(state, ["code", "doc"], tmpDir);
@@ -262,12 +260,22 @@ describe("handleApproveBrainstorm", () => {
 			),
 		);
 
-		// Chained into PRD: the prd stage prompt was handed to the parent LLM.
-		assert.ok(
-			notifications.some((n) => n.message === "Chaining into PRD stage..."),
+		// v1.6.2: NO auto-chain to PRD. The handler surfaces a clear
+		// "Next: /velpari-prd" hint instead and stops — the user runs
+		// the next command by hand.
+		const nextHint = notifications.find((n) =>
+			n.message.includes("Brainstorm notes published") &&
+			n.message.includes("/velpari-prd"),
 		);
-		assert.equal(sentMessages.length, 1);
-		assert.match(sentMessages[0]!, /<pi-velpari stage="drafting-prd">/);
+		assert.ok(
+			nextHint,
+			"expected a 'Brainstorm notes published. Next: /velpari-prd' hint",
+		);
+		assert.equal(
+			sentMessages.length,
+			0,
+			"v1.6.2 dropped auto-chain; no parent LLM message should be sent from brainstorm-approve",
+		);
 	});
 
 	it("is idempotent: a second approve call fails at the stage check", async () => {

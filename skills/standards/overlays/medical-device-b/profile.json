@@ -1,0 +1,79 @@
+{
+	"id": "medical-device-b",
+	"version": "1.0.0",
+	"label": "Medical Device — IEC 62304 Class B",
+	"standards": ["IEC 62304:2006", "ISO 14971:2019", "ISO 13485:2016"],
+	"scopes": ["medical-device", "fda-class-ii", "saMD"],
+	"inferenceSignals": [
+		"medical device",
+		"fda",
+		"iec 62304",
+		"iso 13485",
+		"iso 14971",
+		"saMD",
+		"clinical",
+		"patient",
+		"fda class ii",
+		"510(k)",
+		"class b"
+	],
+	"requiredSections": {
+		"prd": [
+			"## Software Development Plan",
+			"## Software Safety Classification",
+			"## Risk Management Summary",
+			"## SOUP Inventory",
+			"## Acceptance Criteria — IEC 62304 Specific"
+		],
+		"design": [
+			"## Software Architectural Design (IEC 62304 §5.3)",
+			"## Risk Control Measures",
+			"## Software Detailed Design (IEC 62304 §5.4 — recommended for Class B)",
+			"## SOUP Risk Control"
+		],
+		"testplan": [
+			"## Verification per IEC 62304 §5.7",
+			"## Integration Test Coverage (IEC 62304 §5.6)",
+			"## System Test Coverage (IEC 62304 §5.7)",
+			"## Risk Control Verification",
+			"## SOUP Verification (when applicable)",
+			"## Acceptance Test Report (IEC 62304 §5.8)"
+		]
+	},
+	"extraScouts": [
+		{
+			"role": "overlay-design-safety-analyzer",
+			"description": "Maps every module / interface / ADR to an IEC 62304 safety class (A / B / C) and verifies traceability to the risk register",
+			"reportPathTemplate": "<scoutReportDir>/design-safety-analyzer-report.json"
+		}
+	],
+	"doctorChecks": [
+		"Every FR has a Software Safety Classification (A / B / C).",
+		"Every risk control measure listed in the design's ## Risk Control Measures table traces to at least one module or interface.",
+		"Every hazard ID referenced from a module or interface exists in the PRD's ## Risk Management Summary table.",
+		"Every NFR carries a verification method (Inspection / Test / Analysis).",
+		"Integration test coverage >= 95% (covered interfaces / total interfaces).",
+		"System test coverage = 100% (covered FRs / total FRs).",
+		"Risk control verification coverage = 100% (verified controls / total controls).",
+		"The design-safety-analyzer-report.json report shows zero error-level findings.",
+		"All SOUP items (if any) carry known-anomaly tests in the testplan.",
+		"Every ADR in ## Architecture Decisions has at least one hazard reference when the ADRs describe safety-relevant decisions."
+	],
+	"loggingRequirements": {
+		"regimes": [
+			{ "framework": "FDA 21 CFR Part 11", "version": "2024" },
+			{ "framework": "IEC 62304:2006", "version": "§9 (audit trail)" }
+		],
+		"retentionMonths": 24,
+		"tamperEvident": true,
+		"piiRedaction": true,
+		"dailyReview": false,
+		"extraEventCategories": [
+			"device-tamper",
+			"firmware-update",
+			"alarm-state-change",
+			"patient-data-access",
+			"sooup-load"
+		]
+	}
+}

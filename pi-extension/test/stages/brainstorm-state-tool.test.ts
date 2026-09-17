@@ -61,6 +61,24 @@ afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+describe("velpari_brainstorm_session — request-scan-gate (v2.1)", () => {
+	it("errors when no brainstorm is active", async () => {
+		const res = await exec({ action: "request-scan-gate" });
+		assert.equal(res.isError, true);
+		assert.match(res.content[0]!.text, /\/velpari-brainstorm/);
+	});
+
+	it("returns [] and persists empty scans when ui.select is unavailable", async () => {
+		createRun("Test mission", tmpDir);
+		const res = await exec({ action: "request-scan-gate" });
+		assert.equal(res.isError, undefined);
+		assert.deepEqual((res.details as Record<string, unknown>).scansSelected, []);
+		assert.deepEqual(loadState(tmpDir).scansSelected, []);
+		assert.equal(entries.length, 1);
+		assert.equal(entries[0]!.customType, "velpari-brainstorm");
+	});
+});
+
 describe("velpari_brainstorm_session tool", () => {
 	it("registers under the velpari_brainstorm_session name", () => {
 		assert.equal(tool.name, "velpari_brainstorm_session");

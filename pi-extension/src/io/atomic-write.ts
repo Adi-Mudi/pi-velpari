@@ -42,3 +42,41 @@ export function atomicWriteFile(
 export function atomicWriteJson(path: string, value: unknown): void {
 	atomicWriteFile(path, JSON.stringify(value, null, 2), "utf8");
 }
+
+/**
+ * Atomic write with a YAML frontmatter header + markdown body. v1.4.0.
+ *
+ * Used by the logging plan publisher and any other artifact that needs
+ * structured YAML metadata followed by human-readable content. The
+ * frontmatter is serialised in `key: value` form (one entry per line);
+ * nested objects are serialised as JSON for simplicity — the loaders
+ * accept this format.
+ *
+ * Layout written:
+ *
+ *     ---
+ *     key1: value1
+ *     key2: { "a": 1 }
+ *     ---
+ *
+ *     body text...
+ */
+export function atomicWriteJsonWithFrontmatter(
+	path: string,
+	frontmatter: Record<string, unknown>,
+	body: string,
+): void {
+	const lines: string[] = ["---"];
+	for (const [key, value] of Object.entries(frontmatter)) {
+		if (value === undefined || value === null) continue;
+		if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+			lines.push(`${key}: ${value}`);
+		} else {
+			lines.push(`${key}: ${JSON.stringify(value)}`);
+		}
+	}
+	lines.push("---", "");
+	lines.push(body);
+	if (!body.endsWith("\n")) lines.push("");
+	atomicWriteFile(path, lines.join("\n"), "utf8");
+}

@@ -35,7 +35,7 @@ const PATTERNS: ReadonlyArray<Pattern> = [
 	{ name: "AWS Access Key", regex: /AKIA[0-9A-Z]{16}/g },
 	{ name: "GitHub PAT", regex: /ghp_[A-Za-z0-9]{36}/g },
 	{ name: "OpenAI API Key", regex: /sk-[A-Za-z0-9]{48}/g },
-	{ name: "Google API Key", regex: /AIza[0-9A-Za-z_\-]{20,}/g },
+	{ name: "Google API Key", regex: /AIza[0-9A-Za-z_-]{20,}/g },
 	{ name: "PEM private key", regex: /BEGIN [A-Z ]+PRIVATE KEY/g },
 	{ name: "Bearer token", regex: /Bearer\s+[A-Za-z0-9_\-.]{20,}/g },
 	{ name: "Generic key=value secret", regex: /(?:api[_-]?key|secret|password|token)["']?\s*[:=]\s*["']?[A-Za-z0-9_\-.]{8,}/gi },

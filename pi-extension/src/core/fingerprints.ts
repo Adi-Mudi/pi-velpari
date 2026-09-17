@@ -7,7 +7,9 @@
  * requirement text changes in a PSRS revision, the fingerprint no longer
  * matches and doctor flags the RTM row as "suspect".
  *
- * The LLM never computes hashes: `/velpari-approve` stamps fingerprints
+ * The LLM never computes hashes: the publish gate (called via
+ * `handleApprove` from the publish tool or the per-stage
+ * `/velpari-<stage>-approve` fall-back) stamps fingerprints
  * into the JSON sidecar at publish time, from the published PSRS.
  */
 

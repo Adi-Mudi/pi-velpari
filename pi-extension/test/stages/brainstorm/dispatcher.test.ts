@@ -35,8 +35,12 @@ describe("SCAN_TYPE_ROLES + DEFAULT_SCANS", () => {
 		assert.deepEqual(SCAN_TYPE_ROLES.community, ["web-search-agent"]);
 	});
 
-	it("defaults to code+doc (community only with user consent — FR-52)", () => {
-		assert.deepEqual(DEFAULT_SCANS, ["code", "doc"]);
+	it("DEFAULT_SCANS is empty (v2.1 — picker ALWAYS asks, no silent default)", () => {
+		assert.deepEqual(DEFAULT_SCANS, []);
+	});
+
+	it("DEFAULT_SCANS is frozen (cannot be mutated by accident)", () => {
+		assert.ok(Object.isFrozen(DEFAULT_SCANS), "DEFAULT_SCANS must be frozen");
 	});
 });
 

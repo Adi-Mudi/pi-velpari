@@ -70,7 +70,7 @@ export function checkWebToolLock(cwd: string): DiagnosticSection {
 			message: `${agentName} (${filename}) carries web tool(s): ${webTools.join(", ")}. Only the \`${ALLOWED_AGENT}\` agent may reach the web.`,
 			details: [
 				"Having two agents reach the web confuses the orchestra about who owns external knowledge.",
-				`Remove \`${webTools.join("\`, \`")}\` from the agent's \`tools:\` list, or rename the agent to \`${ALLOWED_AGENT}\`.`,
+				`Remove \`${webTools.join("`, `")}\` from the agent's \`tools:\` list, or rename the agent to \`${ALLOWED_AGENT}\`.`,
 			],
 		});
 	}

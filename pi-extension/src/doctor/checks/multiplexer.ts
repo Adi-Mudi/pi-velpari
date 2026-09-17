@@ -1,44 +1,31 @@
 /**
- * Multiplexer detection check.
+ * Multiplexer detection check (doctor layer — L1).
  *
- * Required for `/velpari-brainstorm v2.0` because the parent LLM spawns 4
- * visible subagents in multiplexer panes. Detects cmux / tmux / zellij /
- * wezterm / unknown by sniffing env vars, and looks up the
- * pi-interactive-subagents peer dep version.
+ * Detection logic was promoted to `core/multiplexer.ts` (L0) so L1
+ * handlers can gate on it without breaking the layer rule. This module
+ * re-exports the detector to keep the doctor API stable, and keeps the
+ * package-version probe here because it touches the filesystem (a layer-1
+ * neighbor concern).
+ *
+ * Required for `/velpari-brainstorm v2.1` because the parent LLM spawns
+ * visible subagents in multiplexer panes. The brainstorm handler now
+ * hard-gates on `detectMultiplexer` so an orphan run can't be created
+ * outside a multiplexer.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type MultiplexerKind = "cmux" | "tmux" | "zellij" | "wezterm" | "unknown";
-
-export interface MultiplexerInfo {
-	mux: MultiplexerKind;
-	source: string;
-}
-
-/**
- * Detect the active multiplexer by sniffing env vars.
- * `PI_SUBAGENT_MUX` overrides everything (lets a wrapper force a value).
- */
-export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerInfo {
-	const override = env.PI_SUBAGENT_MUX;
-	if (override === "cmux" || override === "tmux" || override === "zellij" || override === "wezterm") {
-		return { mux: override, source: "PI_SUBAGENT_MUX" };
-	}
-	if (env.TMUX) return { mux: "tmux", source: "TMUX" };
-	if (env.ZELLIJ_PANE_ID || env.ZELLIJ_SESSION_NAME) {
-		return { mux: "zellij", source: env.ZELLIJ_PANE_ID ? "ZELLIJ_PANE_ID" : "ZELLIJ_SESSION_NAME" };
-	}
-	if (env.WEZTERM_PANE || env.WEZTERM_EXECUTABLE) {
-		return { mux: "wezterm", source: env.WEZTERM_PANE ? "WEZTERM_PANE" : "WEZTERM_EXECUTABLE" };
-	}
-	if (env.CMUX_PANE_ID || env.CMUX_SESSION_NAME) {
-		return { mux: "cmux", source: env.CMUX_PANE_ID ? "CMUX_PANE_ID" : "CMUX_SESSION_NAME" };
-	}
-	return { mux: "unknown", source: "(none — no multiplexer env vars detected)" };
-}
+// Re-export from L0. The doctor API is unchanged.
+export {
+	detectMultiplexer,
+	isSupportedMux,
+	multiplexerRequiredMessage,
+	SUPPORTED_MULTIPLEXERS,
+	type MultiplexerKind,
+	type MultiplexerInfo,
+} from "../../core/multiplexer.js";
 
 /**
  * Best-effort lookup for the pi-interactive-subagents package version.
@@ -46,10 +33,14 @@ export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): Multipl
  */
 export function detectInteractiveSubagentsVersion(cwd: string = process.cwd()): string | undefined {
 	const candidates = [
-		join(cwd, "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
-		join(cwd, "..", "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
-		join(cwd, "..", "..", "node_modules", "@earendil-works", "pi-interactive-subagents", "package.json"),
+		// Bundled inside pi-velpari after pi install (new install model)
+		join(cwd, "node_modules", "pi-interactive-subagents", "package.json"),
+		join(cwd, "..", "node_modules", "pi-interactive-subagents", "package.json"),
+		join(cwd, "..", "..", "node_modules", "pi-interactive-subagents", "package.json"),
+		// Legacy peer-dep install locations (still valid for older installs and dev symlinks)
 		join(homedir(), ".pi", "agent", "extensions", "pi-interactive-subagents", "package.json"),
+		join(homedir(), ".pi", "agent", "npm", "node_modules", "pi-interactive-subagents", "package.json"),
+		join(homedir(), ".pi", "agent", "git", "github.com", "HazAT", "pi-interactive-subagents", "package.json"),
 	];
 	for (const candidate of candidates) {
 		try {

@@ -57,9 +57,16 @@ export const BRAINSTORM_DISPATCH_TIMEOUT_MS = 30_000;
  *  fetch + read) cannot complete in the 30s local-scan budget. */
 export const BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS = 90_000;
 
-/** Default scan selection for the requirements mission. Community (web
- *  search) is added only when the user consents at the scan gate — FR-52. */
-export const DEFAULT_SCANS: readonly ScanType[] = ["code", "doc"];
+/**
+ * REMOVED in v2.1: there is NO default scan selection. The SCAN-gate
+ * picker (`ui/scan-gate.ts:runScanGatePicker`) ALWAYS asks the developer.
+ * The parent LLM must NOT assume any scans are pre-selected.
+ *
+ * This constant is kept as a frozen empty tuple ONLY for callers that
+ * need a "no scans selected" sentinel value (e.g. the dispatcher's
+ * "skip scans" branch). Do NOT use it as a default.
+ */
+export const DEFAULT_SCANS: readonly ScanType[] = Object.freeze([]);
 
 /** Read-only tools every brainstorm dispatch keeps after stripping.
  *  Lowercase pi tool names (velpari convention). */

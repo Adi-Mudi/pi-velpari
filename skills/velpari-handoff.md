@@ -1,3 +1,8 @@
+---
+name: velpari-handoff
+description: Pi-Velpari Handoff stage — package approved artifacts into `.pi/senai/architect-inputs.json` for Senai. The handler is deterministic file packaging; it does not invoke an LLM. Use when the run is at `planned-tests` or `ordered-development`.
+---
+
 # velpari-handoff — Stage Prompt
 
 ## Purpose

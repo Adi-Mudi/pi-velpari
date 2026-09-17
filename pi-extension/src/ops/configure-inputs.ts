@@ -37,7 +37,15 @@ export async function ask(
 
 /** Interview answers that buildFilesConfig merges over the existing config. */
 export interface ConfigureAnswers {
+	/** Legacy single-design projectName. v1.3.0+ accepts EITHER
+	 *  `projectName` (single, legacy) or `projectNames` (multi-design).
+	 *  Exactly one of the two must be set. */
 	projectName: string;
+	/** v1.3.0+ multi-design: array of 1+ projectNames. The configure
+	 *  input interview accepts a comma-separated string and parses it.
+	 *  When set, the resulting config drops `projectName` to "" (per
+	 *  `validateFilesConfig` one-of requirement). */
+	projectNames?: string[];
 	language?: string;
 	libraries: string[];
 	runtime?: string;
@@ -49,9 +57,10 @@ export interface ConfigureAnswers {
  * commands/configure-inputs.ts.
  */
 export function buildFilesConfig(existing: FilesConfig, answers: ConfigureAnswers): FilesConfig {
-	return {
+	const hasMulti = Array.isArray(answers.projectNames) && answers.projectNames.length > 0;
+	const merged: FilesConfig = {
 		version: 4,
-		projectName: answers.projectName,
+		projectName: hasMulti ? "" : (answers.projectName ?? ""),
 		framework: {
 			language: answers.language || existing.framework?.language,
 			libraries: answers.libraries,
@@ -63,6 +72,10 @@ export function buildFilesConfig(existing: FilesConfig, answers: ConfigureAnswer
 		outputPaths: existing.outputPaths ?? {},
 		excludedPaths: existing.excludedPaths ?? [],
 	};
+	if (hasMulti) {
+		merged.projectNames = (answers.projectNames ?? []).slice();
+	}
+	return merged;
 }
 
 /** Path categories editable in the configure-inputs path step. */

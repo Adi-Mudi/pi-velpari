@@ -4,10 +4,8 @@
  *
  * Bespoke by design — Phase B refactor left this handler outside
  * STAGE_REGISTRY because /velpari-approve-brainstorm is the only handler that
- * (a) writes to a per-brainstorm grouped path with an optional timestamp
- * suffix so re-runs of the same topic don't clobber earlier notes (FR-69),
- * and (b) directly chains into the next stage's handler
- * (`handlePrd` here, instead of relying on the user to type /velpari-prd).
+ * writes to a per-brainstorm grouped path with an optional timestamp
+ * suffix so re-runs of the same topic don't clobber earlier notes (FR-69).
  *
  * Flow:
  * 1. Read working copy from `.IDE_Plans/velpari/runs/<run-id>/brainstorm/brainstorm-notes.md`.
@@ -21,9 +19,12 @@
  * 5. Publish to Doc/brainstorm/brainstorm-<topic-slug>.md (grouped, atomic).
  *    If a legacy flat file already exists, preserve it.
  * 6. Write the brainstorm audit log (best-effort — never blocks approve).
- * 7. Transition state: brainstorming -> brainstormed -> drafting-prd, then
- *    clear the brainstorm session fields so the mutation lock lifts.
- * 8. Auto-invoke handlePrd() to chain (per FR-58).
+ * 7. Transition state: brainstorming -> brainstormed, then clear the
+ *    brainstorm session fields so the mutation lock lifts.
+ * 8. Notify the user with the next command to run manually
+ *    (v1.6.2+ — no auto-chain to /velpari-prd; user runs the next
+ *    command by hand so each stage boundary is an explicit, manual
+ *    confirm-then-write step).
  *
  * Idempotency: a second /velpari-approve-brainstorm call for the same run
  * fails at the stage check (currentStage is no longer "brainstorming"), so
@@ -57,7 +58,6 @@ import {
 	createAuditSession,
 	writeAuditLog,
 } from "./brainstorm/audit.js";
-import { handlePrd } from "./prd.js";
 
 export async function handleApproveBrainstorm(
 	ctx: ExtensionCommandContext,
@@ -156,8 +156,10 @@ export async function handleApproveBrainstorm(
 		// best-effort: audit failures never block approve
 	}
 
-	// 8. Transition state: brainstorming -> brainstormed (via /velpari-approve-brainstorm),
-	//    then to drafting-prd (via /velpari-prd which handlePrd will trigger).
+	// 8. Transition state: brainstorming -> brainstormed (via
+	//    /velpari-approve-brainstorm). The next stage command
+	//    (/velpari-prd) is NOT auto-invoked — v1.6.2 dropped the
+	//    auto-chain so the user manually confirms each stage boundary.
 	const next = advanceStage(state, "/velpari-approve-brainstorm", cwd, pi);
 	// Clear the brainstorm session fields (understanding confirmed, scans,
 	//    questions, dispatch count) on the advanced state — the mutation lock
@@ -168,9 +170,13 @@ export async function handleApproveBrainstorm(
 	// status bar via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${cleared.currentStage} | run: ${cleared.runId}`);
 
-	// 9. Chain into PRD
-	ctx.ui.notify("Chaining into PRD stage...", "info");
-	await handlePrd(ctx, pi, cwd);
+	// 9. Show the user the single next command to run by hand.
+	//    No auto-chain: clean, predictable, manual confirm-then-write
+	//    discipline at every stage boundary.
+	ctx.ui.notify(
+		`Brainstorm notes published. Next: run /velpari-prd to start the PRD stage.`,
+		"info",
+	);
 
 	void buildBrainstormPath;
 }

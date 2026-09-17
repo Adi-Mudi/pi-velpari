@@ -1,5 +1,5 @@
 /**
- * /velpari-approve feasibility session gate tests (feasibility v2, Phase 3).
+ * /velpari-prd-approve feasibility session gate tests (feasibility v2, Phase 3).
  *
  * Asserts:
  *   - feasibility publish is BLOCKED when the session has no decision
@@ -91,9 +91,9 @@ function enterFeasibility(): void {
 	for (const cmd of [
 		"/velpari-approve-brainstorm",
 		"/velpari-prd",
-		"/velpari-approve",
+		"/velpari-prd-approve",
 		"/velpari-rtm",
-		"/velpari-approve",
+		"/velpari-rtm-approve",
 		"/velpari-feasibility",
 	]) {
 		state = advanceStage(state, cmd, tmpDir);
@@ -103,13 +103,17 @@ function enterFeasibility(): void {
 
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-approve-feasibility-"));
+	// v1.2.1 opt-out for minimal-cwd test fixtures (see
+	// approve-doctor-gate.test.ts for the same setup + rationale).
+	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
+	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
 });
 
-describe("/velpari-approve — feasibility session gate", () => {
+describe("/velpari-atomic-function-approve — feasibility session gate", () => {
 	it("blocks when no session exists (no decision, no language)", async () => {
 		enterFeasibility();
 		await handleApprove(makeCtx(), undefined, tmpDir);

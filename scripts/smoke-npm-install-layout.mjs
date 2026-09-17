@@ -41,7 +41,7 @@ const SKILLS = [
 ];
 
 const AGENTS = [
-	"af-source-prd", "af-source-pseudocode", "af-source-rtm", "af-source-testcases",
+	"af-source-design", "af-source-feas", "af-source-prd", "af-source-rtm",
 	"consolidator", "design-contract-definer", "design-data-flow-mapper",
 	"design-error-definer", "design-module-decomposer",
 	"do-risk", "do-test", "do-topology", "do-value",

@@ -15,6 +15,8 @@ import { findPackageRoot } from "./paths.js";
 import type { Stage } from "./constants.js";
 import type { CompactProfileMetadata } from "./profile.js";
 import type { ScanType } from "./state.js";
+import type { AtomicProfile } from "./atomic-tier.js";
+import { tierLabel } from "./atomic-tier.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -191,6 +193,13 @@ export interface BuildStagePromptInput {
 	 * `## Conditional Agents` block with the resolved spawn names.
 	 */
 	conditionalAgents?: readonly { role: string; agentName: string }[] | null;
+	/**
+	 * Optional (atomic-function stage only): tier profile loaded from
+	 * `.pi/velpari/files.json:atomic`. Rendered as a `## Atomic Profile`
+	 * block so the parent LLM knows which fields are required at the
+	 * selected tier (ISO/IEC 29110 entry/basic/intermediate/advanced).
+	 */
+	atomicProfile?: AtomicProfile | null;
 	paths: {
 		/** Ordered list of scout agents (preferred over the legacy hardcoded fields). */
 		scouts?: ScoutSlot[];
@@ -385,9 +394,43 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 				].join("\n")
 			: "";
 
-	return [metadata, profileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, updateModeSection, conditionalSection, inputContentSection, skill]
+	// Atomic profile block (atomic-function stage only — ISO/IEC 29110 + IEC 61508/IEC 62304).
+	const atomicProfileSection = renderAtomicProfile(input.atomicProfile ?? null);
+
+	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, updateModeSection, conditionalSection, inputContentSection, skill]
 		.filter((s) => s.length > 0)
 		.join("\n");
+}
+
+/**
+ * Render the `## Atomic Profile` block. Lists the tier, safetyClass, SIL,
+ * overlay id, and the field set required at the selected tier (so the
+ * parent LLM populates the right columns). Returns "" when the profile
+ * is null (other stages).
+ */
+function renderAtomicProfile(profile: AtomicProfile | null): string {
+	if (!profile) return "";
+	const fieldsByTier: Record<AtomicProfile["tier"], string> = {
+		entry: "Base-core only (8 fields): afId, name, purpose, signature, source, cohesion, verification, testable.",
+		basic: "Base-core + basic-tier refs: calledByFrIds, designRef, extractedFrom, satisfactionFrId, feasibilityRef.",
+		intermediate: "Base-core + basic + EARS pattern, inputs, outputs, errors, dependencies, dbOrIo, complexity, coupling, argCount, oneLevelAbstr, nameIntent.",
+		advanced: "Base-core + basic + intermediate + owner, priority, securityClass, risk, reusability, modifiabilityNote, storyPoints, acceptanceRef, testRef, rationale, changeLog.",
+	};
+	return [
+		`## Atomic Profile (ISO/IEC 29110 + IEC 61508/IEC 62304)`,
+		``,
+		`Tier: ${tierLabel(profile.tier)}`,
+		`Safety class (IEC 62304): ${profile.safetyClass}`,
+		`SIL (IEC 61508): ${profile.sil}`,
+		`Standards overlay: ${profile.overlayId ?? "(none)"}`,
+		``,
+		`Required field set:`,
+		fieldsByTier[profile.tier],
+		``,
+		`Every AF row in the working copy must populate every required field.`,
+		`The doctor gate (publish-time) reports missing fields as errors.`,
+		``,
+	].join("\n");
 }
 
 /**

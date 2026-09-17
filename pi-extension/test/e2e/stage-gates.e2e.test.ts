@@ -111,8 +111,14 @@ describe("e2e/stage-gates", () => {
 			out.visited.length,
 			"history must record exactly one entry per stage visited (incl. the initial createRun entry)",
 		);
-		// The full chain incl. optional stages: 18 transitions after createRun.
-		assert.strictEqual(out.visited.length, 19, `expected 19 visited stages, got: ${out.visited.join(" → ")}`);
+		// The full chain incl. all required stages (Option B — industry-standard order):
+		// brainstorm → brainstormed → drafting-prd → drafted-prd → building-rtm → built-rtm
+		// → analyzing-feasibility → analyzed-feasibility → designing → designed
+		// → analyzing-atomic-functions → analyzed-atomic-functions → writing-pseudocode
+		// → wrote-pseudocode → planning-tests → planned-tests → ordering-development
+		// → ordered-development → finalizing-design → finalized-design → handoff-ready
+		// = 21 visited stages (20 transitions after createRun).
+		assert.strictEqual(out.visited.length, 21, `expected 21 visited stages, got: ${out.visited.join(" → ")}`);
 	});
 
 	it("negative: advanceStage rejects illegal jumps with a clear error", { timeout: 60_000 }, async (t) => {
@@ -132,7 +138,7 @@ describe("e2e/stage-gates", () => {
 				// Walk to drafted-prd (3 legal steps), then skip ahead to testplan.
 				`state = advanceStage(state, "/velpari-approve-brainstorm", cwd); ` +
 				`state = advanceStage(state, "/velpari-prd", cwd); ` +
-				`state = advanceStage(state, "/velpari-approve", cwd); ` +
+				`state = advanceStage(state, "/velpari-rtm-approve", cwd); ` +
 				`errors.push(tryAdvance(state, "/velpari-testplan")); ` +
 				`errors.push(tryAdvance(state, "/velpari-handoff")); ` +
 				`process.stdout.write(JSON.stringify({ errors, stage: state.currentStage }));`,
@@ -220,14 +226,15 @@ describe("e2e/stage-gates", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			`import { clearRun, createRun, advanceStage, loadState, setFeasibilitySession } from ${STATE_JS}; ` +
+			`process.env.VELPARI_SKIP_AUTO_DOCTOR = "1"; ` +
+				`import { clearRun, createRun, advanceStage, loadState, setFeasibilitySession } from ${STATE_JS}; ` +
 				`import { handleApprove } from ${APPROVE_JS}; ` +
 				`import { mkdirSync, writeFileSync, existsSync } from "node:fs"; ` +
 				`import { join } from "node:path"; ` +
 				`const cwd = process.cwd(); ` +
 				`clearRun(cwd); ` +
 				`let state = createRun("E2EFixture", cwd); ` +
-				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-approve", "/velpari-rtm", "/velpari-approve", "/velpari-feasibility"]) { ` +
+				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-testplan-approve", "/velpari-rtm", "/velpari-development-order-approve", "/velpari-feasibility"]) { ` +
 				`  state = advanceStage(state, cmd, cwd); ` +
 				`} ` +
 				// Full v2-template working copy (all 13 sections + verdict word).
@@ -273,7 +280,7 @@ describe("e2e/stage-gates", () => {
 				`writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify({ version: 4, projectName: "E2ESkipApp" }), "utf8"); ` +
 				`clearRun(cwd); ` +
 				`let state = createRun("E2ESkipApp", cwd); ` +
-				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-approve", "/velpari-rtm", "/velpari-approve"]) { ` +
+				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-final-design-approve", "/velpari-rtm", "/velpari-final-design-approve"]) { ` +
 				`  state = advanceStage(state, cmd, cwd); ` +
 				`} ` + // built-rtm
 				`const notes = []; const sent = []; ` +
@@ -333,10 +340,12 @@ describe("e2e/stage-gates", () => {
 		assert.match(out.rejectError, /Cannot run \/velpari-final-design at stage "brainstorming"/);
 	});
 
-	it("final-design accept: at planned-tests the gate passes, advanceStage lands on finalizing-design", { timeout: 60_000 }, async (t) => {
+	it("final-design accept: at ordered-development the gate passes, advanceStage lands on finalizing-design", { timeout: 60_000 }, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
+		// Industry-standard order: design → atomic-function → pseudocode → test-plan →
+		// development-order → final-design. Final-design runs from `ordered-development`.
 		const out = await runModuleScript<any>(
 			client,
 			`import { clearRun, createRun, advanceStage, loadState } from ${STATE_JS}; ` +
@@ -347,7 +356,7 @@ describe("e2e/stage-gates", () => {
 				`writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify({ version: 4, projectName: "E2EFinalApp2" }), "utf8"); ` +
 				`clearRun(cwd); ` +
 				`let state = createRun("E2EFinalApp2", cwd); ` +
-				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-approve", "/velpari-rtm", "/velpari-approve", "/velpari-feasibility", "/velpari-approve", "/velpari-architecture-generator", "/velpari-approve", "/velpari-pseudocode", "/velpari-approve", "/velpari-testplan", "/velpari-approve"]) { ` +
+				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-final-design-approve", "/velpari-rtm", "/velpari-final-design-approve", "/velpari-feasibility", "/velpari-final-design-approve", "/velpari-architecture-generator", "/velpari-final-design-approve", "/velpari-atomic-function", "/velpari-final-design-approve", "/velpari-pseudocode", "/velpari-final-design-approve", "/velpari-testplan", "/velpari-final-design-approve", "/velpari-development-order", "/velpari-final-design-approve"]) { ` +
 				`  state = advanceStage(state, cmd, cwd); ` +
 				`} ` +
 				`const acceptNotes = []; ` +
@@ -355,12 +364,12 @@ describe("e2e/stage-gates", () => {
 				`const preAdvance = loadState(cwd).currentStage; ` +
 				`await runStage("final-design", acceptCtx, { sendUserMessage: () => {} }, cwd); ` +
 				`const gateError = acceptNotes.find((n) => n.l === "error" && n.m.includes("Cannot run /velpari-final-design")); ` +
-				`state = advanceStage(loadState(cwd), "/velpari-design", cwd); ` +
+				`state = advanceStage(loadState(cwd), "/velpari-final-design", cwd); ` +
 				`process.stdout.write(JSON.stringify({ preAdvance, gateError: gateError ? gateError.m : null, finalStage: state.currentStage }));`,
 		);
 
-		assert.strictEqual(out.preAdvance, "planned-tests", "walk did not land on planned-tests");
-		assert.strictEqual(out.gateError, null, `gate at planned-tests should pass; saw: ${out.gateError}`);
-		assert.strictEqual(out.finalStage, "finalizing-design", "advanceStage via /velpari-design did not land on finalizing-design");
+		assert.strictEqual(out.preAdvance, "ordered-development", "walk did not land on ordered-development");
+		assert.strictEqual(out.gateError, null, `gate at ordered-development should pass; saw: ${out.gateError}`);
+		assert.strictEqual(out.finalStage, "finalizing-design", "advanceStage via /velpari-final-design did not land on finalizing-design");
 	});
 });

@@ -122,9 +122,9 @@ describe("tool_call hook (stage mutation lock)", () => {
 		const res = fire("write", { path: "src/index.ts" });
 		assert.equal(res?.block, true);
 		assert.match(res?.reason ?? "", /Locked: stage "drafting-prd" in progress/);
-		assert.match(res?.reason ?? "", /\/velpari-approve/);
+		assert.match(res?.reason ?? "", /velpari_stage_publish|\/velpari-prd-approve/);
 
-		// Doc/ is NOT exempt — publishing goes through /velpari-approve only.
+		// Doc/ is NOT exempt — publishing goes through the publish tool only.
 		const doc = fire("write", { path: path.join(tmpDir, "Doc", "requirements", "PRD_X.md") });
 		assert.equal(doc?.block, true);
 
@@ -144,15 +144,17 @@ describe("tool_call hook (stage mutation lock)", () => {
 		const state = walkTo([
 			"/velpari-approve-brainstorm",
 			"/velpari-prd",
-			"/velpari-approve",
+			"/velpari-prd-approve",
 			"/velpari-rtm",
-			"/velpari-approve",
+			"/velpari-rtm-approve",
 			"/velpari-feasibility",
-			"/velpari-approve",
+			"/velpari-feasibility-approve",
 			"/velpari-architecture-generator",
-			"/velpari-approve",
+			"/velpari-architecture-generator-approve",
+			"/velpari-atomic-function",
+			"/velpari-atomic-function-approve",
 			"/velpari-pseudocode",
-			"/velpari-approve",
+			"/velpari-pseudocode-approve",
 			"/velpari-testplan",
 		]);
 		assert.equal(state.currentStage, "planning-tests");
@@ -166,7 +168,11 @@ describe("tool_call hook (stage mutation lock)", () => {
 
 	it("lifts the lock on completed stages", () => {
 		createRun("Test mission", tmpDir);
-		const state = walkTo(["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-approve"]);
+		const state = walkTo([
+			"/velpari-approve-brainstorm",
+			"/velpari-prd",
+			"/velpari-prd-approve",
+		]);
 		assert.equal(state.currentStage, "drafted-prd");
 		assert.equal(fire("write", { path: "src/index.ts" }), undefined);
 	});

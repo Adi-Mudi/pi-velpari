@@ -13,7 +13,7 @@
  * survive TUI truncation.
  */
 
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { PATHS } from "../core/constants.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { iconFor, type DiagnosticReport } from "./_types.js";

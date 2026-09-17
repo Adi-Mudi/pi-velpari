@@ -1,0 +1,21 @@
+{
+  "_comment": "Velpari bundled custom-roles starter. The first example role is `pseudocode-reviewer` — a sub-agent that validates the published pseudocode against the tier rubric. `/velpari-generate-sub-agents --custom` on a fresh project copies this file into `.pi/velpari/custom-roles.json` and emits the agent file. Edit `.pi/velpari/custom-roles.json` to add more custom roles or to customize this one.",
+  "version": 1,
+  "roles": [
+    {
+      "role": "pseudocode-reviewer",
+      "label": "Pseudocode — tier-compliance reviewer",
+      "tools": ["read", "write", "bash"],
+      "mandate": "Read the published pseudocode_<projectName>.md and verify it follows the tier rubric defined in Doc/velpari-pseudocode-research-notes.md. Check that every function block carries a tier stamp, that required fields per tier are present, and that PRECONDITIONS / POSTCONDITIONS / Edge Cases / Errors / Complexity / Dependencies / Side effects are well-formed. Emit a structured JSON review report to the assigned artifact path.",
+      "invocationHint": "Spawn at /velpari-approve for the pseudocode stage, after the 4 scouts (algorithm-extractor, edge-case-handler, complexity-analyzer, consolidator) have written the working copy. Runs as a post-reviewer before the user-facing preview gate. Read-only on the pseudocode artifact.",
+      "outOfScope": [
+        "Do not edit the pseudocode artifact or any other artifact (read-only).",
+        "Do not write or create source files.",
+        "Do not call other subagents (you are a leaf specialist).",
+        "Do not advance the run state or trigger publish — the parent LLM maps your JSON verdict to the publish decision.",
+        "Do not enforce rules that are not in the canonical check list — emit an advisory note instead."
+      ],
+      "bodyFile": "pseudocode-reviewer-body.md"
+    }
+  ]
+}

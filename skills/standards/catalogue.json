@@ -1,0 +1,179 @@
+{
+	"version": "1.2.0",
+	"overlays": [
+		{
+			"id": "none",
+			"version": "1.0.0",
+			"label": "Common Core (no domain overlay)",
+			"standards": ["RFC 2119", "EARS"],
+			"scopes": ["any"],
+			"inferenceSignals": [],
+			"requiresReviewer": false
+		},
+		{
+			"id": "medical-device-b",
+			"version": "1.0.0",
+			"label": "Medical Device — IEC 62304 Class B",
+			"standards": ["IEC 62304:2006", "ISO 14971:2019", "ISO 13485:2016"],
+			"scopes": ["medical-device", "fda-class-ii", "saMD"],
+			"inferenceSignals": [
+				"medical device",
+				"fda",
+				"iec 62304",
+				"iso 13485",
+				"iso 14971",
+				"saMD",
+				"clinical",
+				"patient",
+				"fda class ii",
+				"510(k)",
+				"class b"
+			],
+			"requiresReviewer": true
+		},
+		{
+			"id": "industrial-ot",
+			"version": "1.0.0",
+			"label": "Industrial OT — IEC 61508 SIL + IEC 62443",
+			"standards": ["IEC 61508:2010", "IEC 62443-3-3:2013", "IEC 61131-3:2013"],
+			"scopes": ["industrial-ot", "plc", "scada", "dcs", "process-control", "sis"],
+			"inferenceSignals": [
+				"plc",
+				"scada",
+				"dcs",
+				"iec 61508",
+				"iec 62443",
+				"sil",
+				"safety instrumented",
+				"ot",
+				"industrial control",
+				"sis",
+				"hazardous area",
+				"process control",
+				"ot/it",
+				"functional safety"
+			],
+			"requiresReviewer": true
+		},
+		{
+			"id": "financial-payments",
+			"version": "1.0.0",
+			"label": "Financial Payments — PCI-DSS v4.0 + SOX + FFIEC CAT",
+			"standards": ["PCI-DSS v4.0", "SOX §404", "FFIEC CAT v1.0", "ISO 27001:2022"],
+			"scopes": ["financial-payments", "pci-dss", "sox", "ffiec", "card-payments", "banking"],
+			"inferenceSignals": [
+				"pci",
+				"pci-dss",
+				"cardholder data",
+				"chd",
+				"cde",
+				"sox",
+				"sarbanes",
+				"ffiec",
+				"banking",
+				"payment processor",
+				"card vault",
+				"tokenization",
+				"3ds",
+				"ach",
+				"swift",
+				"fintech",
+				"pan",
+				"track data",
+				"cvv"
+			],
+			"requiresReviewer": true
+		},
+		{
+			"id": "cloud-saas",
+			"version": "1.0.0",
+			"label": "Cloud SaaS — SOC 2 Type II + ISO 27001 + NIST 800-53 + ISO 27017",
+			"standards": ["SOC 2 Type II", "ISO 27001:2022", "NIST SP 800-53 Rev 5", "ISO 27017:2015", "ISO 27018:2019"],
+			"scopes": ["cloud-saas", "multi-tenant", "aws", "azure", "gcp", "csp", "trust-services"],
+			"inferenceSignals": [
+				"soc 2",
+				"iso 27001",
+				"nist 800-53",
+				"iso 27017",
+				"iso 27018",
+				"saas",
+				"multi-tenant",
+				"cloud-native",
+				"aws",
+				"azure",
+				"gcp",
+				"csp",
+				"customer data",
+				"trust services criteria",
+				"tsc",
+				"confidential computing",
+				"rto",
+				"rpo"
+			],
+			"requiresReviewer": true
+		}
+	],
+	"tiers": [
+		{
+			"id": "atomic-tier-entry",
+			"version": "1.0.0",
+			"label": "Atomic Function — ISO/IEC 29110 Entry profile",
+			"tier": "entry",
+			"appliesToSafetyClass": ["A"],
+			"requiredFields": [
+				"afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable"
+			],
+			"doctorChecks": ["base-core-coverage"],
+			"requiresReviewer": false,
+			"standards": ["ISO/IEC 29110 entry", "IEEE 29148 traceability"]
+		},
+		{
+			"id": "atomic-tier-basic",
+			"version": "1.0.0",
+			"label": "Atomic Function — ISO/IEC 29110 Basic profile",
+			"tier": "basic",
+			"appliesToSafetyClass": ["A", "B"],
+			"requiredFields": [
+				"afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable",
+				"calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef"
+			],
+			"doctorChecks": ["base-core-coverage", "cross-references", "verification-method"],
+			"requiresReviewer": false,
+			"standards": ["ISO/IEC 29110 basic", "IEEE 29148", "Yourdon-Constantine 1979"]
+		},
+		{
+			"id": "atomic-tier-intermediate",
+			"version": "1.0.0",
+			"label": "Atomic Function — ISO/IEC 29110 Intermediate profile",
+			"tier": "intermediate",
+			"appliesToSafetyClass": ["A", "B"],
+			"requiredFields": [
+				"afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable",
+				"calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef",
+				"earsPattern", "inputs", "outputs", "errors", "dependencies", "dbOrIo",
+				"complexity", "coupling", "argCount", "oneLevelAbstr", "nameIntent"
+			],
+			"doctorChecks": ["base-core-coverage", "ears-pattern", "complexity-threshold", "arg-count", "coupling-class"],
+			"requiresReviewer": false,
+			"standards": ["ISO/IEC 29110 intermediate", "EARS", "V-Model LLD", "ISO/IEC 25010", "Clean Code"]
+		},
+		{
+			"id": "atomic-tier-advanced",
+			"version": "1.0.0",
+			"label": "Atomic Function — ISO/IEC 29110 Advanced profile (regulated)",
+			"tier": "advanced",
+			"appliesToSafetyClass": ["B", "C"],
+			"requiredFields": [
+				"afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable",
+				"calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef",
+				"earsPattern", "inputs", "outputs", "errors", "dependencies", "dbOrIo",
+				"complexity", "coupling", "argCount", "oneLevelAbstr", "nameIntent",
+				"owner", "priority", "securityClass", "risk", "reusability", "modifiabilityNote",
+				"storyPoints", "acceptanceRef", "testRef", "rationale", "changeLog"
+			],
+			"doctorChecks": ["base-core-coverage", "ears-pattern", "complexity-threshold", "arg-count", "coupling-class", "owner-rationale", "change-log", "risk-classification"],
+			"requiresReviewer": false,
+			"standards": ["ISO/IEC 29110 advanced", "IEEE 29148", "INCOSE GtWR v4", "EARS", "V-Model LLD", "ISO/IEC 25010", "ISO/IEC 14764 (maintenance)", "IEC 61508 SIL", "IEC 62304 Class"]
+		}
+	]
+}

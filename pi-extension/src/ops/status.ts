@@ -31,6 +31,10 @@ import {
 	compactProfileMetadata,
 	loadRequirementsProfile,
 } from "../core/profile.js";
+import { resolveDocArtifactAll } from "../core/paths.js";
+import { computeShapeVerdictsAll } from "../core/shape.js";
+import { readFileSync } from "node:fs";
+import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -111,6 +115,28 @@ export async function handleStatus(
 		lines.push("- (no projectName — cannot scan per-project artifacts)");
 	}
 
+	// v1.2.2 shape compatibility banner — surfaces the recommended
+	// path (fresh / upgrade / migration) for the design doc. v1.3.0+
+	// multi-design: one line per projectName in the federation.
+	lines.push(``, `## Architecture shape`);
+	lines.push(computeShapeStatusLines(cwd));
+
+	// v1.4.0 — Observability / Logging plan. Surfaces the published plan
+	// path + version when present; shows "(not published)" otherwise.
+	lines.push(``, `## Observability — Logging plan`);
+	if (projectName) {
+		const loggingPlan = loadPublishedLoggingPlanMarkdown(cwd, projectName);
+		if (loggingPlan) {
+			lines.push(
+				`${projectName}: ${loggingPlan.path} (${loggingPlan.layout} layout)`,
+			);
+		} else {
+			lines.push(`${projectName}: (not published — run /velpari-design-logging)`);
+		}
+	} else {
+		lines.push("(no projectName — cannot scan)");
+	}
+
 	// Surface legacy flat Doc/ files that are NOT covered by the
 	// grouped scan so users know they exist and may want to migrate.
 	const docDir = join(cwd, "Doc");
@@ -185,4 +211,35 @@ export async function handleStatus(
 
 	void buildGroupedPath;
 	void buildGroupedBrainstormPath;
+}
+/**
+ * v1.3.0+ multi-design: one status line per projectName design.
+ * Single-design cwds get a single line; multi-design cwds get one
+ * per `resolveDocArtifactAll` hit. Returns a single newline-joined
+ * string so the existing one-line `lines.push` call still works.
+ */
+function computeShapeStatusLines(cwd: string): string {
+	const all = resolveDocArtifactAll(cwd, "design");
+	if (all.length === 0) return "Path: fresh (no prior design).";
+
+	const verdicts = computeShapeVerdictsAll(
+		all.map((d) => {
+			try {
+				return { projectName: d.projectName, content: readFileSync(d.path, "utf8") };
+			} catch {
+				return { projectName: d.projectName, content: "" };
+			}
+		}),
+	);
+	return verdicts
+		.map((v) => {
+			if (v.path === "upgrade") {
+				return `Path: upgrade. (project: ${v.projectName}; v${v.currentMajor}.x; ${v.sectionCountPublished}/${v.sectionCountCurrent} sections)`;
+			}
+			if (v.path === "fresh") {
+				return `Path: fresh (project: ${v.projectName}).`;
+			}
+			return `Path: migration recommended. (project: ${v.projectName}; published ${v.publishedVersion}; ${v.sectionCountPublished}/${v.sectionCountCurrent} sections; re-run /velpari-architecture-generator)`;
+		})
+		.join("\n");
 }

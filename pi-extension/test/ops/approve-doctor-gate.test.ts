@@ -1,7 +1,8 @@
 /**
  * Publish gate tests (RTM traceability upgrade, Phase 5).
  *
- * The doctor's artifact checks run INSIDE /velpari-approve:
+ * The doctor's artifact checks run INSIDE handleApprove (called by the
+ * publish tool or the per-stage fall-back command):
  *   - an invalid PRD working copy (validatePsrs) is blocked — nothing
  *     is written, the stage does not advance
  *   - an RTM JSON sidecar with an unknown id is blocked
@@ -106,13 +107,20 @@ function enterBuildingRtm(json: string): void {
 
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-gate-"));
+	// v1.2.1: the full doctor audit now runs after every approve. These
+	// fixtures build minimal cwds (no `files.json`, no agent mapping,
+	// etc.) by design; we set the test escape hatch so the existing
+	// gate assertions stay focused. The auto-doctor stop path is
+	// covered by `approve-doctor-stop.test.ts` (no env var).
+	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
+	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
 });
 
-describe("/velpari-approve — publish gate", () => {
+describe("publish — publish gate", () => {
 	it("blocks an invalid PRD working copy and writes nothing", async () => {
 		enterDraftingPrd("# Just a title, no sections\n");
 		await handleApprove(makeCtx(), undefined, tmpDir);

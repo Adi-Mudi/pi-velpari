@@ -22,7 +22,9 @@ isolation.
 
 ## Output
 
-Write a JSON file to `<scoutReportPath>`:
+Write a JSON file to `<scoutReportPath>`. Fill the **tier-aware** fields
+when the prompt declares tier ≥ Intermediate (you will see a
+`## Atomic Profile` block listing the required fields):
 
 ```json
 {
@@ -36,8 +38,23 @@ Write a JSON file to `<scoutReportPath>`:
         "filePath": "src/auth/hash-password.ts",
         "signature": "function hashPassword(plain: string, cost: number): Promise<string>",
         "purpose": "Hashes a password with bcrypt at the given cost factor",
+        "source": "PRD FR-1 (acceptance criterion AC-3)",
+        "cohesion": "perfect-atomic",
+        "verification": "Test",
+        "testable": true,
         "satisfiesFrId": "FR-1",
-        "testable": true
+        "acceptanceRef": "AC-3",
+        "earsPattern": "Ubiquitous",
+        "inputs": "plain:string, cost:number",
+        "outputs": "Promise<string>",
+        "errors": ["empty plain","cost out of range"],
+        "dependencies": [],
+        "dbOrIo": "none",
+        "complexity": 4,
+        "coupling": "low",
+        "argCount": 2,
+        "oneLevelAbstr": "yes",
+        "nameIntent": "verb-noun, descriptive"
       }
     }
   ],
@@ -45,6 +62,11 @@ Write a JSON file to `<scoutReportPath>`:
   "timestamp": "ISO-8601"
 }
 ```
+
+Always fill the base-core fields (afId, name, filePath, signature, purpose,
+source, cohesion, verification, testable). Fill tier-specific fields only
+when the prompt declares a tier that requires them. Empty string for fields
+the scout cannot determine.
 
 ## Heuristics
 

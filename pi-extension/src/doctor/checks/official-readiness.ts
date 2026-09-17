@@ -7,8 +7,8 @@
  *
  *   1. `package.json:keywords` includes `pi-package`            — error
  *   2. `package.json:pi.extensions` is non-empty                 — error
- *   3. `package.json:peerDependencies` includes the bare
- *      `pi-interactive-subagents` (≥3.7.2)                      — warning
+ *   3. `package.json:dependencies` + `bundledDependencies` include the
+ *      bare `pi-interactive-subagents` (≥3.7.2)                — warning
  *   4. `.npmignore` exists at the project root                  — warning
  *   5. `package.json:repository.url` is set                     — info
  *   6. Core peer deps (`pi-coding-agent`, `pi-tui`, `typebox`)
@@ -40,6 +40,8 @@ interface PackageJsonShape {
 	keywords?: unknown;
 	pi?: { extensions?: unknown; skills?: unknown };
 	peerDependencies?: Record<string, unknown>;
+	dependencies?: Record<string, unknown>;
+	bundledDependencies?: unknown;
 	repository?: { url?: unknown };
 }
 
@@ -97,19 +99,23 @@ function checkPiExtensions(pkg: PackageJsonShape, items: DiagnosticItem[]): void
 	}
 }
 
-function checkSubagentsPeerDep(pkg: PackageJsonShape, items: DiagnosticItem[]): void {
-	const peers = pkg.peerDependencies ?? {};
-	const range = peers[SUBAGENTS_NAME];
-	if (typeof range === "string" && range.length > 0) {
+function checkSubagentsBundledDep(pkg: PackageJsonShape, items: DiagnosticItem[]): void {
+	const deps = pkg.dependencies ?? {};
+	const bundled = Array.isArray(pkg.bundledDependencies)
+		? (pkg.bundledDependencies.filter((v): v is string => typeof v === "string"))
+		: [];
+	const range = deps[SUBAGENTS_NAME];
+	const inBundled = bundled.includes(SUBAGENTS_NAME);
+	if (typeof range === "string" && range.length > 0 && inBundled) {
 		items.push({
 			status: "ok",
-			message: `peerDependencies["${SUBAGENTS_NAME}"]: "${range}".`,
+			message: `dependencies["${SUBAGENTS_NAME}"]: "${range}" (bundled).`,
 		});
 	} else {
 		items.push({
 			status: "warning",
-			message: `peerDependencies is missing "${SUBAGENTS_NAME}" (>= ${SUBAGENTS_MIN_VERSION}). The 4-scout pipeline will fail at runtime.`,
-			suggestion: suggestionFor("official.missing-subagents-dep"),
+			message: `dependencies/bundledDependencies is missing "${SUBAGENTS_NAME}" (>= ${SUBAGENTS_MIN_VERSION}). The 4-scout pipeline will fail at runtime if consumers do not also install it separately.`,
+			suggestion: suggestionFor("official.missing-bundled-subagents-dep"),
 		});
 	}
 }
@@ -211,7 +217,7 @@ export function checkOfficialReadiness(cwd: string = process.cwd()): DiagnosticS
 
 	checkKeyword(pkg, items);
 	checkPiExtensions(pkg, items);
-	checkSubagentsPeerDep(pkg, items);
+	checkSubagentsBundledDep(pkg, items);
 	checkNpmignore(cwd, items);
 	checkRepositoryUrl(pkg, items);
 	checkCorePeerDepsPinned(pkg, items);

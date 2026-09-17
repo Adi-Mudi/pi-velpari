@@ -32,6 +32,7 @@ Write a JSON file to `<scoutReportPath>`:
       "source": "pseudo-edge-case-handler",
       "payload": {
         "function": "createUser",
+        "tier": 2,
         "edgeCases": [
           {
             "case": "empty email",
@@ -64,6 +65,9 @@ Write a JSON file to `<scoutReportPath>`:
 - Network/DB failures mid-operation.
 - Encoding (UTF-8 vs UTF-16, emoji, etc.).
 - Boundary conditions (max int, etc.).
+- **Tier awareness**: copy the source function's tier from the
+  algorithm-extractor report into `payload.tier`. If the function is
+  Tier 0 or Tier 1, omit the entry (no edge cases needed).
 
 ## Hard rules
 

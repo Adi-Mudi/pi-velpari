@@ -27,6 +27,7 @@ import { registerCommands } from "./commands/index.js";
 import { registerHooks } from "./hooks/index.js";
 import { registerBrainstormSessionTool } from "./stages/brainstorm-state-tool.js";
 import { registerFeasibilitySessionTool } from "./stages/feasibility-session-tool.js";
+import { registerStagePublishTool } from "./stages/stage-publish-tool.js";
 import { registerVelpariStatusRenderer } from "./ui/entry-renderer.js";
 
 export default function (pi: ExtensionAPI) {
@@ -43,6 +44,11 @@ export default function (pi: ExtensionAPI) {
 	// 1c. Feasibility session tool (velpari_feasibility_session) — the
 	// LLM-callable bridge to the feasibility v2 session in core/state.ts.
 	registerFeasibilitySessionTool(pi);
+
+	// 1c-bis. Stage publish tool (velpari_stage_publish) — the LLM-callable
+	// bridge used by the stage skills' preview-yes branch to run the same
+	// publish logic as the publish tool (one-command stage publish).
+	registerStagePublishTool(pi);
 
 	// 1b. v0.5.0 Phase I.2: register the custom velpari-status entry
 	// renderer (Box+Text via @earendil-works/pi-tui). Without this,

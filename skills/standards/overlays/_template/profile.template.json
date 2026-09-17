@@ -1,0 +1,31 @@
+{
+	"id": "<your-id>",
+	"version": "1.0.0",
+	"label": "<human-friendly label>",
+	"standards": ["<standard-1>", "<standard-2>"],
+	"scopes": ["<scope-1>", "<scope-2>"],
+	"inferenceSignals": ["<phrase-1>", "<phrase-2>"],
+	"requiredSections": {
+		"prd": [
+			"## <Section name>",
+			"## <Another section>"
+		],
+		"design": [
+			"## <Design section>"
+		],
+		"testplan": [
+			"## <Test section>"
+		]
+	},
+	"extraScouts": [
+		{
+			"role": "overlay-<specialist>",
+			"description": "<what the scout does>",
+			"reportPathTemplate": "<scoutReportDir>/<file>.json"
+		}
+	],
+	"doctorChecks": [
+		"<Rule 1: every FR must...>",
+		"<Rule 2: ...>"
+	]
+}

@@ -1,0 +1,142 @@
+name: test
+
+on:
+  push:
+    branches: [test-merge, development, main]
+  pull_request:
+    branches: [test-merge, development, main]
+
+# Phase 7 — concurrency control: cancel in-progress runs on the same
+# ref when a new commit lands. Avoids wasting CI minutes on stale commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-e2e:
+    name: Unit + e2e (Tier 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Phase 9 — Biome lint. Fails only on lint ERRORS (not warnings).
+      # Warnings (e.g. unused imports) are tolerated to avoid blocking
+      # PRs on legacy noise; clean them up opportunistically.
+      - name: Biome lint
+        run: npm run lint
+
+      - name: Build + unit tests
+        run: npm test
+
+      # Phase 7 — coverage gate. Statement coverage must stay ≥ 92% (we're at
+      # 94.40% post-Phase-6). The 2-point buffer prevents false-fail on
+      # benign refactors. Update the threshold in Doc/test-coverage-baseline.md
+      # if you intentionally raise the floor.
+      - name: Coverage gate (statements >= 92%)
+        run: |
+          STMT=$(npm run test:coverage 2>&1 | grep -E "^all files" | awk '{print $5}' | tr -d '%')
+          echo "Statement coverage: $STMT%"
+          awk -v s="$STMT" 'BEGIN { if (s+0 < 92) { print "FAIL: coverage " s "% < 92%"; exit 1 } else { print "PASS: coverage " s "% >= 92%" } }'
+
+      - name: Install pi (for Tier 1 e2e)
+        run: |
+          if ! command -v pi >/dev/null 2>&1; then
+            echo "Installing @marcfargas/pi-coding-agent..."
+            npm install -g @marcfargas/pi-coding-agent || echo "::warning::pi install failed; e2e will be skipped"
+          fi
+
+      - name: E2E Tier 1
+        env:
+          RUN_E2E: "1"
+        run: RUN_E2E=1 npm run test:e2e
+
+  perf:
+    name: Performance budget (RUN_PERF=1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-and-e2e
+    # Phase 6 — perf runs on every PR and every push (was: test-merge only).
+    # Budget failures are reported as a workflow_dispatch-style artifact
+    # (continue-on-error) so they don't block PRs but show in the Actions
+    # tab. The budget itself stays in RUN_PERF=1 mode so the default
+    # `npm test` run is unaffected.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Perf budget
+        run: RUN_PERF=1 node --test --test-force-exit --test-reporter=spec dist/pi-extension/test/performance/*.test.js
+      - name: Upload perf log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-budget-log
+          path: |
+            dist/pi-extension/test/performance/*.test.js
+            .tmp/test-runs/
+
+    # Phase 7 — on perf failure, comment on the PR so reviewers see it.
+      - name: Comment on PR with perf budget delta
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const body = '⚠️ **Performance budget regression detected.**\n\n' +
+              'The `perf` job failed in this PR. Review the [job logs](' +
+              '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) ' +
+              'for the failing assertion. This is a soft failure (continue-on-error: true) so ' +
+              'the PR can still be merged, but please investigate before merging.\n\n' +
+              '_Budget files: `pi-extension/test/performance/*.test.ts`_';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  tier2:
+    name: Tier 2 LLM e2e (manual dispatch only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build + Tier 2
+        env:
+          RUN_E2E: "1"
+          RUN_LLM_E2E: "1"
+          # The user must configure these secrets in repo settings.
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+        run: |
+          if [ -z "$KIMI_API_KEY" ]; then
+            echo "::warning::KIMI_API_KEY not set; Tier 2 will be skipped"
+          fi
+          npm run test:e2e:tier2
+      - name: Tier 2 result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-result
+          path: |
+            .tmp/tier2/
+            dist/pi-extension/test/e2e/*.test.js

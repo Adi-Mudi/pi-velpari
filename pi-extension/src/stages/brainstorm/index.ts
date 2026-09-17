@@ -14,8 +14,10 @@
  *
  * Handler phase (deterministic, runs in this function):
  * 1. Refuse an empty seed (guardSeedInput).
- * 2. Load state + framework config; create run if `currentStage === "none"`.
- * 3. Bootstrap 4 scout agents into `.pi/agents/` if missing (silent copy).
+ * 2. Load state + framework config.
+ * 2b. Stage guard (v2.2): refuse re-run if run has advanced past brainstorming.
+ * 3. Create run if `currentStage === "none"`.
+ * 4. Bootstrap 4 scout agents into `.pi/agents/` if missing (silent copy).
  * 4. Build artifact paths for this run (run dir, brainstorm dir, scouts dir).
  * 5. Build stage prompt with run context + the session-tool state so far
  *    (understandingConfirmed / scansSelected / scan-plan lines when the
@@ -27,7 +29,9 @@
  * `skills/velpari-brainstorm.md`):
  *   [0] UNDERSTAND — chat only, inline reads, NO subagents
  *   [1] CONFIRM loop + hard lock (velpari_brainstorm_session confirm-understanding)
- *   [2] SCAN-PLAN GATE — run / adjust (community = web-search consent) / skip
+ *   [2] SCAN-PLAN GATE — v2.1: ALWAYS asks via the picker (no default).
+ *       Parent LLM calls `velpari_brainstorm_session request-scan-gate`
+ *       which runs `runScanGatePicker` and persists the result.
  *   [3] SCANS — dispatcher-prepared visible scout subagents
  *   [4] INFORM — facts + questions with suggested answers
  *   [5] DISCUSS loop — question states via upsert-question; decisions ledger
@@ -54,12 +58,13 @@ import { ensureScoutAgents, formatScoutAgentsInstalledMessage } from "../../io/a
 import { loadAgentConfig, resolveAgentName } from "../../core/agents-config.js";
 import { loadFilesConfig, type FilesConfig } from "../../core/config.js";
 import { PATHS } from "../../core/constants.js";
+import { detectMultiplexer, multiplexerRequiredMessage } from "../../core/multiplexer.js";
 import { buildStagePrompt, type BrainstormExistingContext } from "../../core/prompt.js";
 import { buildRunDir, resolveDocArtifact, slugify } from "../../core/paths.js";
 import { loadRequirementsProfile } from "../../core/profile.js";
 import { createRun, loadState, type RunState } from "../../core/state.js";
 import { formatScanPlanLines } from "./dispatcher.js";
-import { guardSeedInput } from "./guard.js";
+import { guardSeedInput, guardStageForBrainstorm } from "./guard.js";
 
 /** Doc artifacts probed for the existing-context block (paths only). */
 const PUBLISHED_ARTIFACT_KEYS = [
@@ -141,6 +146,17 @@ export async function handleBrainstorm(
 	pi: ExtensionAPI,
 	cwd: string = process.cwd(),
 ): Promise<void> {
+	// 0. Multiplexer hard gate (v2.1). Velpari spawns visible scout
+	//    subagents in multiplexer panes at the SCAN step. Fail fast before
+	//    any state work so a brainstorm started outside a multiplexer
+	//    cannot create an orphan run. The override env var lets wrappers
+	//    and tests force a value.
+	const mux = detectMultiplexer();
+	if (mux.mux === "unknown") {
+		ctx.ui.notify(multiplexerRequiredMessage(), "error");
+		return;
+	}
+
 	// 1. Refuse an empty seed — the parent LLM needs at least one signal to
 	//    anchor the UNDERSTAND step.
 	const seedGuard = guardSeedInput(mission);
@@ -151,6 +167,19 @@ export async function handleBrainstorm(
 
 	// 2. Load state + framework. Create a new run if `currentStage === "none"`.
 	let state = loadState(cwd);
+
+	// 2b. Stage guard (v2.2). Brainstorm is single-shot per run: only
+	//     `none` (fresh) and `brainstorming` (resume) are allowed. Anything
+	//     else means the previous brainstorm was approved or the run has
+	//     advanced, and the correct next step is the next-stage command.
+	//     Runs AFTER loadState (to know the stage) and BEFORE createRun (so
+	//     a refused re-run does not overwrite the existing run).
+	const stageGuard = guardStageForBrainstorm(state);
+	if (!stageGuard.ok) {
+		ctx.ui.notify(stageGuard.reason!, "error");
+		return;
+	}
+
 	if (state.currentStage === "none") {
 		state = createRun(mission, cwd);
 	}

@@ -1,5 +1,6 @@
 /**
- * Brainstorm session tool (Phase 1 of the lifecycle v2 upgrade).
+ * Brainstorm session tool (Phase 1 of the lifecycle v2 upgrade; v2.1 added
+ * request-scan-gate).
  *
  * The parent LLM drives the brainstorm lifecycle (UNDERSTAND → CONFIRM →
  * scan gate → DISCUSS) through conversation, but the hard-lock state must
@@ -9,7 +10,12 @@
  *   - confirm-understanding: releases the hard lock after the user confirms
  *     the parent's one-paragraph understanding (velpari is requirements-only,
  *     so unlike senai no mission type is recorded).
- *   - set-scans: persists the scan kinds picked at the scan-plan gate.
+ *   - request-scan-gate (v2.1): invokes the mandatory SCAN-gate picker via
+ *     ctx.ui.select/confirm and persists the result. Replaces the
+ *     conversational "what scans?" prompt — there is NO default; the
+ *     developer always chooses.
+ *   - set-scans: persists the scan kinds (used after request-scan-gate, or
+ *     when a programmatic caller wants to skip the picker).
  *   - upsert-question: records one DISCUSS-loop question state change.
  *
  * The tool is gated on an active brainstorm: velpari's brainstorm is a real
@@ -30,6 +36,7 @@ import {
 	withFileMutationQueue,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
+import { loadFilesConfig } from "../core/config.js";
 import {
 	confirmUnderstanding,
 	loadState,
@@ -43,6 +50,7 @@ import {
 } from "../core/state.js";
 import { PATHS } from "../core/constants.js";
 import { buildRunDir } from "../core/paths.js";
+import { runScanGatePicker } from "./brainstorm/scan-gate.js";
 import { syncDecisionsToNotes } from "./brainstorm/notes.js";
 
 export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
@@ -64,12 +72,14 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 		description:
 			"Update the active brainstorm session during /velpari-brainstorm. Actions: " +
 			"confirm-understanding (after the user confirms your understanding paragraph — releases the hard lock), " +
+			"request-scan-gate (open the mandatory SCAN-gate picker — v2.1: developer always chooses, no default), " +
 			"set-scans (persist the scan selection from the scan-plan gate), " +
 			"upsert-question (record one question state change during DISCUSS; reason is required for not-wanted/replaced). " +
 			"Returns the updated session snapshot.",
 		parameters: Type.Object({
 			action: Type.Union([
 				Type.Literal("confirm-understanding"),
+				Type.Literal("request-scan-gate"),
 				Type.Literal("set-scans"),
 				Type.Literal("upsert-question"),
 			]),
@@ -106,6 +116,29 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					const next = confirmUnderstanding(state, ctx.cwd);
 					persistEntry(next);
 					return okResult(snapshot(next));
+				}
+
+				if (params.action === "request-scan-gate") {
+					// Open the mandatory picker. Reads files.json v4 to know
+					// which scans are available; persists the result via
+					// setScansSelected. The picker NEVER auto-selects — the
+					// developer must choose (or skip).
+					const config = loadFilesConfig(ctx.cwd);
+					const result = await runScanGatePicker(
+						// The real ExtensionContext has ui; tests pass a
+						// narrower mock. The picker tolerates missing ui by
+						// returning the cancelled sentinel so test paths
+						// stay clean.
+						ctx as unknown as Parameters<typeof runScanGatePicker>[0],
+						{ config, cwd: ctx.cwd },
+					);
+					const next = setScansSelected(state, result.scans, ctx.cwd);
+					persistEntry(next);
+					return okResult({
+						...snapshot(next),
+						cancelled: result.cancelled,
+						freeform: result.freeform,
+					});
 				}
 
 				if (params.action === "set-scans") {
@@ -173,6 +206,8 @@ function snapshot(state: RunState) {
 		scansSelected: state.scansSelected ?? [],
 		questions: state.brainstormQuestions ?? [],
 		brainstormDispatchCount: state.brainstormDispatchCount ?? 0,
+		cancelled: false,
+		freeform: false,
 	};
 }
 

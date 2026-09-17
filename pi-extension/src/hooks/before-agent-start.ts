@@ -48,7 +48,8 @@ function stageRule(state: RunState, cwd: string): string | null {
 			`via the subagent tool — never reuse, copy, or read scout reports from any ` +
 			`previous run folder; each scout task must name its -report.json path under ` +
 			`${allowed}/scouts/; write only inside ${allowed}/; when the working copy is ` +
-			`ready, the user runs /velpari-approve to publish.`
+			`ready and the user confirms the preview, publish via the velpari_stage_publish ` +
+			`tool (or the publish tool as fallback).`
 		);
 	}
 	return null;

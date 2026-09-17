@@ -1,5 +1,5 @@
 /**
- * /velpari-approve publish-path tests for the final-design stage.
+ * /velpari-prd-approve publish-path tests for the final-design stage.
  *
  * Asserts:
  *   - fresh publish: working copy under <runDir>/final-design/ is
@@ -116,31 +116,37 @@ beforeEach(() => {
 		JSON.stringify({ version: 4, projectName: "FinalApp" }),
 		"utf8",
 	);
+	// v1.2.1 opt-out for minimal-cwd test fixtures.
+	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 });
 
 afterEach(() => {
 	rmSync(tmpDir, { recursive: true, force: true });
+	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
 });
-
-describe("/velpari-approve final-design publish path", () => {
+describe("/velpari-rtm-approve final-design publish path", () => {
 	it("fresh publish: writes Doc/design/final-design_FinalApp.md and advances to finalized-design", async () => {
 		const cwd = tmpDir;
 		clearRun(cwd);
 		let state = createRun("Final design approve", cwd);
 		state = advanceStage(state, "/velpari-approve-brainstorm", cwd);
 		state = advanceStage(state, "/velpari-prd", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-prd-approve", cwd);
 		state = advanceStage(state, "/velpari-rtm", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-rtm-approve", cwd);
 		state = advanceStage(state, "/velpari-feasibility", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-feasibility-approve", cwd);
 		state = advanceStage(state, "/velpari-architecture-generator", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-architecture-generator-approve", cwd);
+		state = advanceStage(state, "/velpari-atomic-function", cwd);
+		state = advanceStage(state, "/velpari-atomic-function-approve", cwd);
 		state = advanceStage(state, "/velpari-pseudocode", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-pseudocode-approve", cwd);
 		state = advanceStage(state, "/velpari-testplan", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
-		state = advanceStage(state, "/velpari-design", cwd);
+		state = advanceStage(state, "/velpari-testplan-approve", cwd);
+		state = advanceStage(state, "/velpari-development-order", cwd);
+		state = advanceStage(state, "/velpari-development-order-approve", cwd);
+		state = advanceStage(state, "/velpari-final-design", cwd);
 		assert.strictEqual(state.currentStage, "finalizing-design");
 
 		const runId = loadState(cwd).runId!;
@@ -167,18 +173,22 @@ describe("/velpari-approve final-design publish path", () => {
 		let state = createRun("Final design revise", cwd);
 		state = advanceStage(state, "/velpari-approve-brainstorm", cwd);
 		state = advanceStage(state, "/velpari-prd", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-prd-approve", cwd);
 		state = advanceStage(state, "/velpari-rtm", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-rtm-approve", cwd);
 		state = advanceStage(state, "/velpari-feasibility", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-feasibility-approve", cwd);
 		state = advanceStage(state, "/velpari-architecture-generator", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-architecture-generator-approve", cwd);
+		state = advanceStage(state, "/velpari-atomic-function", cwd);
+		state = advanceStage(state, "/velpari-atomic-function-approve", cwd);
 		state = advanceStage(state, "/velpari-pseudocode", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
+		state = advanceStage(state, "/velpari-pseudocode-approve", cwd);
 		state = advanceStage(state, "/velpari-testplan", cwd);
-		state = advanceStage(state, "/velpari-approve", cwd);
-		state = advanceStage(state, "/velpari-design", cwd);
+		state = advanceStage(state, "/velpari-testplan-approve", cwd);
+		state = advanceStage(state, "/velpari-development-order", cwd);
+		state = advanceStage(state, "/velpari-development-order-approve", cwd);
+		state = advanceStage(state, "/velpari-final-design", cwd);
 
 		const pubDir = join(cwd, "Doc", "design");
 		mkdirSync(pubDir, { recursive: true });

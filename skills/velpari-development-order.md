@@ -1,11 +1,11 @@
 ---
 name: velpari-development-order
-description: Pi-Velpari Development Order stage (optional post-pipeline, FR-36, FR-32) — orchestrate 4 visible subagents (do-topology, do-risk, do-test, do-value) to rank modules into an implementation order, write the working copy, show preview gate.
+description: Pi-Velpari Development Order stage (required Stage 9, FR-36, FR-32) — orchestrate 4 visible subagents (do-topology, do-risk, do-test, do-value) to rank modules into an implementation order, write the working copy, show preview gate.
 ---
 
 # Development Order Stage
 
-(Optional post-pipeline stage.) Read the published artifacts and rank
+(Required Stage 9 — runs after `velpari_stage_publish` (or `/velpari-testplan-approve` fallback) on Stage 8 Test Plan.) Read the published artifacts and rank
 modules into an implementation order. The 4 scouts produce 4 different
 rankings (topological, risk, test-coverage, value). You (the parent LLM)
 merge them into a single final order. The handler has concatenated the
@@ -17,18 +17,21 @@ development-order doc.
 
 By the end of this stage, `<workingCopy>` (`development-order_<projectName>.md`)
 has the consolidated implementation order, the user has approved the
-preview, and `/velpari-approve` can publish the artifact to
-`Doc/development-order_<projectName>.md` without surprises.
+preview, and the `velpari_stage_publish` tool can publish the artifact
+to `Doc/development-order_<projectName>.md` without surprises.
+`/velpari-development-order-approve` remains as the manual fallback.
 
 ## Sequence
 
 ```
 published artifacts (concatenated into prompt by handler):
   - Doc/design_<projectName>.md
+  - Doc/PRD_<projectName>.md
   - Doc/RTM_<projectName>.md
   - Doc/feasibility-study_<projectName>.md
-  - Doc/PRD_<projectName>.md
-  - Doc/test-plan_<projectName>.md
+  - Doc/atomic-functions_<projectName>.md
+  - Doc/pseudocode_<projectName>.md
+  - Doc/test-plan_<projectName>.md + Doc/test-cases_<projectName>.md
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -50,7 +53,7 @@ write working copy <workingCopy>
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Subagent conventions
@@ -200,27 +203,24 @@ exists), revise the baseline instead of regenerating:
    entries.
 2. Mark superseded entries `deprecated` with a reason.
 3. Bump the version and add a new Change Log entry.
-   `/velpari-approve` blocks publishing without it.
+   The `velpari_stage_publish` tool (which same gate chain as `/velpari-development-order-approve`) blocks publishing without it.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which modules to re-rank
-
-If yes → tell the user: "Run /velpari-approve to publish."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-development-order-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
 - **No in-process scouts.** Use the `subagent()` tool only.
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
-- **Do NOT mutate `state.json.stage`.** Development order is an optional
-  post-pipeline stage; it does NOT appear in `STAGE_TRANSITIONS`. State
-  is unchanged. The user simply gets the published doc.
+- **Do NOT mutate `state.json.stage` directly.** Development order is
+  Stage 9 (required) and appears in `STAGE_TRANSITIONS` as
+  `planned-tests → ordering-development`. The stage command only writes
+  the working copy; `state.json.stage` is advanced by the
+  `velpari_stage_publish` tool (which same gate chain as `/velpari-development-order-approve`), not by this skill.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the development order content.
 

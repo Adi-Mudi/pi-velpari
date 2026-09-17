@@ -1,7 +1,7 @@
 /**
- * Publish gate (RTM traceability upgrade, Phase 5).
+ * Publish gate (RTM traceability upgrade, Phase 5; sub-life cycle Phase 2).
  *
- * The doctor's artifact checks run INSIDE /velpari-approve, before
+ * The doctor's artifact checks run INSIDE publish, before
  * anything is written to Doc/. The user never has to remember
  * /velpari-doctor — a broken artifact cannot be published:
  *
@@ -18,7 +18,11 @@
  *  - feasibility-study: the working copy must pass validateFeasibilityDoc
  *    (feasibility v2 — all 13 sections, real verdict word).
  *
- * Other artifacts (design, pseudocode, ...) pass through — their
+ *  - design (Phase 2): the developer must have confirmed the loaded
+ *    project context in the sub-life cycle prelude. Block until
+ *    `state.json:archSubCycle.developerConfirmed === true`.
+ *
+ * Other artifacts (pseudocode, ...) pass through — their
  * revision rules are already enforced by the Change Log gate.
  */
 
@@ -30,6 +34,17 @@ import {
 	checkRowFingerprints,
 	extractRequirementFingerprints,
 } from "../core/fingerprints.js";
+import { loadState } from "../core/state.js";
+import { gateArchSubCycle } from "./checks/arch-sub-cycle.js";
+import { gateStandardsProfile } from "./checks/standards-profile.js";
+import { gateADR } from "./checks/adr.js";
+import { gateDesignReadiness } from "./checks/design-readiness.js";
+import { loadReviewerVerdict } from "./checks/atomic-tier.js";
+import { loadPseudocodeReviewerVerdict } from "./checks/pseudocode-reviewer.js";
+import { loadTestplanReviewerVerdict } from "./checks/testplan-reviewer.js";
+import { loadDesignReviewerVerdict } from "./checks/design-reviewer.js";
+import { deriveAtomicProfile } from "../core/atomic-tier.js";
+import { loadFilesConfig } from "../core/config.js";
 import type { RtmData } from "../core/rtm-data.js";
 
 export interface PublishGateInput {
@@ -70,6 +85,34 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 		}
 	}
 
+	// Design (Phase 2): the sub-life cycle must have run and the developer
+	// must have confirmed. This is the read → confirm → write gate.
+	if (input.artifact === "design") {
+		const state = loadState(input.cwd);
+		for (const e of gateArchSubCycle(state)) {
+			errors.push(`${e.code}: ${e.message}`);
+		}
+		// Phase 4: the working copy must carry a valid Architecture Decisions
+		// section (or a single ADR-000 'no conflicts' ADR).
+		for (const e of gateADR(input.workingContent)) {
+			errors.push(`${e.code}: ${e.message}`);
+		}
+		// Phase 1 (upgrade plan): §0 + §0.4 + §5 QA-scenarios must be valid.
+		for (const e of gateDesignReadiness(input.workingContent)) {
+			errors.push(`${e.code}: ${e.message}`);
+		}
+	}
+
+	// Standards profile (Phase 3): every published artifact must reference a
+	// valid overlay (or have no profile = implicit "none"). Catches stale
+	// references after a community overlay is removed.
+	{
+		const state = loadState(input.cwd);
+		for (const e of gateStandardsProfile(state, input.cwd)) {
+			errors.push(`${e.code}: ${e.message}`);
+		}
+	}
+
 	if (input.artifact === "RTM" && input.rtmData) {
 		const psrs = resolveDocArtifact("PRD", input.projectName, input.cwd);
 		if (psrs) {
@@ -97,6 +140,63 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 			}
 		}
 	}
+
+	// Reviewer-verdict gates (Plan A + Plan D). The reviewer sub-agent is
+	// the single source of truth for stage-specific tier checks. Doctor
+	// surfaces the verdict but does NOT re-derive any rule. Each stage
+	// has its own reviewer + verdict path; see REVIEWER_STAGE_SPECS in
+	// checks/reviewer-verdict.ts. Tier + overlay gate (core/atomic-tier.ts:
+	// shouldRunReviewer) decides whether the reviewer was spawned at all;
+	// if it was skipped, the gate emits a clear error.
+	const reviewerArtifactKeys: Record<string, () => void> = {
+		"atomic-functions": () => {
+			const config = loadFilesConfig(input.cwd);
+			const profile = deriveAtomicProfile(config);
+			const section = loadReviewerVerdict(input.cwd, profile);
+			for (const item of section.items) {
+				if (item.status === "error") errors.push(item.message);
+				else if (item.status === "warning") warnings.push(item.message);
+			}
+		},
+		pseudocode: () => {
+			const config = loadFilesConfig(input.cwd);
+			const profile = deriveAtomicProfile(config);
+			const section = loadPseudocodeReviewerVerdict(input.cwd, profile);
+			for (const item of section.items) {
+				if (item.status === "error") errors.push(item.message);
+				else if (item.status === "warning") warnings.push(item.message);
+			}
+		},
+		"test-plan": () => {
+			const config = loadFilesConfig(input.cwd);
+			const profile = deriveAtomicProfile(config);
+			const section = loadTestplanReviewerVerdict(input.cwd, profile);
+			for (const item of section.items) {
+				if (item.status === "error") errors.push(item.message);
+				else if (item.status === "warning") warnings.push(item.message);
+			}
+		},
+		"test-cases": () => {
+			const config = loadFilesConfig(input.cwd);
+			const profile = deriveAtomicProfile(config);
+			const section = loadTestplanReviewerVerdict(input.cwd, profile);
+			for (const item of section.items) {
+				if (item.status === "error") errors.push(item.message);
+				else if (item.status === "warning") warnings.push(item.message);
+			}
+		},
+		design: () => {
+			const config = loadFilesConfig(input.cwd);
+			const profile = deriveAtomicProfile(config);
+			const section = loadDesignReviewerVerdict(input.cwd, profile);
+			for (const item of section.items) {
+				if (item.status === "error") errors.push(item.message);
+				else if (item.status === "warning") warnings.push(item.message);
+			}
+		},
+	};
+	const reviewerHandler = reviewerArtifactKeys[input.artifact];
+	if (reviewerHandler) reviewerHandler();
 
 	return { errors, warnings };
 }

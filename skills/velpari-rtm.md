@@ -17,10 +17,10 @@ working-copy RTM.
 ## Goal
 
 By the end of this stage, `<workingCopy>` (`RTM_<projectName>.md`) has the
-full traceability table, the user has approved the preview, and
-`/velpari-approve` can publish the artifact to
+full traceability table, the user has approved the preview, and the
+`velpari_stage_publish` tool can publish the artifact to
 `Doc/requirements/RTM_<projectName>.md` (grouped layout) without
-surprises.
+surprises. `/velpari-rtm-approve` remains as the manual fallback.
 
 ## Sequence
 
@@ -48,7 +48,7 @@ then the markdown preview generated from it
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Subagent conventions
@@ -131,7 +131,7 @@ After all 4 scouts complete:
    below) and write it to `<workingCopy>` with a `.json` extension
    (`RTM_<projectName>.json`). The JSON is the source of truth.
 4. Render the markdown table FROM the JSON and write it to `<workingCopy>`
-   (`RTM_<projectName>.md`) for the preview gate. `/velpari-approve`
+   (`RTM_<projectName>.md`) the publish gate
    re-generates the published markdown from the JSON — the published table
    is always derived from the data, never from hand-written markdown.
 
@@ -162,13 +162,13 @@ Write TWO working-copy files at `<workingCopy>`:
 ```
 
 Rules: `phase` is a positive integer copied from the PSRS Phase column for
-the same id (1 = MVP — `/velpari-approve` blocks a mismatched phase);
+the same id (1 = MVP — the publish gate blocks a mismatched phase);
 `status` ∈ `proposed | approved | implemented | verified | deferred |
 deprecated` (deprecated rows MUST carry a `reason` field); `coverage` ∈
 `covered | partial | missing`; ids match `FR-<n>` / `NFR-<n>`, no duplicates.
-Do NOT write a `fingerprint` field — `/velpari-approve` stamps it from the
+Do NOT write a `fingerprint` field — the publish gate stamps it from the
 published PSRS at publish time (a changed requirement then flags the row as
-suspect in doctor). `/velpari-approve` validates this schema and BLOCKS the
+suspect in doctor). the publish gate validates this schema and BLOCKS the
 publish on errors.
 
 ### File 2: `RTM_<projectName>.md` — rendered preview
@@ -251,8 +251,8 @@ Revision rules:
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when any row is deprecated.
 4. **Change Log entry required.** Add a `## Change Log` section if the
-   baseline has none, then add a new entry describing the revision.
-   `/velpari-approve` blocks publishing without it.
+   baseline has none, then add a new entry describing the revision. The
+   `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`) blocks publishing without it.
 5. **New rows start `proposed`.** Full lifecycle: `proposed | approved |
    implemented | verified | deferred | deprecated`. Existing coverage
    values (`covered` / `partial` / `missing`) stay valid — update them
@@ -265,19 +265,14 @@ add / modify / deprecate proposals.
 When a published `RTM_<projectName>.json` sidecar exists, it is the
 baseline of record: apply the revision to the JSON rows (append-only IDs,
 deprecate-don't-delete with a `reason`, version bump, new rows start
-`proposed`) and add a `changeLog` entry. `/velpari-approve` verifies all
+`proposed`) and add a `changeLog` entry. the publish gate verifies all
 four rules against the published JSON and blocks on violations.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which sections to revise
-
-If yes → tell the user: "Run /velpari-approve to publish."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
@@ -286,7 +281,8 @@ If yes → tell the user: "Run /velpari-approve to publish."
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
   `building-rtm` via `createRun()`. The next state transition (`built-rtm`)
-  happens in `/velpari-approve`. You only write the working copy artifact.
+  happens in the `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`). You only write the working copy
+  artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the RTM content.
 

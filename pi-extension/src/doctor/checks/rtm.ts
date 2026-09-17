@@ -8,8 +8,7 @@
  * Phase 1: returns a DiagnosticSection.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";

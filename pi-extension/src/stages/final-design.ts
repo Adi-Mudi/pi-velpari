@@ -1,8 +1,11 @@
 /**
- * /velpari-design handler.
+ * /velpari-final-design handler (Stage 10 — required post-development-order).
  *
- * Optional post-pipeline stage. Reads the approved design + pseudocode +
- * test plan + test cases and spawns 4 subagents in parallel
+ * Renamed from /velpari-html-design on 2026-09-14; /velpari-html-design was
+ * itself renamed from /velpari-design per plan §Phase 1.
+ *
+ * Reads the approved design + atomic functions + pseudocode + test plan +
+ * test cases + development order and spawns 4 subagents in parallel
  * (consistency / coverage / contract / finalizer) to produce the
  * consolidated final-design markdown.
  *

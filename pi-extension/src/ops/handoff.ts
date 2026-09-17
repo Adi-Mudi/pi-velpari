@@ -18,9 +18,10 @@
  */
 
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteJson } from "../io/atomic-write.js";
-import { advanceStage, loadState, type RunState } from "../core/state.js";
+import { advanceStage, type RunState } from "../core/state.js";
 import {
 	buildGroupedPath,
 	buildOutputPath,
@@ -28,21 +29,45 @@ import {
 } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
+import { parseADRSection, type ADR } from "../core/adr.js";
+import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
+import { getEffectiveProjectNames } from "../core/projectnames.js";
 
 export type DocumentType =
 	| "PRD"
 	| "RTM"
 	| "Feasibility Study"
 	| "Design"
+	| "Atomic Functions"
 	| "Pseudocode"
 	| "Test Plan"
 	| "Test Cases"
-	| "Atomic Functions"
-	| "Development Order";
+	| "Development Order"
+	| "Final Design";
 
 export interface ArchitectDocument {
 	type: DocumentType;
 	path: string;
+}
+
+/**
+ * v1.4.0 — observability block in the handoff payload. Senai treats
+ * the whole block as advisory (chirpi ignores unknown fields), but
+ * Senai's `implement` stage reads `observability.loggingPlan[*]` and
+ * uses the path + version to wire up the logger per the design.
+ */
+export interface ObservabilityLoggingPlan {
+	path: string;
+	version: string;
+	status: "draft" | "approved" | "deprecated";
+	generatedAt: string;
+	overlay?: string;
+}
+
+export interface ObservabilitySection {
+	/** Per-projectName logging plan entries (v1.4.0). v1.3.0+ multi-design
+	 *  is supported: a federation of services has one entry per design. */
+	loggingPlan: ObservabilityLoggingPlan[];
 }
 
 export interface ArchitectInputs {
@@ -51,6 +76,26 @@ export interface ArchitectInputs {
 	createdAt: string;
 	mission: string;
 	documents: ArchitectDocument[];
+	/** Phase 4 — every ADR captured in the design doc (Phase 4). Empty array is fine. */
+	architectureDecisions: Array<{
+		id: string;
+		title: string;
+		status: string;
+		stage: string;
+		decision: string;
+	}>;
+	/** Phase 3 — active standards overlay (or null for implicit "none"). */
+	standardsProfile: {
+		id: string;
+		version: string;
+	} | null;
+	/**
+	 * v1.4.0 — observability block. Populated when at least one project
+	 * has a published logging plan at Doc/observability/logging-plan_<project>.md.
+	 * Multi-design: one loggingPlan entry per projectName. Senai reads this
+	 * during the `implement` stage and wires up the logger per the plan.
+	 */
+	observability?: ObservabilitySection;
 }
 
 const REQUIRED_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = [
@@ -58,15 +103,15 @@ const REQUIRED_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = 
 	{ type: "RTM", artifact: "RTM" },
 	{ type: "Feasibility Study", artifact: "feasibility-study" },
 	{ type: "Design", artifact: "design" },
+	{ type: "Atomic Functions", artifact: "atomic-functions" },
 	{ type: "Pseudocode", artifact: "pseudocode" },
 	{ type: "Test Plan", artifact: "test-plan" },
 	{ type: "Test Cases", artifact: "test-cases" },
+	{ type: "Development Order", artifact: "development-order" },
+	{ type: "Final Design", artifact: "final-design" },
 ];
 
-const OPTIONAL_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = [
-	{ type: "Atomic Functions", artifact: "atomic-functions" },
-	{ type: "Development Order", artifact: "development-order" },
-];
+const OPTIONAL_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = [];
 
 /**
  * Read all approved Doc/ artifacts. Returns the documents array.
@@ -155,10 +200,10 @@ export async function runHandoff(
 		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
 		return;
 	}
-	if (state.currentStage !== "planned-tests" && state.currentStage !== "ordered-development") {
+	if (state.currentStage !== "finalized-design") {
 		ctx.ui.notify(
 			`Cannot handoff at stage "${state.currentStage}". ` +
-				`Expected "planned-tests" or "ordered-development".`,
+				`Expected "finalized-design" (Stage 10 must be approved first).`,
 			"error",
 		);
 		return;
@@ -189,7 +234,7 @@ export async function runHandoff(
 			ctx.ui.notify(
 				`Handoff blocked — MVP coverage ${mvp.covered}/${mvp.total}:\n` +
 					blocking.map((i) => `  - ${i.message}`).join("\n") +
-					`\nFix via /velpari-rtm (update mode) + /velpari-approve.`,
+					`\nFix via /velpari-rtm (update mode) + /velpari-prd-approve.`,
 				"error",
 			);
 			return;
@@ -209,7 +254,22 @@ export async function runHandoff(
 		createdAt: new Date().toISOString(),
 		mission: state.mission,
 		documents,
+		// Phase 4: surface every captured ADR so Senai can honor decisions
+		// instead of re-deciding them. Empty array is fine when the design
+		// doc has no ADR section.
+		architectureDecisions: collectADRDecisions(state, projectName, cwd),
+		// Phase 3: include the standards overlay so Senai knows which
+		// compliance sections to enforce during implement.
+		standardsProfile: state.standardsProfile ?? null,
 	};
+
+	// v1.4.0 — observability block. One loggingPlan entry per projectName
+	// in the federation (single-design cwd has length 1). Skipped when
+	// no published logging plan exists for any project.
+	const observability = buildObservabilitySection(state, projectName, cwd);
+	if (observability && observability.loggingPlan.length > 0) {
+		inputs.observability = observability;
+	}
 
 	try {
 		validateSenaiSchema(inputs);
@@ -233,4 +293,118 @@ export async function runHandoff(
 
 	const next = advanceStage(state, "/velpari-handoff", cwd);
 	void next;
+}
+
+// ─── Phase 4 ADR export ─────────────────────────────────────────────────────
+
+interface AdrSummary {
+	id: string;
+	title: string;
+	status: string;
+	stage: string;
+	decision: string;
+}
+
+// ─── v1.4.0 Observability block ──────────────────────────────────────────────
+
+/**
+ * Read the YAML frontmatter of a logging plan and pull the
+ * observability-relevant fields. Best-effort: returns a partial
+ * payload when the frontmatter is missing a field.
+ */
+function readLoggingPlanFrontmatter(
+	content: string,
+): { version: string; status: "draft" | "approved" | "deprecated"; generatedAt: string; overlay?: string } {
+	const match = content.match(/^---\n([\s\S]*?)\n---\n/);
+	if (!match) {
+		return { version: "0.0.0", status: "draft", generatedAt: new Date().toISOString() };
+	}
+	const block = match[1]!;
+	const kv: Record<string, string> = {};
+	for (const line of block.split("\n")) {
+		const m = line.match(/^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
+		if (m) {
+			kv[m[1]!] = m[2]!.trim();
+		}
+	}
+	const statusRaw = kv.status;
+	const status: "draft" | "approved" | "deprecated" =
+		statusRaw === "approved" || statusRaw === "deprecated" ? statusRaw : "draft";
+	const out = {
+		version: kv.version || "0.0.0",
+		status,
+		generatedAt: kv.created || new Date().toISOString(),
+	};
+	if (kv.overlay) {
+		return { ...out, overlay: kv.overlay };
+	}
+	return out;
+}
+
+/**
+ * Build the observability block for the handoff payload. Walks every
+ * effective projectName (v1.3.0+ multi-design supported) and emits
+ * one loggingPlan entry per project that has a published plan.
+ * Returns null when no project has a published plan.
+ */
+export function buildObservabilitySection(
+	_state: RunState,
+	primaryProjectName: string,
+	cwd: string,
+): { loggingPlan: ObservabilityLoggingPlan[] } | null {
+	const config = loadFilesConfig(cwd);
+	if (!validateFilesConfig(config)) return null;
+
+	let projectNames: string[];
+	try {
+		projectNames = getEffectiveProjectNames(config);
+	} catch {
+		// Fallback: single projectName path (legacy / pre-v1.3.0)
+		projectNames = [primaryProjectName];
+	}
+
+	const entries: ObservabilityLoggingPlan[] = [];
+	for (const pn of projectNames) {
+		const published = loadPublishedLoggingPlanMarkdown(cwd, pn);
+		if (!published) continue;
+		const fm = readLoggingPlanFrontmatter(published.content);
+		entries.push({
+			path: published.path,
+			version: fm.version,
+			status: fm.status,
+			generatedAt: fm.generatedAt,
+			...(fm.overlay ? { overlay: fm.overlay } : {}),
+		});
+	}
+
+	if (entries.length === 0) return null;
+	return { loggingPlan: entries };
+}
+
+/**
+ * Read the design doc and collect every ADR for the architect-inputs
+ * payload. Returns an empty array when the design doc is missing or the
+ * section is absent (consistent with gateADR's lenient mode).
+ */
+export function collectADRDecisions(
+	_state: RunState,
+	projectName: string,
+	cwd: string,
+): AdrSummary[] {
+	const designPath = resolveDocArtifact("design", projectName, cwd);
+	if (!designPath) return [];
+	let content: string;
+	try {
+		content = readFileSync(designPath.path, "utf8");
+	} catch {
+		return [];
+	}
+	const adrs: ADR[] = parseADRSection(content);
+	return adrs.map((a) => ({
+		id: a.id,
+		title: a.title,
+		status: a.status,
+		stage: a.stage,
+		decision: a.decision,
+	}));
 }

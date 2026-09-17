@@ -21,6 +21,7 @@ import {
 	validateFilesConfig,
 	type FilesConfig,
 } from "../../src/core/config.js";
+import { getEffectiveProjectNames, isMultiProject } from "../../src/core/projectnames.js";
 import { buildFilesConfig } from "../../src/ops/configure-inputs.js";
 
 function tmp(): string {
@@ -120,6 +121,63 @@ describe("validateFilesConfig", () => {
 		const { testPaths: _t, ...noTest } = VALID_V4;
 		assert.equal(validateFilesConfig(noTest), false);
 	});
+
+	it("v1.3.0+ accepts projectNames only (multi-design)", () => {
+		const multi = { ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] };
+		assert.ok(validateFilesConfig(multi));
+	});
+
+	it("v1.3.0+ rejects when both projectName and projectNames are set", () => {
+		const both = { ...VALID_V4, projectNames: ["alpha", "beta"] };
+		assert.equal(validateFilesConfig(both), false);
+	});
+
+	it("v1.3.0+ rejects when neither projectName nor projectNames is set", () => {
+		const neither = { ...VALID_V4, projectName: "" };
+		assert.equal(validateFilesConfig(neither), false);
+	});
+});
+
+describe("getEffectiveProjectNames (v1.3.0+)", () => {
+	it("returns the single projectName when only projectName is set", () => {
+		assert.deepEqual(getEffectiveProjectNames(VALID_V4), ["TestApp"]);
+	});
+
+	it("returns projectNames when only projectNames is set", () => {
+		assert.deepEqual(
+			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] }),
+			["alpha", "beta"],
+		);
+	});
+
+	it("de-duplicates projectNames while preserving order", () => {
+		assert.deepEqual(
+			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["x", "x", "y", "x"] }),
+			["x", "y"],
+		);
+	});
+
+	it("isMultiProject returns true for ≥ 2 names, false for 1", () => {
+		assert.equal(isMultiProject(VALID_V4), false);
+		assert.equal(
+			isMultiProject({ ...VALID_V4, projectName: "", projectNames: ["a", "b"] }),
+			true,
+		);
+	});
+
+	it("throws when both fields are set", () => {
+		assert.throws(
+			() => getEffectiveProjectNames({ ...VALID_V4, projectNames: ["x"] }),
+			/sets both/,
+		);
+	});
+
+	it("throws when neither is set", () => {
+		assert.throws(
+			() => getEffectiveProjectNames({ ...VALID_V4, projectName: "" }),
+			/must set either/,
+		);
+	});
 });
 
 describe("saveFilesConfig", () => {
@@ -145,5 +203,17 @@ describe("buildFilesConfig", () => {
 		assert.deepEqual(out.testPaths, ["test/"]);
 		assert.deepEqual(out.inputDocuments, ["Doc/PRD_TestApp.md"]);
 		assert.deepEqual(out.excludedPaths, ["node_modules/"]);
+	});
+
+	it("v1.3.0+ multi-design: takes projectNames and clears projectName", () => {
+		const out = buildFilesConfig(VALID_V4, {
+			projectName: "",
+			projectNames: ["alpha", "beta"],
+			language: "",
+			libraries: [],
+			runtime: "",
+		});
+		assert.equal(out.projectName, "");
+		assert.deepEqual(out.projectNames, ["alpha", "beta"]);
 	});
 });

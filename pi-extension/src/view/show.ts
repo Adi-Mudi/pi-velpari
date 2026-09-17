@@ -14,7 +14,7 @@
  *   show-testplan    -> Doc/tests/test-plan_<projectName>.md + Doc/tests/test-cases_<projectName>.md
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
@@ -26,6 +26,7 @@ import {
 	resolveDocArtifact,
 	slugify,
 } from "../core/paths.js";
+import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -119,6 +120,24 @@ export async function showDesign(
 	if (!projectName) return;
 	const resolved = resolveDocArtifact("design", projectName, cwd);
 	readAndPrint(ctx, resolved, `Design (${projectName})`);
+}
+
+/**
+ * v1.4.0 — show the published logging plan. Reads the same grouped +
+ * legacy fallback paths as the doctor check + handoff payload builder.
+ */
+export async function showLoggingPlan(
+	ctx: ExtensionCommandContext,
+	cwd: string = process.cwd(),
+): Promise<void> {
+	const projectName = getProjectName(ctx, cwd);
+	if (!projectName) return;
+	const resolved = loadPublishedLoggingPlanMarkdown(cwd, projectName);
+	readAndPrint(
+		ctx,
+		resolved ? { path: resolved.path, layout: resolved.layout } : null,
+		`Logging plan (${projectName})`,
+	);
 }
 
 export async function showPseudocode(

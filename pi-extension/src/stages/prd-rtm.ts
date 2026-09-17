@@ -26,7 +26,7 @@ export async function handlePrdRtm(
 	await handleRtm(ctx, pi, cwd);
 	ctx.ui.notify(
 		"/velpari-prd-rtm finished both hand-offs. " +
-			"Run /velpari-approve after each working copy is ready.",
+			"Publish each working copy via the velpari_stage_publish tool after its preview is confirmed.",
 		"info",
 	);
 }

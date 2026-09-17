@@ -13,6 +13,9 @@
  *   4. guardDispatchCount      — refuse dispatch beyond the per-brainstorm cap.
  *   5. guardApproveReadiness   — hard-lock approve until understanding is
  *                                confirmed and every question is terminal.
+ *   5b. guardStageForBrainstorm — refuse re-running /velpari-brainstorm when
+ *                                the run has already advanced past brainstorming.
+ *                                v2.2: brainstorm is single-shot per run.
  *   6. guardBrainstormMutation — hard-block edit/write outside the run's
  *                                brainstorm folder while a brainstorm is open.
  *
@@ -23,6 +26,7 @@
  */
 
 import { resolve, relative, isAbsolute, sep } from "node:path";
+import { nextCommandsFor } from "../../core/constants.js";
 import { buildRunDir } from "../../core/paths.js";
 import type { RunState } from "../../core/state.js";
 import {
@@ -188,6 +192,41 @@ export function guardApproveReadiness(state: RunState): GuardResult {
 		};
 	}
 	return { ok: true };
+}
+
+/** ──────────────────────────────────────────────────────────────────────
+ *  5b. Stage guard at /velpari-brainstorm entry (v2.2)
+ *  ────────────────────────────────────────────────────────────────────── */
+
+/** Hard-block `/velpari-brainstorm` when the run has already advanced past
+ *  the brainstorming stage. The brainstorm stage is single-shot per run:
+ *  re-running on a later stage silently reuses the existing runId and lets
+ *  the parent LLM drift into later stages thinking it is still
+ *  brainstorming. The fix is a stage check: only `none` (fresh) and
+ *  `brainstorming` (resume) are allowed. Anything else means the previous
+ *  brainstorm was approved or the run has moved on, and the correct next
+ *  step is the next-stage command — not another brainstorm.
+ *
+ *  Names the next command via `nextCommandsFor` so the error tells the
+ *  developer exactly what to run. Includes a `/velpari-reset` hint so
+ *  developers know how to discard the current run when they really do
+ *  want a fresh brainstorm. */
+export function guardStageForBrainstorm(state: RunState): GuardResult {
+	if (state.currentStage === "none" || state.currentStage === "brainstorming") {
+		return { ok: true };
+	}
+	const nextCommands = nextCommandsFor(state.currentStage);
+	const nextHint = nextCommands.length === 1
+		? `Run ${nextCommands[0]} next.`
+		: `Run one of: ${nextCommands.join(", ")}.`;
+	return {
+		ok: false,
+		reason:
+			`Brainstorm cannot start from stage "${state.currentStage}".\n` +
+			`${nextHint}\n` +
+			`(Use /velpari-reset to discard the current run and start a fresh brainstorm.)`,
+		details: [state.currentStage, ...nextCommands],
+	};
 }
 
 /** ──────────────────────────────────────────────────────────────────────

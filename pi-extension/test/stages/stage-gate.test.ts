@@ -56,11 +56,15 @@ describe("nextCommandsFor", () => {
 	it("names the follow-up command for each stage", () => {
 		assert.deepEqual(nextCommandsFor("brainstorming"), ["/velpari-approve-brainstorm"]);
 		assert.deepEqual(nextCommandsFor("brainstormed"), ["/velpari-prd"]);
+		// Industry-standard order: planned-tests → development-order (Stage 9).
 		assert.deepEqual(nextCommandsFor("planned-tests"), [
-			"/velpari-atomic-function",
-			"/velpari-design",
-			"/velpari-handoff",
+			"/velpari-development-order",
 		]);
+		// New stages 6, 7, 9, 10.
+		assert.deepEqual(nextCommandsFor("designed"), ["/velpari-atomic-function"]);
+		assert.deepEqual(nextCommandsFor("analyzed-atomic-functions"), ["/velpari-pseudocode"]);
+		assert.deepEqual(nextCommandsFor("ordered-development"), ["/velpari-final-design"]);
+		assert.deepEqual(nextCommandsFor("finalized-design"), ["/velpari-handoff"]);
 	});
 
 	it("falls back to /velpari-status at a terminal stage", () => {
@@ -143,14 +147,96 @@ describe("runStage hard gate", () => {
 	});
 });
 
+describe("Stages 6–10 gate values (industry-standard order)", () => {
+	// These tests assert the gate allows only the expected upstream state or
+	// the stage's own in-progress state. They prevent accidental loosening
+	// of the gate (e.g. reverting to the pre-Option-B permissive state).
+
+	it("atomic-function (Stage 6) accepts only `designed` or its own in-progress", () => {
+		assert.deepEqual(STAGE_GATE["atomic-function"], ["designed", "analyzing-atomic-functions"]);
+	});
+
+	it("pseudocode (Stage 7) accepts only `analyzed-atomic-functions` or its own in-progress", () => {
+		assert.deepEqual(STAGE_GATE["pseudocode"], ["analyzed-atomic-functions", "writing-pseudocode"]);
+	});
+
+	it("testplan (Stage 8) accepts only `wrote-pseudocode` or its own in-progress", () => {
+		assert.deepEqual(STAGE_GATE["testplan"], ["wrote-pseudocode", "planning-tests"]);
+	});
+
+	it("development-order (Stage 9) accepts only `planned-tests` or its own in-progress", () => {
+		assert.deepEqual(STAGE_GATE["development-order"], ["planned-tests", "ordering-development"]);
+	});
+
+	it("final-design (Stage 10) accepts only `ordered-development` or its own in-progress", () => {
+		assert.deepEqual(STAGE_GATE["final-design"], ["ordered-development", "finalizing-design"]);
+	});
+
+	it("atomic-function gate rejects all upstream-of-design stages", () => {
+		const upstreamStages = [
+			"brainstormed",
+			"drafted-prd",
+			"built-rtm",
+			"analyzed-feasibility",
+			"designed", // allowed — sanity
+		];
+		const downstreamStages = [
+			"analyzed-atomic-functions", // allowed — own in-progress
+			"writing-pseudocode",
+			"planned-tests",
+			"finalized-design",
+			"handoff-ready",
+		];
+		const all = [...upstreamStages, ...downstreamStages];
+		const allowed = STAGE_GATE["atomic-function"];
+		for (const s of all) {
+			if (s === "designed" || s === "analyzing-atomic-functions") continue;
+			assert.ok(
+				!allowed.includes(s as never),
+				`Stage 6 (atomic-function) must NOT accept ${s} but gate allows it`,
+			);
+		}
+	});
+
+	it("pseudocode gate rejects atomic-function (its predecessor) before approval", () => {
+		// Stage 7 must run only from Stage 6's *approved* state (analyzed-atomic-functions),
+		// not from the in-progress state (analyzing-atomic-functions).
+		const allowed = STAGE_GATE["pseudocode"];
+		assert.ok(
+			!allowed.includes("analyzing-atomic-functions"),
+			"pseudocode must NOT run while atomic-function draft is open",
+		);
+		assert.ok(
+			allowed.includes("analyzed-atomic-functions"),
+			"pseudocode must run after atomic-function is approved",
+		);
+	});
+
+	it("final-design gate rejects testplan (Stage 8) — must go through Stages 9 first", () => {
+		const allowed = STAGE_GATE["final-design"];
+		assert.ok(
+			!allowed.includes("planned-tests"),
+			"final-design must NOT run from planned-tests; Stages 9 + 10 are required",
+		);
+		assert.ok(
+			!allowed.includes("wrote-pseudocode"),
+			"final-design must NOT run from wrote-pseudocode either",
+		);
+		assert.ok(
+			allowed.includes("ordered-development"),
+			"final-design must run only after development-order is approved",
+		);
+	});
+});
+
 describe("feasibility-skip gate", () => {
 	function advanceToBuiltRtm(): void {
 		const s0 = createRun("Test mission", tmpDir);
 		const s1 = advanceStage(s0, "/velpari-approve-brainstorm", tmpDir);
 		const s2 = advanceStage(s1, "/velpari-prd", tmpDir);
-		const s3 = advanceStage(s2, "/velpari-approve", tmpDir);
+		const s3 = advanceStage(s2, "/velpari-prd-approve", tmpDir);
 		const s4 = advanceStage(s3, "/velpari-rtm", tmpDir);
-		advanceStage(s4, "/velpari-approve", tmpDir); // built-rtm
+		advanceStage(s4, "/velpari-rtm-approve", tmpDir); // built-rtm
 	}
 
 	function seedProjectConfig(): void {

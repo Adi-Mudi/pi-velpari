@@ -1,0 +1,15 @@
+{
+	"id": "none",
+	"version": "1.0.0",
+	"label": "Common Core (no domain overlay)",
+	"standards": ["RFC 2119", "EARS"],
+	"scopes": ["any"],
+	"inferenceSignals": [],
+	"requiredSections": {
+		"prd": [],
+		"design": [],
+		"testplan": []
+	},
+	"extraScouts": [],
+	"doctorChecks": []
+}

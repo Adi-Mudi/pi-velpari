@@ -36,6 +36,9 @@ export const ARTIFACT_FRONTMATTER_FIELDS = [
 	"run",
 	"created",
 	"updated",
+	"supersedes",
+	"sunset",
+	"deprecatedAt",
 ] as const;
 
 export interface ParsedFrontmatter {
@@ -83,6 +86,30 @@ export interface ArtifactFrontmatterInput {
 	run: string;
 	/** ISO timestamp for created/updated. Injectable for tests. */
 	now?: string;
+	/**
+	 * Optional id of the prior published artifact this one supersedes.
+	 * When present, rendered as `supersedes: <id>` in the frontmatter
+	 * (Phase 7 of the architecture-generator upgrade plan). Lets review
+	 * tools follow the history: "design_TodoApp_2026-09-14 supersedes
+	 * design_TodoApp_2026-09-13".
+	 */
+	supersedes?: string;
+	/**
+	 * Optional ISO 8601 date (`YYYY-MM-DD`) when this artifact is
+	 * formally deprecated (RFC 8594). The doctor emits an error
+	 * (ShapeCompatibility) once the date is past. v1.2.2: informational
+	 * only — enforcement is v1.3+.
+	 */
+	sunset?: string;
+	/**
+	 * v1.3.0: ISO 8601 date this design was auto-archived by the
+	 * sunset past-date flow. Written by handleApprove when the
+	 * published `sunset:` is in the past. Once set, the design's
+	 * `status` becomes `deprecated`. The doctor downgrades the
+	 * past-sunset finding from `error` to `info` for already-archived
+	 * designs.
+	 */
+	deprecatedAt?: string;
 }
 
 /**
@@ -108,6 +135,15 @@ export function withArtifactFrontmatter(
 	if (!merged.run) merged.run = input.run;
 	if (!merged.created) merged.created = published?.fields.created ?? now;
 	merged.updated = now;
+	// Phase 7: `supersedes` is taken from the input — never from the prior
+	// published content, since the LLM publishes a fresh value.
+	if (input.supersedes !== undefined) merged.supersedes = input.supersedes;
+	// v1.2.2: `sunset` is informational on publish. Rendered when set.
+	if (input.sunset !== undefined) merged.sunset = input.sunset;
+	// v1.3.0: `deprecatedAt` (ISO date) marks the design as archived
+	// after a past-sunset auto-archive. Written by handleApprove's
+	// sunset auto-archive logic.
+	if (input.deprecatedAt !== undefined) merged.deprecatedAt = input.deprecatedAt;
 
 	return renderFrontmatter(merged) + (existing?.body ?? content.replace(/^\n+/, ""));
 }

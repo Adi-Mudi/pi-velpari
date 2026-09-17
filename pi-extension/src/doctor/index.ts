@@ -22,6 +22,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { PATHS } from "../core/constants.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { loadState } from "../core/state.js";
+import { buildWorkingGroupedPath } from "../core/paths.js";
 import {
 	type DiagnosticItem,
 	type DiagnosticReport,
@@ -39,7 +40,6 @@ import { checkFingerprintsSection } from "./checks/fingerprints.js";
 import { checkPhaseConsistencySection } from "./checks/phase-consistency.js";
 import { checkMvpCoverageSection } from "./checks/mvp-coverage.js";
 import { checkFeasibilityV2Section } from "./checks/feasibility-v2.js";
-import { scanForSecrets } from "./checks/secrets.js";
 import { detectMultiplexer, detectInteractiveSubagentsVersion } from "./checks/multiplexer.js";
 import {
 	checkScoutAgentsSection,
@@ -54,10 +54,15 @@ import { checkSubagentExtension } from "./checks/subagent-extension.js";
 import { checkStrayFiles } from "./checks/stray-files.js";
 import { checkWebToolLock } from "./checks/web-tool-lock.js";
 import { checkOfficialReadiness } from "./checks/official-readiness.js";
+import { checkSubAgentGeneratorSection } from "./checks/sub-agent-generator.js";
+import { checkDesignReadiness } from "./checks/design-readiness.js";
+import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
 import {
 	checkGateWiringSection,
 	checkStaleDownstreamSection,
 } from "./checks/stale-downstream.js";
+import { checkScanOptions } from "./checks/scan-options.js";
+import { checkLoggingPlanSection } from "./checks/logging-plan.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
@@ -97,6 +102,41 @@ function readProjectName(cwd: string): string {
 		return validateFilesConfig(cfg) ? cfg.projectName : "";
 	} catch {
 		return "";
+	}
+}
+
+/**
+ * Load the design working-copy content for the current run + project,
+ * or null when there is no active run / no working copy on disk. Used
+ * by `checkDesignReadiness` so the doctor audit reaches the same
+ * content the publish gate checks against. Kept local to this module;
+ * it depends on `loadState` + `buildWorkingGroupedPath` for the run id
+ * and project name respectively.
+ */
+function loadDesignWorkingContent(cwd: string): string | null {
+	let runId: string | null = null;
+	try {
+		const state = loadState(cwd);
+		runId = state?.runId ?? null;
+	} catch {
+		return null;
+	}
+	if (!runId) return null;
+
+	let projectName = "";
+	try {
+		const cfg = loadFilesConfig(cwd);
+		if (validateFilesConfig(cfg)) projectName = cfg.projectName;
+	} catch {
+		return null;
+	}
+	if (!projectName) return null;
+
+	const path = buildWorkingGroupedPath(cwd, runId, "design", projectName);
+	try {
+		return readFileSync(path, "utf8");
+	} catch {
+		return null;
 	}
 }
 
@@ -229,7 +269,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 		});
 	}
 
-	return { title: "Multiplexer (required for /velpari-brainstorm v2.0)", items };
+	return { title: "Multiplexer (required for /velpari-brainstorm v2.1)", items };
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +315,14 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkStageSkillsSection(cwd),
 		checkSecretScan(cwd),
 		checkOfficialReadiness(cwd),
+		checkScanOptions(cwd),
+		checkSubAgentGeneratorSection(cwd),
+		checkDesignReadiness(loadDesignWorkingContent(cwd)),
+		checkShapeCompatibilityAll(cwd),
+		// v1.4.0 — cross-cutting discipline command /velpari-design-logging.
+		// Audits Doc/observability/logging-plan_<project>.md. Hard error
+		// when an active standards overlay requires logging.
+		checkLoggingPlanSection(cwd, projectName),
 	];
 
 	// Phase 5: prepend an "Action items" callout so errors and warnings

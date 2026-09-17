@@ -161,3 +161,52 @@ export function ensureStageAgents(
 
 // Keep imports referenced for the bundler
 void readFileSync;
+
+// ─── Phase 5: overlay-specific scout bootstrap ─────────────────────────────
+
+/**
+ * Copy an overlay's bundled scout markdown files into the project's
+ * `.pi/agents/` directory. Overlay scouts are NOT in `skills/agents/` —
+ * they live in `skills/standards/overlays/<id>/scouts/<role>.md`.
+ *
+ * Returns the list of roles that were successfully bootstrapped.
+ * Missing scout files are reported via the result (do not throw) so
+ * the parent LLM can surface a clear error at spawn time.
+ */
+export interface BootstrapOverlayScoutsResult {
+	installed: string[];
+	alreadyPresent: string[];
+	missing: string[];
+}
+
+export function bootstrapOverlayScouts(
+	overlayId: string,
+	roles: readonly string[],
+	cwd: string = process.cwd(),
+): BootstrapOverlayScoutsResult {
+	const agentsDir = join(cwd, ".pi", "agents");
+	const overlayScoutsDir = join(cwd, "skills", "standards", "overlays", overlayId, "scouts");
+	const installed: string[] = [];
+	const alreadyPresent: string[] = [];
+	const missing: string[] = [];
+
+	for (const role of roles) {
+		const target = join(agentsDir, `${role}.md`);
+		if (existsSync(target)) {
+			alreadyPresent.push(role);
+			continue;
+		}
+		const source = join(overlayScoutsDir, `${role}.md`);
+		if (!existsSync(source)) {
+			missing.push(role);
+			continue;
+		}
+		if (!existsSync(agentsDir)) {
+			mkdirSync(agentsDir, { recursive: true });
+		}
+		copyFileSync(source, target);
+		installed.push(role);
+	}
+
+	return { installed, alreadyPresent, missing };
+}

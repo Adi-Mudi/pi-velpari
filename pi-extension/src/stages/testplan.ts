@@ -1,5 +1,9 @@
 /**
- * /velpari-testplan handler.
+ * /velpari-testplan handler (Stage 8 — required post-pseudocode).
+ *
+ * Reads the pseudocode + atomic-functions and spawns 4 subagents in
+ * parallel (strategy / unit / integration / coverage) to produce the
+ * test plan and per-requirement test cases.
  *
  * Phase B: data-driven via STAGE_REGISTRY. See STAGE_REGISTRY.testplan.
  *

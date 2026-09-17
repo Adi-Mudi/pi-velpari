@@ -72,6 +72,3 @@ export function checkGroupedLegacyPathsSection(
 	return { title: "Grouped / legacy paths", items };
 }
 
-function kebabStage(artifact: string): string {
-	return artifact.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-}

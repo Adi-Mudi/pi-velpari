@@ -4,7 +4,9 @@
  * The RTM's source of truth is a JSON document (`RTM_<project>.json`)
  * living next to the markdown (`RTM_<project>.md`) in both the working
  * copy and the published grouped layout. The parent LLM authors the JSON
- * during the rtm stage; `/velpari-approve` validates it and REGENERATES
+ * during the rtm stage; the publish gate (called via the publish tool
+ * or `/velpari-rtm-approve` fall-back, both of which invoke
+ * `handleApprove`) validates it and REGENERATES
  * the published markdown from it — so the table a human reads is always
  * derived from the data, never hand-edited prose.
  *
@@ -46,7 +48,9 @@ export interface RtmRow {
 	reason?: string;
 	/**
 	 * SHA-256 of the requirement's PSRS row substance (Phase 3). Stamped
-	 * by /velpari-approve at publish time — never written by the LLM.
+	 * by the publish gate (called by `handleApprove` via the publish tool
+	 * or `/velpari-rtm-approve` fall-back) at publish time — never
+	 * written by the LLM.
 	 */
 	fingerprint?: string;
 }

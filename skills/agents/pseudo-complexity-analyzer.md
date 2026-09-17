@@ -50,6 +50,9 @@ Write a JSON file to `<scoutReportPath>`:
 - Look for unbounded growth (memory leak).
 - Distinguish worst-case vs amortized.
 - Flag anything that violates the NFR performance targets in the PRD.
+- **Tier awareness**: Complexity is required for Tier 2 and Tier 3 functions
+  only. If the function from the algorithm-extractor report has `tier < 2`,
+  omit the entry (trivial functions do not need complexity annotations).
 
 ## Hard rules
 

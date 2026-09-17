@@ -73,7 +73,7 @@ One-paragraph summary of the system, referencing the approved design.
 
 For every `error` from the 3 reports: explain whether it is now resolved
 (by this consolidated doc), deferred (with reason), or a true blocker
-that must be fixed before `/velpari-approve`. Format as a table:
+that must be fixed before `the publish tool`. Format as a table:
 
 | Source | Item | Resolution |
 |---|---|---|
@@ -102,7 +102,7 @@ the design's interface section; this is the version Senai will use).
 - Zero hallucination: every module/contract/ID you list must appear in one
   of the 4 input documents.
 - Do NOT spawn subagents.
-- Do NOT call `/velpari-approve` or any other command — write the working
+- Do NOT call `the publish tool` or any other command — write the working
   copy only.
 - Use `session-mode: standalone`.
 - Final message ≤ 10 lines: counts + working-copy path.

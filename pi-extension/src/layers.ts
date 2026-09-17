@@ -13,7 +13,12 @@
 // Layer 0 — Domain primitives (imports nothing else from src/)
 // ------------------------------------------------------------------------
 //   core/   state, paths, constants, stage-runner, prompt, config,
-//           profile, profiles-library, psrs, compaction
+//           profile, profiles-library, psrs, compaction,
+//           agents-generator, generated-manifest, project-context
+//           (sub-agent generator core — Phase 2 of /velpari-generate-sub-agents),
+//           multiplexer (Phase 2), scan-options (Phase 2),
+//           standards-catalogue, standards-overlay,
+//           logging-plan (v1.4.0 — /velpari-design-logging discipline command)
 //   io/     atomic-write (every fs write goes through here),
 //           agents-install
 //

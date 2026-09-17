@@ -91,7 +91,18 @@ function seed(rows: RtmRow[]): void {
 			excludedPaths: [],
 		}),
 	);
-	for (const artifact of ["PRD", "RTM", "feasibility-study", "design", "pseudocode", "test-plan", "test-cases"]) {
+	for (const artifact of [
+		"PRD",
+		"RTM",
+		"feasibility-study",
+		"design",
+		"atomic-functions",
+		"pseudocode",
+		"test-plan",
+		"test-cases",
+		"development-order",
+		"final-design",
+	]) {
 		const p = path.join(tmpDir, buildGroupedPath(artifact, "TestApp"));
 		fs.mkdirSync(path.dirname(p), { recursive: true });
 		fs.writeFileSync(p, artifact === "PRD" ? PSRS : `# ${artifact}\n`);
@@ -103,9 +114,14 @@ function seed(rows: RtmRow[]): void {
 	);
 }
 
-function enterPlannedTests(): void {
+function enterFinalizedDesign(): void {
 	const run = createRun("TestApp", tmpDir);
-	saveState({ ...run, currentStage: "planned-tests" }, tmpDir);
+	// In the industry-standard order, /velpari-handoff is only allowed from
+	// `finalized-design` (Stage 10). Stage 8 is `planned-tests`; the
+	// post-pipeline chain (development-order → final-design → approve) lands
+	// here. We jump directly because this test only exercises the MVP
+	// coverage gate, not the full transition chain.
+	saveState({ ...run, currentStage: "finalized-design" }, tmpDir);
 }
 
 beforeEach(() => {
@@ -118,18 +134,18 @@ afterEach(() => {
 
 describe("/velpari-handoff — MVP coverage gate", () => {
 	it("blocks when a Phase-1 requirement has no RTM row", async () => {
-		enterPlannedTests();
+		enterFinalizedDesign();
 		seed([row("FR-01")]); // NFR-01 missing
 		await runHandoff(loadState(tmpDir), makeCtx(), tmpDir);
 
 		assert.match(allMessages(), /Handoff blocked — MVP coverage 1\/2/);
 		assert.match(allMessages(), /NFR-01: Phase-1 \(MVP\) requirement has no RTM row/);
 		assert.equal(fs.existsSync(path.join(tmpDir, ".pi", "senai", "architect-inputs.json")), false);
-		assert.equal(loadState(tmpDir).currentStage, "planned-tests", "stage must not advance");
+		assert.equal(loadState(tmpDir).currentStage, "finalized-design", "stage must not advance");
 	});
 
 	it("blocks when a Phase-1 requirement coverage is missing", async () => {
-		enterPlannedTests();
+		enterFinalizedDesign();
 		seed([row("FR-01"), row("NFR-01", { coverage: "missing", tests: [] })]);
 		await runHandoff(loadState(tmpDir), makeCtx(), tmpDir);
 
@@ -139,7 +155,7 @@ describe("/velpari-handoff — MVP coverage gate", () => {
 	});
 
 	it("warns but proceeds on partial coverage", async () => {
-		enterPlannedTests();
+		enterFinalizedDesign();
 		seed([row("FR-01"), row("NFR-01", { coverage: "partial" })]);
 		await runHandoff(loadState(tmpDir), makeCtx(), tmpDir);
 
@@ -148,7 +164,7 @@ describe("/velpari-handoff — MVP coverage gate", () => {
 	});
 
 	it("hands off cleanly at full MVP coverage", async () => {
-		enterPlannedTests();
+		enterFinalizedDesign();
 		seed([row("FR-01"), row("NFR-01")]);
 		await runHandoff(loadState(tmpDir), makeCtx(), tmpDir);
 

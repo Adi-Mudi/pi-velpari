@@ -1,11 +1,11 @@
 ---
 name: velpari-atomic-function
-description: Pi-Velpari Atomic Function stage (optional post-pipeline, FR-35) — orchestrate 4 visible subagents (af-source-rtm, af-source-pseudocode, af-source-prd, af-source-testcases) to propose atomic function splits across the published artifacts, write the working copy, show preview gate.
+description: Pi-Velpari Atomic Function stage (required Stage 6, FR-35) — orchestrate 4 visible subagents (af-source-rtm, af-source-design, af-source-prd, af-source-feas) to propose atomic function splits across the published artifacts, write the working copy, show preview gate.
 ---
 
 # Atomic Function Stage
 
-(Optional post-pipeline stage.) Read the published artifacts and propose
+(Required Stage 6 — runs after the design stage is approved.) Read the published artifacts and propose
 atomic function splits — small, leaf-node functions that can be unit-tested
 in isolation. The handler has already concatenated the PRD, RTM,
 pseudocode, and test cases into the prompt. Your job is to spawn 4
@@ -16,7 +16,7 @@ atomic-functions doc.
 
 By the end of this stage, `<workingCopy>` (`atomic-functions_<projectName>.md`)
 has the consolidated atomic function list, the user has approved the
-preview, and `/velpari-approve` can publish the artifact to
+preview, and the `velpari_stage_publish` tool can publish the artifact to
 `Doc/atomic-functions_<projectName>.md` without surprises.
 
 ## Sequence
@@ -28,15 +28,13 @@ published artifacts (concatenated into prompt by handler):
   - Doc/RTM_<projectName>.md
   - Doc/feasibility-study_<projectName>.md
   - Doc/design_<projectName>.md
-  - Doc/pseudocode_<projectName>.md
-  - Doc/test-plan_<projectName>.md + Doc/test-cases_<projectName>.md
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
-  ├─ af-source-rtm        → <scoutReportDir>/af-source-rtm-report.json
-  ├─ af-source-pseudocode → <scoutReportDir>/af-source-pseudocode-report.json
-  ├─ af-source-prd        → <scoutReportDir>/af-source-prd-report.json
-  └─ af-source-testcases  → <scoutReportDir>/af-source-testcases-report.json
+  ├─ af-source-rtm    → <scoutReportDir>/af-source-rtm-report.json
+  ├─ af-source-design → <scoutReportDir>/af-source-design-report.json
+  ├─ af-source-prd    → <scoutReportDir>/af-source-prd-report.json
+  └─ af-source-feas   → <scoutReportDir>/af-source-feas-report.json
         │
         ▼ (wait for all 4 — see Synchronization rules below)
 read 4 reports
@@ -51,18 +49,18 @@ write working copy <workingCopy>
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call the velpari_stage_publish tool (it publishes + advances stage)
 ```
 
 ## Subagent conventions
 
-The 4 scouts live in `.pi/agents/{af-source-rtm,af-source-pseudocode,af-source-prd,af-source-testcases}.md`.
+The 4 scouts live in `.pi/agents/{af-source-rtm,af-source-design,af-source-prd,af-source-feas}.md`.
 They are real subagents — they run in **visible multiplexer panes** you can
 monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
 
 - **Agent parameter** — Every `subagent()` call MUST include `agent:` with one
-  of: `af-source-rtm`, `af-source-pseudocode`, `af-source-prd`,
-  `af-source-testcases`.
+  of: `af-source-rtm`, `af-source-design`, `af-source-prd`,
+  `af-source-feas`.
 - **Session mode** — All 4 declare `session-mode: standalone`; do NOT pass
   `fork: true`.
 - **Auto-exit** — All 4 declare `auto-exit: true`; the pane closes
@@ -128,6 +126,14 @@ After all 4 scouts complete:
 
 Write the working copy as `atomic-functions_<projectName>.md` at `<workingCopy>`:
 
+The schema is **tier-driven** (ISO/IEC 29110 + IEC 61508/IEC 62304). The prompt
+carries a `## Atomic Profile` block declaring which fields are required at the
+selected tier. Use the matching schema below.
+
+### Tier 1 — Entry (ISO/IEC 29110 entry profile; safety class A only)
+
+8 base-core fields. Every AF must declare all of them.
+
 ```markdown
 ---
 artifact: atomic-functions
@@ -136,6 +142,7 @@ version: 1.0.0
 status: draft
 stage: analyzing-atomic-functions
 run: <runId>
+atomicTier: entry
 created: <ISO timestamp>
 updated: <ISO timestamp>
 ---
@@ -143,18 +150,45 @@ updated: <ISO timestamp>
 # Atomic Functions — <projectName>
 
 ## Summary
+- Tier: Entry (ISO/IEC 29110 entry profile)
 - Total atomic functions: <N>
-- Sources: RTM=<N>, Pseudocode=<N>, PRD=<N>, TestCases=<N>
 
 ## Atomic Functions
 
-| AF ID | Name | File Path | Signature | Purpose | Source | Testable |
-|---|---|---|---|---|---|---|
-| AF-1 | validateEmail | src/utils/validate-email.ts | function validateEmail(email: string): boolean | Validates email against RFC 5322 | RTM (called by FR-1, FR-2, FR-5) | yes |
-| AF-2 | parseIsoDate | src/utils/parse-iso-date.ts | function parseIsoDate(s: string): Date \| null | Parses ISO 8601 | Pseudocode (M-1, M-3) | yes |
-| AF-3 | hashPassword | src/auth/hash-password.ts | function hashPassword(plain: string, cost: number): Promise<string> | Hashes with bcrypt | PRD (FR-1) | yes |
-| ... | | | | | | |
+| AF ID | Name | File Path | Signature | Purpose | Source | Cohesion | Verification | Testable |
+|---|---|---|---|---|---|---|---|---|
+| AF-1 | validateEmail | src/utils/validate-email.ts | function validateEmail(email: string): boolean | Validates email against RFC 5322 | RTM | perfect-atomic | Test | yes |
+| ... | | | | | | | | |
+```
 
+### Tier 2 — Basic (ISO/IEC 29110 basic profile; safety class A or B)
+
+Base-core + basic-tier cross-references (5 fields).
+
+```markdown
+| AF ID | Name | File Path | Signature | Purpose | Source | Cohesion | Verification | Testable | Called by FRs | Design ref | Extracted from HF | Satisfies FR | Feasibility ref |
+```
+
+### Tier 3 — Intermediate (ISO/IEC 29110 intermediate; safety class A or B)
+
+Adds EARS pattern + V-Model LLD fields (11 fields). Cohesion MUST remain
+`perfect-atomic` or `functional`. Complexity MUST be ≤ 10 (ISO 25010).
+
+```markdown
+| AF ID | Name | ... | EARS Pattern | Inputs | Outputs | Errors | Dependencies | DB/IO | Complexity | Coupling | ArgCount | OneLevelAbstr | NameIntent |
+```
+
+### Tier 4 — Advanced (ISO/IEC 29110 advanced; safety class B or C)
+
+Adds INCOSE GtWR v4 + maintenance + risk fields (11 more). Full schema.
+
+```markdown
+| AF ID | Name | ... | Owner | Priority | SecurityClass | Risk | Reusability | ModifiabilityNote | StoryPoints | AcceptanceRef | TestRef | Rationale | ChangeLog |
+```
+
+### Common — Cross-references (all tiers)
+
+```markdown
 ## Cross-references
 
 | AF | Used by |
@@ -163,6 +197,22 @@ updated: <ISO timestamp>
 | AF-2 | M-1, M-3 |
 | ... | |
 ```
+
+## Tier rules (doctor gate enforcement)
+
+| # | Rule | Tier | Severity |
+|---|---|---|---|
+| 1 | Base-core fields present | All | error |
+| 2 | `cohesion` ∈ {`perfect-atomic`, `functional`} | All | error |
+| 3 | `verification` ∈ {`Test`, `Demonstration`, `Inspection`, `Analysis`} | All | error |
+| 4 | `testable` = `yes` | All | error |
+| 5 | `complexity` ≤ 10 (ISO 25010 modifiability) | intermediate+ | error |
+| 6 | `argCount` ≤ 2 preferred; warn at ≥ 3 (Clean Code) | intermediate+ | warn |
+| 7 | `coupling` = `high` requires rationale | intermediate+ | warn |
+| 8 | `earsPattern` ∈ 5 EARS patterns | intermediate+ | warn |
+| 9 | Tier-specific fields present | matches tier | error |
+| 10 | `risk` declared | advanced | error |
+| 11 | `changeLog` entry present (revised docs) | advanced | error |
 
 ## Zero-Hallucination Rule (FR-22)
 
@@ -184,27 +234,25 @@ exists), revise the baseline instead of regenerating:
    existing entries.
 2. Mark superseded entries `deprecated` with a reason.
 3. Bump the version and add a new Change Log entry.
-   `/velpari-approve` blocks publishing without it.
+   The doctor gate (called via the `velpari_stage_publish` tool) blocks publishing without it.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + atomic-tier reviewer verdict + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which atomic functions to revise
-
-If yes → tell the user: "Run /velpari-approve to publish."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-atomic-function-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
 - **No in-process scouts.** Use the `subagent()` tool only.
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
-- **Do NOT mutate `state.json.stage`.** Atomic function is an optional
-  post-pipeline stage; it does NOT appear in `STAGE_TRANSITIONS`. State
-  is unchanged. The user simply gets the published doc.
+- **Do NOT mutate `state.json.stage` directly.** Atomic function is Stage 6
+  (required) and appears in `STAGE_TRANSITIONS` as
+  `designed → analyzing-atomic-functions`. The stage command only writes
+  the working copy; `state.json.stage` is advanced by the
+  `velpari_stage_publish` tool (which `handleApprove` invokes),
+  not by this skill.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the atomic functions content.
 

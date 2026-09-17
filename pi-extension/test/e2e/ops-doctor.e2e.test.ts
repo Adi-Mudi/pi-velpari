@@ -211,7 +211,7 @@ describe("e2e/ops-doctor", () => {
 		);
 	});
 
-	it("handoff: wrong stage hard-blocks; planned-tests writes a schema-valid architect-inputs.json", { timeout: 60_000 }, async (t) => {
+	it("handoff: wrong stage hard-blocks; finalized-design writes a schema-valid architect-inputs.json", { timeout: 60_000 }, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -228,12 +228,12 @@ describe("e2e/ops-doctor", () => {
 				"await runHandoff(loadState(cwd), ctx, cwd); " +
 				"const blockedNotes = notes.slice(); " +
 				"notes.length = 0; " +
-				// 2. Walk the legal chain up to planned-tests.
-				"const walk = ['/velpari-approve-brainstorm','/velpari-prd','/velpari-approve','/velpari-rtm','/velpari-approve','/velpari-feasibility','/velpari-approve','/velpari-architecture-generator','/velpari-approve','/velpari-pseudocode','/velpari-approve','/velpari-testplan','/velpari-approve']; " +
+				// 2. Walk the legal chain up to finalized-design (industry-standard order incl. atomic-function + dev-order + final-design).
+				"const walk = ['/velpari-approve-brainstorm','/velpari-prd','/velpari-rtm-approve','/velpari-rtm','/velpari-feasibility-approve','/velpari-feasibility','/velpari-architecture-generator-approve','/velpari-architecture-generator','/velpari-atomic-function-approve','/velpari-atomic-function','/velpari-pseudocode-approve','/velpari-pseudocode','/velpari-testplan-approve','/velpari-testplan','/velpari-development-order-approve','/velpari-development-order','/velpari-final-design-approve','/velpari-final-design','/velpari-final-design-approve']; " +
 				"for (const cmd of walk) { s = advanceStage(s, cmd, cwd); } " +
-				// 3. Seed the 7 required approved artifacts (grouped layout).
+				// 3. Seed the 10 required approved artifacts (grouped layout).
 				"const seed = (p) => { mkdirSync(cwd + '/Doc/' + p.split('/')[0], { recursive: true }); writeFileSync(cwd + '/Doc/' + p, '# approved\\n', 'utf8'); }; " +
-				"['requirements/PRD_E2EFixture.md','requirements/RTM_E2EFixture.md','feasibility/feasibility-study_E2EFixture.md','design/design_E2EFixture.md','pseudocode/pseudocode_E2EFixture.md','tests/test-plan_E2EFixture.md','tests/test-cases_E2EFixture.md'].forEach(seed); " +
+				"['requirements/PRD_E2EFixture.md','requirements/RTM_E2EFixture.md','feasibility/feasibility-study_E2EFixture.md','design/design_E2EFixture.md','atomic-functions/atomic-functions_E2EFixture.md','pseudocode/pseudocode_E2EFixture.md','tests/test-plan_E2EFixture.md','tests/test-cases_E2EFixture.md','development-order/development-order_E2EFixture.md','design/final-design_E2EFixture.md'].forEach(seed); " +
 				// 4. Handoff with confirm = true.
 				"globalThis.__confirmAnswer = true; " +
 				"await runHandoff(loadState(cwd), ctx, cwd); " +
@@ -258,7 +258,7 @@ describe("e2e/ops-doctor", () => {
 		assert.ok(out.written, "architect-inputs.json was not written");
 		assert.ok(out.schemaOk, "architect-inputs.json failed validateSenaiSchema");
 		assert.strictEqual(out.projectName, "E2EFixture", "handoff lost the projectName");
-		assert.strictEqual(out.docCount, 7, "handoff should reference exactly the 7 required documents (no optional ones seeded)");
+		assert.strictEqual(out.docCount, 10, "handoff should reference exactly the 10 required documents (incl. atomic-functions + dev-order + final-design)");
 		assert.strictEqual(out.stage, "handoff-ready", "state must advance to handoff-ready after a confirmed handoff");
 	});
 });

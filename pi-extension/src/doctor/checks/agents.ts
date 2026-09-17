@@ -27,6 +27,7 @@ import {
 	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
 	loadAgentConfig,
+	LOGGING_SCOUT_ROLES,
 	resolveAgentName,
 	validateMappedAgents,
 	type AgentConfig,
@@ -76,6 +77,11 @@ export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
 	...Object.fromEntries(
 		Object.values(STAGE_REGISTRY).map((spec) => [spec.key, [...spec.scouts]]),
 	),
+	// v1.4.0 — cross-cutting discipline command. The 3 logging scouts
+	// live in LOGGING_SCOUT_ROLES (agents-config.ts) and are bundled
+	// under skills/agents/. Listed here so the stage-skills doctor check
+	// verifies the skill markdown mentions each one.
+	"design-logging": [...LOGGING_SCOUT_ROLES],
 };
 
 export const STAGES_WITH_SKILL_MARKDOWN = [
@@ -90,6 +96,10 @@ export const STAGES_WITH_SKILL_MARKDOWN = [
 	"atomic-function",
 	"development-order",
 	"configure-requirements",
+	// v1.4.0 — cross-cutting discipline command /velpari-design-logging.
+	// Not a stage (no STAGE_TRANSITIONS entry) but its skill markdown
+	// is checked alongside the stage skills.
+	"design-logging",
 ];
 
 // ---------------------------------------------------------------------------

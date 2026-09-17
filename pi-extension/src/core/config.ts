@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../io/atomic-write.js";
 import { PATHS } from "./constants.js";
+import type { AtomicProfile } from "./atomic-tier.js";
 
 /**
  * files.json shape (v4 — per FR-11, FR-67, NFR-15 + Senai files pattern:
@@ -9,7 +10,12 @@ import { PATHS } from "./constants.js";
  */
 export interface FilesConfig {
 	version: 4;
+	/** Legacy single-design field. v1.3.0+ accepts `projectNames` for
+	 *  multi-design. Exactly one of `projectName` and `projectNames`
+	 *  must be set. Use `getEffectiveProjectNames(cfg)` to consume. */
 	projectName: string;
+	/** v1.3.0+ multi-design field. Array of 1+ distinct projectNames. */
+	projectNames?: string[];
 	framework?: {
 		language?: string;
 		libraries?: string[];
@@ -20,6 +26,9 @@ export interface FilesConfig {
 	testPaths: string[];
 	outputPaths: Record<string, string>;
 	excludedPaths: string[];
+	/** Optional atomic-function tier profile (ISO/IEC 29110 + IEC 61508/IEC 62304).
+	 *  When absent, deriveAtomicProfile() returns the defaults (basic / A / none). */
+	atomic?: AtomicProfile;
 }
 
 /** Senai-parity default exclusions for discovery and scans. */
@@ -117,7 +126,12 @@ export function saveFilesConfig(config: FilesConfig, cwd: string = process.cwd()
  */
 export function validateFilesConfig(config: Partial<FilesConfig>): config is FilesConfig {
 	if (config.version !== 4) return false;
-	if (typeof config.projectName !== "string") return false;
+	const single = (config as Partial<FilesConfig>).projectName;
+	const multi = (config as { projectNames?: unknown }).projectNames;
+	const hasSingle = typeof single === "string" && single.length > 0;
+	const hasMulti = Array.isArray(multi) && multi.length > 0;
+	if (hasSingle && hasMulti) return false; // exactly one
+	if (!hasSingle && !hasMulti) return false; // exactly one
 	if (!Array.isArray(config.codePaths)) return false;
 	if (!Array.isArray(config.inputDocuments)) return false;
 	if (!Array.isArray(config.testPaths)) return false;

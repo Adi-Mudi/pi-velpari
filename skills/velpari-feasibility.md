@@ -16,9 +16,10 @@ write the working-copy feasibility study.
 
 By the end of this stage, `<workingCopy>`
 (`feasibility-study_<projectName>.md`) has all 4 feasibility sections +
-overall verdict filled, the user has approved the preview, and
-`/velpari-approve` can publish the artifact to
+overall verdict filled, the user has approved the preview, and the
+`velpari_stage_publish` tool can publish the artifact to
 `Doc/feasibility-study_<projectName>.md` without surprises.
+`/velpari-feasibility-approve` remains as the manual fallback.
 
 ## Read-First Rule (HARD)
 
@@ -74,7 +75,7 @@ write working copy <workingCopy>
 AskUserQuestion "Publish preview?"
         │
         ▼ (yes)
-tell user to run /velpari-approve
+call velpari_stage_publish tool (no parameters)
 ```
 
 ## Reuse Scan (BEFORE the 4 dimension scouts)
@@ -161,7 +162,7 @@ the `velpari_feasibility_session` tool — the approve gate reads it.
      `select-language` with `selectedBy: "user"`.
    - NONE passed → STOP. Report the failures honestly and suggest
      /velpari-brainstorm to rethink scope or stack. No language selected
-     = /velpari-approve will block.
+     = the publish gate will block.
 8. On the **reuse** path: `select-language` with the clone's language and
    `selectedBy: "clone"`.
 
@@ -336,22 +337,18 @@ Revision rules:
    reason. Never delete them silently.
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
-4. **Change Log entry required.** `/velpari-approve` blocks publishing
+4. **Change Log entry required.** The `velpari_stage_publish` tool
+   (same gate chain as `/velpari-feasibility-approve`) blocks publishing
    without a new Change Log entry.
 5. **New content is appended** under the existing sections.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
-## Preview Gate
+## Publish (auto on working-copy ready)
 
-After writing the working copy, ask the user:
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + feasibility v2 session + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
-> Publish preview?
-> - yes — the working copy is ready, run /velpari-approve
-> - no — I'll add changes first
-> - edit — let me specify which sections to revise
-
-If yes → tell the user: "Run /velpari-approve to publish."
+Manual fallback (when the LLM-driven publish is unavailable): `/velpari-feasibility-approve` runs the same gate chain from the terminal.
 
 ## Hard rules
 
@@ -360,8 +357,9 @@ If yes → tell the user: "Run /velpari-approve to publish."
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
   `analyzing-feasibility` via `createRun()`. The next state transition
-  (`analyzed-feasibility`) happens in `/velpari-approve`. You only write
-  the working copy artifact.
+  (`analyzed-feasibility`) happens in the `velpari_stage_publish` tool
+  (same gate chain as `/velpari-feasibility-approve`). You only write the
+  working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the feasibility content.
 

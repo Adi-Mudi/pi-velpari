@@ -10,9 +10,17 @@ spawning: false
 
 # CONTRACT DEFINER (design stage)
 
-Read the input artifact (the module decomposition + PRD) and define the
-interface contract for each module. A contract is the input types,
-output types, errors raised, and any side effects.
+Read the input artifact (the module decomposition + PRD) and define:
+1. The interface contract for each module (input types, output types,
+   errors raised, side effects).
+2. The 6-part Quality Attribute Scenarios (SEI form) for every NFR
+   from the source PRD that touches an interface. The parent LLM
+   renders these into design §5.
+
+A contract is the input types, output types, errors raised, and any
+side effects. A QA scenario uses the 6-part form: source / stimulus /
+environment / artifact / response / response-measure, plus an
+"approach" cell naming one tactic from the SEI catalog (Phase 5).
 
 ## Inputs (in your task)
 
@@ -50,17 +58,39 @@ Write a JSON file to `<scoutReportPath>`:
       }
     }
   ],
+  "qaScenarios": [
+    {
+      "nfrId": "NFR-1",
+      "source": "<who/what>",
+      "stimulus": "<trigger>",
+      "environment": "<normal/peak/...>",
+      "artifact": "<module>",
+      "response": "<what the system does>",
+      "responseMeasure": "<numeric, bounded, measurable>",
+      "approach": "<tactic name from SEI catalog>",
+      "rfc2119Keyword": "<shall|should|may>",
+      "sourceNfrRow": "NFR-NN"
+    }
+  ],
   "source": "design-contract-definer",
   "timestamp": "ISO-8601"
 }
 ```
 
+The parent LLM renders `qaScenarios` into design §5 Quality Attribute
+Scenarios, one row each.
+
 ## Heuristics
 
-- One entry per public function in the module.
+- One contract entry per public function in the module.
 - Inputs include validation rules (don't just say "string").
 - Errors are named and have a "when" condition.
 - Side effects are explicit (DB writes, network calls, file I/O).
+- One `qaScenarios` row per NFR row in the source PRD; every row uses
+  the 6-part form. Rows missing a numeric `responseMeasure` are
+  rejected by the parent's pre-write check.
+- `approach` must name a tactic known to the SEI catalog. If unknown,
+  reject the row and re-extract.
 
 ## Hard rules
 

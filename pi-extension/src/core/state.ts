@@ -40,9 +40,68 @@ export interface RunState {
 	brainstormDispatchCount?: number;
 	/** Feasibility v2 session: reuse-scan consent + verdict, language
 	 *  candidates, spike results, final language choice. Present only while
-	 *  the feasibility stage is open; cleared by /velpari-approve. A pending
-	 *  decision or missing language hard-blocks the feasibility approve. */
+	 *  the feasibility stage is open; cleared by `handleApprove` (which
+	 * the publish tool and `/velpari-feasibility-approve` fall-back both
+	 * call). A pending decision or missing language hard-blocks the
+	 * feasibility approve. */
 	feasibilitySession?: FeasibilitySession;
+	/** Architecture sub-life cycle state. Present only while the design stage
+	 *  is open; cleared by `handleApprove` (called via the publish tool
+	 * or `/velpari-architecture-generator-approve` fall-back). The
+	 * publish gate hard-blocks when `developerConfirmed` is false
+	 * (Phase 2, plan §Phase 2). */
+	archSubCycle?: ArchSubCycleState;
+	/** Standards overlay selection (Phase 3, plan §Phase 3). Set by
+	 *  /velpari-configure-standards; read by every stage that injects
+	 *  overlay sections. When absent, the "none" overlay is implicit. */
+	standardsProfile?: StandardsProfile;
+	/** v1.4.0 — absolute path of the published logging plan
+	 *  (Doc/observability/logging-plan_<projectName>.md). Set by the
+	 *  cross-cutting discipline command /velpari-design-logging when
+	 *  the working copy passes `validateLoggingPlan` + the doctor's
+	 *  `checkLoggingPlanSection`. Cleared by /velpari-reset. */
+	loggingPlanPublishedPath?: string;
+}
+
+/** Standards profile shape (Phase 3). Persisted at .pi/velpari/standards-profile.json. */
+export interface StandardsProfile {
+	id: string;
+	version: string;
+	selectedAt: string;
+	selectedBy: "user" | "inference";
+	researchConsent?: boolean;
+	researchSources?: string[];
+}
+
+/** Architecture sub-life cycle state. Persists the read → confirm → write
+ *  discipline so a session resume knows whether the developer already
+ *  approved the working context. */
+export interface ArchSubCycleState {
+	/** True after the developer has picked "Proceed" on the confirm step. */
+	developerConfirmed?: boolean;
+	/** Outcome of the confirm step ("proceed" | "adjust" | "profile" | "no-ui"). */
+	confirmOutcome?: "proceed" | "adjust" | "profile" | "no-ui";
+	/** The summary shown to the developer at confirm time. */
+	summaryShown?: string;
+	/** True after loadArchContext has populated the working context. */
+	contextLoaded?: boolean;
+	/** True after any overlay-specific scout roles have spawned. */
+	overlayLoaded?: boolean;
+	/**
+	 * v1.3.0+ multi-design: which `projectName` in the federation the
+	 * developer is about to generate. Persisted by the prelude when the
+	 * config has multiple projectNames; downstream stages + the doctor
+	 * read it to scope the work to a single design.
+	 */
+	projectName?: string;
+	/** Paths of scout reports already collected (for resume). */
+	scoutReports?: string[];
+	/** Number of ADRs captured so far in this sub-life cycle. */
+	adrsCaptured?: number;
+	/** Path of the working copy, once write has happened. */
+	workingCopyPath?: string;
+	/** ISO timestamp of the last state transition. */
+	updatedAt?: string;
 }
 
 /** Feasibility v2 mid-stage session (mirrors the brainstorm v2 pattern). */
@@ -380,8 +439,9 @@ export function clearBrainstormSession(
 /**
  * Merge a patch into the feasibility v2 session and persist. Shallow merge:
  * only the provided keys change. The parent LLM (via the skill flow) and
- * /velpari-approve use this to track consent, decision, spikes, and the
- * final language choice across turns.
+ * `handleApprove` (called by the publish tool or the
+ * `/velpari-feasibility-approve` fall-back) use this to track consent,
+ * decision, spikes, and the final language choice across turns.
  */
 export function setFeasibilitySession(
 	state: RunState,

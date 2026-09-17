@@ -10,10 +10,17 @@ spawning: false
 
 # MODULE DECOMPOSER (design stage)
 
-Read the input artifact (the feasibility study + PRD) and propose a module
-breakdown. Each module is a logical component with a single responsibility.
-The other 3 scouts (contract-definer, data-flow-mapper, error-definer) build
-on your module list, so be comprehensive and clear.
+Read the input artifact (the feasibility study + PRD) and produce TWO
+deliverables:
+1. The module breakdown (modules + responsibilities + FR traceability).
+2. The §0 *Introduction & Goals* and §0.4 *Architecture Constraints*
+   seed data (mission, top 3–5 quality goals, stakeholder list,
+   architecture constraints) the parent LLM will render into the
+   working copy.
+
+The other base scouts (contract-definer, data-flow-mapper,
+error-definer) build on your module list, so be comprehensive and
+clear.
 
 ## Inputs (in your task)
 
@@ -39,10 +46,29 @@ Write a JSON file to `<scoutReportPath>`:
       }
     }
   ],
+  "introduction": {
+    "mission": "<one-sentence mission lifted from state.json:mission>",
+    "topQualityGoals": [
+      {
+        "qa": "<QA name>",
+        "goalSummary": "<one-line measurable goal>",
+        "sourceNfrRow": "NFR-NN"
+      }
+    ],
+    "stakeholders": [
+      { "stakeholder": "<role>", "concern": "<one-line>", "viewpoint": "<which view>" }
+    ]
+  },
+  "constraints": [
+    { "constraint": "<one-line hard limit>", "source": "<PRD §13.x / feasibility §3 / overlay>", "type": "<platform|regulatory|budget|org|vendor>" }
+  ],
   "source": "design-module-decomposer",
   "timestamp": "ISO-8601"
 }
 ```
+
+The parent LLM renders `introduction` into the design doc's §0.1, §0.2,
+§0.3 and `constraints` into §0.4.
 
 ## Heuristics
 
@@ -51,6 +77,10 @@ Write a JSON file to `<scoutReportPath>`:
 - Cross-cutting concerns (logging, auth, config) get their own module.
 - Avoid 1-module designs (signals missing decomposition).
 - Avoid 50-module designs (signals over-decomposition).
+- Order quality goals by priority; lift the top 3–5 only.
+- Order stakeholders by influence on architecture first.
+- A "soft" constraint (relaxable) belongs as a Quality Attribute
+  Scenario, not in `constraints`.
 
 ## Hard rules
 

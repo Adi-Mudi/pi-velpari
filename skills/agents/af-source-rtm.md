@@ -24,7 +24,9 @@ atomic function is a small, leaf-node function that:
 
 ## Output
 
-Write a JSON file to `<scoutReportPath>`:
+Write a JSON file to `<scoutReportPath>`. Fill the **tier-aware** fields
+when the prompt declares tier ≥ Intermediate (you will see a
+`## Atomic Profile` block listing the required fields):
 
 ```json
 {
@@ -38,9 +40,23 @@ Write a JSON file to `<scoutReportPath>`:
         "filePath": "src/utils/validate-email.ts",
         "signature": "function validateEmail(email: string): boolean",
         "purpose": "Validates an email against RFC 5322 (used by createUser + updateUser + newsletterSignup)",
+        "source": "RTM (called by FR-1, FR-2, FR-5)",
+        "cohesion": "perfect-atomic",
+        "verification": "Test",
+        "testable": true,
         "calledByFrIds": ["FR-1", "FR-2", "FR-5"],
         "extractedFrom": "HF-3 (validateUserInput)",
-        "testable": true
+        "earsPattern": "Ubiquitous",
+        "inputs": "email:string",
+        "outputs": "boolean",
+        "errors": ["empty input","malformed format"],
+        "dependencies": [],
+        "dbOrIo": "none",
+        "complexity": 3,
+        "coupling": "low",
+        "argCount": 1,
+        "oneLevelAbstr": "yes",
+        "nameIntent": "verb-noun, descriptive"
       }
     }
   ],
@@ -48,6 +64,11 @@ Write a JSON file to `<scoutReportPath>`:
   "timestamp": "ISO-8601"
 }
 ```
+
+Always fill the base-core fields (afId, name, filePath, signature, purpose,
+source, cohesion, verification, testable). Fill tier-specific fields only
+when the prompt declares a tier that requires them. Empty string for fields
+the scout cannot determine.
 
 ## Heuristics
 

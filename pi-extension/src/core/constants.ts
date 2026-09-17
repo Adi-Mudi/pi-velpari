@@ -4,6 +4,14 @@
  *
  * Stages flow through brainstorming → brainstormed → drafting-prd → ... →
  * handoff-ready. Each transition is triggered by a /velpari-* command.
+ *
+ * Order (industry-standard, V-Model + SA/SD aligned):
+ *   none → brainstorming → brainstormed → drafting-prd → drafted-prd
+ *   → building-rtm → built-rtm → analyzing-feasibility → analyzed-feasibility
+ *   → designing → designed → analyzing-atomic-functions → analyzed-atomic-functions
+ *   → writing-pseudocode → wrote-pseudocode → planning-tests → planned-tests
+ *   → ordering-development → ordered-development → finalizing-design
+ *   → finalized-design → handoff-ready
  */
 
 export type Stage =
@@ -18,12 +26,12 @@ export type Stage =
 	| "analyzed-feasibility"
 	| "designing"
 	| "designed"
+	| "analyzing-atomic-functions"
+	| "analyzed-atomic-functions"
 	| "writing-pseudocode"
 	| "wrote-pseudocode"
 	| "planning-tests"
 	| "planned-tests"
-	| "analyzing-atomic-functions"
-	| "analyzed-atomic-functions"
 	| "ordering-development"
 	| "ordered-development"
 	| "finalizing-design"
@@ -45,36 +53,31 @@ export const STAGE_TRANSITIONS: ReadonlyArray<StageTransition> = [
 	{ from: "none", to: "brainstorming", command: "/velpari-brainstorm" },
 	{ from: "brainstorming", to: "brainstormed", command: "/velpari-approve-brainstorm" },
 	{ from: "brainstormed", to: "drafting-prd", command: "/velpari-prd" },
-	{ from: "drafting-prd", to: "drafted-prd", command: "/velpari-approve" },
+	// v1.6.0 per-stage approve split: each publishable stage uses its own
+	// /velpari-<stage>-approve command for state advance. handleApprove
+	// records the per-stage name as the actor in state.json:history
+	// (legacy "the publish tool" actor name was removed in Phase 10).
+	{ from: "drafting-prd", to: "drafted-prd", command: "/velpari-prd-approve" },
 	{ from: "drafted-prd", to: "building-rtm", command: "/velpari-rtm" },
-	{ from: "building-rtm", to: "built-rtm", command: "/velpari-approve" },
+	{ from: "building-rtm", to: "built-rtm", command: "/velpari-rtm-approve" },
 	{ from: "built-rtm", to: "analyzing-feasibility", command: "/velpari-feasibility" },
 	// Feasibility skip: allowed only when a published feasibility doc exists
 	// (enforced by the registry gate + nextCommandsFor filtering).
 	{ from: "built-rtm", to: "designing", command: "/velpari-architecture-generator" },
-	{ from: "analyzing-feasibility", to: "analyzed-feasibility", command: "/velpari-approve" },
+	{ from: "analyzing-feasibility", to: "analyzed-feasibility", command: "/velpari-feasibility-approve" },
 	{ from: "analyzed-feasibility", to: "designing", command: "/velpari-architecture-generator" },
-	{ from: "designing", to: "designed", command: "/velpari-approve" },
-	{ from: "designed", to: "writing-pseudocode", command: "/velpari-pseudocode" },
-	{ from: "writing-pseudocode", to: "wrote-pseudocode", command: "/velpari-approve" },
+	{ from: "designing", to: "designed", command: "/velpari-architecture-generator-approve" },
+	{ from: "designed", to: "analyzing-atomic-functions", command: "/velpari-atomic-function" },
+	{ from: "analyzing-atomic-functions", to: "analyzed-atomic-functions", command: "/velpari-atomic-function-approve" },
+	{ from: "analyzed-atomic-functions", to: "writing-pseudocode", command: "/velpari-pseudocode" },
+	{ from: "writing-pseudocode", to: "wrote-pseudocode", command: "/velpari-pseudocode-approve" },
 	{ from: "wrote-pseudocode", to: "planning-tests", command: "/velpari-testplan" },
-	{ from: "planning-tests", to: "planned-tests", command: "/velpari-approve" },
-	{ from: "planned-tests", to: "analyzing-atomic-functions", command: "/velpari-atomic-function" },
-	{
-		from: "analyzing-atomic-functions",
-		to: "analyzed-atomic-functions",
-		command: "/velpari-approve",
-	},
-	{ from: "analyzed-atomic-functions", to: "ordering-development", command: "/velpari-development-order" },
-	{ from: "ordering-development", to: "ordered-development", command: "/velpari-approve" },
-	{ from: "ordered-development", to: "handoff-ready", command: "/velpari-handoff" },
-	{ from: "planned-tests", to: "finalizing-design", command: "/velpari-design" },
-	{ from: "planned-tests", to: "handoff-ready", command: "/velpari-handoff" },
-	{
-		from: "finalizing-design",
-		to: "finalized-design",
-		command: "/velpari-approve",
-	},
+	{ from: "planning-tests", to: "planned-tests", command: "/velpari-testplan-approve" },
+	{ from: "planned-tests", to: "ordering-development", command: "/velpari-development-order" },
+	{ from: "ordering-development", to: "ordered-development", command: "/velpari-development-order-approve" },
+	{ from: "ordered-development", to: "finalizing-design", command: "/velpari-final-design" },
+	{ from: "finalizing-design", to: "finalized-design", command: "/velpari-final-design-approve" },
+	{ from: "finalized-design", to: "handoff-ready", command: "/velpari-handoff" },
 ];
 
 /**

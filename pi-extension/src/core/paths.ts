@@ -19,7 +19,7 @@
  * have many siblings (e.g. brainstorm + multiple brainstorm re-runs).
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
 
 /**
@@ -96,6 +96,9 @@ export const GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	"atomic-functions": "atomic-functions",
 	"development-order": "development-order",
 	"final-design": "design",
+	// v1.4.0 — logging-plan lives under Doc/observability/. Cross-cutting
+	// discipline command (/velpari-design-logging) emits here.
+	"logging-plan": "observability",
 };
 
 /**
@@ -136,6 +139,9 @@ export const WORKING_GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	"atomic-functions": "atomic-functions",
 	"development-order": "development-order",
 	"final-design": "final-design",
+	// v1.4.0 — mirrors the grouped Doc/observability/ folder for the
+	// working copy at <runDir>/observability/logging-plan_<project>.md.
+	"logging-plan": "observability",
 };
 
 /**
@@ -184,6 +190,69 @@ export function resolveDocArtifact(
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * v1.3.0+ multi-design: scan `Doc/<group>/` for all `*_<projectName>.md`
+ * files matching the artifact and return them with their projectNames
+ * extracted from the filename. Each result has a full path + the
+ * projectName that owns the design.
+ */
+export function resolveDocArtifactAll(
+	cwd: string,
+	artifact: string,
+): Array<{ path: string; projectName: string; layout: "grouped" | "legacy" }> {
+	const category = categoryFor(artifact);
+	const results: Array<{
+		path: string;
+		projectName: string;
+		layout: "grouped" | "legacy";
+	}> = [];
+	if (!cwd) return results;
+	let groupedDir: string | null = null;
+	let legacyDir: string | null = null;
+	try {
+		if (category) groupedDir = join(cwd, "Doc", category);
+		legacyDir = join(cwd, "Doc");
+	} catch {
+		return results;
+	}
+	// Filenames look like: <artifact>_<projectName>.md  (projectName may
+	// contain hyphens). Pull the substring after the artifact + "_".
+	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
+	const fileRe = new RegExp(`^${safeArtifact}_(.+)\\.md$`);
+
+	const dirs: Array<{ dir: string; layout: "grouped" | "legacy" }> = [];
+	if (groupedDir) dirs.push({ dir: groupedDir, layout: "grouped" });
+	if (legacyDir) {
+		try {
+			for (const entry of readdirSync(legacyDir)) {
+				if (entry === category) continue;
+				dirs.push({ dir: join(legacyDir, entry), layout: "legacy" });
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	const seen = new Set<string>();
+	for (const { dir, layout } of dirs) {
+		let entries: string[];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			continue;
+		}
+		for (const entry of entries) {
+			const m = entry.match(fileRe);
+			if (!m) continue;
+			const projectName = m[1];
+			if (!projectName || seen.has(projectName)) continue;
+			seen.add(projectName);
+			results.push({ path: join(dir, entry), projectName, layout });
+		}
+	}
+	return results;
 }
 
 /**
@@ -241,4 +310,36 @@ export function findPackageRoot(startDir: string): string {
  */
 export function hasPublishedFeasibility(cwd: string, projectName: string): boolean {
 	return resolveDocArtifact("feasibility-study", projectName, cwd) !== null;
+}
+
+/**
+ * Phase 4 of reviewer plan — resolve the path to the reviewer verdict JSON
+ * the reviewer sub-agent wrote for the latest atomic-function run. Walks
+ * the runs directory; picks the most recent `<runId>/atomic-function/scouts/reviewer-report.json`.
+ *
+ * Returns null when no reviewer verdict exists yet (gate consumes null
+ * → surfaces a clear "Reviewer did not run" error).
+ */
+export function resolveReviewerVerdictPath(cwd: string): string | null {
+	const runsRoot = join(cwd, ".IDE_Plans", "velpari", "runs");
+	if (!existsSync(runsRoot)) return null;
+	let entries: string[];
+	try {
+		entries = readdirSync(runsRoot).filter((e) => {
+			try {
+				return statSync(join(runsRoot, e)).isDirectory();
+			} catch {
+				return false;
+			}
+		});
+	} catch {
+		return null;
+	}
+	if (entries.length === 0) return null;
+	entries.sort().reverse(); // newest run id first (YYYY-MM-DD-HH-MM-* lexicographic)
+	for (const runId of entries) {
+		const candidate = join(runsRoot, runId, "atomic-function", "scouts", "reviewer-report.json");
+		if (existsSync(candidate)) return candidate;
+	}
+	return null;
 }

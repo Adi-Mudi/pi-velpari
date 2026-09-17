@@ -1,11 +1,16 @@
 /**
- * /velpari-approve next-step hint tests (feasibility skip).
+ * /velpari-rtm-approve next-step hint tests (feasibility skip).
  *
  * After the RTM publish advances the run to built-rtm, the notification
  * depends on whether a published feasibility study already exists:
- *   - no doc  → suggests /velpari-feasibility only
- *   - doc     → suggests both /velpari-architecture-generator (skip) and
- *               /velpari-feasibility (revise)
+ *   - no doc  → suggests /velpari-feasibility only (the default next command)
+ *   - doc     → suggests /velpari-architecture-generator OR
+ *               /velpari-feasibility, with a feasibility-already-published
+ *               note attached so the user knows the skip is available.
+ *
+ * v1.6.2: every stage boundary is now a manual confirm-then-write step.
+ * The hint is always surfaced via `nextCommandsFor(next.currentStage,
+ * { feasibilitySkip })` so the hint list is driven by STAGE_TRANSITIONS.
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -47,7 +52,7 @@ function enterBuildingRtm(): void {
 	for (const cmd of [
 		"/velpari-approve-brainstorm",
 		"/velpari-prd",
-		"/velpari-approve",
+		"/velpari-prd-approve",
 		"/velpari-rtm",
 	]) {
 		state = advanceStage(state, cmd, tmpDir);
@@ -66,18 +71,23 @@ function seedPublishedFeasibility(): void {
 
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-approve-hint-"));
+	// v1.2.1 opt-out for minimal-cwd test fixtures.
+	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
+	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
 });
 
-describe("/velpari-approve — built-rtm next-step hint", () => {
+describe("/velpari-architecture-generator-approve — built-rtm next-step hint", () => {
 	it("suggests only /velpari-feasibility when no feasibility doc is published", async () => {
 		enterBuildingRtm();
 		await handleApprove(makeCtx(), undefined, tmpDir);
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
+		// nextCommandsFor(built-rtm) without feasibilitySkip returns only
+		// /velpari-feasibility (the feasibility-skip row is filtered out).
 		assert.match(allMessages(), /Next: \/velpari-feasibility/);
 		assert.ok(!allMessages().includes("skip ahead"));
 	});
@@ -88,9 +98,18 @@ describe("/velpari-approve — built-rtm next-step hint", () => {
 		await handleApprove(makeCtx(), undefined, tmpDir);
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
+		// nextCommandsFor(built-rtm, { feasibilitySkip: true }) returns both
+		// /velpari-feasibility and /velpari-architecture-generator (in
+		// STAGE_TRANSITIONS order). The post-RTM branch appends a
+		// "feasibility already published; you may skip ahead to architecture."
+		// note so the user understands why both options are shown.
 		assert.match(
 			allMessages(),
-			/Next: \/velpari-architecture-generator \(feasibility already published — skip ahead\) or \/velpari-feasibility \(revise feasibility\)\./,
+			/Next: \/velpari-feasibility or \/velpari-architecture-generator/,
+		);
+		assert.match(
+			allMessages(),
+			/feasibility already published; you may skip ahead to architecture/,
 		);
 	});
 });

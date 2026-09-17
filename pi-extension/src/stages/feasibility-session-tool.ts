@@ -3,9 +3,11 @@
  *
  * The parent LLM drives the feasibility v2 flow (reuse scan → decision →
  * language selection/spikes) through conversation, but the mid-stage
- * state must live in state.json — not in chat memory — so /velpari-approve
- * can hard-block on a pending decision or a missing language. This tool
- * is the LLM-callable bridge to the feasibility helpers in core/state.ts:
+ * state must live in state.json — not in chat memory — so handleApprove
+ * (called by the publish tool or `/velpari-feasibility-approve`
+ * fall-back) can hard-block on a pending decision or a missing
+ * language. This tool is the LLM-callable bridge to the feasibility
+ * helpers in core/state.ts:
  *
  *   - set-consent:     persist the web-research consent for the reuse scan
  *   - set-decision:    persist the build-vs-reuse verdict + chat summary rows

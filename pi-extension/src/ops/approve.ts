@@ -1,21 +1,29 @@
 /**
- * Generic /velpari-approve handler for stages 2-7 (Phase 7 update).
+ * Publish handler for Stages 2–10 (v1.6.0).
  *
- * Per CHANGELOG v1.6 (FR-59):
- * - /velpari-approve-brainstorm handles the brainstorm stage (separate command).
- * - /velpari-approve handles stages 2-7 (prd, rtm, feasibility, design,
- *   pseudocode, testplan).
+ * Per CHANGELOG v1.6.0:
+ * - `/velpari-prd-approve-brainstorm` handles the brainstorm stage (separate
+ *   bespoke command).
+ * - `/velpari-<stage>-approve` is the per-stage fall-back publish command
+ *   for each of Stages 2–10 (prd, rtm, feasibility, design, atomic-
+ *   function, pseudocode, testplan, development-order, final-design).
+ * - The `velpari_stage_publish` LLM-callable tool also invokes this
+ *   function on the parent LLM's preview-yes path. Both surfaces call
+ *   the same `handleApprove`, so the gate chain is identical.
  *
  * Flow:
- * 1. Read current state; determine current stage.
- * 2. Refuse if current stage is `brainstorming` or `brainstormed` (use
- *    /velpari-approve-brainstorm for those).
- * 3. Map current stage → working-copy dir name and published artifact name.
- * 4. Read working copy from the grouped working-copy path; if missing,
+ * 1. Read current state; refuse if current stage is `brainstorming` /
+ *    `brainstormed` (use `/velpari-rtm-approve-brainstorm` for those).
+ * 2. Map current stage → working-copy dir name and published artifact
+ *    name via `stageToArtifact`.
+ * 3. Read working copy from the grouped working-copy path; if missing,
  *    fall back to the legacy flat working-copy layout.
- * 5. Write to the grouped Doc/ path; if a legacy flat copy exists,
- *    preserve it. Stage transitions and two-file testplan approval
- *    are unchanged.
+ * 4. Write to the grouped Doc/ path with a uniform frontmatter stamp;
+ *    if a legacy flat copy exists, preserve it.
+ * 5. Run the revision gate (per-artifact) + the publish gate
+ *    (doctor/gate.ts:runPublishGate) + the post-publish doctor audit.
+ * 6. Advance state via `advanceStage`, recording the per-stage approve
+ *    command as the actor in `state.json:history`.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -24,6 +32,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { isSunsetPast } from "../core/shape.js";
+import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
 	buildRunDir,
 	GROUPED_CATEGORIES,
@@ -43,7 +53,8 @@ import {
 	stampFingerprints,
 } from "../core/fingerprints.js";
 import { runPublishGate } from "../doctor/gate.js";
-import type { Stage } from "../core/constants.js";
+import { runDoctor, writeDoctorReport } from "../doctor/index.js";
+import { PATHS, type Stage, nextCommandsFor } from "../core/constants.js";
 
 /**
  * Map a stage to (working-copy category, published artifact name,
@@ -80,8 +91,48 @@ function stageToArtifact(stage: Stage): {
 				artifact: "test-plan",
 				extras: ["test-cases"],
 			};
+		case "analyzing-atomic-functions":
+		case "analyzed-atomic-functions":
+			// Stage 6 — atomic function working copy lives under
+			// <runDir>/atomic-functions/atomic-functions_<project>.md
+			// (per buildWorkingGroupedPath's GROUPED_CATEGORIES map).
+			// The publish gate (doctor/gate.ts:runPublishGate) routes
+			// atomic-functions artifacts through loadReviewerVerdict (the
+			// reviewer verdict is the source of truth for tier checks).
+			return { workingDir: "atomic-functions", artifact: "atomic-functions" };
 		default:
 			return null;
+	}
+}
+
+/**
+ * Map the current in-progress stage to its v1.6.0 per-stage approve
+ * command. Used as the actor string passed to `advanceStage` (and
+ * therefore recorded in state.json:history). STAGE_TRANSITIONS rows
+ * for each publishable stage use the exact string returned here.
+ */
+function perStageApproveCommand(stage: Stage): string {
+	switch (stage) {
+		case "drafting-prd":
+			return "/velpari-prd-approve";
+		case "building-rtm":
+			return "/velpari-rtm-approve";
+		case "analyzing-feasibility":
+			return "/velpari-feasibility-approve";
+		case "designing":
+			return "/velpari-architecture-generator-approve";
+		case "analyzing-atomic-functions":
+			return "/velpari-atomic-function-approve";
+		case "writing-pseudocode":
+			return "/velpari-pseudocode-approve";
+		case "planning-tests":
+			return "/velpari-testplan-approve";
+		case "ordering-development":
+			return "/velpari-development-order-approve";
+		case "finalizing-design":
+			return "/velpari-final-design-approve";
+		default:
+			return "/velpari-brainstorm-approve";
 	}
 }
 
@@ -104,10 +155,24 @@ function hasNewChangeLogEntry(published: string, updated: string): boolean {
 	return updatedLines.some((l) => !publishedLines.has(l));
 }
 
+export interface ApproveOpts {
+	/**
+	 * Skip the v1.2.1 post-publish full doctor audit. Production callers
+	 * never set this; tests that build minimal cwds (lacking `files.json`,
+	 * agent mapping, etc.) opt in here. The publish gate still runs
+	 * — only the supplementary full audit is skipped. Documented and
+	 * covered by `approve-doctor-skip.test.ts`.
+	 */
+	skipAutoDoctor?: boolean;
+}
+
+const AUTO_DOCTOR_SKIP_ENV = "VELPARI_SKIP_AUTO_DOCTOR";
+
 export async function handleApprove(
 	ctx: ExtensionCommandContext,
 	pi?: ExtensionAPI,
 	cwd: string = process.cwd(),
+	opts: ApproveOpts = {},
 ): Promise<void> {
 	const state = loadState(cwd);
 	if (!state.runId || state.currentStage === "none") {
@@ -117,7 +182,7 @@ export async function handleApprove(
 
 	if (state.currentStage === "brainstorming" || state.currentStage === "brainstormed") {
 		ctx.ui.notify(
-			`Use /velpari-approve-brainstorm for the brainstorm stage. ` +
+			`Use /velpari-feasibility-approve-brainstorm for the brainstorm stage. ` +
 				`Current stage: "${state.currentStage}".`,
 			"error",
 		);
@@ -131,9 +196,16 @@ export async function handleApprove(
 	}
 
 	const config = loadFilesConfig(cwd);
-	const projectName = validateFilesConfig(config) && config.projectName
-		? config.projectName
-		: state.mission || "Project";
+	// v1.3.0+ multi-design: prefer the projectName persisted in the
+	// architecture sub-life cycle prelude (when the federation has
+	// multiple projectNames). Fall back to the legacy single projectName
+	// from files.json, then to the mission.
+	const archProject = state.archSubCycle?.projectName;
+	const projectName = archProject
+		? archProject
+		: validateFilesConfig(config) && config.projectName
+			? config.projectName
+			: state.mission || "Project";
 	const runDir = buildRunDir(state.runId, cwd);
 
 	// Try the grouped working-copy directory first, then the legacy
@@ -257,13 +329,13 @@ export async function handleApprove(
 			try {
 				parsed = JSON.parse(jsonText);
 			} catch {
-				ctx.ui.notify(`RTM JSON sidecar ${jsonFile} is not valid JSON. Fix it, then re-run /velpari-approve.`, "error");
+				ctx.ui.notify(`RTM JSON sidecar ${jsonFile} is not valid JSON. Fix it, then re-run /velpari-architecture-generator-approve.`, "error");
 				return;
 			}
 			const validation = validateRtmData(parsed);
 			if (!validation.ok) {
 				ctx.ui.notify(
-					`RTM JSON sidecar is invalid. Fix these issues, then re-run /velpari-approve:\n` +
+					`RTM JSON sidecar is invalid. Fix these issues, then re-run /velpari-atomic-function-approve:\n` +
 						validation.issues.map((i) => `  - ${i}`).join("\n"),
 					"error",
 				);
@@ -334,7 +406,7 @@ export async function handleApprove(
 	}
 	if (revisionIssues.length > 0) {
 		ctx.ui.notify(
-			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-approve:\n` +
+			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-pseudocode-approve:\n` +
 				revisionIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -360,7 +432,7 @@ export async function handleApprove(
 	}
 	if (gateIssues.length > 0) {
 		ctx.ui.notify(
-			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-approve:\n` +
+			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-testplan-approve:\n` +
 				gateIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -382,16 +454,58 @@ export async function handleApprove(
 		const publishedContent = target.publishedPath
 			? readFileSync(target.publishedPath, "utf8")
 			: null;
-		const stamped = withArtifactFrontmatter(
-			target.content,
-			{
-				artifact: target.fileArtifact,
-				project: projectName,
-				stage: state.currentStage,
-				run: state.runId,
-			},
-			publishedContent,
-		);
+		// v1.3.0 sunset auto-archive: if the working-copy carries a
+		// past `sunset:` and the published status is still `published`
+		// (i.e., not already archived), bump the major version, set
+		// `status: deprecated`, and stamp `deprecatedAt: <today>`.
+		// Re-read the working-copy frontmatter to make the decision.
+		const sunsetInfo = readSunsetInfo(target.content);
+		const todayIso = new Date().toISOString().slice(0, 10);
+		const sunsetPast =
+			sunsetInfo !== null &&
+			sunsetInfo.sunset !== null &&
+			isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
+		const alreadyArchived = sunsetInfo?.status === "deprecated";
+		const input: {
+							artifact: string;
+							project: string;
+							stage: string;
+							run: string;
+							supersedes?: string;
+							sunset?: string;
+							deprecatedAt?: string;
+					  } = {
+			artifact: target.fileArtifact,
+			project: projectName,
+			stage: state.currentStage,
+			run: state.runId,
+		};
+		if (sunsetInfo?.supersedes !== undefined) input.supersedes = sunsetInfo.supersedes;
+		if (sunsetInfo?.sunset) input.sunset = sunsetInfo.sunset;
+		if (sunsetPast && !alreadyArchived) {
+			// Bump MAJOR: e.g. 1.2.3 -> 2.0.0
+			if (sunsetInfo) {
+				const majorStr = sunsetInfo.version.split(".")[0] ?? "0";
+				const major = Number.parseInt(majorStr, 10) || 0;
+				const nextMajor = major + 1;
+				const newVersion = `${nextMajor}.0.0`;
+				input.supersedes = sunsetInfo.version;
+				// Mutate the working-copy content's version line too so the
+				// stamped body matches the new frontmatter.
+				target.content = updateVersionInBody(target.content, newVersion);
+				// Reflect into the body the status: deprecated.
+				target.content = updateStatusInBody(target.content, "deprecated");
+				// Update the version we pass in to the stamp.
+				input.sunset = todayIso; // keep the date; archive marker
+			}
+		}
+		if (sunsetPast) {
+			// First-time archive OR idempotent re-archive: stamp today's
+			// date. The "already deprecated" path still re-stamps so the
+			// design is always marked with the most recent archive date.
+			input.deprecatedAt = todayIso;
+		}
+		const stamped = withArtifactFrontmatter(target.content, input, publishedContent);
 		atomicWriteFile(target.groupedAbs, stamped, "utf8");
 		if (target.sidecar) {
 			atomicWriteFile(join(dirname(target.groupedAbs), target.sidecar.name), target.sidecar.content, "utf8");
@@ -404,9 +518,98 @@ export async function handleApprove(
 		);
 	}
 
+	// Post-publish doctor audit (v1.2.1). The publish gate above already
+	// enforced the "subset" subset (artifact correctness + revision
+	// rules). The full doctor audit catches everything the gate
+	// misses — agent wiring, file-structure drift, configuration
+	// readiness, cross-section coherence, etc. Per the v1.2.1
+	// decision, BOTH errors and warnings block state advance so the
+	// user must fix every item before the sequence can proceed. The
+	// full report is written to disk; user runs /velpari-doctor
+	// manually to view it again.
+	//
+	// Escape hatches (deliberate, documented):
+	//   - opts.skipAutoDoctor=true (programmatic)
+	//   - VELPARI_SKIP_AUTO_DOCTOR=1 (env var)
+	// Both are intended for the test suite. Production callers never
+	// opt out; the standalone `/velpari-doctor` command is the
+	// ad-hoc audit path.
+	const skipAutoDoctor =
+		opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
+	if (!skipAutoDoctor) {
+		const doctorReport = runDoctor(cwd);
+		writeDoctorReport(doctorReport, cwd);
+		const doctorReportPath = join(cwd, PATHS.DOCTOR_REPORT);
+		if (doctorReport.summary.error > 0 || doctorReport.summary.warning > 0) {
+			// v1.2.3 UI tweak: group findings by section title instead of a
+			// flat list. Each section gets one line with its title + a count
+			// of error vs warning findings + a short list of status codes.
+			// The full list of items still goes into the on-disk report;
+			// the notify stays a glance.
+			interface GroupedSection {
+				title: string;
+				errorCount: number;
+				warningCount: number;
+				sampleStatuses: string[]; // e.g. ["ERROR", "WARN", "WARN"]
+			}
+			const grouped = new Map<string, GroupedSection>();
+			for (const section of doctorReport.sections) {
+				let errCount = 0;
+				let warnCount = 0;
+				const statuses: string[] = [];
+				for (const item of section.items) {
+					if (item.status === "error") {
+						errCount++;
+						statuses.push("ERROR");
+					} else if (item.status === "warning") {
+						warnCount++;
+						statuses.push("WARN");
+					}
+				}
+				if (errCount + warnCount > 0) {
+					grouped.set(section.title, {
+						title: section.title,
+						errorCount: errCount,
+						warningCount: warnCount,
+						sampleStatuses: statuses.slice(0, 6),
+					});
+				}
+			}
+			const groupedLines: string[] = [];
+			for (const g of grouped.values()) {
+				const tags: string[] = [];
+				if (g.errorCount > 0) tags.push(`${g.errorCount} error(s)`);
+				if (g.warningCount > 0) tags.push(`${g.warningCount} warning(s)`);
+				const sample = g.sampleStatuses.join(",");
+				groupedLines.push(`- ${g.title}: ${tags.join(", ")} [${sample}]`);
+			}
+			const capped = groupedLines.length > 30 ? groupedLines.slice(0, 30) : groupedLines;
+			const more =
+				groupedLines.length > 30
+					? `\n…and ${groupedLines.length - 30} more section(s). See ${doctorReportPath} for the full report.`
+					: "";
+			ctx.ui.notify(
+				`Doctor stopped the advance. ${doctorReport.summary.error} error(s), ` +
+					`${doctorReport.summary.warning} warning(s) found across ${groupedLines.length} section(s). ` +
+					`Fix and re-run /velpari-development-order-approve.\n` +
+					`\n${capped.join("\n")}${more}\n\n` +
+					`Full report: ${doctorReportPath}.`,
+				"error",
+			);
+			return; // state does NOT advance; user must fix the file and re-approve
+		}
+		ctx.ui.notify(
+			`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.`,
+			"info",
+		);
+	}
 
-	// Transition state via /velpari-approve
-	let next = advanceStage(state, "/velpari-approve", cwd, pi);
+	// Transition state via handleApprove (v1.6.0+).
+	// The actor recorded in state.json:history is the per-stage approve
+	// command for `currentStage`. The publish tool and the per-stage fall-
+	// back commands both call handleApprove, so the actor string is uniform
+	// regardless of which surface invoked the publish.
+	let next = advanceStage(state, perStageApproveCommand(state.currentStage), cwd, pi);
 	if (mapping.artifact === "feasibility-study") {
 		// Feasibility v2: the publish gate passed, so the session (decision,
 		// language, spikes) is settled — clear it so a later re-run starts clean.
@@ -417,12 +620,56 @@ export async function handleApprove(
 	// via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
 	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
+
+	// v1.6.2: surface a clear "Next: /velpari-<cmd>" suggestion for every
+	// stage so the user always knows which command to run by hand. The
+	// auto-chain to the next command was removed in v1.6.2 — every stage
+	// boundary is a manual confirm-then-write step. Special case for
+	// post-RTM (`built-rtm`): the feasibility-skip shortcut is offered
+	// alongside the default `/velpari-feasibility` next command.
+	const feasibilitySkip =
+		next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
+	const nextCommands = nextCommandsFor(next.currentStage, { feasibilitySkip });
+	const nextHint = `Next: ${nextCommands.join(" or ")}`;
 	if (next.currentStage === "built-rtm") {
 		ctx.ui.notify(
-			hasPublishedFeasibility(cwd, projectName)
-				? "Next: /velpari-architecture-generator (feasibility already published — skip ahead) or /velpari-feasibility (revise feasibility)."
-				: "Next: /velpari-feasibility",
+			feasibilitySkip
+				? `${nextHint} — feasibility already published; you may skip ahead to architecture.`
+				: nextHint,
 			"info",
 		);
+	} else {
+		ctx.ui.notify(nextHint, "info");
 	}
+}
+/**
+ * v1.3.0+ helpers for the sunset auto-archive flow. Pure string ops.
+ */
+
+interface SunsetInfo {
+	version: string;
+	sunset: string | null;
+	status: string | null;
+	supersedes: string | undefined;
+}
+
+function readSunsetInfo(content: string): SunsetInfo | null {
+	const parsed = parseFrontmatterBlock(content);
+	if (!parsed) return null;
+	const v = parsed.fields.version;
+	if (!v) return null;
+	return {
+		version: v,
+		sunset: typeof parsed.fields.sunset === "string" ? parsed.fields.sunset : null,
+		status: typeof parsed.fields.status === "string" ? parsed.fields.status : null,
+		supersedes: typeof parsed.fields.supersedes === "string" ? parsed.fields.supersedes : undefined,
+	};
+}
+
+function updateVersionInBody(content: string, newVersion: string): string {
+	return content.replace(/^version:\s*.*$/m, `version: ${newVersion}`);
+}
+
+function updateStatusInBody(content: string, newStatus: string): string {
+	return content.replace(/^status:\s*.*$/m, `status: ${newStatus}`);
 }

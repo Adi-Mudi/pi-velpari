@@ -2,10 +2,11 @@
  * /velpari-configure-inputs command (L3 composition).
  *
  * Full interactive flow: headless gate → 4-question interview (ask +
- * buildFilesConfig from ops/) → discovery-backed path editing loop
- * (outer simple-picker over code/docs/tests/excluded + per-category
- * list editor, mirroring Senai's /senai-configure-files) → save.
- * Esc out of the outer loop cancels WITHOUT saving.
+ * buildFilesConfig from ops/) → atomic-profile setup (tier / safetyClass
+ * / sil per ISO/IEC 29110 + IEC 61508/IEC 62304) → discovery-backed path
+ * editing loop (outer simple-picker over code/docs/tests/excluded +
+ * per-category list editor, mirroring Senai's /senai-configure-files) →
+ * save. Esc out of the outer loop cancels WITHOUT saving.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -25,6 +26,15 @@ import {
 	normalizePath,
 	type PickerMode,
 } from "../ui/browse-path.js";
+import {
+	DEFAULT_REVIEWER_MODE,
+	deriveAtomicProfile,
+	isAtomicTier,
+	isReviewerMode,
+	isSafetyClass,
+	isSil,
+	tierLabel,
+} from "../core/atomic-tier.js";
 
 type EditableCategory = "codePaths" | "inputDocuments" | "testPaths";
 
@@ -85,6 +95,125 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 
 	const config = buildFilesConfig(existing, { projectName, language, libraries, runtime });
 
+	// Atomic profile (ISO/IEC 29110 tier + IEC 61508 / IEC 62304 criticality).
+	// Defaults to {basic / A / none} when the user picks "keep current" or
+	// the config has no prior atomic fields. Persists to files.json:atomic.
+	const priorAtomic = deriveAtomicProfile(existing);
+	const tierId = await runSimplePicker(ctx, {
+		title: "Atomic-function tier (ISO/IEC 29110)",
+		subtitle: ` Current: ${tierLabel(priorAtomic.tier)}`,
+		items: [
+			{
+				id: "entry",
+				label: "Entry — 1 dev, prototype (basic schema, 8 fields)",
+				hint: "ISO/IEC 29110 entry",
+			},
+			{
+				id: "basic",
+				label: "Basic — small team, single project (8 + 5 cross-ref fields)",
+				hint: "ISO/IEC 29110 basic",
+			},
+			{
+				id: "intermediate",
+				label: "Intermediate — multi-module, CI, regression (8 + 5 + 11 fields)",
+				hint: "ISO/IEC 29110 intermediate",
+			},
+			{
+				id: "advanced",
+				label: "Advanced — regulated industry, full schema (8 + 5 + 11 + 11 fields)",
+				hint: "ISO/IEC 29110 advanced",
+			},
+			{
+				id: "keep",
+				label: `Keep current (${priorAtomic.tier})`,
+				hint: "no change",
+			},
+		],
+		initialSelectedId: "keep",
+	});
+	const tier =
+		tierId === undefined || tierId === "keep" || !isAtomicTier(tierId)
+			? priorAtomic.tier
+			: tierId;
+
+	const safetyClassId = await runSimplePicker(ctx, {
+		title: "Safety class (IEC 62304)",
+		subtitle: ` Current: ${priorAtomic.safetyClass}`,
+		items: [
+			{ id: "A", label: "Class A — Loss of comfort (no injury possible)" },
+			{ id: "B", label: "Class B — Loss of money / non-serious injury" },
+			{ id: "C", label: "Class C — Loss of life / serious injury" },
+			{
+				id: "keep",
+				label: `Keep current (${priorAtomic.safetyClass})`,
+				hint: "no change",
+			},
+		],
+		initialSelectedId: "keep",
+	});
+	const safetyClass =
+		safetyClassId === undefined || safetyClassId === "keep" || !isSafetyClass(safetyClassId)
+			? priorAtomic.safetyClass
+			: safetyClassId;
+
+	const silId = await runSimplePicker(ctx, {
+		title: "Safety Integrity Level (IEC 61508) — industrial / functional safety",
+		subtitle: ` Current: ${priorAtomic.sil}`,
+		items: [
+			{ id: "none", label: "None — not a safety-critical project" },
+			{ id: "1", label: "SIL 1 — low safety integrity" },
+			{ id: "2", label: "SIL 2 — medium safety integrity" },
+			{ id: "3", label: "SIL 3 — high safety integrity" },
+			{ id: "4", label: "SIL 4 — highest safety integrity" },
+			{ id: "keep", label: `Keep current (${priorAtomic.sil})`, hint: "no change" },
+		],
+		initialSelectedId: "keep",
+	});
+	const sil =
+		silId === undefined || silId === "keep" || !isSil(silId) ? priorAtomic.sil : silId;
+
+	config.atomic = {
+		tier,
+		safetyClass,
+		sil,
+		overlayId: priorAtomic.overlayId,
+	};
+
+	const reviewerModeId = await runSimplePicker(ctx, {
+		title: "Reviewer sub-agent (adversarial critic — Stage 6 atomic-function)",
+		subtitle: ` Current: ${priorAtomic.reviewerMode ?? DEFAULT_REVIEWER_MODE}`,
+		items: [
+			{
+				id: "tier-default",
+				label: "Tier default — Entry skip, Intermediate opt-in, Advanced required",
+				hint: "recommended",
+			},
+			{
+				id: "always",
+				label: "Always — reviewer runs every stage iteration",
+				hint: "for regulated or high-rigor projects",
+			},
+			{
+				id: "never",
+				label: "Never — reviewer never spawns (overrides overlay.requiresReviewer)",
+				hint: "fastest path",
+			},
+			{
+				id: "keep",
+				label: `Keep current (${priorAtomic.reviewerMode ?? DEFAULT_REVIEWER_MODE})`,
+				hint: "no change",
+			},
+		],
+		initialSelectedId: "keep",
+	});
+	const reviewerMode =
+		reviewerModeId === undefined ||
+		reviewerModeId === "keep" ||
+		!isReviewerMode(reviewerModeId)
+			? (priorAtomic.reviewerMode ?? DEFAULT_REVIEWER_MODE)
+			: reviewerModeId;
+	config.atomic.reviewerMode = reviewerMode;
+
 	// Discovery scan runs ONCE, against the excluded paths already on disk.
 	const discovery = discoverProjectFiles(cwd, existing.excludedPaths);
 
@@ -124,7 +253,7 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 
 	saveFilesConfig(config, cwd);
 	ctx.ui.notify(
-		`Configuration saved: projectName="${config.projectName}". Next: /velpari-brainstorm <mission>`,
+		`Configuration saved: projectName="${config.projectName}" tier=${config.atomic?.tier} class=${config.atomic?.safetyClass} SIL=${config.atomic?.sil} reviewer=${config.atomic?.reviewerMode ?? DEFAULT_REVIEWER_MODE}. Next: /velpari-brainstorm <mission>`,
 		"info",
 	);
 }

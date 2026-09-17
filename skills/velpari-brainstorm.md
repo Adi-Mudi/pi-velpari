@@ -1,9 +1,9 @@
 ---
 name: velpari-brainstorm
-description: Pi-Velpari Brainstorm stage (lifecycle v2) — understand the user's request first (conversational UNDERSTAND loop with hard lock), then a scan gate, then visible read-only scout scans, then an informed DISCUSS loop with a decision ledger, batch confirm, coverage check, and a 3-outcome approve. Writes brainstorm-notes.md + brainstorm-dispatch.md under the run's brainstorm folder.
+description: Pi-Velpari Brainstorm stage (lifecycle v2.1) — understand the user's request first (conversational UNDERSTAND loop with hard lock), then a mandatory SCAN-gate picker (no default, developer always chooses), then visible read-only scout scans, then an informed DISCUSS loop with a decision ledger, batch confirm, coverage check, and a 3-outcome approve. Writes brainstorm-notes.md + brainstorm-dispatch.md under the run's brainstorm folder.
 ---
 
-# Brainstorm Stage (Lifecycle v2)
+# Brainstorm Stage (Lifecycle v2.1)
 
 A brainstorm is a conversational pass with the user that turns a vague
 request into finalized brainstorm notes BEFORE the PRD stage runs. Velpari
@@ -22,18 +22,26 @@ No subagent, no scan, and no approve may run before the user has confirmed
 your understanding. Parallel agents on a raw seed produce confident
 garbage — the lock exists to prevent exactly that.
 
+**v2.1 addition:** the handler now hard-gates on multiplexer presence
+(zellij/tmux/wezterm/cmux). If you started brainstorm without one, the
+command notifies the developer and exits before any state work. There is
+also **no default scan selection** — the SCAN-gate picker ALWAYS asks the
+developer (see [2]).
+
 ## Lifecycle overview
 
 ```
 /velpari-brainstorm "<seed>"
-       │
+       │  (handler: hard-gate on multiplexer present — zellij/tmux/wezterm/cmux)
        ▼
 [0] UNDERSTAND        chat only, inline reads (1-2 files), NO subagents
        ▼
 [1] CONFIRM loop      short paragraph → user agrees or corrects → repeat
                       HARD LOCK: nothing below runs until confirmed
        ▼
-[2] SCAN-PLAN GATE    one question: run code+doc (default) / adjust / skip
+[2] SCAN-PLAN GATE    v2.1: ALWAYS asks via runScanGatePicker
+                      5 branches: Run all / Run code+doc / Community only / Adjust / Skip
+                      Config-aware (code-only / doc-only / mixed projects hide unavailable scans)
        ▼
 [3] SCANS             visible panes, read-only scouts, per scan type
        ▼
@@ -46,7 +54,7 @@ garbage — the lock exists to prevent exactly that.
 [7] COVERAGE CHECK    automatic ✓/✗ table (show-only)
        ▼
 [8] APPROVE           preview → Go / Clarify / Kill
-                      Go → user runs /velpari-approve-brainstorm → publish → chain to PRD
+                      Go → user runs /velpari-approve-brainstorm → publish → user then runs /velpari-prd (v1.6.2+; no auto-chain)
 ```
 
 ## [0] UNDERSTAND
@@ -105,23 +113,31 @@ Write ONE short paragraph — plain language, no jargon:
 - no scan gate, no subagent dispatch, no notes writing, no approve.
 `/velpari-approve-brainstorm` hard-blocks until the lock is released.
 
-## [2] SCAN-PLAN GATE (one gate only)
+## [2] SCAN-PLAN GATE (v2.1: ALWAYS asks, no default)
 
-After confirmation, propose the default scan plan for the requirements
-mission: **code + doc**. Community (web research) is added ONLY when the
-user picks it — this IS the web-search consent (FR-52), now with
-run/adjust/skip options instead of a bare yes/no.
+After confirmation, **always** invoke the SCAN-gate picker. There is NO
+default scan selection in v2.1 — the developer chooses every time. Do NOT
+propose a plan conversationally first; the picker handles the ask.
 
-One AskUserQuestion:
+Call:
 
-> "Scan plan: code + doc. Proceed?"
-> - Run as proposed (default)
-> - Adjust scans (picker: code / doc / community, multi-select)
-> - Skip scans (allowed WITH warning: "downstream rework risk increases")
+```
+velpari_brainstorm_session({ action: "request-scan-gate" })
+```
 
-Persist the choice via
-`velpari_brainstorm_session({ action: "set-scans", scans: [...] })`
-(empty array = skipped).
+The picker reads files.json v4 (`codePaths`, `inputDocuments`) to know
+which scans are available and hides the ones that aren't. Branches:
+
+1. **Run all available** (e.g. `code + doc + community`) — community
+   still needs explicit `ctx.ui.confirm` consent (FR-52).
+2. **Run code + doc only** — community excluded even when available.
+3. **Run community only** — requires FR-52 consent; falls through to
+   Adjust if denied.
+4. **Adjust (pick per-scan)** — one `ctx.ui.confirm` per available scan.
+5. **Skip scans** — picker returns `[]`; you fall back to inline research
+   only.
+
+The action persists `state.json:scansSelected` and returns the snapshot.
 
 | Scan | Looks at | Scouts | Timeout |
 | --- | --- | --- | --- |
@@ -221,7 +237,35 @@ Before approve, show a coverage table:
 depend on them.) This is informational. It does NOT block by itself — the
 user decides at approve. (The hard blocks in [8] are separate.)
 
+## [7.5] PRE-APPROVE HARD GATE (run BEFORE the preview gate)
+
+Re-run the same checks that `/velpari-approve-brainstorm` runs in code.
+If ANY check fails, do NOT show the APPROVE preview gate — go back to
+the right earlier step and fix it first.
+
+1. **Understanding confirmed?** If `state.understandingConfirmed !== true`,
+   you skipped the [1] CONFIRM loop. Go back to [1] and finish it.
+2. **Every question terminal?** Any question in state `draft` or
+   `discussing` blocks approve. Go back to [5] and resolve them.
+3. **Every notes section filled?** Run this exact check against
+   `<brainstormNotes>`:
+
+   ```
+   for section in Mission, Interview Answers, Scout Proposals,
+                 Decision Summary, Agreed, Not wanted, Open:
+       body = section body (text between this heading and the next ##)
+       if body is missing OR empty OR contains "_TBD_":
+           list the failing sections, go back to [4] INFORM and [5] DISCUSS
+           to fill them, then return here.
+   ```
+
+   All 7 sections are required: Mission, Interview Answers, Scout Proposals,
+   Decision Summary, Agreed, Not wanted, Open. Do not show the APPROVE
+   preview until ALL three checks pass.
+
 ## [8] APPROVE (preview → Go / Clarify / Kill)
+
+(Run [7.5] PRE-APPROVE HARD GATE first. This section assumes it passed.)
 
 First show the preview gate: a short summary of the finished notes (never
 paste the whole file into chat), then ONE AskUserQuestion:
@@ -235,8 +279,9 @@ paste the whole file into chat), then ONE AskUserQuestion:
   The command hard-blocks if understanding is unconfirmed, any question is
   still draft/discussing, or any notes section is missing/empty/`_TBD_`.
   On success it publishes `Doc/brainstorm/brainstorm-<topic-slug>.md`,
-  writes the dispatch audit log, clears the session fields, and chains
-  into the PRD stage automatically.
+  writes the dispatch audit log, clears the session fields, advances the
+  stage, and surfaces a `Next: /velpari-prd` hint. The user runs the next
+  command by hand (v1.6.2+ — no auto-chain).
 - **Clarify** → back to [5] with new draft questions.
 - **Kill** → record the reason in the notes (`## Not wanted`), then tell
   the user the run can be discarded with `/velpari-reset`. A rejected
@@ -435,6 +480,13 @@ scout-notes is enough) so the log can be reconstructed.
 ## Hard rules
 
 - **Understand before scan.** No subagent before `understandingConfirmed`.
+- **Multiplexer is required (v2.1).** Velpari spawns visible scouts in
+  multiplexer panes. If the developer started brainstorm without one,
+  the handler hard-fails at entry — tell them to run inside zellij/tmux
+  (or set `PI_SUBAGENT_MUX` for wrappers/tests).
+- **SCAN gate always asks (v2.1).** Call
+  `velpari_brainstorm_session({ action: "request-scan-gate" })` —
+  never assume a default. The picker persists the result.
 - **The project is read-only during brainstorm.** A tool_call hook
   hard-blocks edit/write outside the run's `brainstorm/` folder while the
   brainstorm is open. Write ONLY `<brainstormNotes>` and optional

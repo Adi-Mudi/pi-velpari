@@ -54,9 +54,9 @@ function enterFeasibility(): void {
 	for (const cmd of [
 		"/velpari-approve-brainstorm",
 		"/velpari-prd",
-		"/velpari-approve",
+		"/velpari-prd-approve",
 		"/velpari-rtm",
-		"/velpari-approve",
+		"/velpari-rtm-approve",
 		"/velpari-feasibility",
 	]) {
 		state = advanceStage(state, cmd, tmpDir);
