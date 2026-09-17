@@ -51,8 +51,7 @@ function maxRetentionMonthsFromMarkdown(content: string): number {
 	const tiers: number[] = [];
 	// Match "| <tier> | <months> | ..." inside the §7 table.
 	const tierRe = /\|\s*(hot|warm|cold|archive)\s*\|\s*(\d+)\s*\|/gi;
-	let m: RegExpExecArray | null;
-	while ((m = tierRe.exec(content)) !== null) {
+	for (const m of content.matchAll(tierRe)) {
 		tiers.push(Number.parseInt(m[2]!, 10));
 	}
 	if (tiers.length === 0) return 0;
