@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0-dev.1] — 2026-09-18 — Dev channel snapshot
+
+Published to the npm `dev` dist-tag for opt-in testing ahead of the `1.6.2` `latest` release. The source tree on the `development` branch at this tag matches `package.json` version `1.3.0-dev.1`. See `1.6.2` below for the work accumulated since the last `latest` release (`1.0.1`).
+
+### Notes
+
+- Dist-tag: `dev`. Install with `npm install @adi-mudi/pi-velpari@dev` or `pi install npm:@adi-mudi/pi-velpari@dev`.
+- `latest` remains at `1.0.1` until the `1.6.2` release is cut.
+
 ## [1.6.2] — 2026-09-17 — No command-to-command auto-chains
 
 ### Removed

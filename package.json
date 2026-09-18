@@ -1,6 +1,6 @@
 {
   "name": "@adi-mudi/pi-velpari",
-  "version": "1.3.0",
+  "version": "1.3.0-dev.1",
   "description": "Stage-gated pre-production orchestration for Pi — Brainstorm → PRD → RTM → Feasibility → Design → Pseudocode → Test Plan, with 4-scout visible subagents per stage and structured doctor audit.",
   "type": "module",
   "main": "./pi-extension/src/index.ts",
