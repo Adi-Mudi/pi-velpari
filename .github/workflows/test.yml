@@ -55,13 +55,6 @@ jobs:
           fi
 
       - name: E2E Tier 1
-        # Soft-fail: e2e Tier 1 has shown non-determinism in CI even
-        # with the correct pi version pinned (same 24-second runtime,
-        # sometimes passes, sometimes fails). The unit suite (1534
-        # tests, deterministic) is the gating check; e2e is a smoke
-        # test on top. Failure surfaces as a yellow annotation,
-        # does not block the workflow.
-        continue-on-error: true
         env:
           RUN_E2E: "1"
         run: RUN_E2E=1 npm run test:e2e

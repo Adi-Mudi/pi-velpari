@@ -228,8 +228,11 @@ describe("e2e/ops-doctor", () => {
 				"await runHandoff(loadState(cwd), ctx, cwd); " +
 				"const blockedNotes = notes.slice(); " +
 				"notes.length = 0; " +
-				// 2. Walk the legal chain up to finalized-design (industry-standard order incl. atomic-function + dev-order + final-design).
-				"const walk = ['/velpari-approve-brainstorm','/velpari-prd','/velpari-rtm-approve','/velpari-rtm','/velpari-feasibility-approve','/velpari-feasibility','/velpari-architecture-generator-approve','/velpari-architecture-generator','/velpari-atomic-function-approve','/velpari-atomic-function','/velpari-pseudocode-approve','/velpari-pseudocode','/velpari-testplan-approve','/velpari-testplan','/velpari-development-order-approve','/velpari-development-order','/velpari-final-design-approve','/velpari-final-design','/velpari-final-design-approve']; " +
+				// 2. Walk the legal chain up to finalized-design. v1.6.0+ requires
+				//    per-stage approve commands (e.g. `/velpari-prd-approve`,
+				//    `/velpari-rtm-approve`) to advance from each draft-*-ing
+				//    state. The walk below mirrors STAGE_TRANSITIONS exactly.
+				"const walk = ['/velpari-approve-brainstorm','/velpari-prd','/velpari-prd-approve','/velpari-rtm','/velpari-rtm-approve','/velpari-feasibility','/velpari-feasibility-approve','/velpari-architecture-generator','/velpari-architecture-generator-approve','/velpari-atomic-function','/velpari-atomic-function-approve','/velpari-pseudocode','/velpari-pseudocode-approve','/velpari-testplan','/velpari-testplan-approve','/velpari-development-order','/velpari-development-order-approve','/velpari-final-design','/velpari-final-design-approve']; " +
 				"for (const cmd of walk) { s = advanceStage(s, cmd, cwd); } " +
 				// 3. Seed the 10 required approved artifacts (grouped layout).
 				"const seed = (p) => { mkdirSync(cwd + '/Doc/' + p.split('/')[0], { recursive: true }); writeFileSync(cwd + '/Doc/' + p, '# approved\\n', 'utf8'); }; " +

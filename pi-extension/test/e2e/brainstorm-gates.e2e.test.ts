@@ -231,7 +231,7 @@ describe("e2e/brainstorm-gates", () => {
 		assert.ok(errors[0].m.includes("Decision Summary"), "block reason should name the unfilled section");
 	});
 
-	it("happy path: approve publishes, writes audit log, clears session, advances, chains into PRD", { timeout: 60_000 }, async (t) => {
+	it("happy path: approve publishes, writes audit log, clears session, advances, surfaces Next hint (no auto-chain, v1.6.2)", { timeout: 60_000 }, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -257,7 +257,7 @@ describe("e2e/brainstorm-gates", () => {
 				"  stage: after.currentStage," +
 				"  understandingCleared: after.understandingConfirmed === undefined," +
 				"  questionsCleared: after.brainstormQuestions === undefined," +
-				"  promptHasMission: sent.length === 1 && sent[0].includes('E2E approve happy')," +
+				"  hasNextPrdHint: notes.some((n) => n.l === 'info' && n.m.includes('/velpari-prd'))," +
 				"}));",
 		);
 
@@ -266,8 +266,12 @@ describe("e2e/brainstorm-gates", () => {
 		assert.notStrictEqual(out.stage, "brainstorming", "stage must advance past brainstorming after approve");
 		assert.ok(out.understandingCleared, "understandingConfirmed session field was not cleared");
 		assert.ok(out.questionsCleared, "brainstormQuestions session field was not cleared");
-		assert.strictEqual(out.sentCount, 1, `approve must auto-chain into PRD with exactly one prompt, notes: ${JSON.stringify(out.notes)}`);
-		assert.ok(out.promptHasMission, "chained PRD prompt does not carry the mission text");
+		// v1.6.2+: no auto-chain into PRD. The handler surfaces a
+		// `Next: /velpari-prd` info-level notification; the user runs
+		// the next command by hand. Verify both: NO sendUserMessage,
+		// AND the Next hint is present in the notification stream.
+		assert.strictEqual(out.sentCount, 0, `approve must NOT auto-chain (v1.6.2), got sentCount=${out.sentCount}, notes: ${JSON.stringify(out.notes)}`);
+		assert.ok(out.hasNextPrdHint, `approve must surface a "Next: /velpari-prd" hint to the user, notes: ${JSON.stringify(out.notes)}`);
 		const errors = out.notes.filter((n: { l: string }) => n.l === "error");
 		assert.deepStrictEqual(errors, [], `happy-path approve produced error notifies: ${JSON.stringify(errors)}`);
 		assert.ok(
