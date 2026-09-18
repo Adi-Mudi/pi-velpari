@@ -50,8 +50,8 @@ jobs:
       - name: Install pi (for Tier 1 e2e)
         run: |
           if ! command -v pi >/dev/null 2>&1; then
-            echo "Installing @marcfargas/pi-coding-agent..."
-            npm install -g @marcfargas/pi-coding-agent || echo "::warning::pi install failed; e2e will be skipped"
+            echo "Installing @earendil-works/pi-coding-agent..."
+            npm install -g @earendil-works/pi-coding-agent || echo "::warning::pi install failed; e2e will be skipped"
           fi
 
       - name: E2E Tier 1
