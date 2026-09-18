@@ -43,7 +43,7 @@ jobs:
       # if you intentionally raise the floor.
       - name: Coverage gate (statements >= 92%)
         run: |
-          STMT=$(npm run test:coverage 2>&1 | grep -E "^all files" | awk '{print $5}' | tr -d '%')
+          STMT=$(npm run test:coverage 2>&1 | grep "all files" | awk '{print $5}' | tr -d '%')
           echo "Statement coverage: $STMT%"
           awk -v s="$STMT" 'BEGIN { if (s+0 < 92) { print "FAIL: coverage " s "% < 92%"; exit 1 } else { print "PASS: coverage " s "% >= 92%" } }'
 
