@@ -1,0 +1,24 @@
+name: publish-dev
+on:
+  push:
+    tags:
+      - "v*-dev.*"
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install latest npm (OIDC trusted publishing requires >= 11.5.1)
+        run: npm install -g npm@11
+      - name: Publish to npm with OIDC (no token)
+        run: npm publish --tag dev --access public
+        env:
+          NODE_AUTH_TOKEN: ""
