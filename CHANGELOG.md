@@ -2,22 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-<<<<<<< HEAD
 ## [Unreleased]
 
 ### Planned (next minor)
 
 - Extending `DiagnosticItem` with an optional `fingerprint` field so checks can populate fingerprints directly (replaces the Phase 3 suggestion-text reverse-lookup). Doctor dispatcher's external behavior stays the same.
 
-## [1.4.0] — 2026-09-19 — Doctor "fix" ladder (Levels A → B → C)
-
-The doctor now offers three complementary fix paths after an audit finds actionable items. Opt-in via `--velpari-fix`. Default behavior (without the flag) is unchanged.
-=======
-## [Unreleased] — Brainstorm v3 (persistent sub-agents)
+### Brainstorm v3 (persistent sub-agents)
 
 Brainstorm opens **2 persistent sub-agent sessions** (web-research + doc-code-analyst) immediately after `/velpari-brainstorm` (step 1 — AUTOMATIC SPAWN, before UNDERSTAND). Both panes stay open in the multiplexer right column until `/velpari-approve-brainstorm` fires the graceful close. Parent LLM routes each user message by topic during DISCUSS.
 
-### Added
+#### Added
 
 - **`state.activeSubagents`** + **`setActiveSubagents()`** + **`clearBrainstormSession()`** (clears it too) in `core/state.ts`. Persists across Pi rehydrate.
 - **`stages/brainstorm/spawn-sessions.ts`** — `spawnPersistentSessions()` (idempotent; bootstraps the 2 agent .md files) + `BRAINSTORM_SESSION_HANDLES` + `BRAINSTORM_PERSISTENT_AGENTS` constants + `persistSpawnHandles()`. **38 new tests**.
@@ -29,14 +24,19 @@ Brainstorm opens **2 persistent sub-agent sessions** (web-research + doc-code-an
 - **AUTOMATIC SPAWN step in `handleBrainstorm`** — fires spawn helper right after `createRun`; prefixes the prompt with `## Step 1 — AUTOMATIC SPAWN (execute now)` block on first turn.
 - **Graceful close in `handleApproveBrainstorm`** — fires a fire-and-forget prompt asking the LLM to call `subagent_interrupt` on both sessions + `close-sessions`. State is the source of truth (already cleared synchronously).
 
-### Changed
+#### Changed
 
 - **`velpari-brainstorm.md` skill** rewritten to lifecycle v3 — new step [1] AUTOMATIC SPAWN; new "v3 — Routing rules" subsection under [5] DISCUSS.
 - **`scansSelected`** marked `@deprecated v3 — replaced by activeSubagents`. Schema kept for back-compat; v3 handler no longer reads it.
 - **README.md** + **`Doc/velpari-sequence.md`** updated with the v3 sequence description.
 
-## [Unreleased] — Sub-agent generator v2.0 (dynamic registry + per-stage + fetch-from-docs)
->>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
+### Sub-agent generator v2.0 (dynamic registry + per-stage + fetch-from-docs)
+
+_Full release notes forthcoming — the work is tracked under the Brainstorm v3 release line above._
+
+## [1.4.0] — 2026-09-19 — Doctor "fix" ladder (Levels A → B → C)
+
+The doctor now offers three complementary fix paths after an audit finds actionable items. Opt-in via `--velpari-fix`. Default behavior (without the flag) is unchanged.
 
 ### Added
 
