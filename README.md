@@ -84,6 +84,52 @@ See [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) §13 for the ADR format
 | Wrapper | `/velpari-prd-rtm` |
 | View | `/velpari-show-brainstorm`, `/velpari-show-prd`, `/velpari-show-rtm`, `/velpari-show-feasibility`, `/velpari-show-design`, `/velpari-show-pseudocode`, `/velpari-show-testplan`, **`/velpari-show-logging`** |
 
+<<<<<<< HEAD
+=======
+### Sub-agent generator flag (v2.0)
+
+`/velpari-generate-sub-agents` accepts `--stages=<csv>` to target specific stages:
+
+- No flag → emits brainstorm + reviewer (default, unchanged from v1)
+- `--stages=brainstorm` → 4 brainstorm scouts
+- `--stages=prd` → 4 PRD scouts
+- `--stages=brainstorm,prd` → 8 scouts total
+- `--stages=all` → every supported stage (brainstorm + prd today; more in subsequent plans)
+
+v2.0 scope covers brainstorm + prd only. Other stages (rtm / feasibility / design / atomic-function / pseudocode / testplan / development-order / final-design / logging) land in separate plans; passing an unknown stage id surfaces a "coming soon" notice. See [`Doc/velpari-custom-sub-agent-generator-design.md`](Doc/velpari-custom-sub-agent-generator-design.md) §B for the full design.
+
+## Brainstorm v1.x — dynamic community / official / industrial / standard-practice scan
+
+v1.x adds two new state-tool actions to the `velpari_brainstorm_session` tool so the parent LLM can dynamically add scans and dispatch `web-search-agent` during the DISCUSS loop when the developer mentions any external source:
+
+| Action | Purpose |
+|---|---|
+| `request-extra-scan` | Re-opens the SCAN picker for scans not yet opted-in at the upfront gate. Community consent (FR-52) preserved. |
+| `confirm-web-dispatch` | Per-dispatch consent (`ctx.ui.confirm`) for a single web call. Audit-trail entry appended to `state.json:webDispatchConfirmations`. |
+
+When the developer says *check the community patterns* / *find the official docs* / *look up IEEE 754* / *what's the standard practice for…* during DISCUSS, the parent LLM calls `request-extra-scan` (if community isn't opted in yet), then `confirm-web-dispatch` immediately before each `subagent()` for `web-search-agent`. There are **no caps** during brainstorm — the developer decides when to stop. FR-52 role anchor unchanged: `web-search-agent` runs only for `scanType: "community"`.
+
+## Brainstorm v3 — persistent sub-agent sessions (AUTOMATIC SPAWN at step 1)
+
+Starting with v3, the brainstorm opens **2 persistent sub-agent sessions immediately after the command fires** (step 1 — before the UNDERSTAND loop):
+
+| Pane (right column) | Agent | Session handle | Tools | Topic scope |
+|---|---|---|---|---|
+| row 1 | `web-research` | `web` | `read, websearch, fetchurl` | web / community / official docs / standards |
+| row 2 | `doc-code-analyst` | `doc-code` | `read, grep, glob, ls` | existing PRD / RTM / source code |
+
+Both sessions stay alive across the whole brainstorm (right-column multiplexer panes). The parent LLM routes each user message in the DISCUSS loop:
+
+- Web/community/docs topic → `subagent({ session: "web", prompt: <msg> })`
+- Doc/code topic → `subagent({ session: "doc-code", prompt: <msg> })`
+- Both topics → 2 parallel calls (different sessions, allowed)
+- General/meta → parent answers directly
+
+On `/velpari-approve-brainstorm`, the handler fires a graceful close (sends a prompt asking the LLM to `subagent_interrupt` on both panes + call `close-sessions`) and clears `state.activeSubagents`. The legacy v2.1 SCAN-gate picker remains as a fallback path for users who prefer the one-shot ephemeral scout flow.
+
+FR-52 web-research role anchor: `web-research` (the v3 name) is rejected for non-community sessions by the dispatcher, same as `web-search-agent` was in v1.x.
+
+>>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
 ## Architecture
 
 `pi-extension/src/` follows the official 4-layer architecture: domain → stage-logic → presentation → composition. Each layer has a single concern and a strict dependency direction. See [`pi-extension/src/AGENTS.md`](pi-extension/src/AGENTS.md) for the contributor-facing contract.

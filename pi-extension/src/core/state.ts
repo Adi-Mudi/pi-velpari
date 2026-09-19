@@ -10,11 +10,12 @@ import type { SpikeResult } from "./spike.js";
 /**
  * Locking contract: every public mutation entry point (createRun,
  * advanceStage, clearRun, confirmUnderstanding, setScansSelected,
- * upsertBrainstormQuestion, incrementBrainstormDispatchCount,
- * clearBrainstormSession) wraps its read-modify-write in `withRunLock` so
- * concurrent sessions cannot corrupt state.json. `loadState`/`saveState`
- * stay lock-free leaves. The lock is NOT recursive — a locked function
- * must never call another locked function.
+ * setActiveSubagents, upsertBrainstormQuestion,
+ * incrementBrainstormDispatchCount, clearBrainstormSession) wraps its
+ * read-modify-write in `withRunLock` so concurrent sessions cannot
+ * corrupt state.json. `loadState`/`saveState` stay lock-free leaves.
+ * The lock is NOT recursive — a locked function must never call another
+ * locked function.
  */
 
 /**
@@ -30,7 +31,12 @@ export interface RunState {
 	/** Hard lock for the brainstorm lifecycle: true only after the user has
 	 *  confirmed the parent's one-paragraph understanding. */
 	understandingConfirmed?: boolean;
-	/** Scan kinds the user selected at the scan-plan gate. */
+	/** Scan kinds the user selected at the scan-plan gate.
+	 *  @deprecated v3 — replaced by `activeSubagents`. The v1.x brainstorm
+	 *  scan-gate picker is gone; the v3 brainstorm opens 2 persistent
+	 *  sessions automatically at step 2 and routes per user message.
+	 *  Kept in the schema for back-compat so older state.json files still
+	 *  parse; the v3 handler no longer reads it. Will be removed in v4. */
 	scansSelected?: ScanType[];
 	/** Per-question states for the DISCUSS loop of the active brainstorm.
 	 *  Open states ("draft", "discussing") hard-block approve. */
@@ -38,6 +44,14 @@ export interface RunState {
 	/** Number of subagent dispatches the parent LLM has made during the
 	 *  active brainstorm (dispatch cap bookkeeping). */
 	brainstormDispatchCount?: number;
+	/** v1.x — per-dispatch web consent ledger. Appended by the
+	 *  `confirm-web-dispatch` tool action (one entry per developer
+	 *  consent). Read at dispatch to audit which web calls were
+	 *  approved. Cleared by `clearBrainstormSession` (called from
+	 *  /velpari-approve-brainstorm). The dispatcher keeps the FR-52
+	 *  role anchor; per-dispatch consent is the runtime gate the
+	 *  parent LLM honors between confirm-web-dispatch and subagent(). */
+	webDispatchConfirmations?: WebDispatchConfirmation[];
 	/** Feasibility v2 session: reuse-scan consent + verdict, language
 	 *  candidates, spike results, final language choice. Present only while
 	 *  the feasibility stage is open; cleared by `handleApprove` (which
@@ -61,6 +75,24 @@ export interface RunState {
 	 *  the working copy passes `validateLoggingPlan` + the doctor's
 	 *  `checkLoggingPlanSection`. Cleared by /velpari-reset. */
 	loggingPlanPublishedPath?: string;
+	/** v3 — handles for the 2 persistent sub-agent sessions opened at
+	 *  brainstorm step 2 (AUTOMATIC SPAWN). Set by the spawn helper at
+	 *  `/velpari-brainstorm` entry; read by the dispatcher to resolve
+	 *  `session: <handle>` on every routed subagent() call; cleared by
+	 *  `/velpari-approve-brainstorm` after `subagent_interrupt` fires
+	 *  on both panes. Survives Pi restart (persisted to state.json)
+	 *  so rehydrate can resume the same sessions instead of re-spawning. */
+	activeSubagents?: {
+		/** Logical handle for the web-research session (per @mjakl/pi-subagent
+		 *  naming convention). Maps to a subagent process running in row 1
+		 *  of the multiplexer right column. */
+		web?: string;
+		/** Logical handle for the doc-code-analyst session. Maps to a
+		 *  subagent process running in row 2 of the multiplexer right column. */
+		docCode?: string;
+		/** ISO timestamp of the spawn (used for staleness checks + receipts). */
+		spawnedAt?: string;
+	};
 }
 
 /** Standards profile shape (Phase 3). Persisted at .pi/velpari/standards-profile.json. */
@@ -151,6 +183,15 @@ export interface BrainstormQuestion {
 	/** Required for "not-wanted" (why the user rejected it) and "replaced"
 	 *  (what superseded it). */
 	reason?: string;
+}
+
+/** v1.x — one entry per developer consent for a single web search
+ *  dispatch. The topic is a short label the parent LLM chose (e.g.
+ *  "community patterns for BSE"). `confirmedAt` is the ISO timestamp of
+ *  the user's yes on the consent prompt. */
+export interface WebDispatchConfirmation {
+	topic: string;
+	confirmedAt: string;
 }
 
 const EMPTY_STATE: RunState = {
@@ -350,6 +391,46 @@ export function setScansSelected(
 }
 
 /**
+ * v3 — persist the 2 persistent sub-agent session handles opened at
+ * brainstorm step 2 (AUTOMATIC SPAWN). Idempotent — calling with the
+ * same handles is a no-op so the spawn helper can be re-entered safely.
+ *
+ * Validates the handles against the well-known names
+ * (`web`, `docCode`) so a typo can't write a junk handle. The
+ * `spawnedAt` timestamp is auto-stamped when omitted.
+ *
+ * Called by the spawn helper (Phase 2) and the close helper
+ * (Phase 8) — which also clears the field via `clearBrainstormSession`.
+ */
+export function setActiveSubagents(
+	state: RunState,
+	handles: { web?: string; docCode?: string; spawnedAt?: string },
+	cwd: string = process.cwd(),
+): RunState {
+	return withRunLock(cwd, "setActiveSubagents", () => {
+		const KNOWN = ["web", "docCode", "spawnedAt"] as const;
+		for (const key of Object.keys(handles)) {
+			if (!(KNOWN as readonly string[]).includes(key)) {
+				throw new Error(
+					`Unknown activeSubagents key "${key}". Allowed: ${KNOWN.join(", ")}.`,
+				);
+			}
+		}
+		const next: RunState = {
+			...state,
+			activeSubagents: {
+				web: handles.web,
+				docCode: handles.docCode,
+				spawnedAt: handles.spawnedAt ?? new Date().toISOString(),
+			},
+			updatedAt: new Date().toISOString(),
+		};
+		saveState(next, cwd);
+		return next;
+	});
+}
+
+/**
  * Add or update one brainstorm question (matched by id) and persist.
  * The DISCUSS loop calls this after every state change so the per-question
  * ledger survives restarts. "not-wanted" and "replaced" require a reason —
@@ -412,10 +493,41 @@ export function incrementBrainstormDispatchCount(
 }
 
 /**
+ * Append a per-dispatch web consent entry to the ledger and persist.
+ * Idempotent for the same topic within the same ISO minute (re-confirming
+ * the same topic in the same minute does not duplicate). Caps are NOT
+ * enforced — the developer decides when to stop (v1.x brainstorm upgrade).
+ */
+export function appendWebDispatchConsent(
+	state: RunState,
+	topic: string,
+	cwd: string = process.cwd(),
+): RunState {
+	return withRunLock(cwd, "appendWebDispatchConsent", () => {
+		const now = new Date().toISOString();
+		const trimmed = (topic ?? "").trim();
+		if (!trimmed) return state;
+		const existing = state.webDispatchConfirmations ?? [];
+		const dup = existing.find(
+			(e) => e.topic === trimmed && now.slice(0, 16) === e.confirmedAt.slice(0, 16),
+		);
+		if (dup) return state;
+		const next: RunState = {
+			...state,
+			webDispatchConfirmations: [...existing, { topic: trimmed, confirmedAt: now }],
+			updatedAt: now,
+		};
+		saveState(next, cwd);
+		return next;
+	});
+}
+
+/**
  * Clear the brainstorm session fields after approve finalizes the stage.
- * Removes the four lifecycle-v2 fields (understandingConfirmed,
- * scansSelected, brainstormQuestions, brainstormDispatchCount) so the
- * mutation lock fully lifts and a later re-run starts with a clean ledger.
+ * Removes the six lifecycle fields (understandingConfirmed,
+ * scansSelected, brainstormQuestions, brainstormDispatchCount,
+ * webDispatchConfirmations, activeSubagents) so the mutation lock fully
+ * lifts and a later re-run starts with a clean ledger.
  * Never touches `currentStage` — call this on the already-advanced state.
  */
 export function clearBrainstormSession(
@@ -429,6 +541,8 @@ export function clearBrainstormSession(
 			scansSelected: undefined,
 			brainstormQuestions: undefined,
 			brainstormDispatchCount: undefined,
+			webDispatchConfirmations: undefined,
+			activeSubagents: undefined,
 			updatedAt: new Date().toISOString(),
 		};
 		saveState(next, cwd);

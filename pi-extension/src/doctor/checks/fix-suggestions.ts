@@ -49,6 +49,13 @@ export const SUGGESTIONS = {
 		"A requirement changed after the RTM linked to it. Re-run `/velpari-rtm` in update mode to review the design/test links, then `/velpari-atomic-function-approve`.",
 	"fingerprint-untracked":
 		"Republish the RTM (`/velpari-rtm` update mode + `/velpari-pseudocode-approve`) — approve stamps fingerprints automatically.",
+
+	// Phase 2 (Level B) — auto-remediable. Added alongside
+	// the SAFE_WHITELIST entry so the suggestion is suggested
+	// identically from the picker and the SUGGESTIONS table is
+	// complete for `SuggestionKey` typing.
+	"working-published-drift":
+		"The working copy in `.IDE_Plans/velpari/runs/<runId>/` diverged from the published copy under `Doc/`. Run `/velpari-doctor --velpari-fix` and pick \"Fix all safe items\" to sync.",
 	"phase-mismatch":
 		"The RTM row phase differs from the PRD Phase column for the same id. Re-run `/velpari-rtm` in update mode and copy the phase from the PRD (1 = MVP), then `/velpari-testplan-approve`.",
 	"mvp-incomplete":
@@ -171,4 +178,73 @@ export function suggestionFor(key: SuggestionKey): string {
 		throw new Error(`Unknown suggestion fingerprint: ${key}`);
 	}
 	return value;
+}
+
+/**
+ * How the doctor is allowed to apply a fix for a fingerprint.
+ *
+ * - `"interactive"` (default): the doctor surfaces the suggestion and
+ *   asks the developer to confirm before anything runs. Used for any
+ *   fix that would change artifact content.
+ * - `"auto-safe"`: the doctor can apply a deterministic, low-blast-radius
+ *   transformation without prompting. Reserved for Phase 2 (Level B).
+ *   Adding an entry to `FIX_LEVELS` as `"auto-safe"` REQUIRES a paired
+ *   `RemediateFn` in `doctor/checks/remediate/<fingerprint>.ts`; the
+ *   picker and dispatcher fail loudly otherwise.
+ * - `"agentic"`: the doctor builds a structured brief and hands off to
+ *   the parent LLM via `pi.sendUserMessage`. Reserved for Phase 3
+ *   (Level C); used for content-semantic items like fingerprint-suspect
+ *   and phase-mismatch.
+ */
+export type FixLevel = "interactive" | "auto-safe" | "agentic";
+
+/**
+ * Per-fingerprint fix level.
+ *
+ * Missing keys fall back to `"interactive"` in `levelFor`, so adding
+ * new fingerprints to `SUGGESTIONS` without touching this map is safe
+ * (the conservative default applies).
+ *
+ * Phase 2 populates the `"auto-safe"` entries; Phase 3 populates
+ * `"agentic"` entries. Each `"auto-safe"` entry MUST have a paired
+ * `RemediateFn` in `doctor/checks/remediate/<fingerprint>.ts` — the
+ * dispatcher in `doctor/fix-dispatch.ts:dispatchFixChoice` rejects
+ * `"auto-safe"` keys without a registered function.
+ */
+export const FIX_LEVELS: Partial<Record<SuggestionKey, FixLevel>> = {
+	// Phase 2 (Level B — declarative auto-remediate). Each entry has a
+	// paired RemediateFn under pi-extension/src/doctor/checks/remediate/.
+	"frontmatter-missing": "auto-safe",
+	"fingerprint-untracked": "auto-safe",
+	"working-published-drift": "auto-safe",
+
+	// Phase 3 (Level C — agentic fix via parent LLM). Each entry
+	// triggers `buildFixBrief` and dispatches a structured prompt
+	// to the parent LLM via `pi.sendUserMessage`. The parent LLM runs
+	// the matching /velpari-* command in update mode.
+	"fingerprint-suspect": "agentic",
+	"phase-mismatch": "agentic",
+	"mvp-incomplete": "agentic",
+	"rtm-unknown-id": "agentic",
+};
+
+/**
+ * Fingerprints cleared for declarative auto-remediation. Enforced at
+ * `doctor/remediate.ts:runRemediate` runtime — passing a fingerprint
+ * NOT in this set throws (defense in depth on top of the `FIX_LEVELS`
+ * check). Updating either one without the other is a bug.
+ */
+export const SAFE_WHITELIST: ReadonlySet<string> = new Set([
+	"frontmatter-missing",
+	"fingerprint-untracked",
+	"working-published-drift",
+]);
+
+/**
+ * Look up the fix level for a fingerprint. Defaults to `"interactive"`,
+ * so unknown or unset fingerprints are treated conservatively (doctor
+ * always asks before applying).
+ */
+export function levelFor(key: SuggestionKey): FixLevel {
+	return FIX_LEVELS[key] ?? "interactive";
 }

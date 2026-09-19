@@ -209,18 +209,33 @@ stage handlers.
 Each stage has the same shape: pre-requisite, inputs, behaviour,
 working + published outputs, and the exact command that advances.
 
+<<<<<<< HEAD
 ### Stage 1 — Brainstorm (lifecycle v2.1)
+=======
+### Stage 1 — Brainstorm (lifecycle v3 — persistent sub-agents)
+>>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
 
 | | |
 |---|---|
 | **Command** | `/velpari-brainstorm <mission>` |
 | **Pre-req** | None. Start of a new run. Refuses an empty seed. |
 | **Pre-req (v2.1)** | A terminal multiplexer (zellij/tmux/wezterm/cmux) must be active. The handler hard-gates on this at entry — without one, the command notifies the developer and exits. Override via `PI_SUBAGENT_MUX`. |
+<<<<<<< HEAD
 | **Inputs** | Mission text from user. Scan selection from the mandatory SCAN-gate picker (no default in v2.1; community scan = web-search consent). |
 | **Behaviour** | Understand-first lifecycle (details in §3): [0] UNDERSTAND (conversational, inline reads, no subagents) → [1] CONFIRM loop with hard lock → [2] **SCAN-PLAN GATE — v2.1: ALWAYS asks via `runScanGatePicker`** (5 branches: Run all / Run code+doc / Community only / Adjust / Skip; config-aware — hides unavailable scans) → [3] SCANS (visible read-only scout subagents per selected scan) → [4] INFORM (facts + questions with suggested answers) → [5] DISCUSS loop (decision ledger written immediately) → [6] BATCH CONFIRM → [7] COVERAGE CHECK → [8] APPROVE (Go / Clarify / Kill). While a brainstorm is open, the project is read-only: edit/write outside the run's `brainstorm/` folder is hard-blocked. |
 | **Working copy** | `.IDE_Plans/velpari/runs/<run-id>/brainstorm/brainstorm-notes.md` (+ `brainstorm-dispatch.md` audit log written at approve) |
 | **Published copy** | `Doc/brainstorm/brainstorm-<topic-slug>.md` |
 | **Advance** | `/velpari-approve-brainstorm` — hard-blocks on unconfirmed understanding, open questions, or missing/empty/`_TBD_` notes sections; on success publishes, writes the audit log, clears the brainstorm session fields, advances the stage, and surfaces a `Next: /velpari-prd` hint (v1.6.2+ — no auto-run; user runs `/velpari-prd` by hand) |
+=======
+| **Inputs** | Mission text from user. Configured framework + project name from `.pi/velpari/files.json`. |
+| **Behaviour (v3 — AUTOMATIC SPAWN at step 1)** | The handler opens 2 persistent sub-agent sessions in the multiplexer right column IMMEDIATELY after `createRun`, BEFORE the UNDERSTAND loop starts. Row 1 = `web-research` (session `web`, tools `read/websearch/fetchurl`); row 2 = `doc-code-analyst` (session `doc-code`, tools `read/grep/glob/ls`). Both panes stay open across the whole brainstorm. The session handles persist in `state.activeSubagents` and survive Pi rehydrate. |
+| **Behaviour (v3 — DISCUSS routing)** | On each user message in the DISCUSS loop, the parent LLM routes by topic: web/community/docs → `subagent({ session: "web", prompt })`; doc/code → `subagent({ session: "doc-code", prompt })`; both → 2 parallel calls (different sessions); general/meta → parent answers directly. Sub-agent replies fold back into the parent context. |
+| **Behaviour (v3 — graceful close)** | At `/velpari-approve-brainstorm`, the handler fires a fire-and-forget prompt via `pi.sendUserMessage()` asking the LLM to call `subagent_interrupt` on both sessions + `velpari_brainstorm_session({ action: "close-sessions" })`. State is the source of truth — `clearBrainstormSession` already cleared `state.activeSubagents` synchronously. |
+| **Behaviour (v2.1 fallback)** | The legacy one-shot ephemeral scout flow (4 parallel scouts dispatched after a SCAN-gate picker) is retained as a fallback for users who prefer it. Mark `state.scansSelected` as `@deprecated v3`. |
+| **Working copy** | `.IDE_Plans/velpari/runs/<run-id>/brainstorm/brainstorm-notes.md` (+ `brainstorm-dispatch.md` audit log written at approve) |
+| **Published copy** | `Doc/brainstorm/brainstorm-<topic-slug>.md` |
+| **Advance** | `/velpari-approve-brainstorm` — hard-blocks on unconfirmed understanding, open questions, or missing/empty/`_TBD_` notes sections; on success publishes, writes the audit log, clears the brainstorm session fields (incl. `webDispatchConfirmations` + v3 `activeSubagents`), advances the stage, fires the graceful-close prompt, and surfaces a `Next: /velpari-prd` hint (v1.6.2+ — no auto-run; user runs `/velpari-prd` by hand) |
+>>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
 
 ### Stage 2 — PRD
 
@@ -673,6 +688,83 @@ The brainstorm cycle in short:
 5. **Discuss** (suggested answers, decision ledger in the notes)
 6. **Approve-brainstorm** (hard-blocked gates, publishes, writes the
    audit log, clears the session fields, auto-runs `/velpari-prd`)
+
+### 3.3 Doctor fix picker (v1.4.x, opt-in Level A)
+
+`/velpari-doctor` produces an `ok` / `warning` / `error` verdict per
+section, writes the canonical report to
+`.IDE_Plans/velpari/doctor-report.md`, and emits a summary notify.
+**Without the flag, behavior ends here.**
+
+When the user passes `--velpari-fix` (or sets it persistently), the
+flow extends:
+
+```
+1. /velpari-doctor runs the audit, writes report, notifies summary.
+2. commands/doctor.ts checks pi.getFlag("velpari-fix") == true.
+3. If report has actionable items (error/warning with suggestion):
+   a. ui/fix-picker.ts shows a 2-level picker:
+      - Level 1: "Fix an item (N actionable)" / "Open full report" / "Skip".
+      - Level 2 (when "Fix an item" is picked): one row per item,
+        label = "❌/⚠️ <message>", hint = "<section> → <suggestion>".
+   b. doctor/fix-dispatch.ts:dispatchFixChoice translates the choice:
+      - fix-one: dispatch pi.sendUserMessage(prompt) with section,
+        status, message, suggestion, and the report path. The parent
+        LLM reads the report and runs the matching /velpari-* command.
+      - open-report: ctx.ui.notify(reportPath).
+      - all-safe: stub notify "arrives in v1.5 (Level B)".
+      - skip: no-op.
+   c. After the parent LLM finishes, it re-emits the doctor audit; the
+      fix loop ends when the next /velpari-doctor returns 0 errors.
+```
+
+**Hard rule — preserved through every level:** the fix flow never
+edits `Doc/` directly. Every fix routes through an existing velpari
+slash command via `pi.sendUserMessage`, so the `tool_call` mutation
+lock in `hooks/tool-call.ts` gates every write.
+
+**Layer rule and where the orchestration lives.** The doctor module is
+L1; the picker widget is L2; commands is L3. The layer rule
+disallows `doctor/` → `ui/` imports, so `handleDoctor` (L1) returns the
+report via `HandleDoctorResult`, and `commands/doctor.ts` (L3) reads
+it and orchestrates the picker. See
+`.IDE_Plans/doctor-fix-upgrade_plan_20260919_1318_v1.0.md` for the
+design rationale and the ladder A → B → C.
+
+**Level ladder.** Phase 1 ships **Level A only** (this section). The
+same dispatcher is extended in:
+
+- **Level B** (v1.5.x, declarative auto-remediate) — Phase 2 ships 3
+  deterministic RemediateFns registered against `SAFE_WHITELIST`:
+  `frontmatter-missing` re-stamps frontmatter on every published
+  artifact; `fingerprint-untracked` re-stamps SHA-256 fingerprints on
+  RTM rows that lack them (and re-renders the published RTM markdown
+  from the JSON sidecar); `working-published-drift` copies a divergent
+  working copy back over its published twin. `dispatchFixChoice` `kind:
+  "all-safe"` runs every safe remediate in whitelist order, notifies
+  each result, then re-runs `runDoctor` and notifies the new summary.
+  Each `RemediateFn` is idempotent (running on a clean project touches
+  nothing) and is registered against `FIX_LEVELS[key] = "auto-safe"` so
+  the picker color-codes them as "⚙ auto-safe". The `RemediateFn`
+  registry lives at `pi-extension/src/doctor/checks/remediate/`; the
+  orchestrator at `pi-extension/src/doctor/remediate.ts`.
+- **Level C** (v1.6.x, agentic fix via parent LLM) — Phase 3 ships
+  `doctor/fix-brief.ts` with a structured `FixBrief` type +
+  `buildFixBrief()` + `renderFixBrief()`. Four fingerprints
+  (`fingerprint-suspect`, `phase-mismatch`, `mvp-incomplete`,
+  `rtm-unknown-id`) are tagged `"agentic"` in `FIX_LEVELS`. When the
+  dispatcher handles a `kind: "fix-one"` for one of these items, it
+  emits the structured brief to the parent LLM via
+  `pi.sendUserMessage`. The brief carries the diagnosis, the suggested
+  `/velpari-*` command (`AGENTIC_COMMANDS` table), the original
+  section/status/message/suggestion context, and a self-terminating
+  success criterion (re-run `/velpari-doctor`; the fingerprint should
+  be gone). Bounded by the same mutation-lock invariant: the doctor
+  never edits artifacts; it dispatches the parent LLM which runs the
+  existing `/velpari-<stage>` command in update mode. The reverse-lookup
+  from suggestion text to fingerprint goes via
+  `findFingerprintFromSuggestion`; an unknown suggestion falls
+  through to the Phase 1 generic prompt cleanly (returns `null`).
 
 ---
 

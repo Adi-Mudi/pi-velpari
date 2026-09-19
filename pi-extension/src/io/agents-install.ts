@@ -1,10 +1,15 @@
 /**
- * Scout agent bootstrap (v2.0).
+ * Scout agent bootstrap (v2.0 + v3 persistent).
  *
  * On first use of `/velpari-brainstorm`, ensure the 4 scout agent definitions
  * (`extractor`, `prd-checker`, `rtm-checker`, `web-search-agent`) are present
  * in `.pi/agents/`. They are bundled in `skills/agents/*.md` and copied to
  * `.pi/agents/` on demand.
+ *
+ * v3 — also ensures the 2 persistent sub-agent definitions
+ * (`web-research`, `doc-code-analyst`) used by the AUTOMATIC SPAWN step.
+ * They live in the same `skills/agents/` directory and bootstrap via the
+ * generic `ensureStageAgents` path.
  *
  * Pi discovers agents by walking the directory tree from cwd; `.pi/agents/`
  * is the standard project-local location (per pi-seani AGENTS.md).
@@ -28,6 +33,20 @@ export const SCOUT_AGENT_IDS = ["extractor", "prd-checker", "rtm-checker", "web-
 
 export type ScoutAgentId = (typeof SCOUT_AGENT_IDS)[number];
 
+/**
+ * v3 — Persistent sub-agent ids used by the AUTOMATIC SPAWN step of the
+ * brainstorm v3 lifecycle. These are NOT scouts (one-shot dispatches) —
+ * they are long-lived sessions that stay alive across the brainstorm and
+ * get routed per user message via `subagent({ session: <handle>, ... })`.
+ *
+ * Bootstrap happens via `ensureStageAgents(PERSISTENT_AGENT_IDS, cwd)`
+ * (Phase 4) on the first spawn call. The bundled markdown files live at
+ * `skills/agents/web-research.md` and `skills/agents/doc-code-analyst.md`.
+ */
+export const PERSISTENT_AGENT_IDS = ["web-research", "doc-code-analyst"] as const;
+
+export type PersistentAgentId = (typeof PERSISTENT_AGENT_IDS)[number];
+
 export interface EnsureScoutAgentsResult {
 	installed: ScoutAgentId[];
 	alreadyPresent: ScoutAgentId[];
@@ -45,8 +64,11 @@ export interface EnsureScoutAgentsResult {
  * resolved one level too high when Pi loaded the source tree directly
  * (the `main: ./pi-extension/src/index.ts` layout). The same bug
  * silently broke scout-agent bootstrap for users on the npm install.
+ *
+ * v3 — accepts either a `ScoutAgentId` or a `PersistentAgentId`. Both
+ * agent classes live in the same `skills/agents/` directory.
  */
-export function bundledAgentPath(agentId: ScoutAgentId): string {
+export function bundledAgentPath(agentId: ScoutAgentId | PersistentAgentId): string {
 	const pkgRoot = findPackageRoot(__dirname);
 	return join(pkgRoot, "skills", "agents", `${agentId}.md`);
 }
@@ -92,6 +114,34 @@ export function formatScoutAgentsInstalledMessage(result: EnsureScoutAgentsResul
 	if (result.installed.length === 0) return "";
 	const list = result.installed.join(", ");
 	return `Installed ${result.installed.length} scout agent(s) into .pi/agents/: ${list}.`;
+}
+
+/**
+ * v3 — Ensure the 2 persistent sub-agent definitions are present in
+ * `.pi/agents/`. Called by the spawn helper (Phase 2) on the first
+ * `spawnPersistentSessions` call so both panes are bootable when the
+ * parent LLM calls `subagent({ calls: [...] })`.
+ *
+ * Thin wrapper around `ensureStageAgents` with the right id list.
+ * Returns the same shape so the caller can surface "X installed" via
+ * a UI notify when needed.
+ */
+export function ensurePersistentAgents(
+	cwd: string = process.cwd(),
+	agentConfig?: AgentConfig | null,
+): EnsureStageAgentsResult {
+	return ensureStageAgents(PERSISTENT_AGENT_IDS, cwd, agentConfig);
+}
+
+/**
+ * Render a one-line summary for the persistent agents bootstrap. Same
+ * shape as `formatScoutAgentsInstalledMessage` but phrased for the
+ * v3 AUTOMATIC SPAWN context.
+ */
+export function formatPersistentAgentsInstalledMessage(result: EnsureStageAgentsResult): string {
+	if (result.installed.length === 0) return "";
+	const list = result.installed.join(", ");
+	return `Installed ${result.installed.length} persistent sub-agent(s) into .pi/agents/: ${list}.`;
 }
 
 export interface EnsureStageAgentsResult {

@@ -2,9 +2,9 @@ name: test
 
 on:
   push:
-    branches: [test-merge, development, main]
+    branches: [test-merge, development, main, dev-upgrade]
   pull_request:
-    branches: [test-merge, development, main]
+    branches: [test-merge, development, main, dev-upgrade]
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.

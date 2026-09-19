@@ -33,13 +33,18 @@
 //            (velpari-local grouping — the official layer map is silent
 //            on ops grouping; follows the sibling convention of flat
 //            per-concern L1 folders)
-//   doctor/  diagnostics: runDoctor, report writer, checks/*
+//   doctor/  diagnostics: runDoctor, report writer, checks/*,
+//            fix-dispatch (v1.4.0 — Level A interactive picker orchestrator),
+//            remediate (v1.5.x — Level B declarative auto-remediate),
+//            fix-brief (v1.6.x — Level C structured FixBrief emitter),
+//            checks/remediate/* (per-fingerprint RemediateFn registry)
 //   view/    read-only display handlers (show-*) — velpari-local, kept
 //
 // ------------------------------------------------------------------------
 // Layer 2 — Presentation (imports Layer 0 + 1)
 // ------------------------------------------------------------------------
-//   ui/     TUI widgets (velpari-status entry renderer)
+//   ui/     TUI widgets (velpari-status entry renderer,
+//          runFixPicker — v1.4.0 / Level A picker for the --velpari-fix flag)
 //   hooks/  Pi lifecycle event handlers, one file per event
 //           (session-start, session-before-compact, resources-discover,
 //           session-shutdown)

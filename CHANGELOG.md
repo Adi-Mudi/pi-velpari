@@ -2,6 +2,93 @@
 
 All notable changes to this project will be documented in this file.
 
+<<<<<<< HEAD
+## [Unreleased]
+
+### Planned (next minor)
+
+- Extending `DiagnosticItem` with an optional `fingerprint` field so checks can populate fingerprints directly (replaces the Phase 3 suggestion-text reverse-lookup). Doctor dispatcher's external behavior stays the same.
+
+## [1.4.0] — 2026-09-19 — Doctor "fix" ladder (Levels A → B → C)
+
+The doctor now offers three complementary fix paths after an audit finds actionable items. Opt-in via `--velpari-fix`. Default behavior (without the flag) is unchanged.
+=======
+## [Unreleased] — Brainstorm v3 (persistent sub-agents)
+
+Brainstorm opens **2 persistent sub-agent sessions** (web-research + doc-code-analyst) immediately after `/velpari-brainstorm` (step 1 — AUTOMATIC SPAWN, before UNDERSTAND). Both panes stay open in the multiplexer right column until `/velpari-approve-brainstorm` fires the graceful close. Parent LLM routes each user message by topic during DISCUSS.
+
+### Added
+
+- **`state.activeSubagents`** + **`setActiveSubagents()`** + **`clearBrainstormSession()`** (clears it too) in `core/state.ts`. Persists across Pi rehydrate.
+- **`stages/brainstorm/spawn-sessions.ts`** — `spawnPersistentSessions()` (idempotent; bootstraps the 2 agent .md files) + `BRAINSTORM_SESSION_HANDLES` + `BRAINSTORM_PERSISTENT_AGENTS` constants + `persistSpawnHandles()`. **38 new tests**.
+- **`PERSISTENT_AGENT_IDS`** + **`ensurePersistentAgents()`** in `io/agents-install.ts`. **`bundledAgentPath()`** accepts both ScoutAgentId and PersistentAgentId.
+- **2 bundled agent .md files**: `skills/agents/web-research.md` (tools: read, websearch, fetchurl) + `skills/agents/doc-code-analyst.md` (tools: read, grep, glob, ls). Both use `sessionPreference: persistent` + `sessionHint` frontmatter (community pattern from @mjakl/pi-subagent).
+- **`mode: "ephemeral" | "persistent"`** on `DispatchRequest` in `dispatcher.ts`. Persistent mode resolves `session: <handle>` from state. **7 new dispatcher tests**.
+- **2 new actions** on `velpari_brainstorm_session` tool: `spawn-sessions` (persists handles) + `close-sessions` (graceful close). `snapshot()` exposes `activeSubagents`. **9 new tool tests**.
+- **`activeSubagents` field on `BuildStagePromptInput`** + `renderActiveSubagents()` helper in `core/prompt.ts` — emits the `## Active sub-agents (persistent sessions)` block with routing rules. **7 new prompt tests**.
+- **AUTOMATIC SPAWN step in `handleBrainstorm`** — fires spawn helper right after `createRun`; prefixes the prompt with `## Step 1 — AUTOMATIC SPAWN (execute now)` block on first turn.
+- **Graceful close in `handleApproveBrainstorm`** — fires a fire-and-forget prompt asking the LLM to call `subagent_interrupt` on both sessions + `close-sessions`. State is the source of truth (already cleared synchronously).
+
+### Changed
+
+- **`velpari-brainstorm.md` skill** rewritten to lifecycle v3 — new step [1] AUTOMATIC SPAWN; new "v3 — Routing rules" subsection under [5] DISCUSS.
+- **`scansSelected`** marked `@deprecated v3 — replaced by activeSubagents`. Schema kept for back-compat; v3 handler no longer reads it.
+- **README.md** + **`Doc/velpari-sequence.md`** updated with the v3 sequence description.
+
+## [Unreleased] — Sub-agent generator v2.0 (dynamic registry + per-stage + fetch-from-docs)
+>>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
+
+### Added
+
+#### Phase 1 — Level A (interactive picker, opt-in)
+
+- **`--velpari-fix` flag** — registered in `pi-extension/src/index.ts` alongside `--velpari-skip-doctor` and `--velpari-stage`. When set, `/velpari-doctor` shows a 2-level picker over actionable items; selecting one dispatches the parent LLM via `pi.sendUserMessage` with a structured prompt. **Default off.**
+- **`FixLevel` type** (`"interactive" | "auto-safe" | "agentic"`) + `levelFor(key)` helper in `pi-extension/src/doctor/checks/fix-suggestions.ts`. Missing keys fall back to `"interactive"` (conservative default).
+- **`pi-extension/src/doctor/fix-dispatch.ts`** — L1 orchestrator. `listActionableItems`, `actionableItemCount`, `dispatchFixChoice`, `type ActionableItem`, `type FixChoice`.
+- **`pi-extension/src/ui/fix-picker.ts`** — L2 widget wrapping `runSimplePicker`. Two-level picker with status icons, item count, hint-on-report-path.
+
+#### Phase 2 — Level B (declarative auto-remediate for safe checks)
+
+- **`SAFE_WHITELIST`** in `pi-extension/src/doctor/checks/fix-suggestions.ts` — update-in-lock with `FIX_LEVELS["auto-safe"]` entries; runtime throws on drift.
+- **`pi-extension/src/doctor/remediate.ts`** — `runRemediate` (single fingerprint) + `runAllSafeRemediates` (every whitelist entry). Each `RemediateFn` is wrapped in try/catch so one bad fn can't crash the audit loop.
+- **`pi-extension/src/doctor/checks/remediate/`** — three per-fingerprint `RemediateFn`s, all idempotent:
+  - `frontmatter.ts` — restamps missing frontmatter on every published artifact under `Doc/`.
+  - `fingerprint-untracked.ts` — stamps SHA-256 fingerprints on RTM JSON rows that lack them, using the PSRS as source; re-renders the published RTM markdown from JSON.
+  - `working-published-drift.ts` — copies divergent working copy over its published twin (strict byte-for-byte equality check, only writes on actual diffs).
+- **3 entries in `FIX_LEVELS`** (`frontmatter-missing`, `fingerprint-untracked`, `working-published-drift`) tagged `"auto-safe"`. The Level A "all-safe" picker branch resolves to a real `runAllSafeRemediates` loop instead of the v1.4 placeholder.
+
+#### Phase 3 — Level C (agentic fix via parent LLM)
+
+- **`pi-extension/src/doctor/fix-brief.ts`** — `FixBrief` type + `buildFixBrief()` + `renderFixBrief()` + `findFingerprintFromSuggestion()`. `buildFixBrief` returns `null` for items that aren't agentic (or whose suggestion text doesn't map to a known fingerprint), so the dispatcher cleanly falls through to the Phase 1 / Phase 2 paths.
+- **`AGENTIC_COMMANDS` table** in `fix-brief.ts` — per-fingerprint → suggested `/velpari-*` command (`fingerprint-suspect`/`phase-mismatch`/`mvp-incomplete` → `/velpari-rtm`; `rtm-unknown-id` → `/velpari-prd`).
+- **4 entries in `FIX_LEVELS`** (`fingerprint-suspect`, `phase-mismatch`, `mvp-incomplete`, `rtm-unknown-id`) tagged `"agentic"`. The dispatcher now emits the structured `FixBrief` to the parent LLM for these items.
+
+### Changed
+
+- **`handleDoctor` return type** in `pi-extension/src/doctor/index.ts` — now returns `HandleDoctorResult { skipped: boolean, report: DiagnosticReport | null }` instead of `void`. The composition-layer orchestration (`commands/doctor.ts`) reads the report and conditionally runs the fix picker. Layer-rule clean: `doctor/` is L1 and cannot import from `ui/` (L2); the orchestration lives at L3.
+- **Dispatcher `kind: "all-safe"` branch** (`pi-extension/src/doctor/fix-dispatch.ts:dispatchFixChoice`) — Phase 1 placeholder replaced with: (1) call `runAllSafeRemediates`, (2) notify each result, (3) re-run `runDoctor`, (4) write a fresh report, (5) notify the new summary. The dispatcher's `DispatchFixChoiceOptions` gained a `projectName` field; `commands/doctor.ts` resolves it via `loadFilesConfig()`.
+- **Dispatcher `kind: "fix-one"` branch** — Phase 3: tries `buildFixBrief(it)` first. If it returns a brief, the prompt sent to the parent LLM is the structured `renderFixBrief(brief)` output (Diagnosis, Context, Success Criterion). Otherwise falls back to the Phase 1 generic prompt.
+- **`pi-extension/src/layers.ts`** — `doctor/`, `ui/`, and the per-fingerprint `RemediateFn` registry now documented with their per-version additions.
+
+### Tests
+
+- +16 (`test/doctor/fix-dispatch.test.ts` + `test/ui/fix-picker.test.ts`) — Phase 1 picker orchestration + dispatcher branches.
+- +18 (`test/doctor/remediate.test.ts`) — Phase 2 whitelist + registry + 3 RemediateFns (synthetic bad state → good state, idempotency).
+- +11 (`test/doctor/fix-brief.test.ts`) — Phase 3 reverse-lookup + agentic-vs-interactive/auto-safe discrimination + render format.
+- All existing tests (1540) remain green: 1575 pass / 0 fail / 6 skipped (pre-existing).
+
+### Preserved
+
+- The mutation lock (`tool_call` hook) gates every write — Phase 1, 2, and 3 routes all funnel through existing `/velpari-*` slash commands or Phase 2's `RemediateFn`s, which are themselves invoked from the L3 orchestrator.
+- `--velpari-fix` is opt-in (default off). Without the flag, `/velpari-doctor` behavior is unchanged.
+- The 3 publish gates + post-publish doctor audit behavior is unchanged.
+
+### Migration
+
+- No manual migration. Existing projects automatically pick up the new doctor behavior on next `/velpari-doctor` invocation if `--velpari-fix` is set persistently.
+
+Design: `.IDE_Plans/doctor-fix-upgrade_plan_20260919_1318_v1.0.md` (A → B → C ladder).
+
 ## [1.3.0-dev.1] — 2026-09-18 — Dev channel snapshot
 
 Published to the npm `dev` dist-tag for opt-in testing ahead of the `1.6.2` `latest` release. The source tree on the `development` branch at this tag matches `package.json` version `1.3.0-dev.1`. See `1.6.2` below for the work accumulated since the last `latest` release (`1.0.1`).

@@ -20,6 +20,7 @@ import {
 	createRun,
 	incrementBrainstormDispatchCount,
 	loadState,
+	setActiveSubagents,
 	setScansSelected,
 	upsertBrainstormQuestion,
 	type BrainstormQuestion,
@@ -212,5 +213,99 @@ describe("core/state brainstorm helpers", () => {
 		assert.equal(loaded.scansSelected, undefined);
 		assert.equal(loaded.brainstormQuestions, undefined);
 		assert.equal(loaded.brainstormDispatchCount, undefined);
+	});
+
+	// ── v3 — activeSubagents (persistent sub-agent sessions) ────────────
+
+	it("setActiveSubagents persists both handles and auto-stamps spawnedAt", () => {
+		const state = createRun("Test mission", tmpDir);
+		const next = setActiveSubagents(
+			state,
+			{ web: "web", docCode: "doc-code" },
+			tmpDir,
+		);
+		assert.equal(next.activeSubagents?.web, "web");
+		assert.equal(next.activeSubagents?.docCode, "doc-code");
+		assert.ok(next.activeSubagents?.spawnedAt, "spawnedAt must be auto-stamped");
+		assert.ok(!Number.isNaN(Date.parse(next.activeSubagents!.spawnedAt!)));
+		assert.equal(next.currentStage, "brainstorming");
+
+		// Persisted to disk.
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.activeSubagents?.web, "web");
+		assert.equal(loaded.activeSubagents?.docCode, "doc-code");
+	});
+
+	it("setActiveSubagents accepts a partial payload (one handle only)", () => {
+		const state = createRun("Test mission", tmpDir);
+		const next = setActiveSubagents(state, { web: "web" }, tmpDir);
+		assert.equal(next.activeSubagents?.web, "web");
+		assert.equal(next.activeSubagents?.docCode, undefined);
+		assert.ok(next.activeSubagents?.spawnedAt);
+	});
+
+	it("setActiveSubagents rejects unknown keys", () => {
+		const state = createRun("Test mission", tmpDir);
+		assert.throws(
+			() =>
+				setActiveSubagents(
+					state,
+					{ web: "web", bogus: "x" } as never,
+					tmpDir,
+				),
+			/Unknown activeSubagents key/,
+		);
+		// State on disk unchanged by the rejected call.
+		assert.equal(loadState(tmpDir).activeSubagents, undefined);
+	});
+
+	it("setActiveSubagents honors an explicit spawnedAt timestamp (caller override)", () => {
+		const state = createRun("Test mission", tmpDir);
+		const explicit = "2026-09-19T08:00:00.000Z";
+		const next = setActiveSubagents(
+			state,
+			{ web: "web", docCode: "doc-code", spawnedAt: explicit },
+			tmpDir,
+		);
+		assert.equal(next.activeSubagents?.spawnedAt, explicit);
+	});
+
+	it("clearBrainstormSession also clears activeSubagents (v3 cleanup)", () => {
+		let state = createRun("Test mission", tmpDir);
+		state = setActiveSubagents(
+			state,
+			{ web: "web", docCode: "doc-code" },
+			tmpDir,
+		);
+		assert.ok(state.activeSubagents);
+
+		const cleared = clearBrainstormSession(state, tmpDir);
+		assert.equal(cleared.activeSubagents, undefined);
+		assert.equal(cleared.currentStage, "brainstorming");
+
+		// Persisted to disk.
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.activeSubagents, undefined);
+	});
+
+	it("an old v1.x state.json with scansSelected (no activeSubagents) still loads", () => {
+		const legacy = {
+			version: 1,
+			runId: "2026-09-12-01-15-legacy-v1",
+			mission: "Legacy v1 mission",
+			currentStage: "drafting-prd",
+			history: [],
+			updatedAt: "2026-09-12T01:20:00.000Z",
+			scansSelected: ["code", "doc"],
+			brainstormDispatchCount: 2,
+		};
+		const filePath = path.join(tmpDir, PATHS.STATE_FILE);
+		fs.mkdirSync(path.dirname(filePath), { recursive: true });
+		fs.writeFileSync(filePath, JSON.stringify(legacy, null, 2), "utf8");
+
+		const loaded = loadState(tmpDir);
+		assert.deepEqual(loaded.scansSelected, ["code", "doc"]);
+		assert.equal(loaded.brainstormDispatchCount, 2);
+		assert.equal(loaded.activeSubagents, undefined);
 	});
 });

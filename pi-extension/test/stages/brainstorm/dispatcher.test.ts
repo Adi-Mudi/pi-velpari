@@ -10,10 +10,12 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { saveAgentConfig } from "../../../src/core/agents-config.js";
+import { createRun, setActiveSubagents } from "../../../src/core/state.js";
+import { PATHS } from "../../../src/core/constants.js";
 import {
 	BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS,
 	BRAINSTORM_DISPATCH_TIMEOUT_MS,
@@ -212,6 +214,191 @@ describe("prepareDispatch", () => {
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /no read-only tools/);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// v3 — persistent mode (Phase 3)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("prepareDispatch v3 — persistent mode", () => {
+	function tmpCwd(): string {
+		return mkdtempSync(path.join(tmpdir(), "velpari-dispatcher-persistent-"));
+	}
+
+	it("resolves session handle from state.activeSubagents when mode=persistent", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		state = setActiveSubagents(
+			state,
+			{ web: "web", docCode: "doc-code" },
+			cwd,
+		);
+
+		const res = prepareDispatch(
+			{
+				agent: "web-search-agent",
+				task: "Research prior art",
+				scanType: "community",
+				mode: "persistent",
+				sessionHandleKey: "web",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, true);
+		if (!res.ok) return;
+		assert.equal(res.prepared.subagentArgs.session, "web");
+		assert.equal(res.prepared.subagentArgs.agent, "web-search-agent");
+	});
+
+	it("resolves the doc-code handle for sessionHandleKey=docCode", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		state = setActiveSubagents(
+			state,
+			{ web: "web", docCode: "doc-code" },
+			cwd,
+		);
+
+		const res = prepareDispatch(
+			{
+				agent: "extractor",
+				task: "Scan code",
+				scanType: "code",
+				mode: "persistent",
+				sessionHandleKey: "docCode",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, true);
+		if (!res.ok) return;
+		assert.equal(res.prepared.subagentArgs.session, "doc-code");
+	});
+
+	it("rejects persistent mode without sessionHandleKey", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
+
+		const res = prepareDispatch(
+			{
+				agent: "web-search-agent",
+				task: "Research",
+				scanType: "community",
+				mode: "persistent",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, false);
+		if (res.ok) return;
+		assert.match(res.reason, /sessionHandleKey/);
+	});
+
+	it("rejects persistent mode when state.activeSubagents is missing (spawn not run)", () => {
+		const cwd = tmpCwd();
+		createRun("Mission", cwd); // no setActiveSubagents call
+
+		const res = prepareDispatch(
+			{
+				agent: "web-search-agent",
+				task: "Research",
+				scanType: "community",
+				mode: "persistent",
+				sessionHandleKey: "web",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, false);
+		if (res.ok) return;
+		assert.match(res.reason, /AUTOMATIC SPAWN has not run yet/);
+	});
+
+	it("rejects persistent mode when the requested handle key is not in state", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		// Only set the web handle; docCode is missing.
+		state = setActiveSubagents(state, { web: "web" }, cwd);
+
+		const res = prepareDispatch(
+			{
+				agent: "extractor",
+				task: "Scan code",
+				scanType: "code",
+				mode: "persistent",
+				sessionHandleKey: "docCode",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, false);
+		if (res.ok) return;
+		assert.match(res.reason, /No session handle for key "docCode"/);
+	});
+
+	it("does NOT include session in subagentArgs when mode is default (ephemeral)", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
+
+		const res = prepareDispatch(
+			{
+				agent: "extractor",
+				task: "Scan code",
+				scanType: "code",
+				// mode omitted — defaults to ephemeral
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, true);
+		if (!res.ok) return;
+		assert.equal(res.prepared.subagentArgs.session, undefined);
+	});
+
+	it("FR-52 still applies in persistent mode (web-search-agent ⇒ community only)", () => {
+		const cwd = tmpCwd();
+		let state = createRun("Mission", cwd);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
+
+		const res = prepareDispatch(
+			{
+				agent: "web-search-agent",
+				task: "Scan code (not allowed — web only)",
+				scanType: "code",
+				mode: "persistent",
+				sessionHandleKey: "web",
+			},
+			RUN_DIR,
+			0,
+			0,
+			cwd,
+		);
+
+		assert.equal(res.ok, false);
+		if (res.ok) return;
+		assert.match(res.reason, /community/);
 	});
 });
 

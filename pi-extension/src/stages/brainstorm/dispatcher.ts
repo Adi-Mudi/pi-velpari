@@ -28,7 +28,7 @@ import {
 	loadAgentConfig,
 	resolveAgentName,
 } from "../../core/agents-config.js";
-import type { ScanType } from "../../core/state.js";
+import { loadState, type ScanType } from "../../core/state.js";
 import {
 	guardArtifactPath,
 	guardDispatchCount,
@@ -83,6 +83,26 @@ export const DEFAULT_DISPATCH_TOOLS: readonly string[] = [...READ_ONLY_ALLOWED_T
 // Types
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * v3 — Dispatch mode. Today the brainstorm dispatcher serves ONE shot
+ * per dispatch (ephemeral). v3 adds persistent mode for the 2 long-lived
+ * sessions opened by the spawn helper at step 2 (AUTOMATIC SPAWN).
+ *
+ *   - ephemeral (default)  — fires-and-forgets; child Pi session dies
+ *                            after the response settles. Used by the
+ *                            legacy one-shot scan-gate path + the
+ *                            extract/prd/rtm stage scouts.
+ *   - persistent           — opens (or continues) a named session via
+ *                            `session: <handle>`. The handle is
+ *                            resolved from `state.activeSubagents` at
+ *                            dispatch time. FR-52 still applies.
+ *
+ * The dispatcher is stateless w.r.t. sessions — the parent LLM supplies
+ * the dispatch number via `currentDispatchCount`; the handle is looked
+ * up from state per call.
+ */
+export type DispatchMode = "ephemeral" | "persistent";
+
 /** What the parent LLM hands us when it wants to dispatch a scout. */
 export interface DispatchRequest {
 	/** Scout ROLE id — must be one of SCOUT_AGENT_IDS and serve scanType.
@@ -99,6 +119,15 @@ export interface DispatchRequest {
 	tools?: readonly string[];
 	/** Optional: artifact paths the scout may write. Each is path-guarded. */
 	artifactPaths?: readonly string[];
+	/** v3 — dispatch mode. Default "ephemeral" for back-compat. When
+	 *  "persistent", the dispatcher adds `session: <handle>` to the
+	 *  prepared subagentArgs. The handle is resolved from
+	 *  `state.activeSubagents` via the optional `sessionHandleKey` field
+	 *  (one of "web" or "docCode"). */
+	mode?: DispatchMode;
+	/** v3 — required when `mode === "persistent"`. Maps to the key in
+	 *  `state.activeSubagents` whose value is the session handle. */
+	sessionHandleKey?: "web" | "docCode";
 }
 
 /** What the dispatcher returns when validation succeeds. The parent LLM
@@ -125,6 +154,11 @@ export interface PreparedDispatch {
 		task: string;
 		/** Hint to the parent: how long to wait before cancelling. */
 		timeoutMs: number;
+		/** v3 — named-session handle (persistent mode only). When set,
+		 *  the parent LLM must spread it into subagent({ session, ... })
+		 *  so the child Pi session continues the previous conversation.
+		 *  Undefined for ephemeral dispatches. */
+		session?: string;
 	};
 	/** Monotonic dispatch number within this brainstorm (1-based). */
 	dispatchNumber: number;
@@ -271,6 +305,42 @@ export function prepareDispatch(
 	// Validation stays role-based; only the spawned NAME is resolved here.
 	const agentName = resolveAgentName(loadAgentConfig(cwd), request.agent as ScoutAgentId);
 
+	// 5. v3 — persistent mode: resolve session handle from state.
+	//    When the parent LLM requests `mode: "persistent"`, the dispatcher
+	//    reads `state.activeSubagents` to find the handle for the given
+	//    `sessionHandleKey`. Errors loudly if state is missing the handle
+	//    (spawn helper must run before the dispatcher in persistent mode).
+	let sessionHandle: string | undefined;
+	if (request.mode === "persistent") {
+		if (!request.sessionHandleKey) {
+			return {
+				ok: false,
+				reason:
+					`Persistent dispatch needs request.sessionHandleKey (one of "web" | "docCode").\n` +
+					`Call spawnPersistentSessions first to populate state.activeSubagents.`,
+			};
+		}
+		const state = loadState(cwd);
+		if (!state.activeSubagents) {
+			return {
+				ok: false,
+				reason:
+					`No activeSubagents in state — AUTOMATIC SPAWN has not run yet.\n` +
+					`Call spawnPersistentSessions before persistent dispatches.`,
+			};
+		}
+		const handle = state.activeSubagents[request.sessionHandleKey];
+		if (!handle) {
+			return {
+				ok: false,
+				reason:
+					`No session handle for key "${request.sessionHandleKey}" in state.activeSubagents.\n` +
+					`Available keys: ${Object.keys(state.activeSubagents).filter((k) => state.activeSubagents?.[k as keyof typeof state.activeSubagents]).join(", ") || "(none)"}.`,
+			};
+		}
+		sessionHandle = handle;
+	}
+
 	const prepared: PreparedDispatch = {
 		agent: request.agent,
 		scanType: request.scanType,
@@ -283,6 +353,7 @@ export function prepareDispatch(
 			cwd: runDir,
 			task: request.task,
 			timeoutMs,
+			...(sessionHandle ? { session: sessionHandle } : {}),
 		},
 		dispatchNumber: currentDispatchCount + 1,
 		startedAt: new Date().toISOString(),
@@ -323,8 +394,14 @@ export function formatScanPlanLines(scans: readonly ScanType[], cwd?: string): s
 
 /** Helper for the parent LLM: format the prepared dispatch as a prompt
  *  block. Includes all subagent invocation args the parent needs to make
- *  the call. */
+ *  the call. When the prepared dispatch carries a `session` handle
+ *  (v3 persistent mode), the rendered block includes `session:` so the
+ *  parent LLM spreads it into subagent() and the child Pi session
+ *  continues the previous conversation. */
 export function formatPreparedDispatch(prepared: PreparedDispatch): string {
+	const sessionLine = prepared.subagentArgs.session
+		? `Session: \`${prepared.subagentArgs.session}\` (persistent — continues previous conversation)\n`
+		: "";
 	return [
 		"## Prepared dispatch",
 		"",
@@ -332,7 +409,7 @@ export function formatPreparedDispatch(prepared: PreparedDispatch): string {
 		`Dispatch #: ${prepared.dispatchNumber}`,
 		`Timeout: ${prepared.subagentArgs.timeoutMs}ms`,
 		`CWD: ${prepared.runDir}`,
-		"",
+		sessionLine,
 		"Tools (read-only):",
 		prepared.tools.map((t) => `- ${t}`).join("\n"),
 		"",
@@ -344,6 +421,9 @@ export function formatPreparedDispatch(prepared: PreparedDispatch): string {
 		"```",
 		`subagent({`,
 		`  agent: "${prepared.subagentArgs.agent}",`,
+		prepared.subagentArgs.session
+			? `  session: ${JSON.stringify(prepared.subagentArgs.session)},`
+			: "",
 		`  cwd: ${JSON.stringify(prepared.subagentArgs.cwd)},`,
 		`  task: ${JSON.stringify(prepared.subagentArgs.task)},`,
 		`})`,

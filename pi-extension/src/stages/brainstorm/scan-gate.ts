@@ -263,3 +263,85 @@ function unavailableSuffix(available: AvailableScans): string {
 	if (!available.doc) parts.push("doc unavailable");
 	return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
+
+// v1.x — re-open the SCAN picker for scans the developer did NOT pick at the
+// upfront gate. Used during the DISCUSS loop when the developer mentions
+// community / web / official / industrial and the active brainstorm has
+// not opted in yet. Hides the already-selected scans; community consent
+// (FR-52) preserved when community ends up in the picked set.
+export async function runExtraScanPicker(
+	ctx: ExtensionCommandContext,
+	options: ScanGateOptions & { alreadySelected: readonly ScanType[] },
+): Promise<ScanGateResult> {
+	if (!ctx || !ctx.ui || typeof ctx.ui.select !== "function") {
+		return { scans: [], cancelled: true, freeform: false };
+	}
+	const available = getAvailableScanTypes(options.config, options.cwd);
+	const allScans = availableScanList(available);
+	const missing = allScans.filter(
+		(s) => !(options.alreadySelected as readonly ScanType[]).includes(s),
+	);
+	if (missing.length === 0) {
+		// Nothing to add — return ok so the caller can skip the picker.
+		return { scans: [], cancelled: false, freeform: false };
+	}
+	const labels: string[] = [`Add all missing (${missing.join(", ")})`];
+	for (const s of missing) {
+		labels.push(`Add ${s} only`);
+	}
+	labels.push("Skip — inline research only");
+	const choice = await ctx.ui.select(
+		"Which additional scans do you want for this brainstorm?",
+		labels,
+	);
+	if (!choice) return { scans: [], cancelled: true, freeform: false };
+	if (choice === labels[labels.length - 1]) {
+		return { scans: [], cancelled: false, freeform: false };
+	}
+	if (choice === labels[0]) {
+		if (missing.includes("community")) {
+			const ok = await ctx.ui.confirm(
+				"Community scan = web search (FR-52 consent).",
+				"This will search the public web. Confirm?",
+			);
+			if (!ok) return { scans: [], cancelled: false, freeform: false };
+		}
+		return { scans: missing, cancelled: false, freeform: false };
+	}
+	// "Add <scan> only" — index 1..missing.length
+	const idx = labels.indexOf(choice);
+	const picked = missing[idx - 1];
+	if (!picked) return { scans: [], cancelled: true, freeform: false };
+	if (picked === "community") {
+		const ok = await ctx.ui.confirm(
+			"Community scan = web search (FR-52 consent).",
+			"This will search the public web. Confirm?",
+		);
+		if (!ok) return { scans: [], cancelled: false, freeform: false };
+	}
+	return { scans: [picked], cancelled: false, freeform: false };
+}
+
+/**
+ * Per-dispatch consent prompt for a single web call. Returns `true` when
+ * the developer confirmed; `false` on Esc / cancel / missing ui.confirm.
+ * Used by the brainstorm state tool immediately before the parent LLM
+ * calls `subagent()` for web-search-agent.
+ *
+ * The dispatcher keeps the FR-52 role anchor (web-search-agent ⇒ community
+ * scan type). The parent LLM honors this consent result between
+ * `confirm-web-dispatch` and `subagent()`; the dispatcher itself does not
+ * re-check the ledger (kept simple — parent discipline is the gate).
+ */
+export async function runWebDispatchConsent(
+	ctx: ExtensionCommandContext,
+	topic: string,
+): Promise<boolean> {
+	if (!ctx || !ctx.ui || typeof ctx.ui.confirm !== "function") return false;
+	return Boolean(
+		await ctx.ui.confirm(
+			"Web search dispatch",
+			`This scout will search the public web for: ${topic}\nConfirm?`,
+		),
+	);
+}

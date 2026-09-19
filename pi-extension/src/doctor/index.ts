@@ -370,21 +370,38 @@ function buildActionItemsSection(sections: DiagnosticSection[]): DiagnosticSecti
 const MAX_NOTIFY_LENGTH = 8000;
 
 /**
- * /velpari-doctor handler. Runs the audit, writes the report, and emits
- * a summary notification. Honors --velpari-skip-doctor.
+ * Outcome of an `handleDoctor` call. Returned to the caller
+ * (`commands/doctor.ts`) so the optional `--velpari-fix` fix-picker
+ * flow can read the report + actionable items without re-running the
+ * audit. Picker / dispatch live in L2/L3 (see `ui/fix-picker.ts` and
+ * `commands/doctor.ts`); the layer rule forbids `doctor/` (L1) from
+ * importing `ui/` (L2), so the audit must hand the report back.
+ */
+export interface HandleDoctorResult {
+	/** True if `--velpari-skip-doctor` was honored (audit did not run). */
+	skipped: boolean;
+	/** The full audit report. `null` when `skipped === true`. */
+	report: DiagnosticReport | null;
+}
+
+/**
+ * /velpari-doctor handler. Runs the audit, writes the report, emits a
+ * summary notification, and returns the report so the caller can run
+ * an optional interactive fix picker (see `commands/doctor.ts` +
+ * `--velpari-fix`). Honors `--velpari-skip-doctor`.
  */
 export async function handleDoctor(
 	ctx: ExtensionCommandContext,
 	pi?: ExtensionAPI,
 	cwd: string = process.cwd(),
-): Promise<void> {
+): Promise<HandleDoctorResult> {
 	// v0.5.0 Phase I.1: honor the --velpari-skip-doctor flag (registered
 	// in index.ts). When set, short-circuit and notify the user instead of
 	// running the audit. The `?.` makes this safe in test rig / RPC mode
 	// where `pi` is absent.
 	if (pi?.getFlag?.("velpari-skip-doctor")) {
 		ctx.ui.notify("Doctor checks skipped (--velpari-skip-doctor).", "info");
-		return;
+		return { skipped: true, report: null };
 	}
 	const report = runDoctor(cwd);
 	writeDoctorReport(report, cwd);
@@ -397,4 +414,5 @@ export async function handleDoctor(
 		ctx.ui.notify(summaryLine.slice(0, MAX_NOTIFY_LENGTH) + "\n... [truncated]", "warning");
 	}
 	ctx.ui.notify(`Full report written to ${reportPath}.`, "info");
+	return { skipped: false, report };
 }

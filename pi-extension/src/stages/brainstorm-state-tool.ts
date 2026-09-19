@@ -1,6 +1,7 @@
 /**
  * Brainstorm session tool (Phase 1 of the lifecycle v2 upgrade; v2.1 added
- * request-scan-gate).
+ * request-scan-gate; v1.x added request-extra-scan + confirm-web-dispatch;
+ * v3 added spawn-sessions + close-sessions).
  *
  * The parent LLM drives the brainstorm lifecycle (UNDERSTAND → CONFIRM →
  * scan gate → DISCUSS) through conversation, but the hard-lock state must
@@ -14,9 +15,22 @@
  *     ctx.ui.select/confirm and persists the result. Replaces the
  *     conversational "what scans?" prompt — there is NO default; the
  *     developer always chooses.
+ *   - request-extra-scan (v1.x): re-opens the SCAN picker during DISCUSS for
+ *     scans the developer did not pick at the upfront gate (offers only the
+ *     missing ones; community consent preserved).
+ *   - confirm-web-dispatch (v1.x): per-dispatch consent prompt before each
+ *     web-search-agent call; appends an audit-trail entry to
+ *     state.json:webDispatchConfirmations.
  *   - set-scans: persists the scan kinds (used after request-scan-gate, or
  *     when a programmatic caller wants to skip the picker).
  *   - upsert-question: records one DISCUSS-loop question state change.
+ *   - spawn-sessions (v3): persists the 2 persistent sub-agent session
+ *     handles returned from subagent() calls. Called by the handler (or
+ *     by the parent LLM after it executes the prepared spawn payload).
+ *     Validates both handles are non-empty strings before writing.
+ *   - close-sessions (v3): clears state.activeSubagents. Called by the
+ *     approve-brainstorm command after subagent_interrupt fires on both
+ *     panes (graceful close — Phase 8).
  *
  * The tool is gated on an active brainstorm: velpari's brainstorm is a real
  * stage in the chained stage machine, so "active" means a run exists and
@@ -38,8 +52,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { loadFilesConfig } from "../core/config.js";
 import {
+	appendWebDispatchConsent,
 	confirmUnderstanding,
 	loadState,
+	saveState,
+	setActiveSubagents,
 	setScansSelected,
 	upsertBrainstormQuestion,
 	BRAINSTORM_QUESTION_STATES,
@@ -50,7 +67,11 @@ import {
 } from "../core/state.js";
 import { PATHS } from "../core/constants.js";
 import { buildRunDir } from "../core/paths.js";
-import { runScanGatePicker } from "./brainstorm/scan-gate.js";
+import {
+	runExtraScanPicker,
+	runScanGatePicker,
+	runWebDispatchConsent,
+} from "./brainstorm/scan-gate.js";
 import { syncDecisionsToNotes } from "./brainstorm/notes.js";
 
 export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
@@ -73,19 +94,33 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 			"Update the active brainstorm session during /velpari-brainstorm. Actions: " +
 			"confirm-understanding (after the user confirms your understanding paragraph — releases the hard lock), " +
 			"request-scan-gate (open the mandatory SCAN-gate picker — v2.1: developer always chooses, no default), " +
+			"request-extra-scan (v1.x: re-open the SCAN picker during DISCUSS for scans not yet opted-in), " +
+			"confirm-web-dispatch (v1.x: per-dispatch consent prompt before each web-search-agent call; needs topic), " +
 			"set-scans (persist the scan selection from the scan-plan gate), " +
-			"upsert-question (record one question state change during DISCUSS; reason is required for not-wanted/replaced). " +
+			"upsert-question (record one question state change during DISCUSS; reason is required for not-wanted/replaced), " +
+			"spawn-sessions (v3: persist the 2 persistent sub-agent session handles returned from the AUTOMATIC SPAWN subagent() calls; needs web + docCode strings), " +
+			"close-sessions (v3: clear state.activeSubagents after subagent_interrupt fires on both panes — called by /velpari-approve-brainstorm on graceful close). " +
 			"Returns the updated session snapshot.",
 		parameters: Type.Object({
 			action: Type.Union([
 				Type.Literal("confirm-understanding"),
 				Type.Literal("request-scan-gate"),
+				Type.Literal("request-extra-scan"),
+				Type.Literal("confirm-web-dispatch"),
 				Type.Literal("set-scans"),
 				Type.Literal("upsert-question"),
+				Type.Literal("spawn-sessions"),
+				Type.Literal("close-sessions"),
 			]),
 			scans: Type.Optional(
 				Type.Array(Type.Union(SCAN_TYPES.map((s) => Type.Literal(s))), {
 					description: "Required for set-scans. Empty array = user skipped scans.",
+				}),
+			),
+			topic: Type.Optional(
+				Type.String({
+					description:
+						"Required for confirm-web-dispatch — short topic label for the audit ledger (e.g. 'community patterns for BSE').",
 				}),
 			),
 			question: Type.Optional(
@@ -101,6 +136,18 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					},
 					{ description: "Required for upsert-question." },
 				),
+			),
+			web: Type.Optional(
+				Type.String({
+					description:
+						"v3 spawn-sessions: session handle for the web-research persistent session (typically 'web').",
+				}),
+			),
+			docCode: Type.Optional(
+				Type.String({
+					description:
+						"v3 spawn-sessions: session handle for the doc-code-analyst persistent session (typically 'doc-code').",
+				}),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -159,6 +206,93 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					return okResult(snapshot(next));
 				}
 
+				if (params.action === "request-extra-scan") {
+					// v1.x: re-open the SCAN picker for scans the developer did
+					// NOT pick at the upfront gate. Used during the DISCUSS loop
+					// when the developer mentions community / web / official /
+					// industrial and the active brainstorm has not opted in yet.
+					const config = loadFilesConfig(ctx.cwd);
+					const result = await runExtraScanPicker(
+						ctx as unknown as Parameters<typeof runScanGatePicker>[0],
+						{
+							config,
+							cwd: ctx.cwd,
+							alreadySelected: state.scansSelected ?? [],
+						},
+					);
+					if (result.cancelled) {
+						return okResult({ ...snapshot(state), addedScans: [], cancelled: true });
+					}
+					const merged = Array.from(
+						new Set([...(state.scansSelected ?? []), ...result.scans]),
+					) as ScanType[];
+					const next = setScansSelected(state, merged, ctx.cwd);
+					persistEntry(next);
+					return okResult({
+						...snapshot(next),
+						addedScans: result.scans,
+						cancelled: false,
+						freeform: result.freeform,
+					});
+				}
+
+				if (params.action === "confirm-web-dispatch") {
+					// v1.x: per-dispatch consent for a single web search. Fires
+					// ctx.ui.confirm "This scout will search the public web for:
+					// <topic>. Confirm?" before the parent LLM invokes subagent().
+					// The dispatcher keeps the FR-52 role anchor; the parent LLM
+					// honors the consent result before calling subagent().
+					const topic = (params.topic as string | undefined)?.trim();
+					if (!topic) {
+						return errorResult(
+							"confirm-web-dispatch needs a non-empty topic.",
+						);
+					}
+					const ok = await runWebDispatchConsent(
+						ctx as unknown as Parameters<typeof runScanGatePicker>[0],
+						topic,
+					);
+					if (!ok) {
+						return okResult({ ...snapshot(state), cancelled: true });
+					}
+					const next = appendWebDispatchConsent(state, topic, ctx.cwd);
+					persistEntry(next);
+					return okResult({ ...snapshot(next), cancelled: false });
+				}
+
+				if (params.action === "spawn-sessions") {
+					// v3 — AUTOMATIC SPAWN. Persist the 2 persistent sub-agent
+					// session handles returned from the subagent() calls. The
+					// spawn helper (stages/brainstorm/spawn-sessions.ts) prepares
+					// the subagent() payload; this action lands the result.
+					// Validates both handles are non-empty strings.
+					const web = (params.web as string | undefined)?.trim();
+					const docCode = (params.docCode as string | undefined)?.trim();
+					if (!web || !docCode) {
+						return errorResult(
+							"spawn-sessions needs both `web` and `docCode` non-empty handles.",
+						);
+					}
+					const next = setActiveSubagents(state, { web, docCode }, ctx.cwd);
+					persistEntry(next);
+					return okResult(snapshot(next));
+				}
+
+				if (params.action === "close-sessions") {
+					// v3 — graceful close. Clear state.activeSubagents after
+					// the caller has fired subagent_interrupt on both panes
+					// (typically /velpari-approve-brainstorm). Idempotent —
+					// a no-op when activeSubagents is already undefined.
+					const next: RunState = {
+						...state,
+						activeSubagents: undefined,
+						updatedAt: new Date().toISOString(),
+					};
+					saveState(next, ctx.cwd);
+					persistEntry(next);
+					return okResult(snapshot(next));
+				}
+
 				// upsert-question
 				const question = params.question as BrainstormQuestion | undefined;
 				if (!question || !question.id || !question.text || !question.state) {
@@ -206,6 +340,16 @@ function snapshot(state: RunState) {
 		scansSelected: state.scansSelected ?? [],
 		questions: state.brainstormQuestions ?? [],
 		brainstormDispatchCount: state.brainstormDispatchCount ?? 0,
+		webDispatchConfirmations: state.webDispatchConfirmations ?? [],
+		// v3 — include the 2 persistent sub-agent handles so the parent LLM
+		// can route messages after spawn-sessions lands.
+		activeSubagents: state.activeSubagents
+			? {
+					web: state.activeSubagents.web,
+					docCode: state.activeSubagents.docCode,
+					spawnedAt: state.activeSubagents.spawnedAt,
+				}
+			: null,
 		cancelled: false,
 		freeform: false,
 	};
@@ -213,7 +357,10 @@ function snapshot(state: RunState) {
 
 type Snapshot = ReturnType<typeof snapshot>;
 
-function okResult(state: Snapshot) {
+/** okResult accepts the base snapshot plus action-specific extras
+ *  (`addedScans`, `cancelled`, `freeform`). Kept open so the parent LLM
+ *  gets a useful payload for each action without a hardcoded union. */
+function okResult(state: Snapshot & Record<string, unknown>) {
 	return {
 		content: [{ type: "text" as const, text: JSON.stringify(state, null, 2) }],
 		details: state,

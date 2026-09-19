@@ -200,6 +200,21 @@ export interface BuildStagePromptInput {
 	 * selected tier (ISO/IEC 29110 entry/basic/intermediate/advanced).
 	 */
 	atomicProfile?: AtomicProfile | null;
+	/**
+	 * Optional (v3 brainstorm): active persistent sub-agent session
+	 * handles. When present, renders an `## Active sub-agents` block
+	 * listing the session handle + agent name for each pane. The parent
+	 * LLM uses this block to route messages during the DISCUSS loop:
+	 *
+	 *   subagent({ session: "<handle>", prompt: <user message> })
+	 *
+	 * When absent (legacy one-shot path), the block is omitted.
+	 */
+	activeSubagents?: {
+		web?: string;
+		docCode?: string;
+		spawnedAt?: string;
+	} | null;
 	paths: {
 		/** Ordered list of scout agents (preferred over the legacy hardcoded fields). */
 		scouts?: ScoutSlot[];
@@ -397,7 +412,12 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 	// Atomic profile block (atomic-function stage only — ISO/IEC 29110 + IEC 61508/IEC 62304).
 	const atomicProfileSection = renderAtomicProfile(input.atomicProfile ?? null);
 
-	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, updateModeSection, conditionalSection, inputContentSection, skill]
+	// v3 — Active sub-agents block (brainstorm stage only). Renders when
+	// state.activeSubagents is set so the parent LLM knows the 2 session
+	// handles for routing during the DISCUSS loop.
+	const activeSubagentsSection = renderActiveSubagents(input.activeSubagents ?? null);
+
+	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, activeSubagentsSection, updateModeSection, conditionalSection, inputContentSection, skill]
 		.filter((s) => s.length > 0)
 		.join("\n");
 }
@@ -507,6 +527,47 @@ function renderExistingContext(context: BrainstormExistingContext | null): strin
 	}
 	if (context.history.length > 0) {
 		lines.push(`Run history (this run): ${context.history.join(" → ")}`, ``);
+	}
+	return lines.join("\n");
+}
+
+/**
+ * v3 — Render the `## Active sub-agents` block. When the brainstorm
+ * handler has spawned the 2 persistent sessions, the parent LLM needs
+ * to know the session handles to route messages during the DISCUSS
+ * loop. The block renders when at least one handle is set; absent
+ * handles render as `- (not yet spawned)`.
+ *
+ * Returns "" when the input is null AND the legacy one-shot scan path
+ * is being used (legacy callers pass undefined). Callers who want the
+ * block always rendered (e.g. fresh rehydrate) pass an empty object.
+ */
+function renderActiveSubagents(
+	handles: { web?: string; docCode?: string; spawnedAt?: string } | null,
+): string {
+	if (handles === null) return "";
+	const lines: string[] = [
+		`## Active sub-agents (persistent sessions)`,
+		``,
+		`Two persistent sub-agent sessions were opened at brainstorm step 2`,
+		`(AUTOMATIC SPAWN). They stay alive across the whole brainstorm and`,
+		`the parent LLM routes messages to them by session handle:`,
+		``,
+		`- row 1 right column: web-research      — session: ${handles.web ?? "(not yet spawned)"}`,
+		`- row 2 right column: doc-code-analyst  — session: ${handles.docCode ?? "(not yet spawned)"}`,
+		``,
+		`Routing rules (apply on every user message during DISCUSS):`,
+		`- Web/community/docs topic present     → subagent({ session: "${handles.web ?? "web"}", prompt: <user message> })`,
+		`- PRD/RTM/source-code topic present    → subagent({ session: "${handles.docCode ?? "doc-code"}", prompt: <user message> })`,
+		`- Both topics present                   → 2 parallel subagent() calls (different sessions, allowed)`,
+		`- General/meta question                 → answer directly (no sub-agent call)`,
+		``,
+		`Sub-agent replies are folded back into your context as normal assistant`,
+		`turns. Use them to enrich the brainstorm notes during the DISCUSS loop.`,
+		``,
+	];
+	if (handles.spawnedAt) {
+		lines.push(`Spawned at: ${handles.spawnedAt}`, ``);
 	}
 	return lines.join("\n");
 }

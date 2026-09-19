@@ -1,5 +1,5 @@
 /**
- * /velpari-approve-brainstorm handler (Phase 7 update; FR-58, FR-59, NFR-14;
+ * /velpari-approve-brainstorm handler (Phase 7 update; v3 added graceful close; FR-58, FR-59, NFR-14;
  * lifecycle v2 gated approve).
  *
  * Bespoke by design — Phase B refactor left this handler outside
@@ -15,13 +15,21 @@
  *    replaced). "draft" and "discussing" block.
  * 3. HARD BLOCK: guardNotesContent — every required notes section must exist
  *    and be filled (no missing / empty / `_TBD_` sections).
- * 4. Compute topic-slug from mission (via paths.ts:slugify).
- * 5. Publish to Doc/brainstorm/brainstorm-<topic-slug>.md (grouped, atomic).
+ * 4. v3 — GRACEFUL CLOSE: when state.activeSubagents has both handles,
+ *    send a brief prompt to the parent LLM asking it to fire
+ *    `subagent_interrupt` on both sessions and call
+ *    `velpari_brainstorm_session({ action: "close-sessions" })` to
+ *    persist the cleanup. The prompt is fire-and-forget; the handler
+ *    continues immediately. Pane close is async — state is the source
+ *    of truth and is cleared by clearBrainstormSession at step 8.
+ * 5. Compute topic-slug from mission (via paths.ts:slugify).
+ * 6. Publish to Doc/brainstorm/brainstorm-<topic-slug>.md (grouped, atomic).
  *    If a legacy flat file already exists, preserve it.
- * 6. Write the brainstorm audit log (best-effort — never blocks approve).
- * 7. Transition state: brainstorming -> brainstormed, then clear the
- *    brainstorm session fields so the mutation lock lifts.
- * 8. Notify the user with the next command to run manually
+ * 7. Write the brainstorm audit log (best-effort — never blocks approve).
+ * 8. Transition state: brainstorming -> brainstormed, then clear the
+ *    brainstorm session fields (incl. v3 activeSubagents) so the
+ *    mutation lock lifts and a later re-run starts with a clean ledger.
+ * 9. Notify the user with the next command to run manually
  *    (v1.6.2+ — no auto-chain to /velpari-prd; user runs the next
  *    command by hand so each stage boundary is an explicit, manual
  *    confirm-then-write step).
@@ -58,6 +66,34 @@ import {
 	createAuditSession,
 	writeAuditLog,
 } from "./brainstorm/audit.js";
+
+/**
+ * v3 — Send a brief prompt to the parent LLM asking it to fire
+ * `subagent_interrupt` on each persistent session + persist the close
+ * via the `close-sessions` tool action. Best-effort — failure here does
+ * NOT block approve; state.activeSubagents is cleared synchronously
+ * later in the flow by clearBrainstormSession, which is the source of
+ * truth for the dispatcher.
+ */
+function gracefulClosePrompt(
+	handles: { web?: string; docCode?: string },
+	mission: string,
+): string {
+	const webHandle = handles.web ?? "web";
+	const docCodeHandle = handles.docCode ?? "doc-code";
+	return [
+		`The brainstorm for "${mission}" was just approved.`,
+		``,
+		`Please close the 2 persistent sub-agent sessions now by running:`,
+		``,
+		`1. subagent_interrupt({ session: "${webHandle}" })  — web-research pane`,
+		`2. subagent_interrupt({ session: "${docCodeHandle}" })  — doc-code-analyst pane`,
+		`3. velpari_brainstorm_session({ action: "close-sessions" })`,
+		``,
+		`If subagent_interrupt errors with "session not found", the session`,
+		`already closed — proceed to step 3.`,
+	].join("\n");
+}
 
 export async function handleApproveBrainstorm(
 	ctx: ExtensionCommandContext,
@@ -108,7 +144,16 @@ export async function handleApproveBrainstorm(
 		return;
 	}
 
-	// 5. Compute target path (grouped layout). Append timestamp suffix
+	// 5. v3 — GRACEFUL CLOSE. Snapshot the handles before we proceed
+	// (clearBrainstormSession at step 8 will clear them from state).
+	const subagentsToClose = state.activeSubagents?.web && state.activeSubagents?.docCode
+		? {
+				web: state.activeSubagents.web,
+				docCode: state.activeSubagents.docCode,
+			}
+		: null;
+
+	// 6. Compute target path (grouped layout). Append timestamp suffix
 	//    on re-runs so existing files are preserved (FR-69).
 	const topicSlug = slugify(state.mission);
 	let groupedTarget = join(cwd, buildGroupedBrainstormPath(topicSlug));
@@ -125,7 +170,7 @@ export async function handleApproveBrainstorm(
 		groupedTarget = join(cwd, buildGroupedBrainstormPath(topicSlug, stamp));
 	}
 
-	// 6. Write published copy (grouped). Atomic write via the io layer
+	// 7. Write published copy (grouped). Atomic write via the io layer
 	//    (creates parent dirs itself). Stamp the uniform artifact
 	//    frontmatter first (RTM traceability upgrade, Phase 1).
 	const stamped = withArtifactFrontmatter(content, {
@@ -137,7 +182,7 @@ export async function handleApproveBrainstorm(
 	atomicWriteFile(groupedTarget, stamped, "utf8");
 	ctx.ui.notify(`Published to ${groupedTarget}`, "info");
 
-	// 7. Write the audit log (best-effort — a failed audit write must never
+	// 8. Write the audit log (best-effort — a failed audit write must never
 	//    block approve). Captures the final notes coverage; the dispatch
 	//    decisions live in the parent's session, so wall-clock is 0 here.
 	try {
@@ -156,23 +201,39 @@ export async function handleApproveBrainstorm(
 		// best-effort: audit failures never block approve
 	}
 
-	// 8. Transition state: brainstorming -> brainstormed (via
+	// 9. Transition state: brainstorming -> brainstormed (via
 	//    /velpari-approve-brainstorm). The next stage command
 	//    (/velpari-prd) is NOT auto-invoked — v1.6.2 dropped the
 	//    auto-chain so the user manually confirms each stage boundary.
 	const next = advanceStage(state, "/velpari-approve-brainstorm", cwd, pi);
 	// Clear the brainstorm session fields (understanding confirmed, scans,
-	//    questions, dispatch count) on the advanced state — the mutation lock
-	//    lifts and a later re-run starts with a clean ledger.
+	//    questions, dispatch count, v3 activeSubagents) on the advanced
+	//    state — the mutation lock lifts and a later re-run starts with
+	//    a clean ledger.
 	const cleared = clearBrainstormSession(next, cwd);
 	appendStageEntry(pi, cleared);
 	// v0.5.1 Phase J.2: reflect the brainstorm-approved stage in the footer
 	// status bar via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${cleared.currentStage} | run: ${cleared.runId}`);
 
-	// 9. Show the user the single next command to run by hand.
-	//    No auto-chain: clean, predictable, manual confirm-then-write
-	//    discipline at every stage boundary.
+	// 10. v3 — fire the graceful-close prompt to the parent LLM so the
+	//     2 multiplexer panes get interrupted. Fire-and-forget; the LLM
+	//     processes it on its next turn. State.activeSubagents has
+	//     already been cleared by clearBrainstormSession above, so the
+	//     dispatcher will reject any further routed subagent() calls
+	//     even if the panes are still open.
+	if (subagentsToClose) {
+		try {
+			pi.sendUserMessage(gracefulClosePrompt(subagentsToClose, state.mission));
+		} catch {
+			// Best-effort — the panes stay open until the user closes
+			// them manually. State is the source of truth and is clean.
+		}
+	}
+
+	// 11. Show the user the single next command to run by hand.
+	//     No auto-chain: clean, predictable, manual confirm-then-write
+	//     discipline at every stage boundary.
 	ctx.ui.notify(
 		`Brainstorm notes published. Next: run /velpari-prd to start the PRD stage.`,
 		"info",

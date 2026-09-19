@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerBrainstormSessionTool } from "../../src/stages/brainstorm-state-tool.js";
-import { createRun, loadState } from "../../src/core/state.js";
+import { appendWebDispatchConsent, createRun, loadState } from "../../src/core/state.js";
 
 interface ToolDef {
 	name: string;
@@ -193,5 +193,183 @@ describe("velpari_brainstorm_session tool", () => {
 		const missing = await exec({ action: "upsert-question" });
 		assert.equal(missing.isError, true);
 		assert.match(missing.content[0]!.text, /needs question/);
+	});
+});
+
+describe("velpari_brainstorm_session — v1.x dynamic scan actions", () => {
+	it("request-extra-scan errors when no brainstorm is active", async () => {
+		const res = await exec({ action: "request-extra-scan" });
+		assert.equal(res.isError, true);
+		assert.match(res.content[0]!.text, /\/velpari-brainstorm/);
+	});
+
+	it("request-extra-scan returns empty addedScans when picker is unavailable", async () => {
+		createRun("Test mission", tmpDir);
+		const res = await exec({ action: "request-extra-scan" });
+		assert.equal(res.isError, undefined);
+		const snap = res.details as Record<string, unknown>;
+		assert.deepEqual(snap.addedScans, []);
+		assert.equal(snap.cancelled, true);
+		assert.deepEqual(snap.scansSelected, []);
+		// Cancelled early-return does NOT persist state — scansSelected
+		// stays undefined on disk (state was never written).
+		assert.equal(loadState(tmpDir).scansSelected, undefined);
+		// No session entry on cancel.
+		assert.equal(entries.length, 0);
+	});
+
+	it("confirm-web-dispatch errors when topic is empty or missing", async () => {
+		createRun("Test mission", tmpDir);
+		const empty = await exec({ action: "confirm-web-dispatch", topic: "" });
+		assert.equal(empty.isError, true);
+		assert.match(empty.content[0]!.text, /non-empty topic/);
+
+		const missing = await exec({ action: "confirm-web-dispatch" });
+		assert.equal(missing.isError, true);
+		assert.match(missing.content[0]!.text, /non-empty topic/);
+
+		assert.equal(loadState(tmpDir).webDispatchConfirmations, undefined);
+		assert.equal(entries.length, 0);
+	});
+
+	it("confirm-web-dispatch returns cancelled when confirm is unavailable", async () => {
+		createRun("Test mission", tmpDir);
+		const res = await exec({
+			action: "confirm-web-dispatch",
+			topic: "community patterns for BSE",
+		});
+		assert.equal(res.isError, undefined);
+		const snap = res.details as Record<string, unknown>;
+		assert.equal(snap.cancelled, true);
+		assert.deepEqual(snap.webDispatchConfirmations, []);
+		assert.equal(loadState(tmpDir).webDispatchConfirmations, undefined);
+		// No session entry on cancel.
+		assert.equal(entries.length, 0);
+	});
+
+	it("snapshot exposes webDispatchConfirmations field", async () => {
+		createRun("Test mission", tmpDir);
+		const res = await exec({ action: "confirm-understanding" });
+		const snap = res.details as Record<string, unknown>;
+		assert.ok("webDispatchConfirmations" in snap);
+		assert.deepEqual(snap.webDispatchConfirmations, []);
+	});
+});
+
+describe("appendWebDispatchConsent (core/state.ts helper)", () => {
+	it("appends an entry to the ledger and persists", () => {
+		const run = createRun("Test mission", tmpDir);
+		const next = appendWebDispatchConsent(run, "BSE patterns", tmpDir);
+		assert.equal(next.webDispatchConfirmations?.length, 1);
+		assert.equal(next.webDispatchConfirmations?.[0]?.topic, "BSE patterns");
+		assert.ok(next.webDispatchConfirmations?.[0]?.confirmedAt);
+		assert.deepEqual(loadState(tmpDir).webDispatchConfirmations, next.webDispatchConfirmations);
+	});
+
+	it("dedupes the same topic in the same ISO minute", () => {
+		const run = createRun("Test mission", tmpDir);
+		const a = appendWebDispatchConsent(run, "BSE patterns", tmpDir);
+		const b = appendWebDispatchConsent(a, "BSE patterns", tmpDir);
+		assert.equal(b.webDispatchConfirmations?.length, 1);
+	});
+
+	it("keeps different topics separate and ignores whitespace-only", () => {
+		const run = createRun("Test mission", tmpDir);
+		const a = appendWebDispatchConsent(run, "BSE patterns", tmpDir);
+		const b = appendWebDispatchConsent(a, "ISO standards", tmpDir);
+		const c = appendWebDispatchConsent(b, "   ", tmpDir);
+		assert.equal(c.webDispatchConfirmations?.length, 2);
+		assert.deepEqual(
+			c.webDispatchConfirmations?.map((e: { topic: string }) => e.topic),
+			["BSE patterns", "ISO standards"],
+		);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// v3 — spawn-sessions + close-sessions (Phase 6)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("velpari_brainstorm_session — v3 spawn-sessions / close-sessions", () => {
+	it("spawn-sessions persists both handles to state.activeSubagents", async () => {
+		createRun("Test mission", tmpDir);
+		const result = await exec({ action: "spawn-sessions", web: "web", docCode: "doc-code" });
+		assert.ok(!result.isError);
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.activeSubagents?.web, "web");
+		assert.equal(loaded.activeSubagents?.docCode, "doc-code");
+		assert.ok(loaded.activeSubagents?.spawnedAt);
+	});
+
+	it("spawn-sessions round-trips through snapshot (returned to parent LLM)", async () => {
+		createRun("Test mission", tmpDir);
+		const result = await exec({ action: "spawn-sessions", web: "web", docCode: "doc-code" });
+		assert.ok(!result.isError);
+		const details = result.details as { activeSubagents: { web: string; docCode: string } | null };
+		assert.equal(details.activeSubagents?.web, "web");
+		assert.equal(details.activeSubagents?.docCode, "doc-code");
+	});
+
+	it("spawn-sessions mirrors to pi.appendEntry", async () => {
+		createRun("Test mission", tmpDir);
+		await exec({ action: "spawn-sessions", web: "web", docCode: "doc-code" });
+		assert.ok(entries.length >= 1);
+		const last = entries[entries.length - 1]!;
+		assert.equal(last.customType, "velpari-brainstorm");
+	});
+
+	it("spawn-sessions errors when web is missing", async () => {
+		createRun("Test mission", tmpDir);
+		const result = await exec({ action: "spawn-sessions", docCode: "doc-code" });
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]!.text, /both `web` and `docCode` non-empty/);
+	});
+
+	it("spawn-sessions errors when docCode is missing", async () => {
+		createRun("Test mission", tmpDir);
+		const result = await exec({ action: "spawn-sessions", web: "web" });
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]!.text, /both `web` and `docCode` non-empty/);
+	});
+
+	it("spawn-sessions errors when handles are whitespace-only", async () => {
+		createRun("Test mission", tmpDir);
+		const result = await exec({
+			action: "spawn-sessions",
+			web: "  ",
+			docCode: "doc-code",
+		});
+		assert.equal(result.isError, true);
+	});
+
+	it("spawn-sessions errors when no brainstorm is active", async () => {
+		// No createRun — no state.json.
+		const result = await exec({ action: "spawn-sessions", web: "web", docCode: "doc-code" });
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]!.text, /No active brainstorm/);
+	});
+
+	it("close-sessions clears state.activeSubagents (graceful close)", async () => {
+		createRun("Test mission", tmpDir);
+		await exec({ action: "spawn-sessions", web: "web", docCode: "doc-code" });
+		assert.ok(loadState(tmpDir).activeSubagents);
+
+		const result = await exec({ action: "close-sessions" });
+		assert.ok(!result.isError);
+		assert.equal(loadState(tmpDir).activeSubagents, undefined);
+	});
+
+	it("close-sessions is idempotent when activeSubagents is already undefined", async () => {
+		createRun("Test mission", tmpDir);
+		// No prior spawn-sessions call.
+		const result = await exec({ action: "close-sessions" });
+		assert.ok(!result.isError);
+		assert.equal(loadState(tmpDir).activeSubagents, undefined);
+	});
+
+	it("close-sessions errors when no brainstorm is active", async () => {
+		const result = await exec({ action: "close-sessions" });
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]!.text, /No active brainstorm/);
 	});
 });

@@ -1,32 +1,43 @@
 ---
 name: velpari-brainstorm
-description: Pi-Velpari Brainstorm stage (lifecycle v2.1) — understand the user's request first (conversational UNDERSTAND loop with hard lock), then a mandatory SCAN-gate picker (no default, developer always chooses), then visible read-only scout scans, then an informed DISCUSS loop with a decision ledger, batch confirm, coverage check, and a 3-outcome approve. Writes brainstorm-notes.md + brainstorm-dispatch.md under the run's brainstorm folder.
+description: Pi-Velpari Brainstorm stage (lifecycle v3) — handler fires AUTOMATIC SPAWN first (opens 2 persistent sub-agent sessions: web-research + doc-code-analyst), then UNDERSTAND loop with hard lock, then DISCUSS loop with parent-side routing (parent LLM routes each user message to web / doc-code / both / direct based on topic), then batch confirm, coverage check, and 3-outcome approve (graceful close fires subagent_interrupt on both sessions). Writes brainstorm-notes.md + brainstorm-dispatch.md. The legacy v2.1 SCAN-gate picker is retained as a fallback path for users who prefer the one-shot ephemeral scout flow.
 ---
 
-# Brainstorm Stage (Lifecycle v2.1)
+# Brainstorm Stage (Lifecycle v3)
+
+> **v2.0 — sub-agent generator flag:** run `/velpari-generate-sub-agents --stages=brainstorm` (or `--stages=brainstorm,prd` to also include PRD scouts) once before this stage to populate `.pi/agents/<slug>-{extractor,prd-checker,rtm-checker,web-search-agent,web-research,doc-code-analyst}.md` with project-specific scouts.
 
 A brainstorm is a conversational pass with the user that turns a vague
 request into finalized brainstorm notes BEFORE the PRD stage runs. Velpari
 has ONE mission type: requirements. There are no mission-type branches —
 the lifecycle below is the same for every brainstorm.
 
-The handler has already created the run and handed you the run id and the
-artifact paths. Your job is to run the lifecycle: understand first, scan
-second, ask smart questions third.
+The handler has already created the run, opened the 2 persistent
+sub-agent sessions (AUTOMATIC SPAWN), and handed you the run id, the
+artifact paths, and the 2 session handles. Your job is to run the
+lifecycle: route on every turn, understand first, ask smart questions,
+close gracefully.
 
 ## The golden rule
 
-**Understand first. Scan second. Ask smart questions third.**
+**Route on every turn. Understand first. Confirm second. Close gracefully.**
 
-No subagent, no scan, and no approve may run before the user has confirmed
-your understanding. Parallel agents on a raw seed produce confident
-garbage — the lock exists to prevent exactly that.
+v3 routes each user message to the right sub-agent session based on topic —
+parent LLM is the orchestrator, sub-agents are the persistent specialists.
 
-**v2.1 addition:** the handler now hard-gates on multiplexer presence
-(zellij/tmux/wezterm/cmux). If you started brainstorm without one, the
-command notifies the developer and exits before any state work. There is
-also **no default scan selection** — the SCAN-gate picker ALWAYS asks the
-developer (see [2]).
+**v3 additions:**
+- **AUTOMATIC SPAWN** at step 1: the handler opens 2 persistent sub-agent
+  sessions (web-research + doc-code-analyst) BEFORE UNDERSTAND starts.
+  Both panes stay visible in the multiplexer right column until approve.
+- **No SCAN-gate picker in the default flow.** The legacy v2.1 picker
+  (`velpari_brainstorm_session({ action: "request-scan-gate" })`) is
+  retained as a fallback for users who prefer the one-shot ephemeral
+  scout path. The default v3 flow uses the 2 persistent sessions directly.
+- **Multiplexer is still required** (v2.1): zellij/tmux/wezterm/cmux.
+  Override via `PI_SUBAGENT_MUX` for wrappers/tests.
+- **No subagent before confirming the understanding** — even with
+  persistent sessions live, never dispatch a routed message until
+  `understandingConfirmed` is true.
 
 ## Lifecycle overview
 
@@ -34,28 +45,61 @@ developer (see [2]).
 /velpari-brainstorm "<seed>"
        │  (handler: hard-gate on multiplexer present — zellij/tmux/wezterm/cmux)
        ▼
-[0] UNDERSTAND        chat only, inline reads (1-2 files), NO subagents
+[1] AUTOMATIC SPAWN   handler opens 2 persistent sessions in right column:
+                      - row 1: web-research      (session: "web")
+                      - row 2: doc-code-analyst  (session: "doc-code")
+                      Panes stay alive until approve fires subagent_interrupt.
        ▼
-[1] CONFIRM loop      short paragraph → user agrees or corrects → repeat
+[2] UNDERSTAND        chat only, inline reads (1-2 files); parent reads may
+                      route to web-research/doc-code-analyst if the user's
+                      topic is web- or doc/code-related
+       ▼
+[3] CONFIRM loop      short paragraph → user agrees or corrects → repeat
                       HARD LOCK: nothing below runs until confirmed
        ▼
-[2] SCAN-PLAN GATE    v2.1: ALWAYS asks via runScanGatePicker
-                      5 branches: Run all / Run code+doc / Community only / Adjust / Skip
-                      Config-aware (code-only / doc-only / mixed projects hide unavailable scans)
-       ▼
-[3] SCANS             visible panes, read-only scouts, per scan type
-       ▼
 [4] INFORM            facts + 2-4 questions, each WITH a suggested answer
+                      (web-research and doc-code-analyst findings may inform
+                      this section)
        ▼
 [5] DISCUSS loop ◄────┐ states: draft → discussing → agreed /
        ▼              │              not-wanted(+reason) / replaced
 [6] BATCH CONFIRM ────┘ one structured call, "Discuss more" loops back
+                      On every user message in this loop, ROUTE per topic:
+                      - web topic       → subagent({ session: "web", prompt })
+                      - doc/code topic  → subagent({ session: "doc-code", prompt })
+                      - general/meta    → answer directly
+                      - both topics     → 2 parallel calls (different sessions)
        ▼
 [7] COVERAGE CHECK    automatic ✓/✗ table (show-only)
        ▼
 [8] APPROVE           preview → Go / Clarify / Kill
-                      Go → user runs /velpari-approve-brainstorm → publish → user then runs /velpari-prd (v1.6.2+; no auto-chain)
+                      Go → user runs /velpari-approve-brainstorm → publish
+                          → graceful close fires subagent_interrupt on both panes
+                          → user then runs /velpari-prd (v1.6.2+; no auto-chain)
 ```
+
+## [1] AUTOMATIC SPAWN (handler-driven, parent observes)
+
+The handler fires `spawnPersistentSessions({ cwd, mission, projectName })`
+immediately after `createRun`. This step is NOT something you (the parent
+LLM) drive — it happens in the handler before any LLM call. You just
+OBSERVE the result:
+
+- The handler installs the 2 agent .md files into `.pi/agents/` on first
+  use (idempotent — see the `onInstallNotice` callback in the spawn helper).
+- The handler opens 2 multiplexer panes (right column, stacked):
+  - row 1: `web-research` (session handle: `web`)
+  - row 2: `doc-code-analyst` (session handle: `doc-code`)
+- The handler persists `state.activeSubagents = { web, docCode, spawnedAt }`
+  via `velpari_brainstorm_session({ action: "spawn-sessions", web, docCode })`.
+- Both sessions stay alive for the whole brainstorm. You route messages
+  to them in [5] DISCUSS.
+
+**What you do at this step:** nothing — the handler did it. Verify in the
+rendered prompt that the `## Active sub-agents` block lists both handles.
+If a handle shows `(not yet spawned)`, the spawn failed — surface via
+`ctx.ui.notify` and let the user decide whether to fall back to the
+legacy one-shot path or restart.
 
 ## [0] UNDERSTAND
 
@@ -184,6 +228,64 @@ Normal chat. Per user reply, update question states via `upsert-question`:
 - answer replaced later → `replaced` (strikethrough, old text kept, reason required)
 - new topic raised → new question, state `draft`
 
+### v3 — Routing rules (apply on EVERY user message in this loop)
+
+The 2 persistent sessions are alive. For each user message, decide where
+to route (or whether to answer directly). The decision is per-message;
+sub-agents do NOT auto-receive every turn.
+
+**Route to `session: "web"` (web-research) when the message contains:**
+- web search keywords (community, Stack Overflow, Reddit, GitHub Issues)
+- official-doc references (library docs, language specs, RFC, NIST, ISO,
+  IEC, IEEE, OWASP, W3C)
+- "how do other projects handle X" / "standard practice for X" / "what does
+  the community say about X"
+- external-source signals ("according to <some external source>",
+  "in the official docs", "the RFC says")
+
+**Route to `session: "doc-code"` (doc-code-analyst) when the message contains:**
+- existing PRD / RTM / brainstorm-note references (FR-NN, NFR-NN, US-NN,
+  HF-NN, ERR-NN, DATA-NN, SM-NN, file paths under `Doc/`)
+- existing source-code references (file paths under `pi-extension/src/`
+  or the project's main source tree, symbol names, line numbers)
+- "what does our <file/code/section> do" / "do we already have <X>" /
+  "is there an existing <pattern>"
+
+**Answer directly (no sub-agent call) when the message is:**
+- general / meta questions about the brainstorm flow itself
+- confirmation replies ("yes", "agreed", "looks good")
+- corrections to your last assistant message
+- questions about a sub-agent's reply that you can answer from context
+
+**Both topics present (rare):** issue 2 parallel `subagent()` calls in
+the same turn — one to `session: "web"`, one to `session: "doc-code"`.
+This is allowed (different sessions, not the same handle twice).
+
+**Call shape for every routed message:**
+
+```
+subagent({
+  agent: "<agent-name>",
+  session: "<web | doc-code>",
+  prompt: "<user message verbatim, plus any context the agent needs>",
+})
+```
+
+The `## Active sub-agents` block in the rendered prompt lists the agent
+names + session handles — read it before dispatching.
+
+**How sub-agent replies are handled:**
+- The reply arrives as a normal assistant turn in your context (folded
+  back automatically by the harness). Treat it as input to your own
+  next reply.
+- If the sub-agent says "Not a web research question" or "Not a doc/code
+  analysis question" — that's their way of saying the message doesn't
+  match their scope. You handle it directly.
+- Do NOT keep routing the same message multiple times. One route per
+  message.
+- If the user asks a follow-up on the same topic, route it to the SAME
+  session — the sub-agent has accumulated context.
+
 Hard rules:
 
 - **Decisions are written to the notes IMMEDIATELY** — the session tool
@@ -193,8 +295,17 @@ Hard rules:
 - **Rejected decisions are kept with their reason.** "Deferred, not
   forgotten": the PRD stage must know what the user refused, or it will
   suggest it again.
-- Mid-loop research: resume the earlier subagent session (never cold-spawn
-  the same scout twice). Counts against the dispatch caps.
+- **v1.x — legacy fallback.** If the user is on the legacy one-shot
+  scan path (no persistent sessions), use the v1.x tool actions:
+  1. `velpari_brainstorm_session({ action: "request-extra-scan" })`
+  2. `velpari_brainstorm_session({ action: "confirm-web-dispatch",
+     topic: "<short label>" })`
+- Mid-loop research on the v3 persistent path: route to the same session
+  (never cold-spawn a new web-research session for the same topic — the
+  persistent one has the context). No cap — repeat as needed.
+- Mid-loop research on the legacy v1.x path: resume the earlier subagent
+  session (never cold-spawn the same scout twice). Caps were removed in
+  v1.x; the developer decides when to stop.
 - Extra questions are allowed ONLY when a scan or the discussion found
   something real (a conflict, a risk, a new option). No filler questions.
 
@@ -271,17 +382,23 @@ First show the preview gate: a short summary of the finished notes (never
 paste the whole file into chat), then ONE AskUserQuestion:
 
 > "Brainstorm ready. Publish?"
-> - Go — publish and chain into PRD
+> - Go — publish (graceful close fires subagent_interrupt on both panes)
 > - Clarify — back to discussion
 > - Kill — drop this brainstorm (reason logged)
 
 - **Go** → tell the user: "Run /velpari-approve-brainstorm to publish."
   The command hard-blocks if understanding is unconfirmed, any question is
   still draft/discussing, or any notes section is missing/empty/`_TBD_`.
-  On success it publishes `Doc/brainstorm/brainstorm-<topic-slug>.md`,
-  writes the dispatch audit log, clears the session fields, advances the
-  stage, and surfaces a `Next: /velpari-prd` hint. The user runs the next
-  command by hand (v1.6.2+ — no auto-chain).
+  On success it:
+    1. Fires `subagent_interrupt` on both persistent sessions
+       (`session: "web"`, `session: "doc-code"`) to close the panes.
+    2. Writes accumulated sub-agent findings into the brainstorm notes.
+    3. Publishes `Doc/brainstorm/brainstorm-<topic-slug>.md`.
+    4. Writes the dispatch audit log.
+    5. Clears the session fields (including `state.activeSubagents`).
+    6. Advances the stage.
+    7. Surfaces a `Next: /velpari-prd` hint. The user runs the next
+       command by hand (v1.6.2+ — no auto-chain).
 - **Clarify** → back to [5] with new draft questions.
 - **Kill** → record the reason in the notes (`## Not wanted`), then tell
   the user the run can be discarded with `/velpari-reset`. A rejected

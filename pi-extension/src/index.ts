@@ -10,7 +10,10 @@
  *   - registerHooks(pi)     — Pi lifecycle hooks, one file per event (hooks/, L2)
  *   - registerVelpariStatusRenderer(pi) — velpari-status entry renderer (ui/, L2)
  *   - Keyboard shortcuts (Ctrl+Shift+V / Ctrl+Shift+R)
- *   - CLI flags (--velpari-skip-doctor, --velpari-stage)
+ *   - CLI flags (--velpari-skip-doctor, --velpari-stage, --velpari-fix)
+ *
+ * --velpari-fix (v1.4.0): opt-in for the doctor interactive fix
+ * picker. Wired through commands/doctor.ts:registerDoctorCommand.
  *
  * Verified architecture (commit 1b227bc):
  * - Peer dep: @earendil-works/pi-coding-agent
@@ -79,5 +82,15 @@ export default function (pi: ExtensionAPI) {
 	pi.registerFlag("velpari-stage", {
 		description: "Override current stage (testing)",
 		type: "string",
+	});
+	// v1.4.0 / Phase 8 Level A: opt-in interactive fix picker. When set
+	// and /velpari-doctor finds actionable items, commands/doctor.ts
+	// shows a picker (ui/fix-picker.ts) and dispatches via
+	// doctor/fix-dispatch.ts. Default off — existing behavior unchanged.
+	pi.registerFlag("velpari-fix", {
+		description:
+			"After /velpari-doctor, show an interactive picker for actionable items and dispatch the chosen one to the parent LLM.",
+		type: "boolean",
+		default: false,
 	});
 }

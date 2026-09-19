@@ -145,3 +145,96 @@ describe("buildStagePrompt — existing project context block", () => {
 		assert.ok(contextIdx >= 0 && answersIdx > contextIdx);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// v3 — Active sub-agents block (Phase 5)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildStagePrompt — Active sub-agents block (v3)", () => {
+	it("renders ## Active sub-agents when both handles are set", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			activeSubagents: {
+				web: "web",
+				docCode: "doc-code",
+				spawnedAt: "2026-09-19T08:46:00.000Z",
+			},
+		});
+		assert.match(prompt, /## Active sub-agents/);
+		assert.match(prompt, /session: web/);
+		assert.match(prompt, /session: doc-code/);
+		assert.match(prompt, /web-research/);
+		assert.match(prompt, /doc-code-analyst/);
+	});
+
+	it("renders routing rules (web / doc-code / both / direct)", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			activeSubagents: { web: "web", docCode: "doc-code" },
+		});
+		assert.match(prompt, /Routing rules/);
+		assert.match(prompt, /Web\/community\/docs topic present/);
+		assert.match(prompt, /PRD\/RTM\/source-code topic present/);
+		assert.match(prompt, /2 parallel subagent\(\) calls/);
+		assert.match(prompt, /answer directly/);
+	});
+
+	it("renders '(not yet spawned)' when one handle is missing", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			activeSubagents: { web: "web" }, // docCode missing
+		});
+		assert.match(prompt, /## Active sub-agents/);
+		assert.match(prompt, /session: web/);
+		assert.match(prompt, /session: \(not yet spawned\)/);
+	});
+
+	it("omits the block when activeSubagents is null (legacy one-shot path)", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			activeSubagents: null,
+		});
+		// Use a distinctive phrase unique to the rendered block — the skill
+		// body mentions "Active sub-agents" and "routing rules" in prose.
+		assert.ok(!prompt.includes("row 1 right column"));
+	});
+
+	it("omits the block when activeSubagents is undefined (default)", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			// activeSubagents omitted entirely
+		});
+		assert.ok(!prompt.includes("row 1 right column"));
+	});
+
+	it("includes spawnedAt when provided", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			activeSubagents: {
+				web: "web",
+				docCode: "doc-code",
+				spawnedAt: "2026-09-19T08:46:00.000Z",
+			},
+		});
+		assert.match(prompt, /Spawned at: 2026-09-19T08:46:00.000Z/);
+	});
+
+	it("places the block AFTER Flags/Scan Plan and BEFORE the skill content", () => {
+		const prompt = buildStagePrompt({
+			...baseInput(),
+			understandingConfirmed: true,
+			scansSelected: ["code"],
+			scanPlanLines: formatScanPlanLines(["code"]),
+			activeSubagents: { web: "web", docCode: "doc-code" },
+		});
+		const scanPlanIdx = prompt.indexOf("## Scan Plan");
+		const subagentsIdx = prompt.indexOf("## Active sub-agents");
+		// Skill content is the last block — find it by looking for a
+		// distinctive phrase from velpari-brainstorm.md (the "golden rule").
+		const skillIdx = prompt.indexOf("Route on every turn");
+
+		assert.ok(scanPlanIdx >= 0);
+		assert.ok(subagentsIdx > scanPlanIdx);
+		assert.ok(skillIdx > subagentsIdx);
+	});
+});
