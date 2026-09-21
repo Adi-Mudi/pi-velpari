@@ -2,9 +2,9 @@ name: test
 
 on:
   push:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB]
   pull_request:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB]
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
@@ -36,6 +36,12 @@ jobs:
 
       - name: Build + unit tests
         run: npm test
+
+      # DB-primary storage (Phase 1) — cheap integrity insurance on the
+      # store databases produced by the unit tests. Full integrity_check
+      # becomes a doctor SQL check in the Phase 7 doctor rewrite.
+      - name: SQLite quick_check on store DBs
+        run: node scripts/sqlite-quick-check.mjs
 
       # Phase 7 — coverage gate. Statement coverage must stay ≥ 92% (we're at
       # 94.40% post-Phase-6). The 2-point buffer prevents false-fail on
