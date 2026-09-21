@@ -17,6 +17,14 @@
  * §7–§9. The grouped layout keeps Doc/ organized by document family so
  * brainstorms do not collide with requirements, and so each artifact can
  * have many siblings (e.g. brainstorm + multiple brainstorm re-runs).
+ *
+ * 3. **Store (DB-primary) paths** (G10/RES-4, LOCKED):
+ *    `buildStoreDbPath(projectName)` → `Doc/store/<project>/index.db`.
+ *    `buildStoreYamlPath(projectName, artifact)` → the YAML sidecar beside it.
+ *    Per-project silo (Q5): the directory IS the project key — no project_id
+ *    inside the DB. DB committed raw (D7); YAML sidecar = reviewable diff
+ *    (RES-1). Phase 2 defines the layout; Phase 3's Store API is the first
+ *    consumer.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -274,6 +282,48 @@ export function resolveBrainstormArtifact(
 	} catch {
 		return null;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Store (DB-primary) paths (G10/RES-4 — LOCKED layout, Phase 2).
+// ---------------------------------------------------------------------------
+
+/**
+ * The locked store folder under Doc/ (RES-4 Choice A). Every project's
+ * SQLite store lives at `Doc/store/<projectName>/index.db`.
+ */
+export const STORE_DB_DIR = "Doc/store";
+
+/**
+ * Build the store DB path for a project (G10/RES-4, LOCKED).
+ * Example: buildStoreDbPath("TodoApp", cwd)
+ *   === "<cwd>/Doc/store/TodoApp/index.db".
+ *
+ * Per-project silo (Q5): the directory IS the project key — the DB itself
+ * carries no project_id. The DB is committed raw (D7).
+ */
+export function buildStoreDbPath(projectName: string, cwd: string = process.cwd()): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	return join(cwd, STORE_DB_DIR, safeProject, "index.db");
+}
+
+/**
+ * Build the YAML sidecar path for a store artifact (RES-1).
+ * The sidecar lands beside the DB so each publish produces a
+ * reviewable, git-friendly diff next to the raw committed `index.db`
+ * (D7). Consumed from Phase 4 on; the locked layout is defined and
+ * tested here so the location never drifts.
+ * Example: buildStoreYamlPath("TodoApp", "PRD", cwd)
+ *   === "<cwd>/Doc/store/TodoApp/PRD_TodoApp.yaml".
+ */
+export function buildStoreYamlPath(
+	projectName: string,
+	artifact: string,
+	cwd: string = process.cwd(),
+): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
+	return join(cwd, STORE_DB_DIR, safeProject, `${safeArtifact}_${safeProject}.yaml`);
 }
 
 /**

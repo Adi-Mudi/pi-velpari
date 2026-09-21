@@ -10,17 +10,20 @@
 //   G3    — downgrade protection: refuse to open a DB written by a newer
 //           extension (user_version > highest registered migration).
 //
-// Storage location (G10, LOCKED): Doc/store/<projectName>/index.db — wired
-// in Phase 2 via core/paths.ts; openStoreDb stays path-agnostic.
+// Storage location (G10, LOCKED): Doc/store/<projectName>/index.db — path
+// helpers live in core/paths.ts (buildStoreDbPath); openStoreDb stays
+// path-agnostic.
 //
 // Migrations: sequential, forward-only, stamped via PRAGMA user_version
 // (§11 governance). v000 = identity (verifies PRAGMA set, creates nothing).
-// Schema DDL ships as v001 in Phase 2.
+// v001 = core schema DDL (io/db-schema.ts): metadata envelope + 9 §5
+// row-sets + links adjacency (Phase 2).
 // ============================================================================
 
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { SCHEMA_V001_DDL } from "./db-schema.js";
 
 /** A single forward-only migration step. */
 export interface Migration {
@@ -50,6 +53,13 @@ export const MIGRATIONS: readonly Migration[] = [
 					`io/db: expected WAL journal mode, got '${mode.journal_mode}'`,
 				);
 			}
+		},
+	},
+	{
+		version: 1,
+		name: "core schema — metadata envelope, 9 artifact row-sets, links adjacency",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V001_DDL);
 		},
 	},
 ];
@@ -111,7 +121,10 @@ export function migrate(db: DatabaseSync): void {
 		db.exec("BEGIN IMMEDIATE;");
 		try {
 			migration.up(db);
-			db.prepare("PRAGMA user_version = ?").run(migration.version);
+			// PRAGMA statements cannot take bound parameters in SQLite —
+			// interpolate the internal version number (always an integer
+			// literal from MIGRATIONS, never user input).
+			db.exec(`PRAGMA user_version = ${migration.version}`);
 			db.exec("COMMIT;");
 			at = migration.version;
 		} catch (err) {
