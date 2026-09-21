@@ -13,9 +13,10 @@
  *   4. guardDispatchCount      — refuse dispatch beyond the per-brainstorm cap.
  *   5. guardApproveReadiness   — hard-lock approve until understanding is
  *                                confirmed and every question is terminal.
- *   5b. guardStageForBrainstorm — refuse re-running /velpari-brainstorm when
- *                                the run has already advanced past brainstorming.
- *                                v2.2: brainstorm is single-shot per run.
+ *   5b. guardStageForBrainstorm — refuse re-running /velpari-brainstorm while
+ *                                a brainstorm session is already open (nested
+ *                                open). Any other stage may open a brainstorm
+ *                                (brainstorm-anytime).
  *   6. guardBrainstormMutation — hard-block edit/write outside the run's
  *                                brainstorm folder while a brainstorm is open.
  *
@@ -26,7 +27,6 @@
  */
 
 import { resolve, relative, isAbsolute, sep } from "node:path";
-import { nextCommandsFor } from "../../core/constants.js";
 import { buildRunDir } from "../../core/paths.js";
 import type { RunState } from "../../core/state.js";
 import {
@@ -37,7 +37,7 @@ import {
 
 /** Result type returned by every guard. `ok: true` means proceed;
  *  `ok: false` means block, with a human-readable reason. */
-export interface GuardResult {
+interface GuardResult {
 	ok: boolean;
 	reason?: string;
 	/** Optional structured details — used by tests + doctor to surface specifics. */
@@ -198,34 +198,23 @@ export function guardApproveReadiness(state: RunState): GuardResult {
  *  5b. Stage guard at /velpari-brainstorm entry (v2.2)
  *  ────────────────────────────────────────────────────────────────────── */
 
-/** Hard-block `/velpari-brainstorm` when the run has already advanced past
- *  the brainstorming stage. The brainstorm stage is single-shot per run:
- *  re-running on a later stage silently reuses the existing runId and lets
- *  the parent LLM drift into later stages thinking it is still
- *  brainstorming. The fix is a stage check: only `none` (fresh) and
- *  `brainstorming` (resume) are allowed. Anything else means the previous
- *  brainstorm was approved or the run has moved on, and the correct next
- *  step is the next-stage command — not another brainstorm.
- *
- *  Names the next command via `nextCommandsFor` so the error tells the
- *  developer exactly what to run. Includes a `/velpari-reset` hint so
- *  developers know how to discard the current run when they really do
- *  want a fresh brainstorm. */
+/** Hard-block `/velpari-brainstorm` only when a brainstorm session is
+ *  already open (nested open). Brainstorm-anytime: from any other stage the
+ *  command pauses the current stage (`openBrainstormSession`) and opens a
+ *  brainstorm session; from `none` it starts a fresh run. An open session is
+ *  closed by approve (`/velpari-approve-brainstorm`) or discard
+ *  (`velpari_brainstorm_session({ action: "discard" })`) — never by starting
+ *  another brainstorm on top of it. */
 export function guardStageForBrainstorm(state: RunState): GuardResult {
-	if (state.currentStage === "none" || state.currentStage === "brainstorming") {
+	if (state.currentStage !== "brainstorming") {
 		return { ok: true };
 	}
-	const nextCommands = nextCommandsFor(state.currentStage);
-	const nextHint = nextCommands.length === 1
-		? `Run ${nextCommands[0]} next.`
-		: `Run one of: ${nextCommands.join(", ")}.`;
 	return {
 		ok: false,
 		reason:
-			`Brainstorm cannot start from stage "${state.currentStage}".\n` +
-			`${nextHint}\n` +
-			`(Use /velpari-reset to discard the current run and start a fresh brainstorm.)`,
-		details: [state.currentStage, ...nextCommands],
+			"A brainstorm is already open — approve or discard it before starting a new one.\n" +
+			"Run /velpari-approve-brainstorm to publish it, or discard it via velpari_brainstorm_session({ action: \"discard\" }).",
+		details: [state.currentStage],
 	};
 }
 
@@ -238,9 +227,14 @@ export function guardStageForBrainstorm(state: RunState): GuardResult {
  *  brainstorm stage is read-only for the project — the only allowed writes
  *  live under `.IDE_Plans/velpari/runs/<runId>/brainstorm/`.
  *
+ *  Brainstorm-anytime (D4): "open" includes a session opened from a paused
+ *  stage (pausedStage set) — this lock then owns ALL edit/write gating,
+ *  including writes to the paused stage's folder, and the stage-folder
+ *  lock (hooks/tool-call.ts:guardStageMutation) is suppressed.
+ *
  *  Lifts automatically when no brainstorm is active (no runId, or the stage
- *  advanced past "brainstorming" — approve releases the lock). Bash is
- *  intentionally NOT gated (no reliable target path).
+ *  advanced past "brainstorming" — approve/discard releases the lock). Bash
+ *  is intentionally NOT gated (no reliable target path).
  *
  *  Returns the pi tool_call block shape ({ block, reason }) or undefined to
  *  allow. Pure — the caller (hook) loads state and passes it in. */

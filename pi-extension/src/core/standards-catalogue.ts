@@ -26,7 +26,7 @@ export interface CatalogueOverlay {
 	inferenceSignals: string[];
 }
 
-export interface StandardsCatalogue {
+interface StandardsCatalogue {
 	version: string;
 	overlays: CatalogueOverlay[];
 }
@@ -35,7 +35,7 @@ export interface StandardsCatalogue {
  * Default location of the catalogue (relative to the extension's cwd).
  * For tests, the caller passes an absolute `cataloguePath`.
  */
-export const DEFAULT_CATALOGUE_PATH = ["skills", "standards", "catalogue.json"] as const;
+const DEFAULT_CATALOGUE_PATH = ["skills", "standards", "catalogue.json"] as const;
 
 export function cataloguePath(cwd: string): string {
 	return join(cwd, ...DEFAULT_CATALOGUE_PATH);

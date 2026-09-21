@@ -41,7 +41,7 @@ read 4 reports
 build RTM rows from consolidator's report
         │
         ▼
-write working copy <workingCopy> — JSON sidecar FIRST (source of truth),
+write working copy <workingCopy> — YAML sidecar FIRST (source of truth),
 then the markdown preview generated from it
         │
         ▼
@@ -127,38 +127,34 @@ After all 4 scouts complete:
 1. Read the consolidator's report — it has the consolidated rows.
 2. (Optional, if gaps remain) Use `AskUserQuestion` to ask 1-3 follow-up
    questions. Cap iterations at 3 rounds.
-3. Build the RTM **JSON sidecar** from the rows (schema in "Output Format"
-   below) and write it to `<workingCopy>` with a `.json` extension
-   (`RTM_<projectName>.json`). The JSON is the source of truth.
-4. Render the markdown table FROM the JSON and write it to `<workingCopy>`
+3. Build the RTM **YAML sidecar** from the rows (schema in "Output Format"
+   below) and write it to `<workingCopy>` with a `.yaml` extension
+   (`RTM_<projectName>.yaml`). The YAML is the source of truth. (A legacy
+   `.json` sidecar is still accepted on read — writes are always `.yaml`.)
+4. Render the markdown table FROM the YAML and write it to `<workingCopy>`
    (`RTM_<projectName>.md`) the publish gate
-   re-generates the published markdown from the JSON — the published table
+   re-generates the published markdown from the YAML — the published table
    is always derived from the data, never from hand-written markdown.
 
 ## Output Format
 
 Write TWO working-copy files at `<workingCopy>`:
 
-### File 1: `RTM_<projectName>.json` — source of truth
+### File 1: `RTM_<projectName>.yaml` — source of truth
 
-```json
-{
-  "project": "<projectName>",
-  "version": "1.0.0",
-  "rows": [
-    {
-      "id": "FR-1",
-      "title": "<requirement title>",
-      "phase": 1,
-      "design": "<module.fn or empty string>",
-      "implementation": "<HF-NN or empty string>",
-      "tests": ["TC-1", "TC-2"],
-      "status": "proposed",
-      "coverage": "covered"
-    }
-  ],
-  "changeLog": []
-}
+```yaml
+project: <projectName>
+version: 1.0.0
+rows:
+  - id: FR-1
+    title: <requirement title>
+    phase: 1
+    design: "<module.fn or empty string>"
+    implementation: "<HF-NN or empty string>"
+    tests: [TC-1, TC-2]
+    status: proposed
+    coverage: covered
+changeLog: []
 ```
 
 Rules: `phase` is a positive integer copied from the PSRS Phase column for
@@ -173,7 +169,7 @@ publish on errors.
 
 ### File 2: `RTM_<projectName>.md` — rendered preview
 
-Render the markdown FROM the JSON (approve re-renders it at publish time):
+Render the markdown FROM the YAML (approve re-renders it at publish time):
 
 ```markdown
 ---
@@ -262,11 +258,12 @@ The 4 scouts still run fresh — never reuse old scout reports. Instruct
 each scout to diff the baseline RTM against the revised PRD and report
 add / modify / deprecate proposals.
 
-When a published `RTM_<projectName>.json` sidecar exists, it is the
-baseline of record: apply the revision to the JSON rows (append-only IDs,
-deprecate-don't-delete with a `reason`, version bump, new rows start
-`proposed`) and add a `changeLog` entry. the publish gate verifies all
-four rules against the published JSON and blocks on violations.
+When a published `RTM_<projectName>.yaml` sidecar exists (legacy `.json`
+also resolves), it is the baseline of record: apply the revision to the
+sidecar rows (append-only IDs, deprecate-don't-delete with a `reason`,
+version bump, new rows start `proposed`) and add a `changeLog` entry. The
+publish gate verifies all four rules against the published sidecar and
+blocks on violations.
 
 ## Publish (auto on working-copy ready)
 

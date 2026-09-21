@@ -28,6 +28,7 @@ import { registerAgentCommands } from "./configure-agents.js";
 import { registerGenerateSubAgentsCommand } from "./generate-sub-agents.js";
 import { registerDoctorCommand } from "./doctor.js";
 import { registerHandoffCommand } from "./handoff.js";
+import { registerReconfirmCommand } from "./reconfirm.js";
 import { registerDesignLoggingCommand } from "./design-logging.js";
 import { registerPrdRtmCommand } from "./prd-rtm.js";
 import { registerShowBrainstormCommand } from "./show-brainstorm.js";
@@ -40,7 +41,7 @@ import { registerShowTestplanCommand } from "./show-testplan.js";
 import { registerShowLoggingCommand } from "./show-logging.js";
 
 /**
- * All 40 user-facing commands. v1.6.0 replaced the generic
+ * All 41 user-facing commands. v1.6.0 replaced the generic
  * `the publish tool` command (which the parent LLM invokes via the
  * `velpari_stage_publish` tool during preview-yes) with 9 per-stage
  * `/velpari-<stage>-approve` fall-back commands for stages 2–10. Brainstorm
@@ -53,6 +54,8 @@ import { registerShowLoggingCommand } from "./show-logging.js";
  * /velpari-show-logging (view). The previous 30-command baseline came
  * from /velpari-generate-sub-agents (Phase 8) on top of the
  * 29-command baseline (see CHANGELOG.md for the v1.0 entry).
+ * A5 added /velpari-reconfirm (the 41st command — stale-set re-confirm
+ * path, spec 02:92-100).
  *
  * /velpari-final-design (renamed from /velpari-html-design on 2026-09-14;
  * today produces Doc/design/final-design_<project>.md, not actual HTML) and
@@ -83,7 +86,7 @@ export const COMMAND_NAMES = [
 	"velpari-testplan-approve",
 	"velpari-development-order-approve",
 	"velpari-final-design-approve",
-	// Discipline commands (12 — v1.4.0 added /velpari-design-logging)
+	// Discipline commands (13 — A5 added /velpari-reconfirm)
 	"velpari-approve-brainstorm",
 	"velpari-status",
 	"velpari-reset",
@@ -96,6 +99,8 @@ export const COMMAND_NAMES = [
 	"velpari-doctor",
 	"velpari-handoff",
 	"velpari-design-logging",
+	// Discipline — A5 re-confirm path (41st command)
+	"velpari-reconfirm",
 	// Wrapper command (1)
 	"velpari-prd-rtm",
 	// View commands (8 — v1.4.0 added /velpari-show-logging)
@@ -137,7 +142,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerTestplanApproveCommand(pi);
 	registerDevelopmentOrderApproveCommand(pi);
 	registerFinalDesignApproveCommand(pi);
-	// Discipline commands (12 — v1.4.0 added /velpari-design-logging)
+	// Discipline commands (13 — A5 added /velpari-reconfirm)
 	registerApproveBrainstormCommand(pi);
 	registerStatusCommand(pi);
 	registerResetCommand(pi);
@@ -148,6 +153,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerDoctorCommand(pi);
 	registerHandoffCommand(pi);
 	registerDesignLoggingCommand(pi);
+	registerReconfirmCommand(pi);
 	// Agent commands (2 — one file registers both)
 	registerAgentCommands(pi);
 	// Wrapper command (1)

@@ -19,7 +19,7 @@
  * have many siblings (e.g. brainstorm + multiple brainstorm re-runs).
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
 
 /**
@@ -310,36 +310,4 @@ export function findPackageRoot(startDir: string): string {
  */
 export function hasPublishedFeasibility(cwd: string, projectName: string): boolean {
 	return resolveDocArtifact("feasibility-study", projectName, cwd) !== null;
-}
-
-/**
- * Phase 4 of reviewer plan — resolve the path to the reviewer verdict JSON
- * the reviewer sub-agent wrote for the latest atomic-function run. Walks
- * the runs directory; picks the most recent `<runId>/atomic-function/scouts/reviewer-report.json`.
- *
- * Returns null when no reviewer verdict exists yet (gate consumes null
- * → surfaces a clear "Reviewer did not run" error).
- */
-export function resolveReviewerVerdictPath(cwd: string): string | null {
-	const runsRoot = join(cwd, ".IDE_Plans", "velpari", "runs");
-	if (!existsSync(runsRoot)) return null;
-	let entries: string[];
-	try {
-		entries = readdirSync(runsRoot).filter((e) => {
-			try {
-				return statSync(join(runsRoot, e)).isDirectory();
-			} catch {
-				return false;
-			}
-		});
-	} catch {
-		return null;
-	}
-	if (entries.length === 0) return null;
-	entries.sort().reverse(); // newest run id first (YYYY-MM-DD-HH-MM-* lexicographic)
-	for (const runId of entries) {
-		const candidate = join(runsRoot, runId, "atomic-function", "scouts", "reviewer-report.json");
-		if (existsSync(candidate)) return candidate;
-	}
-	return null;
 }

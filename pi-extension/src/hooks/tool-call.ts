@@ -4,10 +4,14 @@
  * Guards (all fail open on error — a guard bug must never wedge edits):
  *
  *   1. Brainstorm mutation lock (stages/brainstorm/guard.ts): while a
- *      brainstorm is open, edit/write outside the run's brainstorm folder
- *      is blocked. Runs first; unchanged behavior.
+ *      brainstorm is open (currentStage === "brainstorming", with or
+ *      without pausedStage), edit/write outside the run's brainstorm
+ *      folder is blocked. Runs first and WINS over the stage lock
+ *      (D4 precedence) — the stage lock is suppressed for the whole
+ *      session, including writes to the paused stage's folder.
  *   2. Stage mutation lock: while any stage draft is in progress
- *      (STAGE_FOLDERS), edit/write outside that stage's run folder is
+ *      (STAGE_FOLDERS) and no brainstorm is open, edit/write outside
+ *      that stage's run folder is
  *      blocked. The working copy may only be written inside
  *      `<runDir>/<stage>/`; publishing happens exclusively via
  *      the publish tool (Doc/ is NOT exempt).
@@ -35,6 +39,13 @@ import { guardBrainstormMutation } from "../stages/brainstorm/guard.js";
  * in-progress stage listed in STAGE_FOLDERS, block edit/write tool calls
  * whose target path is outside `<runDir>/<folder>/`. Reads stay free.
  * Returns the pi tool_call block shape or undefined to allow.
+ *
+ * D4 precedence: while a brainstorm session is open (currentStage ===
+ * "brainstorming", with or without pausedStage), the brainstorm-folder
+ * lock owns ALL edit/write gating and this lock is suppressed. (Today
+ * "brainstorming" is absent from STAGE_FOLDERS so the early return is
+ * defensive — it keeps the precedence explicit if the folder map ever
+ * changes.)
  */
 export function guardStageMutation(
 	toolName: string,
@@ -44,6 +55,7 @@ export function guardStageMutation(
 ): { block: true; reason: string } | undefined {
 	if (toolName !== "edit" && toolName !== "write") return undefined;
 	if (!state.runId) return undefined;
+	if (state.currentStage === "brainstorming") return undefined; // D4 precedence
 	const folder = STAGE_FOLDERS[state.currentStage];
 	if (!folder) return undefined;
 
@@ -65,7 +77,7 @@ export function guardStageMutation(
  * call must declare the scout's report path (a `-report.json` file) in its
  * task text. Blocks spawns that would produce no verifiable report.
  */
-export function guardScoutSpawn(
+function guardScoutSpawn(
 	toolName: string,
 	input: Record<string, unknown> | undefined,
 	state: RunState,

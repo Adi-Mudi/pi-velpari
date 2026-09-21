@@ -1,13 +1,24 @@
 /**
- * /velpari-generate-sub-agents command (L3 — Phase 5 + Phase 6).
+ * /velpari-generate-sub-agents command (L3) — generator v2, per-phase.
  *
- * Combines the UX flow (3-question interview → scan-gate consent → preview
- * → ONE confirm → write + agents.json merge) with the slash-command wiring.
+ * Combines the UX flow (shrunk interview → resource match → preview →
+ * ONE confirm → write + agents.json merge) with the slash-command wiring.
+ *
+ * Per-phase model (spec Doc/velpari-sequence/05-sub-agent-generation.md):
+ * the phase is auto-detected from the run's current stage
+ * (`phaseForStage(state.currentStage)`) with a `--phase N` override.
+ * Phase 1 keeps the hand-authored brainstorm role table; Phases 2–4
+ * assemble role definitions from the bundled `skills/agents/<role>.md`
+ * templates (`scoutTemplateRoleDef`) so the real scout contract survives
+ * into the generated copy. Project context comes from published `Doc/`
+ * artifacts only (`loadProjectContext`, sidecar-first). The interview
+ * asks only what is not already on disk (feasibility decision record for
+ * Phase 3+, files.json framework).
  *
  * Lives in L3 because it composes L2 UI widgets (runSimpleConfirm /
  * runSimplePicker) with L1 / L0 generator primitives. The pure helpers
- * (classifyTargets, resolveResources) are kept local — they are too small
- * to warrant a separate L1 module.
+ * (classifyTargets, resolveResources, roleDefsForPhase) are kept local —
+ * they are too small to warrant a separate L1 module.
  *
  * Mirrors pi-seani's `commands/generate-sub-agents.ts`. Velpari standalone:
  * no runtime dep on Senai.
@@ -16,10 +27,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	DEFAULT_AGENTS,
+	GENERATION_PHASES,
 	VELPARI_BRAINSTORM_GENERATED_ROLES,
-	VELPARI_REVIEWER_GENERATED_ROLES,
 	loadAgentConfig,
+	phaseForStage,
 	resolveAgentName,
+	type GenerationPhase,
 	type VelpariRole,
 } from "../core/agents-config.js";
 import {
@@ -28,15 +41,19 @@ import {
 	matchTechnologies,
 	planAgentGeneration,
 	previewRegeneration,
+	scoutTemplateRoleDef,
 	updateAgentsJson,
 	writeGeneratedAgents,
-	type GeneratedAgentPlan,
 	type GeneratedRoleDef,
 } from "../core/agents-generator.js";
+import { loadFilesConfig } from "../core/config.js";
+import { loadFeasibilityRecord } from "../core/feasibility-record.js";
+import { loadProjectContext } from "../core/project-context.js";
+import { loadState } from "../core/state.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
 import { renderWriteSetPreview } from "../ui/write-set-preview.js";
 
-export interface AgentGeneratorResult {
+interface AgentGeneratorResult {
 	created: number;
 	regenerated: number;
 	keptDrifted: number;
@@ -45,31 +62,49 @@ export interface AgentGeneratorResult {
 	cancelled: boolean;
 }
 
+interface RunAgentGeneratorOptions {
+	/** Explicit phase override (the command's `--phase N`). Defaults to
+	 *  auto-detect from the run's current stage. */
+	phase?: GenerationPhase;
+}
+
 interface TargetSet {
 	fresh: GeneratedRoleDef[];
 	regen: GeneratedRoleDef[];
 	custom: GeneratedRoleDef[];
 }
 
-/** Plan E — combined role table (brainstorm + reviewer). The generator
- *  now emits per-stage reviewer copies too. */
-const ALL_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
-	...VELPARI_BRAINSTORM_GENERATED_ROLES,
-	...VELPARI_REVIEWER_GENERATED_ROLES,
-];
+/** Role definitions for one generation phase. Phase 1 uses the
+ *  hand-authored brainstorm table; Phases 2–4 derive every role (stage
+ *  scouts + reviewers) from its bundled `skills/agents/<role>.md`
+ *  template. Roles whose template is missing are skipped — the bundled
+ *  scout remains the permanent fallback for them. */
+function roleDefsForPhase(phase: GenerationPhase): GeneratedRoleDef[] {
+	if (phase === 1) return [...VELPARI_BRAINSTORM_GENERATED_ROLES];
+	const defs: GeneratedRoleDef[] = [];
+	for (const role of GENERATION_PHASES[phase].roles) {
+		const def = scoutTemplateRoleDef(role);
+		if (def) defs.push(def);
+	}
+	return defs;
+}
 
-/** Classify every row in `ALL_GENERATED_ROLES`:
+/** Classify every role definition:
  *   - `fresh`:  the role resolves to its built-in default
  *   - `regen`:  the role is mapped to `<slug>-<role>` (a previous gen)
  *   - `custom`: the role has any other mapping (the user owns it)
  */
-function classifyTargets(cwd: string, slug: string): TargetSet {
+function classifyTargets(
+	cwd: string,
+	slug: string,
+	defs: readonly GeneratedRoleDef[],
+): TargetSet {
 	const config = loadAgentConfig(cwd);
 	const fresh: GeneratedRoleDef[] = [];
 	const regen: GeneratedRoleDef[] = [];
 	const custom: GeneratedRoleDef[] = [];
 
-	for (const def of ALL_GENERATED_ROLES) {
+	for (const def of defs) {
 		const role = def.role as VelpariRole;
 		if (!(role in DEFAULT_AGENTS)) continue;
 		const currentResolved = resolveAgentName(config, role);
@@ -138,7 +173,10 @@ async function resolveResources(
 
 /** Main orchestration. Exported so the test suite can drive it directly
  *  without going through `registerGenerateSubAgentsCommand`. */
-export async function runAgentGenerator(ctx: ExtensionContext): Promise<AgentGeneratorResult> {
+export async function runAgentGenerator(
+	ctx: ExtensionContext,
+	opts?: RunAgentGeneratorOptions,
+): Promise<AgentGeneratorResult> {
 	const emptyResult: AgentGeneratorResult = {
 		created: 0,
 		regenerated: 0,
@@ -158,42 +196,50 @@ export async function runAgentGenerator(ctx: ExtensionContext): Promise<AgentGen
 
 	const cwd = ctx.cwd;
 	const slug = getProjectSlug(cwd);
+	const state = loadState(cwd);
+	const phase: GenerationPhase = opts?.phase ?? phaseForStage(state.currentStage);
 
-	// 1. Classify targets (fresh / regen / custom) — Plan E includes both
-	// brainstorm AND reviewer roles.
-	const targets = classifyTargets(cwd, slug);
+	// 1. Role definitions for the phase (P1 table; P2–4 from templates).
+	const defs = roleDefsForPhase(phase);
+	if (defs.length === 0) {
+		ctx.ui.notify(
+			`No generatable roles resolved for Phase ${phase} (scout templates missing?). The bundled scouts remain the fallback.`,
+			"warning",
+		);
+		return emptyResult;
+	}
+
+	// 2. Classify targets (fresh / regen / custom).
+	const targets = classifyTargets(cwd, slug, defs);
 	const targetRoles = [...targets.fresh, ...targets.regen];
 
 	if (targetRoles.length === 0) {
-		// Plan E — the "all custom" branch still refers to the 4 brainstorm
-		// roles (the original wording). Reviewer roles are never the reason
-		// to bail; they have their own defaults and would always be fresh.
 		ctx.ui.notify(
-			"All 4 brainstorm roles already have custom agents. Nothing to generate.",
+			`All Phase ${phase} roles already have custom agents. Nothing to generate.`,
 			"info",
 		);
 		return emptyResult;
 	}
 
-	// 1a. Plan E — split targets into brainstorm vs reviewer. Reviewer
-	// copies are written WITHOUT going through the 3-question interview
-	// (they're deterministic, same pattern as the brainstorm defaults).
-	const brainstormTargets = [
-		...targets.fresh,
-		...targets.regen,
-	].filter((def) => isBrainstormRole(def.role));
-	const reviewerTargets = [
-		...targets.fresh,
-		...targets.regen,
-	].filter((def) => isReviewerRole(def.role));
+	// 3. Project context from published Doc/ artifacts (sidecar-first) —
+	//    the ArchitectReport slot, fed per phase.
+	const report = loadProjectContext(cwd, state, phase);
 
-	if (brainstormTargets.length === 0) {
-		// No brainstorm work — but reviewer roles may still need to be
-		// written. Skip the interview and write reviewer copies directly.
-		return writeReviewerCopiesOnly(ctx, cwd, slug, reviewerTargets);
-	}
+	// 4. Interview (D3) — ask only what is not already on disk:
+	//    language from the feasibility decision record (Phase 3+) or the
+	//    files.json framework; framework from files.json. Project type is
+	//    never persisted, so it is always asked.
+	const filesConfig = loadFilesConfig(cwd);
+	const projectName = filesConfig.projectName || filesConfig.projectNames?.[0] || "";
+	const record = phase >= 3 && projectName ? loadFeasibilityRecord(cwd, projectName) : null;
+	const languageOnDisk =
+		record?.selectedLanguage?.trim() || filesConfig.framework?.language?.trim() || "";
+	const frameworkOnDisk =
+		(filesConfig.framework?.libraries?.length ?? 0) > 0 ||
+		!!filesConfig.framework?.runtime?.trim();
 
-	// 2. 3-question basic-mode interview (matches pi-seani's basic mode UX)
+	const stackHints: string[] = [...report.techStack];
+
 	const projectType = await runSimplePicker(ctx, {
 		title: "Project type?",
 		items: [
@@ -208,53 +254,50 @@ export async function runAgentGenerator(ctx: ExtensionContext): Promise<AgentGen
 		ctx.ui.notify("Agent generation cancelled.", "info");
 		return { ...emptyResult, cancelled: true };
 	}
-	const language = await ctx.ui.input("Primary language? (e.g., typescript, python, apps script)");
-	if (!language || language.trim() === "") {
-		ctx.ui.notify("Primary language is required. Aborting.", "error");
-		return { ...emptyResult, cancelled: true };
-	}
-	const framework = await ctx.ui.input(
-		"Framework or platform? (e.g., fastapi, react, google sheets) — optional, press Enter to skip",
-	);
-	const stackHints: string[] = [projectType, language];
-	if (framework && framework.trim() !== "") stackHints.push(framework);
+	stackHints.push(projectType);
 
-	// 3. Discover + match resources
+	if (!languageOnDisk) {
+		const language = await ctx.ui.input(
+			"Primary language? (e.g., typescript, python, apps script)",
+		);
+		if (!language || language.trim() === "") {
+			ctx.ui.notify("Primary language is required. Aborting.", "error");
+			return { ...emptyResult, cancelled: true };
+		}
+		stackHints.push(language.trim());
+	}
+
+	if (!frameworkOnDisk) {
+		const framework = await ctx.ui.input(
+			"Framework or platform? (e.g., fastapi, react, google sheets) — optional, press Enter to skip",
+		);
+		if (framework && framework.trim() !== "") stackHints.push(framework.trim());
+	}
+
+	// 5. Discover + match resources.
 	const matched = await resolveResources(ctx, cwd, stackHints);
 	if (!matched) {
 		return { ...emptyResult, cancelled: true };
 	}
 
-	// 4. Split targets into brainstorm (interview-driven) and reviewer
-	// (deterministic). Reviewer copies skip the interview and don't
-	// add mappings to agents.json — they're stage-scoped, not brainstorm-scoped.
-	const brainstormRoles = targetRoles.filter((def) => isBrainstormRole(def.role));
-	const reviewerRoles = targetRoles.filter((def) => isReviewerRole(def.role));
-
-	const plans: GeneratedAgentPlan[] = [
-		...planAgentGeneration(cwd, brainstormRoles, matched, null),
-		...reviewerRoles.map((def) => ({
-			role: def.role,
-			agentName: `${slug}-${def.role}`,
-			description: def.label,
-			tools: [...def.tools],
-			content: buildReviewerAgentMarkdown(def),
-		})),
-	];
+	// 6. Plans through the standard deterministic-assembly machinery —
+	//    reviewers included (their verdict contract rides the bundled
+	//    template body; the tier gate decides at spawn time, not here).
+	const plans = planAgentGeneration(cwd, targetRoles, matched, report);
 	if (plans.length === 0) {
 		ctx.ui.notify("Nothing to plan — target set resolved to 0 plans.", "info");
 		return emptyResult;
 	}
 
-	// 5. Build the write-set preview. Always classify via previewRegeneration
-	// so the dialog matches what the user will actually see after write.
+	// 7. Build the write-set preview. Always classify via previewRegeneration
+	//    so the dialog matches what the user will actually see after write.
 	const preview = previewRegeneration(cwd, plans.map((p) => p.agentName));
 	const previewText = renderWriteSetPreview(preview, { regenerateMode: true });
 
-	// 6. ONE confirmation gate (Rule 7)
+	// 8. ONE confirmation gate (Rule 7).
 	const confirmed = await runSimpleConfirm(
 		ctx,
-		"Generate sub-agents?",
+		`Generate Phase ${phase} sub-agents?`,
 		previewText,
 	);
 	if (!confirmed) {
@@ -262,18 +305,17 @@ export async function runAgentGenerator(ctx: ExtensionContext): Promise<AgentGen
 		return { ...emptyResult, cancelled: true };
 	}
 
-	// 7. Write — pass `regenerate: true` whenever we're touching any
-	// pre-existing generated file so the manifest check kicks in.
+	// 9. Write — pass `regenerate: true` whenever we're touching any
+	//    pre-existing generated file so the manifest check kicks in.
 	const needsRegenerate = targets.regen.length > 0 || preview.overwrite.length > 0;
 	const writeResult = writeGeneratedAgents(cwd, plans, { regenerate: needsRegenerate });
 
-	// 8. Update agents.json — only brainstorm roles get mappings added.
-	const mappingsAdded = updateAgentsJson(cwd, plans.filter((p) => isBrainstormRole(p.role)));
+	// 10. Update agents.json — every generated role whose mapping still
+	//     points at the built-in default (D4); custom mappings preserved.
+	const mappingsAdded = updateAgentsJson(cwd, plans);
 
-	// 9. Post-write summary
+	// 11. Post-write summary + doctor hint.
 	ctx.ui.notify(formatSummary(writeResult, mappingsAdded), "info");
-
-	// 10. Doctor hint
 	ctx.ui.notify(
 		"Run /velpari-doctor afterwards to verify the generator completeness section is clean.",
 		"info",
@@ -315,102 +357,30 @@ function formatSummary(
 	return `Done. ${parts.join("; ")}.`;
 }
 
-/** Plan E — true if a role is one of the 4 brainstorm roles. */
-function isBrainstormRole(role: string): boolean {
-	return (
-		role === "extractor" ||
-		role === "prd-checker" ||
-		role === "rtm-checker" ||
-		role === "web-search-agent"
-	);
-}
-
-/** Plan E — true if a role is one of the 4 reviewer roles. */
-function isReviewerRole(role: string): boolean {
-	return (
-		role === "reviewer" ||
-		role === "pseudocode-reviewer" ||
-		role === "testplan-reviewer" ||
-		role === "design-reviewer"
-	);
-}
-
-/** Plan E — write only reviewer copies (no interview, no mappings).
- *  Used when all brainstorm roles are custom but reviewer roles still
- *  need their default copies. */
-async function writeReviewerCopiesOnly(
-	ctx: ExtensionContext,
-	cwd: string,
-	slug: string,
-	reviewerDefs: readonly GeneratedRoleDef[],
-): Promise<AgentGeneratorResult> {
-	if (reviewerDefs.length === 0) {
-		return {
-			created: 0,
-			regenerated: 0,
-			keptDrifted: 0,
-			skipped: 0,
-			mappingsAdded: 0,
-			cancelled: false,
-		};
-	}
-	const plans: GeneratedAgentPlan[] = reviewerDefs.map((def) => ({
-		role: def.role,
-		agentName: `${slug}-${def.role}`,
-		description: def.label,
-		tools: [...def.tools],
-		content: buildReviewerAgentMarkdown(def),
-	}));
-	const writeResult = writeGeneratedAgents(cwd, plans, { regenerate: true });
-	const summary = formatSummary(writeResult, 0);
-	ctx.ui.notify(summary, writeResult.created.length > 0 ? "info" : "warning");
-	return {
-		created: writeResult.created.length,
-		regenerated: writeResult.regenerated.length,
-		keptDrifted: writeResult.keptDrifted.length,
-		skipped: writeResult.skipped.length,
-		mappingsAdded: 0,
-		cancelled: false,
-	};
-}
-
-/** Plan E — build a minimal reviewer agent markdown from a definition.
- *  Reviewer roles don't need project context; the contract is fully
- *  captured by tools + mandate + invocationHint + outOfScope. */
-function buildReviewerAgentMarkdown(def: GeneratedRoleDef): string {
-	const lines: string[] = [];
-	lines.push("---");
-	lines.push(`name: ${def.role}`);
-	lines.push(`description: ${def.label}`);
-	lines.push(`tools: ${def.tools.join(", ")}`);
-	lines.push("thinking: high");
-	lines.push("session-mode: standalone");
-	lines.push("auto-exit: true");
-	lines.push("spawning: false");
-	lines.push("---");
-	lines.push("");
-	lines.push(`# ${def.label}`);
-	lines.push("");
-	lines.push(def.mandate);
-	lines.push("");
-	lines.push("## When to spawn");
-	lines.push("");
-	lines.push(def.invocationHint);
-	lines.push("");
-	lines.push("## Out of scope");
-	lines.push("");
-	for (const item of def.outOfScope) {
-		lines.push(`- ${item}`);
-	}
-	return lines.join("\n");
+/** Parse the `--phase N` override from raw command args. Returns the
+ *  phase, null when the flag is absent, or "invalid" for a malformed
+ *  value (so a typo never silently falls back to auto-detect). */
+export function parsePhaseArg(args: string): GenerationPhase | null | "invalid" {
+	const flag = args.match(/(?:^|\s)--phase(?:\s|=|$)/);
+	if (!flag) return null;
+	const value = args.match(/(?:^|\s)--phase(?:=|\s)\s*(\d+)/);
+	if (!value || value[1] === undefined) return "invalid";
+	const n = Number(value[1]);
+	if (n === 1 || n === 2 || n === 3 || n === 4) return n;
+	return "invalid";
 }
 
 export function registerGenerateSubAgentsCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("velpari-generate-sub-agents", {
 		description:
-			"Generate project-specific sub-agents for the 4 brainstorm roles from your tech stack.",
-		handler: async (_args, ctx) => {
-			await runAgentGenerator(ctx);
+			"Generate project-specific sub-agents for the current pipeline phase (auto-detected from run state; --phase N overrides).",
+		handler: async (args, ctx) => {
+			const parsed = parsePhaseArg(args ?? "");
+			if (parsed === "invalid") {
+				ctx.ui.notify("Invalid --phase value. Use --phase 1, 2, 3, or 4.", "error");
+				return;
+			}
+			await runAgentGenerator(ctx, parsed === null ? undefined : { phase: parsed });
 		},
 	});
 }

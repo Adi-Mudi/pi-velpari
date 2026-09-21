@@ -1,8 +1,9 @@
 /**
- * Doctor check: Sub-agent generator completeness (Phase 7).
+ * Doctor check: Sub-agent generator completeness (Phase 7; generator v2
+ * scope — every generatable role across the 4 generation phases).
  *
  * Covers every bucket:
- *   - bundled default (no agents.json) — info per role
+ *   - bundled default (no agents.json) — info per role (all 47 roles)
  *   - custom mapping — info per role
  *   - generated-agent missing file — error
  *   - generated-agent present with matching frontmatter + current footer — ok
@@ -28,8 +29,14 @@ import { join } from "node:path";
 import { checkSubAgentGeneratorSection } from "../../src/doctor/checks/sub-agent-generator.js";
 import { GENERATOR_VERSION } from "../../src/core/agents-generator.js";
 import {
-	VELPARI_BRAINSTORM_GENERATED_ROLES,
+	GENERATION_PHASES,
+	type GenerationPhase,
 } from "../../src/core/agents-config.js";
+
+/** Unique generatable roles across all 4 phases (P1 4 + P2 14 + P3 17 + P4 12 = 47). */
+const TOTAL_GENERATABLE_ROLES = new Set(
+	([1, 2, 3, 4] as readonly GenerationPhase[]).flatMap((p) => GENERATION_PHASES[p].roles),
+).size;
 
 function freshTmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-doctor-"));
@@ -89,13 +96,13 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 		try {
 			const section = checkSubAgentGeneratorSection(cwd);
 			const infoMessages = section.items.filter((i) => i.status === "info").map((i) => i.message);
-			// 4 roles × 1 info each = 4 info items + 1 summary info
+			// 47 roles × 1 info each = 47 info items + 1 summary info
 			const roleInfo = infoMessages.filter((m) => /bundled default/.test(m));
-			assert.equal(roleInfo.length, VELPARI_BRAINSTORM_GENERATED_ROLES.length);
-			// Summary mentions all 4 roles
+			assert.equal(roleInfo.length, TOTAL_GENERATABLE_ROLES);
+			// Summary mentions all generatable roles across the 4 phases
 			const summary = section.items.find((i) => /Sub-agent generator summary/.test(i.message));
 			assert.ok(summary, "summary item must exist");
-			assert.match(summary!.message, new RegExp(`${VELPARI_BRAINSTORM_GENERATED_ROLES.length} brainstorm role`));
+			assert.match(summary!.message, new RegExp(`${TOTAL_GENERATABLE_ROLES} role\\(s\\) across 4 generation phase`));
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -367,7 +374,7 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 			const roleInfo = section.items.filter(
 				(i) => i.status === "info" && /bundled default/.test(i.message),
 			);
-			assert.equal(roleInfo.length, 4);
+			assert.equal(roleInfo.length, TOTAL_GENERATABLE_ROLES);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

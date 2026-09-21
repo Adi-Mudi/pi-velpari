@@ -10,10 +10,15 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	compareRtmVersions,
 	diffRtmData,
+	loadRtmSidecarData,
 	renderRtmMarkdown,
+	resolveRtmSidecar,
 	validateRtmData,
 	type RtmData,
 } from "../../src/core/rtm-data.js";
@@ -178,5 +183,45 @@ describe("renderRtmMarkdown", () => {
 			data({ rows: [row({ status: "deprecated", reason: "replaced by FR-9" })] }),
 		);
 		assert.match(md, /deprecated \(replaced by FR-9\)/);
+	});
+});
+
+describe("resolveRtmSidecar + loadRtmSidecarData (B3/D4 dual-read)", () => {
+	function tmp(): string {
+		return mkdtempSync(join(tmpdir(), "velpari-rtm-dual-"));
+	}
+
+	it("prefers .yaml over .json when both exist", () => {
+		const cwd = tmp();
+		const md = join(cwd, "RTM_TestApp.md");
+		writeFileSync(md, "# RTM\n");
+		writeFileSync(join(cwd, "RTM_TestApp.yaml"), "project: TestApp\nversion: 2.0.0\nrows: []\n");
+		writeFileSync(join(cwd, "RTM_TestApp.json"), JSON.stringify({ project: "TestApp", version: "1.0.0", rows: [] }));
+		const resolved = resolveRtmSidecar(md)!;
+		assert.equal(resolved.format, "yaml");
+		assert.ok(resolved.path.endsWith(".yaml"));
+		const loaded = loadRtmSidecarData(md)!;
+		assert.equal((loaded.data as { version: string }).version, "2.0.0", "the .yaml wins");
+	});
+
+	it("falls back to the legacy .json (parsed by the YAML loader)", () => {
+		const cwd = tmp();
+		const md = join(cwd, "RTM_TestApp.md");
+		writeFileSync(md, "# RTM\n");
+		writeFileSync(join(cwd, "RTM_TestApp.json"), JSON.stringify({ project: "TestApp", version: "1.0.0", rows: [] }));
+		const resolved = resolveRtmSidecar(md)!;
+		assert.equal(resolved.format, "json");
+		const loaded = loadRtmSidecarData(md)!;
+		assert.equal((loaded.data as { project: string }).project, "TestApp");
+	});
+
+	it("returns null when no sidecar exists or the sidecar is malformed", () => {
+		const cwd = tmp();
+		const md = join(cwd, "RTM_TestApp.md");
+		writeFileSync(md, "# RTM\n");
+		assert.equal(resolveRtmSidecar(md), null);
+		assert.equal(loadRtmSidecarData(md), null);
+		writeFileSync(join(cwd, "RTM_TestApp.yaml"), "rows:\n  - [unclosed\n");
+		assert.equal(loadRtmSidecarData(md), null, "malformed YAML → null (loose reader)");
 	});
 });

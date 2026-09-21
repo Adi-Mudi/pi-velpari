@@ -39,6 +39,7 @@ import { buildAtomicFunctionPrompt } from "./prompt.js";
 import { loadFilesConfig } from "../../core/config.js";
 import { compactProfileMetadata, loadRequirementsProfile } from "../../core/profile.js";
 import { resolveDocArtifact } from "../../core/paths.js";
+// biome-ignore lint/correctness/noUnusedImports: advanceStage is used below (biome false positive)
 import { advanceStage, loadState } from "../../core/state.js";
 
 /**

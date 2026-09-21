@@ -7,10 +7,17 @@
  * role names).
  *
  * Roles: the 4 brainstorm scout roles (BRAINSTORM_ROLES, mirroring
- * io/agents-install.ts:SCOUT_AGENT_IDS) plus the 36 stage-scout ids
- * (STAGE_SCOUT_ROLES, extracted from stages/registry.ts:STAGE_REGISTRY in
+ * io/agents-install.ts:SCOUT_AGENT_IDS) plus the 41 stage-scout ids
+ * (STAGE_SCOUT_ROLES, composed from the per-stage groups below in
  * registry order) plus the 2 feasibility v2 conditional roles
- * (FEASIBILITY_CONDITIONAL_ROLES). VELPARI_ROLES is the union — 42 roles total.
+ * (FEASIBILITY_CONDITIONAL_ROLES), the 3 logging scouts, and the 4
+ * reviewer roles. VELPARI_ROLES is the union — 54 entries (50 unique
+ * roles; the 4 reviewers appear in both STAGE_SCOUT_ROLES and
+ * REVIEWER_ROLES by design).
+ *
+ * GENERATION_PHASES groups the generatable roles by pipeline phase
+ * (generator v2, spec Doc/velpari-sequence/05-sub-agent-generation.md);
+ * phaseForStage maps a run's current stage to the phase it is entering.
  *
  * Layer 0. Imports only node builtins, ./constants.js, ../io/atomic-write.js
  * (same layer), and getAgentDir/parseFrontmatter from
@@ -20,7 +27,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { PATHS } from "./constants.js";
+import { PATHS, type Stage } from "./constants.js";
 import { atomicWriteJson } from "../io/atomic-write.js";
 import type { GeneratedRoleDef } from "./agents-generator.js";
 import { getBundledCustomRoles, loadCustomRoles } from "./custom-roles.js";
@@ -37,66 +44,119 @@ export const BRAINSTORM_ROLES = [
 	"web-search-agent",
 ] as const;
 
-/** The 35 stage-scout ids from STAGE_REGISTRY, in registry order. */
-export const STAGE_SCOUT_ROLES = [
-	// prd
+/** PRD stage scouts (registry order). */
+const PRD_SCOUT_ROLES = [
 	"fr-extractor",
 	"nfr-checker",
 	"helper-detector",
 	"consolidator",
-	// rtm
+] as const;
+
+/** RTM stage scouts (registry order). */
+const RTM_SCOUT_ROLES = [
 	"rtm-requirement-tracer",
 	"rtm-test-case-linker",
 	"rtm-coverage-analyzer",
 	"rtm-consolidator",
-	// feasibility
+] as const;
+
+/** Feasibility stage scouts (registry order). */
+const FEASIBILITY_SCOUT_ROLES = [
 	"feasibility-tech",
 	"feasibility-schedule",
 	"feasibility-cost",
 	"feasibility-risk",
-	// design
+] as const;
+
+/** Design (architecture-generator) stage scouts, excluding the reviewer. */
+const DESIGN_SCOUT_ROLES = [
 	"design-style-selector",
 	"design-module-decomposer",
 	"design-contract-definer",
 	"design-data-flow-mapper",
 	"design-error-definer",
-	// pseudocode
+] as const;
+
+/** Pseudocode stage scouts, excluding the reviewer. */
+const PSEUDOCODE_SCOUT_ROLES = [
 	"pseudo-algorithm-extractor",
 	"pseudo-edge-case-handler",
 	"pseudo-complexity-analyzer",
 	"pseudo-consolidator",
-	// testplan
+] as const;
+
+/** Testplan stage scouts, excluding the reviewer. */
+const TESTPLAN_SCOUT_ROLES = [
 	"testplan-strategy-designer",
 	"testplan-unit-test-generator",
 	"testplan-integration-test-generator",
 	"testplan-coverage-tracer",
-	// atomic-function (Stage 6 — runs BEFORE pseudocode in industry-standard order)
+] as const;
+
+/** Atomic-function stage scouts (Stage 6 — runs BEFORE pseudocode in
+ *  industry-standard order), excluding the reviewer. */
+const ATOMIC_FUNCTION_SCOUT_ROLES = [
 	"af-source-rtm",
 	"af-source-design",
 	"af-source-prd",
 	"af-source-feas",
-	// Reviewer scouts (Phase D — Plan D reviewer-generalization). Each
-	// reviewer is gated by tier + overlay + reviewerMode via
-	// stages/registry.ts:filterReviewerSlot + core/atomic-tier.ts:shouldRunReviewerForStage.
-	"reviewer", // atomic-function
-	"pseudocode-reviewer",
-	"testplan-reviewer",
-	"design-reviewer",
-	// development-order
+] as const;
+
+/** Development-order stage scouts. */
+const DEV_ORDER_SCOUT_ROLES = [
 	"do-topology",
 	"do-risk",
 	"do-test",
 	"do-value",
-	// final-design
+] as const;
+
+/** Final-design stage scouts. */
+const FINAL_DESIGN_SCOUT_ROLES = [
 	"design-consistency-checker",
 	"design-coverage-checker",
 	"design-contract-checker",
 	"design-finalizer",
-	// v1.4.0 — /velpari-design-logging cross-cutting discipline command.
-	// These 3 scouts live in their own constant (below) because they are
-	// NOT part of STAGE_REGISTRY — logging is a cross-cutting discipline
-	// command, not a stage. Keeping them out of STAGE_SCOUT_ROLES
-	// preserves the registry-order cross-check in agents-config.test.ts.
+] as const;
+
+/**
+ * Reviewer sub-agent roles (Plan D). The reviewer is the **only adversarial
+ * critic** in Velpari — it critiques the merged draft + scout reports after
+ * the N source scouts finish. Each stage's reviewer is gated by tier +
+ * overlay + reviewerMode via stages/registry.ts:filterReviewerSlot +
+ * core/atomic-tier.ts:shouldRunReviewerForStage. Each reviewer writes its
+ * verdict JSON to `<runDir>/<stage>/scouts/<stage>-reviewer-report.json`.
+ * The doctor gate (runPublishGate) loads the appropriate verdict per artifact.
+ */
+export const REVIEWER_ROLES = [
+	"reviewer", // atomic-function (Plan A)
+	"pseudocode-reviewer", // Plan D
+	"testplan-reviewer", // Plan D
+	"design-reviewer", // Plan D
+] as const;
+
+/**
+ * The 41 stage-scout ids from STAGE_REGISTRY, in registry order. Composed
+ * from the per-stage groups above so this list and GENERATION_PHASES share
+ * exactly one source; the registry cross-check in agents-config.test.ts
+ * guards drift against stages/registry.ts:STAGE_REGISTRY.
+ *
+ * The v1.4.0 logging scouts live in their own constant (below) because they
+ * are NOT part of STAGE_REGISTRY — logging is a cross-cutting discipline
+ * command, not a stage.
+ */
+export const STAGE_SCOUT_ROLES = [
+	...PRD_SCOUT_ROLES,
+	...RTM_SCOUT_ROLES,
+	...FEASIBILITY_SCOUT_ROLES,
+	...DESIGN_SCOUT_ROLES,
+	...PSEUDOCODE_SCOUT_ROLES,
+	...TESTPLAN_SCOUT_ROLES,
+	...ATOMIC_FUNCTION_SCOUT_ROLES,
+	// Reviewer scouts (Plan D). Gated per stage by
+	// stages/registry.ts:filterReviewerSlot + core/atomic-tier.ts.
+	...REVIEWER_ROLES,
+	...DEV_ORDER_SCOUT_ROLES,
+	...FINAL_DESIGN_SCOUT_ROLES,
 ] as const;
 
 /**
@@ -118,30 +178,106 @@ export const LOGGING_SCOUT_ROLES = [
  * build-from-scratch path with no configured framework. Kept out of
  * STAGE_SCOUT_ROLES so the registry-order cross-check stays intact.
  */
-export const FEASIBILITY_CONDITIONAL_ROLES = [
+const FEASIBILITY_CONDITIONAL_ROLES = [
 	"feasibility-reuse-scout",
 	"feasibility-spike",
 ] as const;
 
 /**
- * v1.x — Reviewer sub-agents (Plan D). The reviewer is the **only adversarial
- * critic** in Velpari — it critiques the merged draft + scout reports after
- * the N source scouts finish. Each stage's reviewer is gated by tier +
- * overlay + reviewerMode via stages/registry.ts:filterReviewerSlot +
- * core/atomic-tier.ts:shouldRunReviewerForStage. The atomic-function reviewer
- * ships first (Plan A); pseudocode / testplan / design reviewers ship with
- * Plan D. Each reviewer writes its verdict JSON to
- * `<runDir>/<stage>/scouts/<stage>-reviewer-report.json`. The doctor gate
- * (runPublishGate) loads the appropriate verdict per artifact.
+ * Generator v2 — the per-phase role + input model (spec
+ * Doc/velpari-sequence/05-sub-agent-generation.md). Agents for Phase N are
+ * generated after the last approve of Phase N−1, from published `Doc/`
+ * artifacts only. The logging trio stays bundled-only (cross-cutting, not
+ * phase-mapped). `roles` derives from the per-stage groups above — never
+ * hand-copy role ids here.
+ *
+ *   P1 — brainstorm 4 (mission + files.json only; no artifacts exist yet)
+ *   P2 — prd + rtm + feasibility scouts + 2 feasibility-conditional roles
+ *        (input: published brainstorm notes)
+ *   P3 — design + atomic-function + pseudocode scouts + all 4 reviewers,
+ *        tier-gated at spawn time via shouldRunReviewer
+ *        (inputs: PRD + RTM sidecar + feasibility decision record)
+ *   P4 — testplan + development-order + final-design scouts
+ *        (inputs: design + atomic-functions + pseudocode)
  */
-export const REVIEWER_ROLES = [
-	"reviewer", // atomic-function (Plan A)
-	"pseudocode-reviewer", // Plan D
-	"testplan-reviewer", // Plan D
-	"design-reviewer", // Plan D
-] as const;
+export type GenerationPhase = 1 | 2 | 3 | 4;
 
-/** Every Velpari scout role: 4 brainstorm + 38 stage + 2 feasibility-conditional + 3 logging + 4 reviewer = 51. */
+interface GenerationPhaseSpec {
+	/** Roles generated at this phase boundary. */
+	readonly roles: readonly string[];
+	/** Published artifact keys this phase's project context reads
+	 *  ("brainstorm" resolves via topic slug; the rest via projectName). */
+	readonly inputs: readonly string[];
+}
+
+export const GENERATION_PHASES: Readonly<Record<GenerationPhase, GenerationPhaseSpec>> = {
+	1: { roles: BRAINSTORM_ROLES, inputs: [] },
+	2: {
+		roles: [
+			...PRD_SCOUT_ROLES,
+			...RTM_SCOUT_ROLES,
+			...FEASIBILITY_SCOUT_ROLES,
+			...FEASIBILITY_CONDITIONAL_ROLES,
+		],
+		inputs: ["brainstorm"],
+	},
+	3: {
+		roles: [
+			...DESIGN_SCOUT_ROLES,
+			...ATOMIC_FUNCTION_SCOUT_ROLES,
+			...PSEUDOCODE_SCOUT_ROLES,
+			...REVIEWER_ROLES,
+		],
+		inputs: ["PRD", "RTM", "feasibility-study"],
+	},
+	4: {
+		roles: [...TESTPLAN_SCOUT_ROLES, ...DEV_ORDER_SCOUT_ROLES, ...FINAL_DESIGN_SCOUT_ROLES],
+		inputs: ["design", "atomic-functions", "pseudocode"],
+	},
+};
+
+/**
+ * Map a run's current stage to the generation phase whose agents the run
+ * needs NEXT. Completed stages map to the phase of their successor, so an
+ * approve that lands on the first stage of a new phase reads as a boundary
+ * crossing (drives the phase-boundary hint + the generator's auto-detect):
+ *
+ *   brainstorming(1) → brainstormed(2)            — generate Phase 2
+ *   analyzing-feasibility(2) → analyzed-feasibility(3) — generate Phase 3
+ *   writing-pseudocode(3) → wrote-pseudocode(4)   — generate Phase 4
+ */
+export function phaseForStage(stage: Stage): GenerationPhase {
+	switch (stage) {
+		case "none":
+		case "brainstorming":
+			return 1;
+		case "brainstormed":
+		case "drafting-prd":
+		case "drafted-prd":
+		case "building-rtm":
+		case "built-rtm":
+		case "analyzing-feasibility":
+			return 2;
+		case "analyzed-feasibility":
+		case "designing":
+		case "designed":
+		case "analyzing-atomic-functions":
+		case "analyzed-atomic-functions":
+		case "writing-pseudocode":
+			return 3;
+		case "wrote-pseudocode":
+		case "planning-tests":
+		case "planned-tests":
+		case "ordering-development":
+		case "ordered-development":
+		case "finalizing-design":
+		case "finalized-design":
+		case "handoff-ready":
+			return 4;
+	}
+}
+
+/** Every Velpari scout role: 4 brainstorm + 41 stage + 2 feasibility-conditional + 3 logging + 4 reviewer = 54 entries (50 unique; reviewers appear in both STAGE_SCOUT_ROLES and REVIEWER_ROLES by design). */
 export const VELPARI_ROLES = [
 	...BRAINSTORM_ROLES,
 	...STAGE_SCOUT_ROLES,
@@ -171,8 +307,12 @@ export type VelpariRole = (typeof VELPARI_ROLES)[number];
  * the dispatcher enforces read-only behavior in the multiplexer pane.
  * The web-search-agent's `WebSearch` + `FetchURL` survive the strip.
  *
- * This table is the v1 brainstorm-only scope. Stage scouts (the other 34
- * roles) are added in subsequent sections.
+ * This table is the Phase-1 scope of the v2 per-phase generator (see
+ * GENERATION_PHASES). Stage scouts and reviewers for Phases 2–4 are
+ * assembled from the bundled `skills/agents/<role>.md` templates at
+ * generation time — only roles with a bespoke contract (the 4 brainstorm
+ * roles here + the 4 reviewers below) keep a hand-authored definition
+ * table.
  */
 export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 	{
@@ -246,10 +386,10 @@ export const DEFAULT_AGENTS: Record<VelpariRole, string> = Object.fromEntries(
 ) as Record<VelpariRole, string>;
 
 /**
- * v1.x — Reviewer role definitions for the v2 sub-agent generator
- * (Plan E). Today, `/velpari-generate-sub-agents` is brainstorm-only
- * and does NOT emit reviewer copies. Plan E wires the generator to
- * emit per-stage reviewer copies using this table as the input.
+ * Reviewer role definitions for the v2 per-phase sub-agent generator.
+ * `/velpari-generate-sub-agents` emits reviewer copies as part of Phase 3
+ * (all 4 reviewer roles; the tier gate decides at spawn time whether a
+ * reviewer actually runs, not whether its agent file exists).
  *
  * 4 reviewer roles — one per reviewer stage (Plan D):
  *   reviewer               — atomic-function (Plan A)
@@ -257,9 +397,11 @@ export const DEFAULT_AGENTS: Record<VelpariRole, string> = Object.fromEntries(
  *   testplan-reviewer      — testplan stage (Plan D)
  *   design-reviewer        — architecture-generator / design (Plan D)
  *
- * Mirrors `VELPARI_BRAINSTORM_GENERATED_ROLES` so the v2 generator can
- * reuse `core/agents-generator.ts:buildGeneratedAgentMarkdown` for the
- * reviewer role without changing the deterministic-assembly contract.
+ * Kept as the canonical reviewer-contract reference (verdict shape,
+ * gates, out-of-scope). The v2 generator assembles reviewer copies from
+ * the bundled `skills/agents/<role>.md` templates via
+ * `core/agents-generator.ts:scoutTemplateRoleDef`, same as the other
+ * Phase 2–4 roles.
  */
 export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 	{
@@ -427,7 +569,7 @@ export function saveAgentConfig(cwd: string, config: AgentConfig): void {
  * Validate an AgentConfig. Throws with the allowed-role list in the message
  * when an unknown role is present.
  */
-export function validateAgentConfig(config: AgentConfig): void {
+function validateAgentConfig(config: AgentConfig): void {
 	if (config.version !== 1) {
 		throw new Error("Missing or invalid 'version' field (expected 1)");
 	}
@@ -456,11 +598,11 @@ export function resolveAgentName(config: AgentConfig | null, role: VelpariRole):
 }
 
 /** Absolute path to Pi's user-level agents directory (`~/.pi/agent/agents`). */
-export function getUserAgentsDir(): string {
+function getUserAgentsDir(): string {
 	return join(getAgentDir(), "agents");
 }
 
-/** Names that resolve without any file on disk — the 42 bundled defaults. */
+/** Names that resolve without any file on disk — the bundled defaults. */
 const BUNDLED_DEFAULT_NAMES: ReadonlySet<string> = new Set(VELPARI_ROLES);
 
 /**
@@ -509,9 +651,9 @@ export function validateMappedAgents(cwd: string, config: AgentConfig): string[]
 	return errors;
 }
 
-export type AgentSource = "project" | "user" | "bundled";
+type AgentSource = "project" | "user" | "bundled";
 
-export interface DiscoveredAgent {
+interface DiscoveredAgent {
 	name: string;
 	description: string;
 	source: AgentSource;
@@ -527,7 +669,7 @@ function isDirectory(p: string): boolean {
 }
 
 /** Walk up from cwd to the nearest `.pi/agents/` directory (Senai pattern). */
-export function findNearestProjectAgentsDir(cwd: string): string | null {
+function findNearestProjectAgentsDir(cwd: string): string | null {
 	let currentDir = cwd;
 	while (true) {
 		const candidate = join(currentDir, ".pi", "agents");
@@ -543,7 +685,7 @@ export function findNearestProjectAgentsDir(cwd: string): string | null {
  * Discover all agents visible to this project, in priority order:
  *   1. project `.pi/agents/*.md` (nearest, walking up from cwd)
  *   2. user agents dir (`getAgentDir()/agents`)
- *   3. the 42 bundled defaults
+ *   3. the bundled defaults
  *   4. the project's custom-role defaults (from `.pi/velpari/custom-roles.json`)
  *   5. the bundled custom-role starter (fallback for fresh projects)
  * Dedup by name — first source wins.

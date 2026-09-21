@@ -18,7 +18,7 @@ export interface SimplePickerItem {
 	hint?: string;
 }
 
-export interface SimplePickerOptions {
+interface SimplePickerOptions {
 	title: string;
 	subtitle?: string;
 	items: SimplePickerItem[];

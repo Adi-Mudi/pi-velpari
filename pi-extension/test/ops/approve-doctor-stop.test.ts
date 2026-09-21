@@ -120,11 +120,13 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 
 		await handleApprove(makeCtx(), undefined, tmpDir);
 
-		// The markdown + JSON WERE published (gate passes).
+		// The markdown + YAML sidecar WERE published (gate passes; the
+		// working copy carried a legacy .json sidecar — D4 dual-read —
+		// and writes are always .yaml).
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
-		const jsonPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.json");
+		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(mdPath), "publish gate cleared — RTM markdown on disk");
-		assert.ok(fs.existsSync(jsonPath), "publish gate cleared — RTM JSON on disk");
+		assert.ok(fs.existsSync(yamlPath), "publish gate cleared — RTM YAML sidecar on disk");
 
 		// The doctor report was written.
 		const reportPath = path.join(tmpDir, PATHS.DOCTOR_REPORT);

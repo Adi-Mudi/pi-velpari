@@ -4,6 +4,138 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Cleanup — dead exports, lint warnings, superseded docs (2026-09-21)
+
+#### Removed
+
+- **13 dead exports deleted** (zero references anywhere in src/test/skills): `psrs.ts:RequirementStatus`, `state.ts:publishToDoc` (Phase A stub), `agents-generator.ts:planCustomAgentGeneration` (+ its orphaned helper `customRoleToGeneratedRoleDef`), `atomic-tier.ts:REVIEWER_OPT_IN_FLAG/REVIEWER_OPT_OUT_FLAG`, `paths.ts:resolveReviewerVerdictPath`, `reviewer-verdict.ts:LoadReviewerInput`, `setup-progress.ts:_stateFileExists`, `brainstorm/scan-gate.ts:ScanGateChoice`, `brainstorm/spawn-sessions.ts:BrainstormSessionHandle` + `spawnActiveSubagents` (deprecated alias).
+- **`stages/atomic-function/publish.ts` deleted** — the file carried only two marker constants (`PUBLISH_PHASE_STATUS`, `PUBLISH_DELEGATED_TO`) with no runtime behavior; publish runs through `velpari_stage_publish` → `ops/approve.ts:handleApprove`.
+- **179 dead `export` qualifiers dropped** across 72 files — symbols used only inside their own module no longer pretend to be module API. Verified by full cross-reference sweep (every `export` vs every file in src/test/skills) + `tsc` strict build.
+- **`velpari-full-sequence.md` (root)** — superseded by `Doc/velpari-sequence/` (11 docs).
+- **`Doc/velpari-custom-sub-agent-generator-design.md`** — superseded by `Doc/velpari-sequence/05-sub-agent-generation.md` + shipped generator v2.
+- **`Doc/velpari-pseudocode-research-notes.md`** — the tier rubric (its only live consumer) is now inlined as `## Tier rubric` in `pi-extension/src/agents/pseudocode-reviewer-body.md`; `bundled-custom-roles.json` mandate re-pointed.
+
+#### Fixed
+
+- **README.md unresolved merge conflict** — committed conflict markers (`<<<<<<< HEAD` / `>>>>>>> 2d9b017`) removed; the conflicted brainstorm v1.x/v3 sections are restored, and the stale "Sub-agent generator flag (v2.0) `--stages`" section is replaced with the shipped `--phase N` behavior.
+- **4 biome warnings cleared** — unused imports in `stages/registry.ts` (×2) and `stages/brainstorm/index.ts` (unused `webSearchAllowed`), literal-key access in `doctor/checks/design-readiness.ts`. Lint is now zero-warning. (`atomic-function/index.ts:advanceStage` carries a `biome-ignore` — biome false positive, the symbol is used.)
+
+#### Changed
+
+- **`Doc/test-coverage-baseline.md`** shrunk from 40 KB of stale per-phase tables to the CI floor (statements ≥ 92%), the update rules, and the last recorded snapshot.
+
+### Sub-agent generator v2 — per-phase generation, doctor freshness, verifier wiring (C1 + C2 + C3)
+
+`/velpari-generate-sub-agents` grows from brainstorm-only (v1) to per-phase generation: agents for each pipeline phase are generated at that phase's boundary from published `Doc/` artifacts only. The doctor now audits generated-agent freshness against the freshness manifest, and the reviewer-verdict pipeline is generalized into one stage→verifier map that drives both the publish gate and anytime doctor reporting.
+
+#### Added
+
+- **`core/agents-config.ts:GENERATION_PHASES` + `phaseForStage()`** — the per-phase role + input model (P1: 4 brainstorm roles; P2: PRD/RTM/feasibility scouts + 2 feasibility-conditional; P3: design/atomic-function/pseudocode scouts + all 4 reviewers; P4: testplan/development-order/final-design scouts). `phaseForStage` maps a run's current stage to the phase it is ENTERING. `core/project-context.ts:loadProjectContext(cwd, runState?, phase)` gathers per-phase generator inputs from published artifacts (brainstorm notes, feasibility decision record, RTM + AF sidecars).
+- **`core/agent-freshness.ts`** — joins `.pi/agents/<slug>-<role>.md` mtimes against `.pi/velpari/freshness.json` `publishedAt` of each phase's inputs. Drives the D5 phase-boundary hints (approve + `/velpari-status` next-hint reads "generate Phase N agents (`/velpari-generate-sub-agents`), then `<next command>`" when the entered phase lacks fresh generated agents — informational only). **14 new tests.**
+- **Doctor "Generated agent freshness" section** (`doctor/checks/agent-freshness.ts`) — stale generated agent (older than its phase inputs' latest publish) → warning "regenerate Phase N" (D6: advisory, never a hard block); missing generated roles → info (bundled fallback); reviewer presence per tier + overlay + reviewerMode policy → error when required. **11 new tests.**
+- **Doctor "Verifier verdicts (Layer 3)" section** (`checkVerifierVerdictsSection`) — anytime reporting of last-known verifier verdicts (approve → ok, needs-fix → warning, block → error) plus verdict-freshness warnings when a verdict predates the published artifact it reviews (spec 03 §Gate summary).
+- **`--phase N` override** on `/velpari-generate-sub-agents` (phase otherwise auto-detected from run state). D3 interview: projectType always asked (never persisted); language skipped when a feasibility record or `files.json` framework exists; framework skipped when libraries/runtime are configured. `updateAgentsJson` now covers every generated role (D4); custom mappings still never overwritten.
+
+#### Changed
+
+- **`commands/generate-sub-agents.ts`** rewritten for per-phase plans — one confirmation gate per run (D8), de-branded UX, `GENERATOR_VERSION = 2` (v1 footers read as stale in doctor).
+- **Doctor "Sub-agent generator completeness"** now checks every generatable role across the 4 phases (47 roles), not only the brainstorm four; summary line de-branded accordingly.
+- **Publish gate verifier consumption is map-driven (C3)** — `doctor/checks/reviewer-verdict.ts:REVIEWER_STAGE_SPECS` gains `gateArtifacts` / `missingVerdict` / `publishedArtifactKind`; `doctor/gate.ts` consumes verdicts via `verifierSpecForArtifact(artifact)` instead of five hardcoded closures. `doctor/checks/atomic-tier.ts` becomes a thin wrapper over the generalized loader; the legacy atomic-function missing-verdict policy (missing → error even at basic tier) is preserved as spec metadata and pinned by tests. Missing-verdict behavior is unchanged for every existing stage.
+
+### YAML sidecars (B3)
+
+Every table-heavy published artifact is now backed by a YAML sidecar that is the source of truth; the published markdown is RE-RENDERED from the data at publish time and can never drift from it. The RTM pattern is generalized into a registry-driven publish loop.
+
+#### Added
+
+- **`core/yaml-data.ts` (D1)** — the sole `yaml`-package call site (strict parse with line/column errors, loose reader, atomic writer, shared `compareVersions`). `yaml@^2` becomes the one runtime dependency, imported only by L0 data modules. **9 new tests.**
+- **`ops/sidecar-registry.ts:SIDECAR_REGISTRY` (D3)** — artifact kind → { detect, parse+validate, diff, render, sidecarName, baseline loader, optional tier-aware `validateWithCtx` / `postValidate` }. `ops/approve.ts` runs one generalized loop: LLM-authored sidecar + preview → hard-block when the sidecar is missing or invalid (**D6 — publish REQUIRES the sidecar**) → diff against the published baseline (append-only ids, version strictly increases) → RE-RENDER the markdown → stamp both files into the artifact's own freshness `extraPaths` (D5).
+- **New sidecars + data modules** — `core/af-data.ts` (atomic functions: 8 base-core fields + tier-required fields enforced at publish via the configured profile), `core/test-cases-data.ts` (TC/IT records with mandatory `traces: [FR-N|NFR-N|AF-N]`), `core/dev-order-data.ts` (**D8**: `steps[]{id,module,afs[],dependsOn[]}` with dependsOn resolution, three-color DFS cycle detection, and topological order check). Doctor gains one drift check per artifact (missing = warning per D6, invalid/drift = error). **40 new tests** (incl. self-loop, 2-cycle, diamond-ok, unknown-dep).
+- **Feasibility decision record (D9)** — the sole code-generated sidecar: `Doc/feasibility/feasibility-decision_<project>.yaml` is serialized from `state.feasibilitySession` at publish time BEFORE `clearFeasibilitySession` runs (verdict, selectedLanguage, selectedBy, languageCandidates, spikeResults, reuseSummary, recordedAt); doctor reads it and `/velpari-show-feasibility` notes its path.
+- **Id-coverage sidecar-first (D7)** — AF ids come from the AF sidecar when present (af→pseudocode, af→dev-order); downstream refs come from the test-cases sidecar `traces` and dev-order sidecar `afs` when present; markdown scraping stays the fallback (legacy not-checkable unchanged).
+
+#### Changed
+
+- **RTM sidecar migrates JSON → YAML (D4)** — reads prefer `RTM_<project>.yaml` with legacy `.json` fallback at every hardcoded site (the YAML parser accepts JSON); writes are always `.yaml`; legacy `.json` files are never deleted. Doctor messages say "RTM sidecar"; suggestion keys unchanged.
+- **Skill two-file contracts** — `skills/velpari-atomic-function.md`, `skills/velpari-testplan.md`, and `skills/velpari-development-order.md` now specify sidecar-first authoring (sidecar = source of truth, markdown = rendered preview).
+- **Fixtures, not checks** — existing approve/integration fixtures gained working sidecars where D6 requires them; no assertion was weakened.
+
+### Re-confirm path + CI-based testing (A5)
+
+`/velpari-reconfirm` is the second stale-resolution path: when a changed input has **no impact** on a published artifact, one confirm re-stamps freshness instead of a full republish — with a mandated audit trail. The full unit + e2e test gate moves to GitHub Actions (dev-machine thermal constraint).
+
+#### Added
+
+- **`/velpari-reconfirm` (41st command)** — `commands/reconfirm.ts` (L3 picker, `runSimplePicker` + `runSimpleConfirm` over the `input-changed` stale set, one artifact at a time, showing `changedInputs`; a cancelled picker or declined confirm writes nothing) + `ops/reconfirm.ts` (L1 logic). `input-missing` and `no-stamp` items are refused — republish-only (D4). **13 new tests.**
+- **Audit triple per re-confirm (D5)** — (a) the mandated Change Log line ``Reviewed after `<artifact>` vX.Y — no changes required.`` appended to the published artifact (upstream version from its frontmatter, `unknown-version` fallback — never a block); (b) the freshness manifest entry re-stamped with current normalized hashes + `reconfirmedAt` (RTM JSON sidecar `extraPaths` recomputed, D6); (c) a `history.jsonl` entry when a run is active.
+- **Normalized freshness hashing (D3)** — `core/fingerprints.ts:hashFileContentNormalized` / `stripChangeLogSection`: SHA-256 over the file with the `## Change Log` section stripped, so the re-confirm audit line never re-stales downstream consumers (the feedback-loop fix). Manifest entries gain optional `hashv: 2` + `reconfirmedAt`; entries without `hashv` keep legacy whole-file checking (no mass-staling). All new publishes and re-confirms stamp `hashv: 2` (`ops/approve.ts`, `stages/brainstorm-approve.ts`). **9 new tests.**
+- **`bug-fix` branch in `.github/workflows/test.yml`** — push + pull_request triggers, so CI runs the full gate (lint + build + unit + coverage + Tier-1 e2e) on the active branch.
+
+#### Changed
+
+- **Stale-remedy texts name both paths** — transition-lock block messages, `/velpari-handoff` staleness block, and the doctor `stale-input` suggestion now offer `/velpari-reconfirm` for `input-changed` items; `input-missing`/`no-stamp` keep republish-only text (new `stale-input-missing` suggestion).
+- **`Doc/velpari-sequence/08-command-reference.md`** — the previously unspecced re-confirm surface is now documented (picker gates, D4 exclusions, audit triple, normalized hashing).
+
+#### Note
+
+- **Doc/ edit exception (D7).** The re-confirm command edits a published artifact under `Doc/` directly from code (the Change Log append) — a stated, narrow exception to the "Doc/ only via publish" invariant. The LLM `tool_call` lock is unaffected (it governs LLM writes, not command code).
+
+### Brainstorm-anytime + dynamic transition lock (A1 + A2)
+
+`/velpari-brainstorm` is no longer single-shot per run: it opens from ANY stage as the pipeline's standing discussion mode, pausing the stage in progress. All command-legality decisions now flow through one function.
+
+#### Added
+
+- **`RunState.pausedStage` + three session primitives** in `core/state.ts` — `openBrainstormSession` (pauses the current stage, resets the per-session dispatch count), `resumeFromBrainstorm(cwd, door)` (door `"continue"` → the paused stage; door `"restart-prd"` → `brainstormed` so the PRD chain restarts), `discardBrainstormSession` (close without an artifact; resumes the paused stage or `none`). Run-locked, history-appending, NOT STAGE_TRANSITIONS rows — `advanceStage` untouched. **9 new tests.**
+- **`stages/transition-lock.ts` — `computeLegalCommands` (A1).** The single source of legal-command truth: two-door collapse while a brainstorm is open, stale declared-input blocks, earliest-stale routing ("Run X first" always names the healing command), and update-mode self-loops (a stage whose own published artifact is stale may always re-run — that run is the remedy). Rewired consumers: runStage gate, publish-tool whitelist, `ops/approve` brainstorm refusal, `before_agent_start` `next:` line (+ new `paused:` line), and a new `Next:` line in `/velpari-status`. Stage data arrives via the registry's new `STAGE_LOCK_SPECS` (pipeline execution order). **18 new tests.**
+- **Approve doors (D3)** in `/velpari-approve-brainstorm` — when the session was opened mid-run, `--restart-prd` picks the restart door directly, otherwise a TUI picker asks, default continue; first runs keep the existing advance. **5 new tests.**
+- **`discard` action** on the `velpari_brainstorm_session` tool (D7) — the close path that is neither publish nor full reset. **4 new tests.**
+
+#### Changed
+
+- **`guardStageForBrainstorm` semantics inverted (D9)** — every stage may open a brainstorm; only a nested open (session already open) blocks, naming approve + discard (the `/velpari-reset` hint is gone). `handleBrainstorm` calls `openBrainstormSession` for non-`none` stages. Old guard tests rewritten to the new semantics; e2e stage-gates suite updated + a new anytime pause/resume/doors e2e test.
+- **Mutation-lock precedence (D4)** — while a brainstorm is open, the brainstorm-folder lock owns all edit/write gating (including the paused stage's folder); the stage-folder lock is explicitly suppressed. **3 new precedence tests.**
+
+#### Fixed
+
+- **Re-brainstorm staling (D8)** — a re-approved brainstorm of the same topic now stales the PRD/AF chain: the freshness manifest keeps ONE base-slug entry per topic (`brainstorm:<slug>`) with `path` = the latest published (possibly timestamp-suffixed) file; brainstorm-input resolution and the stale-set re-hash consult the manifest first with base-slug disk fallback; enumeration folds suffixed re-run files into the base slug (no spurious `no-stamp`). **6 new tests** incl. the end-to-end "re-brainstorm → PRD stale → stage-start block names the remedy" integration test.
+- **`ops/approve` brainstorm refusal** named a nonexistent command (`/velpari-feasibility-approve-brainstorm`); the refusal now routes through the transition lock.
+- **CHANGELOG release-entry test window** widened (200 → 400 lines) — accumulated `[Unreleased]` sections had pushed the reviewer entry past the read window (pre-existing failure on the committed tree).
+
+### Freshness stamps + stale-set machinery (B4 + A3)
+
+Every published artifact now records what it was built from, and every downstream consumer refuses to run on stale inputs.
+
+#### Added
+
+- **`core/freshness.ts`** — the freshness manifest (`.pi/velpari/freshness.json`): `loadFreshnessManifest` / `saveFreshnessManifest` / `recordPublish` (upsert per artifact), `resolveDeclaredInputs`, `computeInputHashes` (+ brainstorm variant from `files.json:inputDocuments`), `computeStaleSet` (reasons `input-changed` / `input-missing` / `no-stamp`), and `enumeratePublishedArtifacts` (grouped `Doc/` layout, legacy flat fallback). **18 new tests.**
+- **`hashFileContent`** in `core/fingerprints.ts` — SHA-256 of a file's bytes, next to the existing RTM text hasher.
+- **`inputs:` frontmatter stamp** on every publish — a JSON scalar mapping input id → hash, merged by `withArtifactFrontmatter`. Both publish surfaces stamp: `ops/approve.ts` (stages 2–10, incl. RTM sidecar hash in `extraPaths`) and `stages/brainstorm-approve.ts` (slug-keyed). Missing input → warning + unstamped publish, never a crash.
+- **Stage-start stale-input block** in `stages/registry.ts:runStage` — a stale declared input hard-blocks with the input, reason, and remedy; an unstamped input warns and continues; a stale own output warns.
+- **Publish-gate freshness branch** in `doctor/gate.ts:runPublishGate` — `freshness-input-missing` error per missing required declared input; `freshness-downstream` warning when a tracked downstream artifact consumes the artifact being republished.
+- **Doctor freshness section** (`doctor/checks/freshness.ts`) — errors for changed/missing inputs, warnings for unstamped artifacts, `N stale / M tracked` summary. New `stale-input` + `freshness-no-stamp` fix suggestions. **10 new tests.**
+
+#### Changed
+
+- **`doctor/checks/stale-downstream.ts`** — the mtime pair loop is gone; the check now renders from `computeStaleSet` (a touched-but-unchanged input is no longer flagged). Summary counts come from the manifest.
+- **Severity policy:** stale input = error (blocks); unstamped legacy artifact = warning (continues). The logging plan publishes outside `handleApprove` and stays outside the machinery (doctor info note).
+
+#### Fixed
+
+- **Development-order publish mapping restored** — `stageToArtifact` (`ops/approve.ts`) had no `ordering-development` case, so the development order could never publish or advance ("No artifact mapping for stage"; found at checkpoint 2.2 of the freshness plan). Added the `ordering-development` / `ordered-development` mapping, plus a regression suite that walks the real `handleApprove` path end-to-end (publish + `inputs:` stamp + `freshness.json` entry + stage advance) and a table-driven guard asserting all 9 publishable `STAGE_TRANSITIONS` rows have a mapping. **2 new tests.**
+
+### Layer-2 ID coverage + handoff strengthening (A4 + A6)
+
+Upstream ids must now appear in their downstream artifacts, and the handoff refuses to ship a stale or uncovered chain.
+
+#### Added
+
+- **`core/id-coverage.ts`** — the Layer-2 rule engine (spec 03): 4 rules (`prd→design`, `af→pseudocode`, `fr-af→test-cases`, `af→dev-order`) with per-rule status `ok` / `not-checkable` / `missing` + `duplicateIds`. Design check reads §1 `Source FRs` + §5 `NFR ID`/`Source PRD row` columns only (§7 prose never scanned). Legacy tolerance: zero parseable refs → `not-checkable` (warning everywhere, never blocks); some refs → missing upstream ids are errors. Dev-order duplicate AF → warning. **15 new tests.**
+- **Publish-gate coverage branch** in `doctor/gate.ts:runPublishGate` — publishing artifact X runs the rules where X is downstream against the working copy; `missing` blocks with the rule id + missing ids.
+- **Doctor `ID coverage` section** (`doctor/checks/id-coverage.ts`) with `id-coverage-missing` / `id-coverage-not-checkable` fix suggestions. **7 new tests.**
+- **Handoff staleness + coverage gates** in `ops/handoff.ts` (gate order: stage → config → artifacts → MVP coverage → staleness → ID coverage → payload → schema → confirm → write). Any `input-changed`/`input-missing` stale item blocks with the keys named; `no-stamp` warns (D8). Coverage `missing` blocks; `not-checkable`/duplicates warn. **5 new tests.**
+- **Skill-template references** (make new runs machine-checkable): pseudocode function blocks gain a mandatory `AF: AF-N` line; test-cases tables gain a mandatory `Traces` column (`FR-N`/`NFR-N`/`AF-N`); dev-order steps gain a mandatory `AFs: AF-N, …` list. Additive only — existing docs keep working via the `not-checkable` path.
+
 ### Planned (next minor)
 
 - Extending `DiagnosticItem` with an optional `fingerprint` field so checks can populate fingerprints directly (replaces the Phase 3 suggestion-text reverse-lookup). Doctor dispatcher's external behavior stays the same.
@@ -29,10 +161,6 @@ Brainstorm opens **2 persistent sub-agent sessions** (web-research + doc-code-an
 - **`velpari-brainstorm.md` skill** rewritten to lifecycle v3 — new step [1] AUTOMATIC SPAWN; new "v3 — Routing rules" subsection under [5] DISCUSS.
 - **`scansSelected`** marked `@deprecated v3 — replaced by activeSubagents`. Schema kept for back-compat; v3 handler no longer reads it.
 - **README.md** + **`Doc/velpari-sequence.md`** updated with the v3 sequence description.
-
-### Sub-agent generator v2.0 (dynamic registry + per-stage + fetch-from-docs)
-
-_Full release notes forthcoming — the work is tracked under the Brainstorm v3 release line above._
 
 ## [1.4.0] — 2026-09-19 — Doctor "fix" ladder (Levels A → B → C)
 

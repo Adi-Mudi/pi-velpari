@@ -140,6 +140,9 @@ function setupFullCwd(): void {
 		"Doc/requirements/RTM_TestApp.json",
 		JSON.stringify(RTM_JSON, null, 2) + "\n",
 	);
+	// B4: the publish gate refuses a design publish when its declared input
+	// (the published feasibility study) is missing.
+	writeFile("Doc/feasibility/feasibility-study_TestApp.md", "# Feasibility\n");
 	// Working-copy run dir (where handleApprove looks for the design).
 	// We do NOT pre-create Doc/design/design_TestApp.md so the first
 	// publish is a fresh generation, not a revision (the revision gate
@@ -194,7 +197,7 @@ function setupFullCwd(): void {
 		"",
 		"| Module | Purpose | Source FRs | Maturity | Depends on |",
 		"|---|---|---|---|---|",
-		"| auth | users | FR-01 | proposed | — |",
+		"| auth | users | FR-01, FR-02 | proposed | — |",
 		"",
 		"## 2. Data Model",
 		"",

@@ -22,6 +22,8 @@ import {
 	loadState,
 	setFeasibilitySession,
 } from "../../src/core/state.js";
+import { loadFeasibilityRecord } from "../../src/core/feasibility-record.js";
+import { loadFreshnessManifest } from "../../src/core/freshness.js";
 
 interface Notice {
 	message: string;
@@ -99,6 +101,11 @@ function enterFeasibility(): void {
 		state = advanceStage(state, cmd, tmpDir);
 	}
 	writeWorkingStudy();
+	// B4: the publish gate refuses a feasibility publish when its declared
+	// input (the published RTM) is missing.
+	const rtmDir = path.join(tmpDir, "Doc", "requirements");
+	fs.mkdirSync(rtmDir, { recursive: true });
+	fs.writeFileSync(path.join(rtmDir, "RTM_TestApp.md"), "# RTM\n", "utf8");
 }
 
 beforeEach(() => {
@@ -122,6 +129,10 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 		assert.match(allMessages(), /build-vs-reuse decision missing/);
 		assert.match(allMessages(), /language not selected/);
 		assert.ok(!fs.existsSync(publishedStudyPath()), "nothing published");
+		assert.ok(
+			!fs.existsSync(path.join(tmpDir, "Doc", "feasibility", "feasibility-decision_TestApp.yaml")),
+			"no decision record when the session gate blocks",
+		);
 		assert.equal(loadState(tmpDir).currentStage, "analyzing-feasibility");
 	});
 
@@ -140,7 +151,23 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 		enterFeasibility();
 		setFeasibilitySession(
 			loadState(tmpDir),
-			{ decision: "build", selectedLanguage: "typescript", selectedBy: "user" },
+			{
+				decision: "build",
+				selectedLanguage: "typescript",
+				selectedBy: "user",
+				languageCandidates: ["typescript", "go"],
+				spikeResults: [
+					{
+						language: "typescript",
+						coreFunction: "parse",
+						buildOk: true,
+						runOk: true,
+						notes: "ok",
+						evidencePath: "spikes/typescript",
+					},
+				],
+				reuseSummary: ["no viable reuse candidate"],
+			},
 			tmpDir,
 		);
 		await handleApprove(makeCtx(), undefined, tmpDir);
@@ -149,6 +176,35 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 		const state = loadState(tmpDir);
 		assert.equal(state.currentStage, "analyzed-feasibility");
 		assert.equal(state.feasibilitySession, undefined, "session cleared on approve");
+
+		// B3/D9 — the decision record was serialized BEFORE the session
+		// was cleared, carrying the D9 session fields.
+		const recordPath = path.join(
+			tmpDir,
+			"Doc",
+			"feasibility",
+			"feasibility-decision_TestApp.yaml",
+		);
+		assert.ok(fs.existsSync(recordPath), "decision record written");
+		const record = loadFeasibilityRecord(tmpDir, "TestApp")!;
+		assert.equal(record.verdict, "build");
+		assert.equal(record.selectedLanguage, "typescript");
+		assert.equal(record.selectedBy, "user");
+		assert.deepEqual(record.languageCandidates, ["typescript", "go"]);
+		assert.equal(record.spikeResults.length, 1);
+		assert.equal(record.spikeResults[0]!.language, "typescript");
+		assert.deepEqual(record.reuseSummary, ["no viable reuse candidate"]);
+		assert.ok(typeof record.recordedAt === "string" && record.recordedAt.length > 0);
+
+		// The record joins the study's own freshness extraPaths (D5).
+		const manifest = loadFreshnessManifest(tmpDir);
+		const entry = manifest.artifacts["feasibility-study:TestApp"];
+		assert.ok(entry, "freshness entry for the study");
+		const recordRel = path.join("Doc", "feasibility", "feasibility-decision_TestApp.yaml");
+		assert.ok(
+			entry.extraPaths?.[recordRel],
+			`extraPaths must hash the decision record; got ${JSON.stringify(entry.extraPaths)}`,
+		);
 	});
 
 	it("does not gate non-feasibility stages", async () => {

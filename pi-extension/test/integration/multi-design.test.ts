@@ -211,6 +211,11 @@ function setupFederationCwd(): void {
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "RTM_alpha.json"), RTM_JSON("FR-01"));
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "RTM_beta.md"), "# RTM\n");
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "RTM_beta.json"), RTM_JSON("FR-01"));
+	// B4: the publish gate refuses a design publish when its declared input
+	// (the published feasibility study) is missing.
+	fs.mkdirSync(path.join(tmpDir, "Doc", "feasibility"), { recursive: true });
+	fs.writeFileSync(path.join(tmpDir, "Doc", "feasibility", "feasibility-study_alpha.md"), "# Feasibility\n");
+	fs.writeFileSync(path.join(tmpDir, "Doc", "feasibility", "feasibility-study_beta.md"), "# Feasibility\n");
 }
 
 function enterBuildingRtmFor(projectName: string, frId: string): void {

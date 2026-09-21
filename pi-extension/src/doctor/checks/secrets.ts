@@ -20,7 +20,7 @@ import { join } from "node:path";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
-export interface ScanHit {
+interface ScanHit {
 	pattern: string;
 	line: number;
 	match: string;

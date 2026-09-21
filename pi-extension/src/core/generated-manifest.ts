@@ -21,7 +21,7 @@ import { join, relative } from "node:path";
 import { atomicWriteJson } from "../io/atomic-write.js";
 
 export const GENERATED_MANIFEST_FILE = "generated-manifest.json";
-export const GENERATED_MANIFEST_DIR_SUBDIR = join(".pi", "velpari");
+const GENERATED_MANIFEST_DIR_SUBDIR = join(".pi", "velpari");
 
 export interface GeneratedManifest {
 	version: 1;

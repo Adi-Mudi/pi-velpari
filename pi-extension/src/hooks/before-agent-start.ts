@@ -3,10 +3,12 @@
  * into the system prompt on every agent turn while a run is active.
  *
  * The block carries the current stage, run id, mission, the exact next
- * command(s), and the hard rule for the stage (write-scope and scout
- * freshness for in-progress stages; read-only rule for brainstorming).
- * Per-turn reinforcement survives context compaction — after a compact,
- * the very next turn re-injects the full stage discipline.
+ * command(s) FROM THE TRANSITION LOCK (A1 — the single source of legal-
+ * command truth: two-door collapse while a brainstorm is open, earliest-
+ * stale routing when the chain is stale, forward table otherwise), the
+ * paused stage while a brainstorm session is open, and the hard rule for
+ * the stage (write-scope and scout freshness for in-progress stages;
+ * read-only rule for brainstorming).
  *
  * No-op (returns the prompt unchanged) when there is no active run.
  * Fails open: any error returns the original system prompt untouched.
@@ -14,29 +16,23 @@
 
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { nextCommandsFor, STAGE_FOLDERS } from "../core/constants.js";
-import { loadFilesConfig } from "../core/config.js";
-import { buildRunDir, hasPublishedFeasibility } from "../core/paths.js";
+import { STAGE_FOLDERS } from "../core/constants.js";
+import { buildRunDir } from "../core/paths.js";
 import { loadState, type RunState } from "../core/state.js";
-
-/**
- * True only at built-rtm when a published feasibility study already exists —
- * the skip to /velpari-architecture-generator is then a real next command. Cheap: the check
- * runs only for the one stage where it matters.
- */
-function feasibilitySkipFor(state: RunState, cwd: string): boolean {
-	if (state.currentStage !== "built-rtm") return false;
-	const projectName = loadFilesConfig(cwd).projectName;
-	return projectName !== "" && hasPublishedFeasibility(cwd, projectName);
-}
+import { STAGE_LOCK_SPECS } from "../stages/registry.js";
+import { computeLegalCommands } from "../stages/transition-lock.js";
 
 /** Per-stage hard rule injected alongside the status block. */
 function stageRule(state: RunState, cwd: string): string | null {
 	if (state.currentStage === "brainstorming") {
 		const folder = relative(cwd, join(buildRunDir(state.runId, cwd), "brainstorm"));
+		const paused = state.pausedStage
+			? ` (paused from "${state.pausedStage}" — approve offers: continue "${state.pausedStage}" or restart at /velpari-prd)`
+			: "";
 		return (
-			`Brainstorm "${state.runId}" is open: the project is read-only outside ` +
-			`${folder}/ until /velpari-approve-brainstorm. Confirm the understanding, ` +
+			`Brainstorm "${state.runId}" is open${paused}: the project is read-only outside ` +
+			`${folder}/ until /velpari-approve-brainstorm (or close without an artifact via ` +
+			`velpari_brainstorm_session({ action: "discard" })). Confirm the understanding, ` +
 			`finish every open question (agreed / not-wanted+reason / replaced), then approve.`
 		);
 	}
@@ -62,13 +58,17 @@ export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 			if (!state.runId || state.currentStage === "none") {
 				return { systemPrompt: event.systemPrompt };
 			}
+			const lock = computeLegalCommands(ctx.cwd, STAGE_LOCK_SPECS);
 			const lines = [
 				"<velpari_status>",
 				`stage: ${state.currentStage}`,
 				`run: ${state.runId}`,
 				`mission: ${state.mission}`,
-				`next: ${nextCommandsFor(state.currentStage, { feasibilitySkip: feasibilitySkipFor(state, ctx.cwd) }).join(" or ")}`,
+				`next: ${lock.nextCommands.join(" or ")}`,
 			];
+			if (lock.pausedStage) {
+				lines.push(`paused: ${lock.pausedStage} (brainstorm open — approve resumes it, or restart at /velpari-prd)`);
+			}
 			const rule = stageRule(state, ctx.cwd);
 			if (rule) lines.push(`rule: ${rule}`);
 			lines.push("</velpari_status>");

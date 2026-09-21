@@ -151,5 +151,5 @@ npm dist-tag rm @adi-mudi/pi-velpari <tag-name>
 ## See also
 
 - `velpari-full-sequence.md` — full stage sequence overview
-- `Doc/velpari-sequence.md` — published sequence doc
+- `Doc/velpari-sequence/` — published sequence doc set (README as entry)
 - `.github/workflows/publish-dev.yml` — CI publish workflow (Trusted Publishing via OIDC, alternative to local publish)

@@ -93,7 +93,7 @@ export type Severity =
 	| "debug";
 
 /** RFC 2119 requirement keyword. */
-export type Rfc2119Keyword =
+type Rfc2119Keyword =
 	| "shall"
 	| "should"
 	| "may"
@@ -103,7 +103,7 @@ export type Rfc2119Keyword =
 	| "optional";
 
 /** One compliance regime that applies to the project (e.g. PCI DSS Req 10). */
-export interface ComplianceRegime {
+interface ComplianceRegime {
 	framework: string;
 	version: string;
 	clauses: string[];
@@ -111,7 +111,7 @@ export interface ComplianceRegime {
 }
 
 /** Category of events that must be logged. */
-export interface EventCategory {
+interface EventCategory {
 	name: string;
 	minimumSeverity: Severity;
 	retentionMonths: number;
@@ -119,7 +119,7 @@ export interface EventCategory {
 }
 
 /** One field in the canonical log shape (RFC 5424 + OWASP Logging Vocabulary). */
-export interface LogShapeField {
+interface LogShapeField {
 	name: string;
 	type: "string" | "number" | "boolean" | "object";
 	required: boolean;
@@ -128,7 +128,7 @@ export interface LogShapeField {
 }
 
 /** Storage tier (hot / warm / cold / archive). */
-export interface RetentionTier {
+interface RetentionTier {
 	tier: "hot" | "warm" | "cold" | "archive";
 	retentionMonths: number;
 	storageBackend: string;
@@ -136,7 +136,7 @@ export interface RetentionTier {
 }
 
 /** One monitoring/alerting rule. */
-export interface MonitoringAlert {
+interface MonitoringAlert {
 	name: string;
 	trigger: string;
 	severity: Severity;
@@ -202,7 +202,7 @@ export interface LoggingPlan {
 }
 
 /** One validation issue found in a LoggingPlan. */
-export interface LoggingPlanValidationError {
+interface LoggingPlanValidationError {
 	field: string;
 	message: string;
 	severity: "error" | "warning";

@@ -107,7 +107,7 @@ describe("checkFeasibilityV2Section — open session progress (active stage)", (
 		const cwd = makeCwd();
 		try {
 			// Seed state.json with an active feasibility stage + partial session
-			const dir = join(cwd, ".IDE_Plans", "velpari");
+			const dir = join(cwd, ".pi", "velpari");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(
 				join(dir, "state.json"),
@@ -144,7 +144,7 @@ describe("checkFeasibilityV2Section — open session progress (active stage)", (
 	it("reports settled session as ok during analyzing-feasibility", () => {
 		const cwd = makeCwd();
 		try {
-			const dir = join(cwd, ".IDE_Plans", "velpari");
+			const dir = join(cwd, ".pi", "velpari");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(
 				join(dir, "state.json"),
@@ -178,7 +178,7 @@ describe("checkFeasibilityV2Section — open session progress (active stage)", (
 	it("does not include session progress when stage is not feasibility", () => {
 		const cwd = makeCwd();
 		try {
-			const dir = join(cwd, ".IDE_Plans", "velpari");
+			const dir = join(cwd, ".pi", "velpari");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(
 				join(dir, "state.json"),
@@ -204,7 +204,7 @@ describe("checkFeasibilityV2Section — open session progress (active stage)", (
 	it("does not include session progress when no session exists", () => {
 		const cwd = makeCwd();
 		try {
-			const dir = join(cwd, ".IDE_Plans", "velpari");
+			const dir = join(cwd, ".pi", "velpari");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(
 				join(dir, "state.json"),
@@ -232,7 +232,7 @@ describe("checkFeasibilityV2Section — combined", () => {
 		const cwd = makeCwd();
 		try {
 			writeFeasibilityStudy(cwd, "TestApp", REQUIRED_SECTIONS);
-			const dir = join(cwd, ".IDE_Plans", "velpari");
+			const dir = join(cwd, ".pi", "velpari");
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(
 				join(dir, "state.json"),

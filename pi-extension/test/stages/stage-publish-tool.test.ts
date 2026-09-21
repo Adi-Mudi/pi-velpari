@@ -175,6 +175,12 @@ describe("velpari_stage_publish tool", () => {
 
 	it("happy path: publishes a valid PSRS working copy and advances the stage", async () => {
 		enterDraftingPrd();
+		// B4: the publish gate refuses a PRD publish when its declared input
+		// (the published brainstorm) is missing. Mission "TestApp" → slug
+		// "testapp".
+		const brainstormDir = path.join(tmpDir, "Doc", "brainstorm");
+		fs.mkdirSync(brainstormDir, { recursive: true });
+		fs.writeFileSync(path.join(brainstormDir, "brainstorm-testapp.md"), "# brainstorm\n", "utf8");
 		const runId = loadState(tmpDir).runId;
 		const prdPath = path.join(
 			tmpDir,

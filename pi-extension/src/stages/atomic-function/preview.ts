@@ -19,7 +19,7 @@
 import { buildWorkingGroupedPath } from "../../core/paths.js";
 
 /** Inputs to `formatPreviewQuestion`. */
-export interface PreviewQuestionDeps {
+interface PreviewQuestionDeps {
 	cwd: string;
 	runId: string;
 	projectName: string;

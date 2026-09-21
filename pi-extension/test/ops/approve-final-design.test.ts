@@ -158,6 +158,20 @@ describe("/velpari-rtm-approve final-design publish path", () => {
 			"utf8",
 		);
 
+		// B4: the publish gate refuses a final-design publish when any of its
+		// declared inputs is missing; seed them as legacy flat Doc artifacts.
+		mkdirSync(join(cwd, "Doc"), { recursive: true });
+		for (const name of [
+			"design",
+			"atomic-functions",
+			"pseudocode",
+			"test-plan",
+			"test-cases",
+			"development-order",
+		]) {
+			writeFileSync(join(cwd, "Doc", `${name}_FinalApp.md`), `# ${name}\n`, "utf8");
+		}
+
 		const ctx = makeCtx();
 		await handleApprove(ctx, undefined, cwd);
 

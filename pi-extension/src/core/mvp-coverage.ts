@@ -13,14 +13,14 @@
  *  - no-tests:   row links no test cases                   → warning
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "./paths.js";
 import { extractRequirementPhases } from "./psrs.js";
-import type { RtmData } from "./rtm-data.js";
+import { loadRtmSidecarData, type RtmData } from "./rtm-data.js";
 
-export type MvpCoverageProblem = "no-row" | "uncovered" | "partial" | "no-tests";
+type MvpCoverageProblem = "no-row" | "uncovered" | "partial" | "no-tests";
 
-export interface MvpCoverageIssue {
+interface MvpCoverageIssue {
 	id: string;
 	problem: MvpCoverageProblem;
 	/** "error" blocks handoff; "warning" is shown but does not block. */
@@ -28,7 +28,7 @@ export interface MvpCoverageIssue {
 	message: string;
 }
 
-export interface MvpCoverageReport {
+interface MvpCoverageReport {
 	/** Total Phase-1 (MVP) requirement ids in the PRD. */
 	total: number;
 	/** Phase-1 ids with an RTM row at coverage "covered" and ≥1 test. */
@@ -46,13 +46,14 @@ export function checkMvpCoverage(cwd: string, projectName: string): MvpCoverageR
 	const psrs = resolveDocArtifact("PRD", projectName, cwd);
 	const rtm = resolveDocArtifact("RTM", projectName, cwd);
 	if (!psrs || !rtm) return null;
-	const jsonPath = rtm.path.replace(/\.md$/, ".json");
-	if (!existsSync(jsonPath)) return null;
+	// B3/D4: dual-read — .yaml preferred, legacy .json fallback.
+	const sidecar = loadRtmSidecarData(rtm.path);
+	if (!sidecar) return null;
 
 	let data: RtmData;
 	let phases: Map<string, number>;
 	try {
-		data = JSON.parse(readFileSync(jsonPath, "utf8")) as RtmData;
+		data = sidecar.data as RtmData;
 		if (!Array.isArray(data.rows)) return null;
 		phases = extractRequirementPhases(readFileSync(psrs.path, "utf8"));
 	} catch {

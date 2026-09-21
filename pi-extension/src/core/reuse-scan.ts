@@ -22,12 +22,12 @@
 
 export const REUSE_THRESHOLD = 70;
 export const PARTIAL_THRESHOLD = 30;
-export const STALE_MONTHS = 18;
+const STALE_MONTHS = 18;
 
 /** Licenses that block reuse without legal review (lowercase substrings). */
-export const RESTRICTIVE_LICENSES = ["gpl", "agpl", "lgpl", "sspl", "cc-by-nc", "proprietary"];
+const RESTRICTIVE_LICENSES = ["gpl", "agpl", "lgpl", "sspl", "cc-by-nc", "proprietary"];
 
-export type CoverageValue = 0 | 0.5 | 1;
+type CoverageValue = 0 | 0.5 | 1;
 
 export interface CoreFunction {
 	/** Stable id, typically a PRD FR id (e.g. "FR-12"). */
@@ -50,10 +50,10 @@ export interface ReuseCandidate {
 	evidence?: string;
 }
 
-export type CandidateStatus = "reuse-candidate" | "health-blocked" | "partial" | "low";
-export type ReuseVerdict = "reuse" | "partial" | "build";
+type CandidateStatus = "reuse-candidate" | "health-blocked" | "partial" | "low";
+type ReuseVerdict = "reuse" | "partial" | "build";
 
-export interface ScoredCandidate {
+interface ScoredCandidate {
 	candidate: ReuseCandidate;
 	matchPct: number;
 	healthOk: boolean;

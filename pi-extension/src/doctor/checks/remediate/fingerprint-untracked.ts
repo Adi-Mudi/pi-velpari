@@ -10,13 +10,18 @@
  * not touched.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
 import {
 	extractRequirementFingerprints,
 	stampFingerprints,
 } from "../../../core/fingerprints.js";
-import { renderRtmMarkdown, type RtmData } from "../../../core/rtm-data.js";
+import {
+	renderRtmMarkdown,
+	resolveRtmSidecar,
+	type RtmData,
+} from "../../../core/rtm-data.js";
+import { readYamlFile, writeYamlFile } from "../../../core/yaml-data.js";
 import { atomicWriteFile } from "../../../io/atomic-write.js";
 import type { RemediateFn, RemediateOutcome } from "./index.js";
 
@@ -27,16 +32,13 @@ export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => 
 	if (!rtm) return { changedFiles: [] };
 	const psrs = resolveDocArtifact("PRD", ctx.projectName, ctx.cwd);
 	if (!psrs) return { changedFiles: [] };
-	const jsonPath = rtm.path.replace(/\.md$/, ".json");
-	if (!existsSync(jsonPath)) return { changedFiles: [] };
+	// B3/D4: read .yaml or legacy .json; writes are always .yaml (the
+	// legacy .json is left in place — dual-read prefers the .yaml).
+	const sidecar = resolveRtmSidecar(rtm.path);
+	if (!sidecar) return { changedFiles: [] };
 
-	let data: RtmData;
-	try {
-		data = JSON.parse(readFileSync(jsonPath, "utf8")) as RtmData;
-	} catch {
-		return { changedFiles: [] };
-	}
-	if (!Array.isArray(data.rows)) return { changedFiles: [] };
+	const data = readYamlFile(sidecar.path) as RtmData | null;
+	if (!data || !Array.isArray(data.rows)) return { changedFiles: [] };
 
 	const psrsContent = readFileSync(psrs.path, "utf8");
 	const fingerprints = extractRequirementFingerprints(psrsContent);
@@ -46,8 +48,9 @@ export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => 
 	if (!anyChanged) return { changedFiles: [] };
 
 	const newData: RtmData = { ...data, rows: newRows };
-	atomicWriteFile(jsonPath, JSON.stringify(newData, null, 2), "utf8");
+	const yamlPath = rtm.path.replace(/\.md$/, ".yaml");
+	writeYamlFile(yamlPath, newData);
 	atomicWriteFile(rtm.path, renderRtmMarkdown(newData), "utf8");
 
-	return { changedFiles: [jsonPath, rtm.path] };
+	return { changedFiles: [yamlPath, rtm.path] };
 };

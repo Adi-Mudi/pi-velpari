@@ -27,8 +27,17 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "../core/constants.js";
-import { nextCommandsFor } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
+import {
+	computeStaleSet,
+	manifestKey,
+	resolveDeclaredInputs,
+	type StaleItem,
+} from "../core/freshness.js";
+import {
+	computeLegalCommands,
+	type StageLockSpec,
+} from "./transition-lock.js";
 import { loadOverlay } from "../core/standards-overlay.js";
 import { bootstrapOverlayScouts } from "../io/agents-install.js";
 import {
@@ -36,7 +45,6 @@ import {
 	buildOutputPath,
 	buildRunDir,
 	buildWorkingGroupedPath,
-	hasPublishedFeasibility,
 	resolveBrainstormArtifact,
 	resolveDocArtifact,
 	slugify,
@@ -126,7 +134,7 @@ export interface StageInputDoc {
 }
 
 /** Per-stage not-found message. Preserves the pre-Phase-B byte-for-byte copy. */
-export type MissingInputMessageFormatter = (deps: {
+type MissingInputMessageFormatter = (deps: {
 	cwd: string;
 	projectName: string;
 	mission: string;
@@ -411,6 +419,34 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 	},
 };
 
+/**
+ * Lock specs for the transition lock (A1), in PIPELINE EXECUTION ORDER —
+ * design → atomic-function → pseudocode → testplan (STAGE_KEYS is legacy
+ * declaration order and must NOT be used for earliest-stale routing).
+ * Derived from STAGE_GATE + STAGE_REGISTRY so stage data keeps exactly
+ * one home; consumed by runStage, the publish tool, ops/approve, the
+ * status surfaces, and the before_agent_start hook.
+ */
+export const STAGE_LOCK_SPECS: readonly StageLockSpec[] = (
+	[
+		"prd",
+		"rtm",
+		"feasibility",
+		"architecture-generator",
+		"atomic-function",
+		"pseudocode",
+		"testplan",
+		"development-order",
+		"final-design",
+	] as const satisfies readonly StageKey[]
+).map((key) => ({
+	key,
+	command: `/velpari-${key}`,
+	gate: STAGE_GATE[key],
+	workingCopyArtifact: STAGE_REGISTRY[key].workingCopyArtifact,
+	inputs: STAGE_REGISTRY[key].inputs,
+}));
+
 // ---------------------------------------------------------------------------
 // Atomic-function, development-order, final-design error messages. The
 // "first failing input" is picked by walking the required list in order;
@@ -481,7 +517,7 @@ function finalDesignMissingError(projectName: string, cwd: string): string {
 	return `Cannot run final-design: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. Path tried: ${cwd}/${groupedPath}.`;
 }
 
-export interface ResolveInputsDeps {
+interface ResolveInputsDeps {
 	cwd: string;
 	projectName: string;
 	mission: string;
@@ -699,27 +735,15 @@ export async function runStage(
 		return;
 	}
 
-	// 1b. Hard stage gate — the sequence can never be broken.
-	const allowed = STAGE_GATE[stageKey];
-	let gated = !(allowed as readonly Stage[]).includes(state.currentStage);
-	// Feasibility skip: /velpari-architecture-generator from built-rtm is
-	// allowed when a published feasibility study already exists (update cycle).
-	if (gated && stageKey === "architecture-generator" && state.currentStage === "built-rtm") {
-		const gateConfig = loadFilesConfig(cwd);
-		if (gateConfig.projectName && hasPublishedFeasibility(cwd, gateConfig.projectName)) {
-			gated = false;
-		}
-	}
-	if (gated) {
-		const gateConfig = loadFilesConfig(cwd);
-		const skip = gateConfig.projectName
-			? hasPublishedFeasibility(cwd, gateConfig.projectName)
-			: false;
-		const next = nextCommandsFor(state.currentStage, { feasibilitySkip: skip }).join(" or ");
-		ctx.ui.notify(
-			`Cannot run /velpari-${stageKey} at stage "${state.currentStage}". Run ${next} first.`,
-			"error",
-		);
+	// 1b. Hard stage gate — the sequence can never be broken. ALL legality
+	//     decisions delegate to the transition lock (A1): the STAGE_GATE
+	//     redraft self-loops, the conditional feasibility skip, the
+	//     brainstorm-open collapse (two doors), the stale declared-input
+	//     hard-block, and the self-healing routing named in the reason.
+	const lock = computeLegalCommands(cwd, STAGE_LOCK_SPECS);
+	const gateReason = lock.reasonFor(`/velpari-${stageKey}`);
+	if (gateReason) {
+		ctx.ui.notify(gateReason, "error");
 		return;
 	}
 
@@ -735,6 +759,43 @@ export async function runStage(
 	if (!inputs.ok) {
 		ctx.ui.notify(inputs.error, "error");
 		return;
+	}
+
+	// 2b. Stage-start freshness WARNINGS (A3 + A1). The hard block (declared
+	//     input stale with reason input-changed / input-missing) already
+	//     fired at 1b via the transition lock — reaching here means no
+	//     actionable stale input remains. What stays: a legacy no-stamp
+	//     declared input warns and continues (D7), and the stage's OWN
+	//     previously-published output being stale only warns — this run is
+	//     the remedy (update mode revises it).
+	const staleSet = computeStaleSet(cwd);
+	if (staleSet.length > 0) {
+		const staleByKey = new Map(staleSet.map((s) => [s.key, s]));
+		const declared = resolveDeclaredInputs(cwd, spec.inputs, {
+			projectName,
+			topicSlug: slugify(state.mission),
+		});
+		const legacyInputs: StaleItem[] = [];
+		for (const input of declared) {
+			const item = staleByKey.get(input.id);
+			if (!item) continue;
+			if (item.reason === "no-stamp") legacyInputs.push(item);
+		}
+		if (legacyInputs.length > 0) {
+			ctx.ui.notify(
+				`Freshness note: ${legacyInputs.map((i) => i.key).join(", ")} ` +
+					`has no freshness stamp (pre-B4 publish) — republish to stamp. Continuing.`,
+				"warning",
+			);
+		}
+		const ownStale = staleByKey.get(manifestKey(spec.workingCopyArtifact, projectName));
+		if (ownStale && ownStale.reason !== "no-stamp") {
+			ctx.ui.notify(
+				`Freshness note: published ${spec.workingCopyArtifact} is stale vs its inputs ` +
+					`(${ownStale.changedInputs.join(", ")}) — this run revises it.`,
+				"warning",
+			);
+		}
 	}
 
 	// 3. Build artifact paths.

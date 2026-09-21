@@ -18,6 +18,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadState } from "../core/state.js";
+import { loadHistory } from "../core/history.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
 	GROUPED_CATEGORIES,
@@ -35,6 +36,12 @@ import { resolveDocArtifactAll } from "../core/paths.js";
 import { computeShapeVerdictsAll } from "../core/shape.js";
 import { readFileSync } from "node:fs";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
+import { STAGE_LOCK_SPECS } from "../stages/registry.js";
+import { computeLegalCommands } from "../stages/transition-lock.js";
+import {
+	generationHintForPhase,
+	phaseEntryPhase,
+} from "../core/agent-freshness.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -80,9 +87,39 @@ export async function handleStatus(
 		`Mission: ${state.mission || "(none)"}`,
 		`Current stage: ${state.currentStage}`,
 		`Updated: ${state.updatedAt || "(unknown)"}`,
-		``,
-		`## Profile`,
 	];
+
+	// A1: exactly one correct next command, always named — from the
+	// transition lock (two doors while a brainstorm is open, earliest-stale
+	// routing when the chain is stale, forward table otherwise).
+	const lock = computeLegalCommands(cwd, STAGE_LOCK_SPECS);
+	lines.push(`Next: ${lock.nextCommands.join(" or ")}`);
+	// Generator v2 (D5): at a phase-entry stage, remind when the phase's
+	// generated agents are missing or stale. Informational only — the
+	// bundled scouts remain the permanent fallback.
+	const enteredPhase = phaseEntryPhase(state.currentStage);
+	if (enteredPhase !== null) {
+		const genHint = generationHintForPhase(cwd, enteredPhase);
+		if (genHint) {
+			lines.push(`(Phase ${enteredPhase} boundary: ${genHint} before the next stage.)`);
+		}
+	}
+	if (lock.brainstormOpen && lock.pausedStage) {
+		lines.push(
+			`(Brainstorm open — paused from "${lock.pausedStage}". ` +
+				`Approve continues "${lock.pausedStage}" or restarts at /velpari-prd; ` +
+				`discard closes without an artifact.)`,
+		);
+	} else {
+		const stale = lock.earliestStale();
+		if (stale) {
+			lines.push(
+				`(Stale: ${stale.item.key} — ${stale.item.reason}. Republish via ${stale.command} to heal the chain.)`,
+			);
+		}
+	}
+
+	lines.push(``, `## Profile`);
 
 	const profile = loadRequirementsProfile(cwd);
 	const compact = compactProfileMetadata(profile);
@@ -95,7 +132,7 @@ export async function handleStatus(
 		lines.push("Profile: (none — run /velpari-configure-requirements)");
 	}
 
-	lines.push(``, `## History`, ...state.history.map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`));
+	lines.push(``, `## History`, ...loadHistory(cwd, state.runId).map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`));
 	lines.push(``, `## Published artifacts (Doc/)`);
 
 	if (projectName) {

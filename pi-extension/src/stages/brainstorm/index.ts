@@ -65,10 +65,16 @@ import { loadAgentConfig, resolveAgentName } from "../../core/agents-config.js";
 import { loadFilesConfig, type FilesConfig } from "../../core/config.js";
 import { PATHS } from "../../core/constants.js";
 import { detectMultiplexer, multiplexerRequiredMessage } from "../../core/multiplexer.js";
+import { loadHistory } from "../../core/history.js";
 import { buildStagePrompt, type BrainstormExistingContext } from "../../core/prompt.js";
 import { buildRunDir, resolveDocArtifact, slugify } from "../../core/paths.js";
 import { loadRequirementsProfile } from "../../core/profile.js";
-import { createRun, loadState, type RunState } from "../../core/state.js";
+import {
+	createRun,
+	loadState,
+	openBrainstormSession,
+	type RunState,
+} from "../../core/state.js";
 import { formatScanPlanLines } from "./dispatcher.js";
 import { spawnPersistentSessions } from "./spawn-sessions.js";
 import { guardSeedInput, guardStageForBrainstorm } from "./guard.js";
@@ -143,7 +149,7 @@ function collectExistingContext(
 		framework: config.framework?.language,
 		profileId: profile?.profileId,
 		previousRunIds,
-		history: state.history.map((h) => `${h.stage} via ${h.command}`),
+		history: loadHistory(cwd, state.runId).map((h) => `${h.stage} via ${h.command}`),
 	};
 }
 
@@ -175,12 +181,13 @@ export async function handleBrainstorm(
 	// 2. Load state + framework. Create a new run if `currentStage === "none"`.
 	let state = loadState(cwd);
 
-	// 2b. Stage guard (v2.2). Brainstorm is single-shot per run: only
-	//     `none` (fresh) and `brainstorming` (resume) are allowed. Anything
-	//     else means the previous brainstorm was approved or the run has
-	//     advanced, and the correct next step is the next-stage command.
-	//     Runs AFTER loadState (to know the stage) and BEFORE createRun (so
-	//     a refused re-run does not overwrite the existing run).
+	// 2b. Stage guard (brainstorm-anytime). Only a nested open blocks — a
+	//     brainstorm session is already open. Every other stage is allowed:
+	//     `none` starts a fresh run; any later stage pauses the current stage
+	//     via `openBrainstormSession` (pausedStage recorded on the run) and
+	//     opens the session. Runs AFTER loadState (to know the stage) and
+	//     BEFORE createRun (so a refused re-run does not overwrite the
+	//     existing run).
 	const stageGuard = guardStageForBrainstorm(state);
 	if (!stageGuard.ok) {
 		ctx.ui.notify(stageGuard.reason!, "error");
@@ -189,6 +196,13 @@ export async function handleBrainstorm(
 
 	if (state.currentStage === "none") {
 		state = createRun(mission, cwd);
+	} else {
+		const pausedFrom = state.currentStage;
+		state = openBrainstormSession(cwd);
+		ctx.ui.notify(
+			`Paused "${pausedFrom}" — brainstorm session open. Approve to resume "${pausedFrom}" or restart at the PRD; discard to resume without an artifact.`,
+			"info",
+		);
 	}
 	const config = loadFilesConfig(cwd);
 	const framework = config.framework?.language;
@@ -245,9 +259,6 @@ export async function handleBrainstorm(
 	//    (re-entry into an active brainstorm with scansSelected set),
 	//    the prompt renders the `## Scan Plan` block instead of the
 	//    legacy `## Flags` section.
-	const webSearchAllowed =
-		state.scansSelected?.includes("community") === true;
-
 	// v3 — re-read state after the spawn helper so we pick up any
 	// handles that were persisted by the idempotency branch (rehydrate
 	// path: handles were already in state, no fresh spawn needed).

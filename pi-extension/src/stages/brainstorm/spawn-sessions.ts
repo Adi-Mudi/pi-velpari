@@ -53,9 +53,6 @@ export const BRAINSTORM_SESSION_HANDLES = {
 	docCode: "doc-code",
 } as const;
 
-export type BrainstormSessionHandle =
-	(typeof BRAINSTORM_SESSION_HANDLES)[keyof typeof BRAINSTORM_SESSION_HANDLES];
-
 /** Agent names for the 2 persistent sub-agents. Match the bundled agent
  *  markdown files under skills/agents/ (Phase 4). */
 export const BRAINSTORM_PERSISTENT_AGENTS = {
@@ -69,7 +66,7 @@ export const BRAINSTORM_SPAWN_TIMEOUT_MS = 60_000;
 
 /** Single subagent() call payload the parent LLM spreads into
  *  `subagent({ calls: [{ ... }] })`. */
-export interface SpawnCall {
+interface SpawnCall {
 	agent: string;
 	session: string;
 	prompt: string;
@@ -82,7 +79,7 @@ export interface SpawnCall {
  *                                    with the prepared calls, then
  *                                    persist via the tool action
  *  - ok=false                       → hard error; do not proceed */
-export type SpawnSessionsResult =
+type SpawnSessionsResult =
 	| {
 			ok: true;
 			alreadySpawned: true;
@@ -227,13 +224,6 @@ export function persistSpawnHandles(
 ): RunState {
 	return setActiveSubagents(state, { ...handles }, cwd);
 }
-
-/**
- * @deprecated v3 — Kept as a back-compat alias for any caller that
- * still expects a hook named after the old behavior. New callers should
- * use `spawnPersistentSessions` directly.
- */
-export const spawnActiveSubagents = spawnPersistentSessions;
 
 /** Re-export the ExtensionAPI type so callers don't need to import it
  *  from the upstream package for typing alone. */

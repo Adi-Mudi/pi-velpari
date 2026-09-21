@@ -22,7 +22,7 @@ export async function handleReset(
 		"Reset run?",
 		`Discard run ${state.runId} (mission: ${state.mission || "(none)"})? ` +
 			`Working copies in .IDE_Plans/velpari/runs/${state.runId}/ will remain on disk; ` +
-			`only state.json is cleared.`,
+			`only state.json and the run's history are cleared.`,
 	);
 	if (!confirmed) {
 		ctx.ui.notify("Reset cancelled.", "info");

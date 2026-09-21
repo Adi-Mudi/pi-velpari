@@ -1,4 +1,5 @@
 .IDE_Plans/
+.tmp/
 node_modules/
 dist/
 coverage/

@@ -17,8 +17,8 @@ import {
 } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 40 command names (v1.6.0: +9 per-stage approve, -1 generic approve)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 40);
+	it("exports 41 command names (A5: +velpari-reconfirm)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 41);
 	});
 
 	it("contains all expected user-facing commands", () => {
@@ -44,7 +44,7 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-testplan-approve",
 			"velpari-development-order-approve",
 			"velpari-final-design-approve",
-			// Discipline commands (12 — dropped velpari-approve, kept brainstorm-approve)
+			// Discipline commands (13 — A5 added velpari-reconfirm)
 			"velpari-approve-brainstorm",
 			"velpari-status",
 			"velpari-reset",
@@ -57,6 +57,7 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-doctor",
 			"velpari-handoff",
 			"velpari-design-logging",
+			"velpari-reconfirm",
 			// Wrapper command (1)
 			"velpari-prd-rtm",
 			// View commands (8 — v1.4.0 added /velpari-show-logging)

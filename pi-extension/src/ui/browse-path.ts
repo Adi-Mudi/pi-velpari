@@ -22,7 +22,7 @@ export function normalizePath(input: string): string {
 	return input.replace(/\\/g, "/");
 }
 
-export function isFolderLike(dir: string, entry: fs.Dirent): boolean {
+function isFolderLike(dir: string, entry: fs.Dirent): boolean {
 	if (entry.isDirectory()) return true;
 	if (entry.isSymbolicLink()) {
 		try {

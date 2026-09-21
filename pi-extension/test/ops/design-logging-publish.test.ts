@@ -99,9 +99,9 @@ describe("logging-plan publish path (parent LLM contract)", () => {
 	it("published plan survives a state.json round-trip (legacy + new fields coexist)", () => {
 		// Simulate a state.json that was written by an older Velpari
 		// (no loggingPlanPublishedPath). Then a v1.4.0 publish adds it.
-		mkdirSync(join(cwd, ".IDE_Plans", "velpari"), { recursive: true });
+		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 		writeFileSync(
-			join(cwd, ".IDE_Plans", "velpari", "state.json"),
+			join(cwd, ".pi", "velpari", "state.json"),
 			JSON.stringify({
 				version: 1,
 				runId: "r",

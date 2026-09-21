@@ -21,7 +21,9 @@ import { join } from "node:path";
 import {
 	AGENTS_CONFIG_COMMENT,
 	AGENTS_CONFIG_FILE,
+	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
+	GENERATION_PHASES,
 	REVIEWER_ROLES,
 	STAGE_SCOUT_ROLES,
 	VELPARI_ROLES,
@@ -29,12 +31,14 @@ import {
 	discoverAgents,
 	getAgentConfigPath,
 	loadAgentConfig,
+	phaseForStage,
 	resolveAgentName,
 	saveAgentConfig,
 	validateMappedAgents,
 	type AgentConfig,
 	type VelpariRole,
 } from "../../src/core/agents-config.js";
+import { STAGE_TRANSITIONS } from "../../src/core/constants.js";
 import { STAGE_KEYS, STAGE_REGISTRY } from "../../src/stages/registry.js";
 import { SCAN_TYPE_ROLES } from "../../src/stages/brainstorm/dispatcher.js";
 
@@ -214,6 +218,109 @@ describe("VELPARI_ROLES cross-check", () => {
 				(VELPARI_ROLES as readonly string[]).includes(name),
 				`scan role "${name}" missing from VELPARI_ROLES`,
 			);
+		}
+	});
+});
+
+describe("GENERATION_PHASES (generator v2)", () => {
+	it("P1 = the 4 brainstorm roles with no artifact inputs", () => {
+		assert.deepEqual([...GENERATION_PHASES[1].roles], [...BRAINSTORM_ROLES]);
+		assert.deepEqual([...GENERATION_PHASES[1].inputs], []);
+	});
+
+	it("phase role counts match the per-phase mapping (4 / 14 / 17 / 12)", () => {
+		assert.equal(GENERATION_PHASES[1].roles.length, 4);
+		assert.equal(GENERATION_PHASES[2].roles.length, 14);
+		assert.equal(GENERATION_PHASES[3].roles.length, 17);
+		assert.equal(GENERATION_PHASES[4].roles.length, 12);
+	});
+
+	it("phase roles derive from STAGE_REGISTRY (registry/phase drift fails this test)", () => {
+		// P2 = prd + rtm + feasibility scouts + the 2 conditional roles,
+		// in registry order.
+		const p2 = [
+			...STAGE_REGISTRY.prd.scouts,
+			...STAGE_REGISTRY.rtm.scouts,
+			...STAGE_REGISTRY.feasibility.scouts,
+			...(STAGE_REGISTRY.feasibility.conditionalAgents ?? []),
+		];
+		assert.deepEqual([...GENERATION_PHASES[2].roles], p2);
+
+		// P3 = design + atomic-function + pseudocode scouts (each registry
+		// scout list already carries its own reviewer) + the testplan
+		// reviewer — all 4 reviewers generate at the Phase-3 boundary by
+		// design (the tier gate decides at spawn time, not at generation).
+		const p3 = new Set([
+			...STAGE_REGISTRY["architecture-generator"].scouts,
+			...STAGE_REGISTRY["atomic-function"].scouts,
+			...STAGE_REGISTRY.pseudocode.scouts,
+			"testplan-reviewer",
+		]);
+		assert.deepEqual(new Set(GENERATION_PHASES[3].roles), p3);
+
+		// P4 = testplan scouts minus the reviewer + dev-order + final-design,
+		// in registry order.
+		const p4 = [
+			...STAGE_REGISTRY.testplan.scouts.filter((s) => s !== "testplan-reviewer"),
+			...STAGE_REGISTRY["development-order"].scouts,
+			...STAGE_REGISTRY["final-design"].scouts,
+		];
+		assert.deepEqual([...GENERATION_PHASES[4].roles], p4);
+	});
+
+	it("every phase role is a known Velpari role", () => {
+		for (const phase of [1, 2, 3, 4] as const) {
+			for (const role of GENERATION_PHASES[phase].roles) {
+				assert.ok(
+					(VELPARI_ROLES as readonly string[]).includes(role),
+					`phase ${phase} role "${role}" missing from VELPARI_ROLES`,
+				);
+			}
+		}
+	});
+
+	it("logging scouts stay bundled-only (not phase-mapped)", () => {
+		const allPhaseRoles = [1, 2, 3, 4].flatMap((p) => [
+			...GENERATION_PHASES[p as 1 | 2 | 3 | 4].roles,
+		]);
+		for (const loggingRole of ["logging-standards-researcher", "logging-architecture-designer", "logging-compliance-mapper"]) {
+			assert.ok(!allPhaseRoles.includes(loggingRole), `${loggingRole} must not be phase-mapped`);
+		}
+	});
+});
+
+describe("phaseForStage", () => {
+	it("maps pre-brainstorm and in-flight brainstorm to phase 1", () => {
+		assert.equal(phaseForStage("none"), 1);
+		assert.equal(phaseForStage("brainstorming"), 1);
+	});
+
+	it("maps completed stages to the phase of their successor (boundary crossings)", () => {
+		assert.equal(phaseForStage("brainstormed"), 2);
+		assert.equal(phaseForStage("analyzed-feasibility"), 3);
+		assert.equal(phaseForStage("wrote-pseudocode"), 4);
+	});
+
+	it("maps in-progress and same-phase-completed stages to their own phase", () => {
+		assert.equal(phaseForStage("drafting-prd"), 2);
+		assert.equal(phaseForStage("built-rtm"), 2);
+		assert.equal(phaseForStage("designing"), 3);
+		assert.equal(phaseForStage("analyzed-atomic-functions"), 3);
+		assert.equal(phaseForStage("planning-tests"), 4);
+		assert.equal(phaseForStage("ordered-development"), 4);
+	});
+
+	it("maps terminal stages to phase 4", () => {
+		assert.equal(phaseForStage("finalized-design"), 4);
+		assert.equal(phaseForStage("handoff-ready"), 4);
+	});
+
+	it("returns a valid phase for every Stage value in STAGE_TRANSITIONS", () => {
+		for (const t of STAGE_TRANSITIONS) {
+			for (const stage of [t.from, t.to]) {
+				const phase = phaseForStage(stage);
+				assert.ok(phase >= 1 && phase <= 4, `stage "${stage}" mapped to ${phase}`);
+			}
 		}
 	});
 });

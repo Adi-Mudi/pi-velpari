@@ -44,7 +44,7 @@ export interface OverlayProfile {
  * inside `OverlayProfile.loggingRequirements`. Defaults are safe: a
  * missing field means "not required".
  */
-export interface OverlayLoggingRequirements {
+interface OverlayLoggingRequirements {
 	/** Regulatory regimes whose clauses the plan must satisfy (e.g. PCI-DSS v4.0). */
 	regimes: ReadonlyArray<{ framework: string; version: string }>;
 	/** Minimum retention months the plan must declare in §7 (≥ 0). */
@@ -70,7 +70,7 @@ export function overlayDir(cwd: string, id: string): string {
 	return join(cwd, "skills", "standards", "overlays", id);
 }
 
-export function overlayProfilePath(cwd: string, id: string): string {
+function overlayProfilePath(cwd: string, id: string): string {
 	return join(overlayDir(cwd, id), "profile.json");
 }
 

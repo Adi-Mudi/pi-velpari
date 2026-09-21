@@ -24,6 +24,7 @@ import * as path from "node:path";
 
 import { handleAtomicFunction } from "../../src/stages/atomic-function/index.js";
 import { loadState, type RunState } from "../../src/core/state.js";
+import { loadHistory } from "../../src/core/history.js";
 import { handleApprove } from "../../src/ops/approve.js";
 import { resolveDocArtifact, buildRunDir } from "../../src/core/paths.js";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -65,7 +66,7 @@ function makePi(): ExtensionAPI {
 }
 
 function makeState(stage: RunState["currentStage"], mission: string): RunState {
-	const dir = path.join(tmpDir, ".IDE_Plans", "velpari");
+	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState = {
 		version: 1,
@@ -209,6 +210,51 @@ updated: 2026-09-17T13:00:00.000Z
 `;
 		fs.writeFileSync(workingCopyPath, workingCopyContent, "utf8");
 
+		// B3/D6: the publish requires the YAML sidecar — the source of
+		// truth the published markdown is re-rendered from. Basic tier:
+		// base-core fields + the 5 basic-tier cross-references.
+		const sidecarContent = [
+			`project: ${projectName}`,
+			"version: 1.0.0",
+			"tier: basic",
+			"functions:",
+			"  - afId: AF-1",
+			"    name: parseInput",
+			"    filePath: src/utils/parse-input.ts",
+			'    signature: "function parseInput(s: string): string"',
+			"    purpose: Parses user input",
+			"    source: RTM",
+			"    cohesion: perfect-atomic",
+			"    verification: Test",
+			"    testable: yes",
+			"    calledByFrIds: [FR-1]",
+			'    designRef: "§3.1"',
+			'    extractedFrom: "—"',
+			"    satisfactionFrId: FR-1",
+			'    feasibilityRef: "§4"',
+			"  - afId: AF-2",
+			"    name: validateEmail",
+			"    filePath: src/utils/validate-email.ts",
+			'    signature: "function validateEmail(email: string): boolean"',
+			"    purpose: Validates email",
+			"    source: PRD",
+			"    cohesion: perfect-atomic",
+			"    verification: Test",
+			"    testable: yes",
+			"    calledByFrIds: [FR-2]",
+			'    designRef: "§3.2"',
+			'    extractedFrom: "—"',
+			"    satisfactionFrId: FR-2",
+			'    feasibilityRef: "§4"',
+			"changeLog: []",
+			"",
+		].join("\n");
+		fs.writeFileSync(
+			path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`),
+			sidecarContent,
+			"utf8",
+		);
+
 		// Parent LLM (mocked) writes a reviewer verdict (approve).
 		const reviewerReport = {
 			verdict: "approve",
@@ -248,9 +294,10 @@ updated: 2026-09-17T13:00:00.000Z
 		// ====== Step 5: Verify state.json advanced ======
 		const finalState = loadState(tmpDir);
 		assert.equal(finalState.currentStage, "analyzed-atomic-functions");
-		assert.ok(finalState.history.length > 0, "history should have entries");
+		const history = loadHistory(tmpDir, finalState.runId);
+		assert.ok(history.length > 0, "history should have entries");
 		// The last advance came from /velpari-atomic-function-approve (handleApprove).
-		const lastEntry = finalState.history[finalState.history.length - 1]!;
+		const lastEntry = history[history.length - 1]!;
 		assert.equal(lastEntry.stage, "analyzed-atomic-functions");
 		assert.equal(lastEntry.command, "/velpari-atomic-function-approve");
 	});
@@ -258,7 +305,11 @@ updated: 2026-09-17T13:00:00.000Z
 	it("reviewer verdict 'block' → publish gate blocks → no Doc/artifact + no state advance", async () => {
 		const projectName = "BlockApp";
 		makeState("designed", "block-mission");
-		makeFilesConfig({ projectName, atomicTier: "advanced" });
+		// Entry tier keeps the required-field list at the 8 base-core
+		// fields so the fixture sidecar stays minimal; the reviewer
+		// verdict loader runs regardless of tier, so the block path is
+		// still exercised.
+		makeFilesConfig({ projectName, atomicTier: "entry" });
 		makeDocInputs(projectName);
 		preInstallScouts();
 
@@ -277,6 +328,30 @@ updated: 2026-09-17T13:00:00.000Z
 		fs.writeFileSync(
 			path.join(workingCopyDir, "atomic-functions_BlockApp.md"),
 			"---\nartifact: atomic-functions\nversion: 1.0.0\n---\n# stub\n",
+			"utf8",
+		);
+		// B3/D6: a valid sidecar is required to reach the publish gate —
+		// without it the D6 block (not the reviewer verdict) would stop
+		// the publish and this test would no longer cover the gate.
+		fs.writeFileSync(
+			path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`),
+			[
+				`project: ${projectName}`,
+				"version: 1.0.0",
+				"tier: entry",
+				"functions:",
+				"  - afId: AF-1",
+				"    name: stubFn",
+				"    filePath: src/stub.ts",
+				'    signature: "function stubFn(): void"',
+				"    purpose: stub",
+				"    source: RTM",
+				"    cohesion: perfect-atomic",
+				"    verification: Test",
+				"    testable: yes",
+				"changeLog: []",
+				"",
+			].join("\n"),
 			"utf8",
 		);
 		const reviewerReport = {

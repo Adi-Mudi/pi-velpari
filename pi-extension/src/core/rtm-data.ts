@@ -14,9 +14,17 @@
  *  - phase:    positive integer delivery phase (1 = MVP); must match the PRD
  *  - status:   proposed | approved | implemented | verified | deferred | deprecated
  *  - coverage: covered | partial | missing
+ *
+ * B3 (D4): the written sidecar format is YAML (`RTM_<project>.yaml`).
+ * Reads are dual-format — `.yaml` preferred, legacy `.json` fallback —
+ * via `resolveRtmSidecar`; writes are always `.yaml`. The YAML parser
+ * accepts JSON content (YAML 1.2 superset), so one loader serves both.
  */
 
-export const RTM_ROW_STATUSES = [
+import { existsSync } from "node:fs";
+import { readYamlFile } from "./yaml-data.js";
+
+const RTM_ROW_STATUSES = [
 	"proposed",
 	"approved",
 	"implemented",
@@ -24,10 +32,10 @@ export const RTM_ROW_STATUSES = [
 	"deferred",
 	"deprecated",
 ] as const;
-export type RtmRowStatus = (typeof RTM_ROW_STATUSES)[number];
+type RtmRowStatus = (typeof RTM_ROW_STATUSES)[number];
 
-export const RTM_COVERAGES = ["covered", "partial", "missing"] as const;
-export type RtmCoverage = (typeof RTM_COVERAGES)[number];
+const RTM_COVERAGES = ["covered", "partial", "missing"] as const;
+type RtmCoverage = (typeof RTM_COVERAGES)[number];
 
 export interface RtmRow {
 	/** Requirement id, e.g. "FR-1" or "NFR-1". */
@@ -64,12 +72,59 @@ export interface RtmData {
 	changeLog?: string[];
 }
 
-export interface RtmValidation {
+interface RtmValidation {
 	ok: boolean;
 	issues: string[];
 }
 
 const REQ_ID_PATTERN = /^(?:FR|NFR)-\d+$/;
+
+// ---------------------------------------------------------------------------
+// Sidecar resolution (B3/D4 — dual-read)
+// ---------------------------------------------------------------------------
+
+type RtmSidecarFormat = "yaml" | "json";
+
+interface RtmSidecarRef {
+	/** Absolute path of the sidecar file. */
+	path: string;
+	format: RtmSidecarFormat;
+}
+
+/**
+ * Sidecar candidates next to an RTM markdown path, in preference order:
+ * `.yaml` first, legacy `.json` second (D4).
+ */
+function rtmSidecarCandidates(mdPath: string): RtmSidecarRef[] {
+	const base = mdPath.replace(/\.md$/, "");
+	return [
+		{ path: `${base}.yaml`, format: "yaml" },
+		{ path: `${base}.json`, format: "json" },
+	];
+}
+
+/** Resolve the existing sidecar for an RTM markdown path, or null. */
+export function resolveRtmSidecar(mdPath: string): RtmSidecarRef | null {
+	for (const candidate of rtmSidecarCandidates(mdPath)) {
+		if (existsSync(candidate.path)) return candidate;
+	}
+	return null;
+}
+
+/**
+ * Loose load: parsed sidecar data when a sidecar exists and parses
+ * (YAML or legacy JSON — the YAML parser accepts both), null otherwise.
+ * Validation/diagnostics paths read the file + `parseYaml` themselves so
+ * malformed input produces line-numbered errors for the user.
+ */
+export function loadRtmSidecarData(
+	mdPath: string,
+): (RtmSidecarRef & { data: unknown }) | null {
+	const resolved = resolveRtmSidecar(mdPath);
+	if (!resolved) return null;
+	const data = readYamlFile(resolved.path);
+	return data === null ? null : { ...resolved, data };
+}
 
 /** Validate the JSON shape and vocabularies. Pure — no I/O. */
 export function validateRtmData(value: unknown): RtmValidation {

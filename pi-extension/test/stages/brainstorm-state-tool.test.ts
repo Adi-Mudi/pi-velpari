@@ -18,7 +18,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerBrainstormSessionTool } from "../../src/stages/brainstorm-state-tool.js";
-import { appendWebDispatchConsent, createRun, loadState } from "../../src/core/state.js";
+import {
+	appendWebDispatchConsent,
+	confirmUnderstanding,
+	createRun,
+	loadState,
+	openBrainstormSession,
+	saveState,
+	type RunState,
+} from "../../src/core/state.js";
 
 interface ToolDef {
 	name: string;
@@ -371,5 +379,67 @@ describe("velpari_brainstorm_session — v3 spawn-sessions / close-sessions", ()
 		const result = await exec({ action: "close-sessions" });
 		assert.equal(result.isError, true);
 		assert.match(result.content[0]!.text, /No active brainstorm/);
+	});
+});
+
+describe("velpari_brainstorm_session — discard (brainstorm-anytime, D7)", () => {
+	function enterPausedSession(pausedStage: string): RunState {
+		const run = createRun("Test mission", tmpDir);
+		const paused: RunState = { ...run, currentStage: pausedStage as never };
+		saveState(paused, tmpDir);
+		const opened = openBrainstormSession(tmpDir);
+		return confirmUnderstanding(opened, tmpDir);
+	}
+
+	it("errors when no brainstorm is active", async () => {
+		const result = await exec({ action: "discard" });
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]!.text, /No active brainstorm/);
+	});
+
+	it("discard mid-run: clears the session, resumes the paused stage, publishes nothing", async () => {
+		enterPausedSession("building-rtm");
+
+		const result = await exec({ action: "discard" });
+		assert.ok(!result.isError);
+		const details = result.details as Record<string, unknown>;
+		assert.equal(details.discarded, true);
+		assert.equal(details.resumedStage, "building-rtm");
+		assert.match(String(details.message), /Resumed "building-rtm"/);
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "building-rtm");
+		assert.equal(loaded.pausedStage, undefined);
+		assert.equal(loaded.understandingConfirmed, undefined);
+		assert.equal(loaded.brainstormQuestions, undefined);
+		assert.equal(
+			fs.existsSync(path.join(tmpDir, "Doc", "brainstorm")),
+			false,
+			"discard must not publish",
+		);
+	});
+
+	it("discard on a first run (no pausedStage): clears the session back to none", async () => {
+		const run = createRun("Test mission", tmpDir);
+		confirmUnderstanding(run, tmpDir);
+
+		const result = await exec({ action: "discard" });
+		assert.ok(!result.isError);
+		const details = result.details as Record<string, unknown>;
+		assert.equal(details.discarded, true);
+		assert.equal(details.resumedStage, "none");
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "none");
+		assert.equal(loaded.pausedStage, undefined);
+		assert.equal(loaded.understandingConfirmed, undefined);
+	});
+
+	it("discard mirrors to pi.appendEntry", async () => {
+		enterPausedSession("designing");
+		const before = entries.length;
+		await exec({ action: "discard" });
+		assert.ok(entries.length > before);
+		assert.equal(entries[entries.length - 1]!.customType, "velpari-brainstorm");
 	});
 });

@@ -10,7 +10,7 @@ import { remediate as frontmatter } from "./frontmatter.js";
 import { remediate as fingerprintUntracked } from "./fingerprint-untracked.js";
 import { remediate as workingPublishedDrift } from "./working-published-drift.js";
 
-export interface RemediateContext {
+interface RemediateContext {
 	cwd: string;
 	projectName: string;
 }

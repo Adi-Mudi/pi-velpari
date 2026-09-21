@@ -42,7 +42,7 @@ import { nextCommandsFor, type Stage } from "../../core/constants.js";
 import type { ResolveInputsResult } from "../registry.js";
 
 /** Inputs to `runPreCondition`. `cwd` is the project root. */
-export interface PreConditionDeps {
+interface PreConditionDeps {
 	cwd: string;
 	stageKey: StageKey;
 }
@@ -60,12 +60,12 @@ export interface PreConditionOk {
 }
 
 /** Failed pre-condition — the composer should notify and bail. */
-export interface PreConditionError {
+interface PreConditionError {
 	kind: "error";
 	message: string;
 }
 
-export type PreConditionResult = PreConditionOk | PreConditionError;
+type PreConditionResult = PreConditionOk | PreConditionError;
 
 /**
  * Run every pre-condition for an atomic-function stage iteration.

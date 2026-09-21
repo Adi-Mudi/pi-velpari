@@ -17,8 +17,11 @@ import {
 	checkRowFingerprints,
 	countTraceIssues,
 	extractRequirementFingerprints,
+	hashFileContent,
+	hashFileContentNormalized,
 	hashRequirementText,
 	stampFingerprints,
+	stripChangeLogSection,
 } from "../../src/core/fingerprints.js";
 import type { RtmRow } from "../../src/core/rtm-data.js";
 
@@ -185,5 +188,81 @@ describe("phase edits flag rows as suspect", () => {
 		assert.notEqual(after.get("FR-01"), before.get("FR-01"));
 		// Untouched rows keep their fingerprint.
 		assert.equal(after.get("FR-02"), before.get("FR-02"));
+	});
+});
+
+describe("stripChangeLogSection (A5/D3)", () => {
+	const DOC = [
+		"---",
+		"artifact: design",
+		"version: 1.2.0",
+		"---",
+		"",
+		"# Design",
+		"",
+		"## 1. Module Breakdown",
+		"",
+		"body",
+		"",
+		"## Change Log",
+		"",
+		"- v1.0.0 initial",
+		"",
+		"## 12. Appendix",
+		"",
+		"tail",
+		"",
+	].join("\n");
+
+	it("strips the section up to the next ## heading", () => {
+		const stripped = stripChangeLogSection(DOC);
+		assert.ok(!stripped.includes("## Change Log"));
+		assert.ok(!stripped.includes("- v1.0.0 initial"));
+		assert.ok(stripped.includes("## 12. Appendix"));
+		assert.ok(stripped.includes("## 1. Module Breakdown"));
+	});
+
+	it("strips to EOF when Change Log is the last section", () => {
+		const doc = "# A\n\n## Change Log\n\n- entry\n";
+		const stripped = stripChangeLogSection(doc);
+		assert.equal(stripped, "# A\n");
+	});
+
+	it("returns the content unchanged when there is no Change Log section", () => {
+		const doc = "# A\n\n## Changes\n\n- not the same heading\n";
+		assert.equal(stripChangeLogSection(doc), doc);
+	});
+});
+
+describe("hashFileContentNormalized (A5/D3)", () => {
+	function tmpFile(content: string): string {
+		const cwd = mkdtempSync(join(tmpdir(), "velpari-hnorm-"));
+		const p = join(cwd, "artifact.md");
+		writeFileSync(p, content);
+		return p;
+	}
+
+	it("ignores Change Log edits but detects body edits", () => {
+		const base = "# Doc\n\n## Body\n\nx\n\n## Change Log\n\n- v1\n";
+		const p = tmpFile(base);
+		const before = hashFileContentNormalized(p);
+		writeFileSync(p, base.replace("- v1", "- v1\n- Reviewed after `prd:App` v1.0.0 — no changes required."));
+		assert.equal(hashFileContentNormalized(p), before, "Change Log append must not change the hash");
+		writeFileSync(p, base.replace("x", "y"));
+		assert.notEqual(hashFileContentNormalized(p), before, "body edit must change the hash");
+	});
+
+	it("equals the whole-file hash when there is no Change Log section", () => {
+		const p = tmpFile("# Doc\n\nno change log here\n");
+		assert.equal(hashFileContentNormalized(p), hashFileContent(p));
+	});
+
+	it("differs from the whole-file hash when a Change Log section exists", () => {
+		const p = tmpFile("# Doc\n\n## Change Log\n\n- v1\n");
+		assert.notEqual(hashFileContentNormalized(p), hashFileContent(p));
+	});
+
+	it("returns null on missing files", () => {
+		assert.equal(hashFileContentNormalized(join(tmpdir(), "velpari-hnorm-missing.md")), null);
 	});
 });

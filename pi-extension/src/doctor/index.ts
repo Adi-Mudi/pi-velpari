@@ -22,6 +22,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { PATHS } from "../core/constants.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { loadState } from "../core/state.js";
+import { loadHistory } from "../core/history.js";
 import { buildWorkingGroupedPath } from "../core/paths.js";
 import {
 	type DiagnosticItem,
@@ -36,6 +37,11 @@ import { checkPsrsSection } from "./checks/psrs.js";
 import { checkRtmTraceabilitySection } from "./checks/rtm.js";
 import { checkFrontmatterSection } from "./checks/frontmatter.js";
 import { checkRtmDataSection } from "./checks/rtm-data.js";
+import { checkTraceLinkConsistencySection } from "./checks/trace-link-consistency.js";
+import { checkAfDataSection } from "./checks/af-data.js";
+import { checkTestCasesDataSection } from "./checks/test-cases-data.js";
+import { checkDevOrderDataSection } from "./checks/dev-order-data.js";
+import { checkFeasibilityRecordSection } from "./checks/feasibility-record.js";
 import { checkFingerprintsSection } from "./checks/fingerprints.js";
 import { checkPhaseConsistencySection } from "./checks/phase-consistency.js";
 import { checkMvpCoverageSection } from "./checks/mvp-coverage.js";
@@ -55,12 +61,16 @@ import { checkStrayFiles } from "./checks/stray-files.js";
 import { checkWebToolLock } from "./checks/web-tool-lock.js";
 import { checkOfficialReadiness } from "./checks/official-readiness.js";
 import { checkSubAgentGeneratorSection } from "./checks/sub-agent-generator.js";
+import { checkAgentFreshnessSection } from "./checks/agent-freshness.js";
+import { checkVerifierVerdictsSection } from "./checks/reviewer-verdict.js";
 import { checkDesignReadiness } from "./checks/design-readiness.js";
 import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
 import {
 	checkGateWiringSection,
 	checkStaleDownstreamSection,
 } from "./checks/stale-downstream.js";
+import { checkFreshnessSection } from "./checks/freshness.js";
+import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
 import { checkLoggingPlanSection } from "./checks/logging-plan.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
@@ -151,7 +161,7 @@ function buildStateSection(cwd: string): DiagnosticSection {
 			details: [
 				`Mission: ${state.mission || "(none)"}`,
 				`Current stage: ${state.currentStage}`,
-				`History entries: ${state.history.length}`,
+				`History entries: ${loadHistory(cwd, state.runId).length}`,
 			],
 		});
 	} else {
@@ -159,6 +169,12 @@ function buildStateSection(cwd: string): DiagnosticSection {
 			status: "info",
 			message: "No active run. State: empty.",
 			suggestion: suggestionFor("no-active-run"),
+		});
+	}
+	if (existsSync(join(cwd, PATHS.LEGACY_STATE_FILE))) {
+		items.push({
+			status: "info",
+			message: `Legacy state file present: ${PATHS.LEGACY_STATE_FILE}. Migration to ${PATHS.STATE_FILE} is pending — re-run any /velpari-* command to trigger it.`,
 		});
 	}
 	return { title: "Run state", items };
@@ -299,11 +315,18 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkRtmTraceabilitySection(cwd, projectName),
 		checkFrontmatterSection(cwd, projectName),
 		checkRtmDataSection(cwd, projectName),
+		checkTraceLinkConsistencySection(cwd, projectName),
+		checkAfDataSection(cwd, projectName),
+		checkTestCasesDataSection(cwd, projectName),
+		checkDevOrderDataSection(cwd, projectName),
 		checkFingerprintsSection(cwd, projectName),
 		checkPhaseConsistencySection(cwd, projectName),
 		checkMvpCoverageSection(cwd, projectName),
 		checkFeasibilityV2Section(cwd, projectName),
+		checkFeasibilityRecordSection(cwd, projectName),
 		checkStaleDownstreamSection(cwd, projectName),
+		checkFreshnessSection(cwd),
+		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
 		buildMultiplexerSection(cwd),
 		checkSubagentExtension(),
@@ -317,6 +340,10 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkOfficialReadiness(cwd),
 		checkScanOptions(cwd),
 		checkSubAgentGeneratorSection(cwd),
+		checkAgentFreshnessSection(cwd),
+		// C3 — Layer-3 anytime reporting: last known verifier verdicts +
+		// verdict-vs-published-artifact freshness (spec 03 §Gate summary).
+		checkVerifierVerdictsSection(cwd),
 		checkDesignReadiness(loadDesignWorkingContent(cwd)),
 		checkShapeCompatibilityAll(cwd),
 		// v1.4.0 — cross-cutting discipline command /velpari-design-logging.
@@ -377,7 +404,7 @@ const MAX_NOTIFY_LENGTH = 8000;
  * `commands/doctor.ts`); the layer rule forbids `doctor/` (L1) from
  * importing `ui/` (L2), so the audit must hand the report back.
  */
-export interface HandleDoctorResult {
+interface HandleDoctorResult {
 	/** True if `--velpari-skip-doctor` was honored (audit did not run). */
 	skipped: boolean;
 	/** The full audit report. `null` when `skipped === true`. */

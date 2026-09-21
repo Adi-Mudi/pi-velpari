@@ -3,7 +3,7 @@
  *
  * Asserts:
  *   - fresh project (no artifacts) → ok item, no errors
- *   - PRD touched after RTM published → stale error naming /velpari-rtm
+ *   - stamped RTM whose PRD input changed → stale error naming /velpari-rtm
  *   - deprecated FR referenced live in the RTM → error per ID
  *   - deprecated RTM row for a deprecated FR → no error
  *   - gate wiring: all stage keys gated, stage folders locked, lock free
@@ -18,15 +18,30 @@ import {
 	checkGateWiringSection,
 	checkStaleDownstreamSection,
 } from "../../src/doctor/checks/stale-downstream.js";
+import { hashFileContent } from "../../src/core/fingerprints.js";
+import { recordPublish } from "../../src/core/freshness.js";
 
 let tmpDir: string;
 
-function publish(rel: string, content: string, mtime?: Date): string {
+function publish(rel: string, content: string): string {
 	const abs = path.join(tmpDir, "Doc", rel);
 	fs.mkdirSync(path.dirname(abs), { recursive: true });
 	fs.writeFileSync(abs, content, "utf8");
-	if (mtime) fs.utimesSync(abs, mtime, mtime);
 	return abs;
+}
+
+/** Publish PRD + RTM and stamp the RTM with the current PRD hash (B4). */
+function publishStampedRtm(): { prdPath: string } {
+	const prdPath = publish("requirements/PRD_TestApp.md", PRD_LIVE);
+	publish("requirements/RTM_TestApp.md", RTM_LIVE);
+	recordPublish(tmpDir, {
+		artifact: "rtm",
+		projectName: "TestApp",
+		path: path.join("Doc", "requirements", "RTM_TestApp.md"),
+		publishedAt: "2026-09-20T17:00:00.000Z",
+		inputs: { "prd:TestApp": hashFileContent(prdPath)! },
+	});
+	return { prdPath };
 }
 
 const PRD_LIVE = `# PSRS
@@ -82,21 +97,29 @@ describe("checkStaleDownstreamSection", () => {
 		assert.equal(section.items[0]?.status, "info");
 	});
 
-	it("PRD touched after RTM published → stale error naming /velpari-rtm", () => {
-		publish("requirements/RTM_TestApp.md", RTM_LIVE, new Date("2026-09-01T10:00:00Z"));
-		publish("requirements/PRD_TestApp.md", PRD_LIVE, new Date("2026-09-02T10:00:00Z"));
+	it("PRD content changed after the RTM was stamped → stale error naming /velpari-rtm", () => {
+		const { prdPath } = publishStampedRtm();
+		fs.writeFileSync(prdPath, PRD_LIVE.replace("Add expense", "Add expense v2"), "utf8");
 
 		const section = checkStaleDownstreamSection(tmpDir, "TestApp");
 		const stale = section.items.filter((i) => i.status === "error");
 		assert.equal(stale.length, 1);
-		assert.match(stale[0]!.message, /RTM is stale/);
+		assert.match(stale[0]!.message, /rtm:TestApp is stale/);
 		assert.match(stale[0]!.message, /\/velpari-rtm/);
 		assert.match(stale[0]!.suggestion ?? "", /update mode/);
 	});
 
-	it("in-sync pair → ok item", () => {
-		publish("requirements/PRD_TestApp.md", PRD_LIVE, new Date("2026-09-01T10:00:00Z"));
-		publish("requirements/RTM_TestApp.md", RTM_LIVE, new Date("2026-09-02T10:00:00Z"));
+	it("touching the PRD without changing content → NOT stale (hash, not mtime)", () => {
+		const { prdPath } = publishStampedRtm();
+		const future = new Date(Date.now() + 60_000);
+		fs.utimesSync(prdPath, future, future);
+
+		const section = checkStaleDownstreamSection(tmpDir, "TestApp");
+		assert.ok(section.items.every((i) => i.status !== "error"));
+	});
+
+	it("in-sync stamped pair → ok item", () => {
+		publishStampedRtm();
 
 		const section = checkStaleDownstreamSection(tmpDir, "TestApp");
 		assert.ok(section.items.every((i) => i.status !== "error"));
@@ -133,7 +156,7 @@ describe("checkGateWiringSection", () => {
 	});
 
 	it("flags a stale run lock as a warning (never an error)", () => {
-		const lockDir = path.join(tmpDir, ".IDE_Plans", "velpari", ".lock");
+		const lockDir = path.join(tmpDir, ".pi", "velpari", ".lock");
 		fs.mkdirSync(lockDir, { recursive: true });
 		const old = new Date(Date.now() - 120_000).toISOString();
 		fs.writeFileSync(

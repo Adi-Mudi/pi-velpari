@@ -23,7 +23,7 @@ import { computeShapeStatusLinesForConfig } from "./shape.js";
 
 export type ConfirmOutcome = "proceed" | "adjust" | "profile" | "no-ui";
 
-export interface ConfirmResult {
+interface ConfirmResult {
 	outcome: ConfirmOutcome;
 	confirmed: boolean;
 	summaryShown: string;

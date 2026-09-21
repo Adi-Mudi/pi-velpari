@@ -1,13 +1,15 @@
 /**
- * Plan E — `/velpari-generate-sub-agents` reviewer-copy tests.
+ * Generator v2 — reviewer copies are emitted as part of Phase 3.
  *
- * Verifies that the generator emits per-stage reviewer copies
- * (atomic-function, pseudocode, testplan, design) on top of the
- * brainstorm roles.
+ * v1 (Plan E) bolted reviewer copies onto the brainstorm-only run with a
+ * bespoke markdown builder and no agents.json mappings. v2 generates them
+ * like every other Phase 2–4 role: assembled from the bundled
+ * `skills/agents/<role>.md` template, mapped in agents.json via the
+ * default-column safety rule (D4).
  *
- *   - happy path: 4 brainstorm + 4 reviewer = 8 created, 4 mappings
- *   - all brainstorm custom → 4 reviewer copies written silently
- *   - single reviewer custom → 3 reviewer + 4 brainstorm = 7 created
+ *   - Phase 3 happy path: 17 created (13 scouts + 4 reviewers), 17 mappings
+ *   - Custom reviewer mapping preserved (never rewritten), 16 created
+ *   - Phase 1 no longer emits reviewer copies
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -27,7 +29,7 @@ interface Call {
 let tmpDir: string;
 
 beforeEach(() => {
-	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-planE-"));
+	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-genv2-"));
 });
 
 afterEach(() => {
@@ -80,83 +82,52 @@ function makeAgentsJson(cwd: string, agents: Record<string, string>): void {
 	);
 }
 
-describe("Plan E — generator emits reviewer copies (Plan D)", () => {
-	it("happy path: 4 brainstorm + 4 reviewer = 8 created, 4 mappings", async () => {
-		// No custom mappings → both brainstorm and reviewer are fresh.
+function slugOf(cwd: string): string {
+	return path.basename(cwd).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+const REVIEWER_ROLES_UNDER_TEST = [
+	"reviewer",
+	"pseudocode-reviewer",
+	"testplan-reviewer",
+	"design-reviewer",
+] as const;
+
+describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates)", () => {
+	it("Phase 3 happy path: 17 created (13 scouts + 4 reviewers), 17 mappings", async () => {
 		const ctx = makeCtx(tmpDir, {
 			select: async (_title, labels) => labels[0] ?? null,
 			input: async () => "typescript",
 			confirm: async () => true,
 		});
 
-		const result = await runAgentGenerator(ctx);
+		const result = await runAgentGenerator(ctx, { phase: 3 });
 		assert.equal(result.cancelled, false);
-		assert.equal(result.created, 8, "4 brainstorm + 4 reviewer");
-		assert.equal(result.mappingsAdded, 4, "only brainstorm roles add mappings");
+		assert.equal(result.created, 17, "13 stage scouts + 4 reviewers");
+		assert.equal(result.mappingsAdded, 17, "all generated roles get mappings (D4)");
 
-		// All 8 reviewer + brainstorm files exist on disk.
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
-		const slug = path.basename(tmpDir).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		for (const role of [
-			"extractor",
-			"prd-checker",
-			"rtm-checker",
-			"web-search-agent",
-			"reviewer",
-			"pseudocode-reviewer",
-			"testplan-reviewer",
-			"design-reviewer",
-		]) {
+		const slug = slugOf(tmpDir);
+		for (const role of REVIEWER_ROLES_UNDER_TEST) {
 			const p = path.join(agentsDir, `${slug}-${role}.md`);
 			assert.ok(fs.existsSync(p), `${role} should exist at ${p}`);
+			// The generated copy carries the canonical template body (the
+			// reviewer's verdict contract) + the v2 generator footer.
+			const content = fs.readFileSync(p, "utf8");
+			assert.match(content, /from canonical body file: /);
+			assert.match(content, /generator v2/);
 		}
 
-		// agents.json has 4 mappings (brainstorm only).
+		// agents.json maps the reviewer roles to the generated names.
 		const agentsJson = JSON.parse(
 			fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8"),
 		) as { agents: Record<string, string> };
-		assert.equal(Object.keys(agentsJson.agents).length, 4);
-	});
-
-	it("all 4 brainstorm custom → write only 4 reviewer copies (silently)", async () => {
-		// Pre-map all 4 brainstorm roles to custom agents.
-		makeAgentsJson(tmpDir, {
-			extractor: "my-custom-1",
-			"prd-checker": "my-custom-2",
-			"rtm-checker": "my-custom-3",
-			"web-search-agent": "my-custom-4",
-		});
-
-		const ctx = makeCtx(tmpDir, {}); // No UI mocks needed — should bail to writeReviewerCopiesOnly
-
-		const result = await runAgentGenerator(ctx);
-		assert.equal(result.cancelled, false);
-		// Plan E — brainstorm is custom; reviewer defaults → 4 reviewer copies written.
-		assert.equal(result.created, 4);
-		assert.equal(result.mappingsAdded, 0, "no brainstorm mappings");
-
-		// Reviewer files exist on disk.
-		const agentsDir = path.join(tmpDir, ".pi", "agents");
-		const slug = path.basename(tmpDir).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		for (const role of [
-			"reviewer",
-			"pseudocode-reviewer",
-			"testplan-reviewer",
-			"design-reviewer",
-		]) {
-			const p = path.join(agentsDir, `${slug}-${role}.md`);
-			assert.ok(fs.existsSync(p), `${role} should exist at ${p}`);
+		for (const role of REVIEWER_ROLES_UNDER_TEST) {
+			assert.equal(agentsJson.agents[role], `${slug}-${role}`);
 		}
-
-		// agents.json unchanged (still 4 custom brainstorm mappings).
-		const agentsJson = JSON.parse(
-			fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8"),
-		) as { agents: Record<string, string> };
-		assert.equal(Object.keys(agentsJson.agents).length, 4);
-		assert.equal(agentsJson.agents.extractor, "my-custom-1");
 	});
 
-	it("single reviewer custom → 4 brainstorm + 3 reviewer = 7 created, 4 mappings", async () => {
+	it("custom reviewer mapping is preserved (16 created, custom row untouched)", async () => {
 		// Pre-map ONLY the atomic-function reviewer to a custom agent.
 		makeAgentsJson(tmpDir, { reviewer: "my-custom-reviewer" });
 
@@ -166,17 +137,42 @@ describe("Plan E — generator emits reviewer copies (Plan D)", () => {
 			confirm: async () => true,
 		});
 
-		const result = await runAgentGenerator(ctx);
+		const result = await runAgentGenerator(ctx, { phase: 3 });
 		assert.equal(result.cancelled, false);
-		assert.equal(result.created, 7, "4 brainstorm + 3 reviewer (reviewer skipped)");
-		assert.equal(result.mappingsAdded, 4, "only brainstorm mappings");
+		assert.equal(result.created, 16, "reviewer skipped — the user owns that row");
+		assert.equal(result.mappingsAdded, 16);
 
-		// Custom reviewer file untouched.
+		// Custom reviewer file NOT created; mapping preserved byte-for-byte.
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
-		const reviewerPath = path.join(agentsDir, "my-custom-reviewer.md");
 		assert.ok(
-			!fs.existsSync(reviewerPath),
-			"custom reviewer file should NOT be created (would overwrite)",
+			!fs.existsSync(path.join(agentsDir, "my-custom-reviewer.md")),
+			"custom reviewer file should NOT be created",
 		);
+		const agentsJson = JSON.parse(
+			fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8"),
+		) as { agents: Record<string, string> };
+		assert.equal(agentsJson.agents.reviewer, "my-custom-reviewer");
+	});
+
+	it("Phase 1 does not emit reviewer copies (4 brainstorm agents only)", async () => {
+		const ctx = makeCtx(tmpDir, {
+			select: async (_title, labels) => labels[0] ?? null,
+			input: async () => "typescript",
+			confirm: async () => true,
+		});
+
+		const result = await runAgentGenerator(ctx); // empty project → Phase 1
+		assert.equal(result.cancelled, false);
+		assert.equal(result.created, 4);
+		assert.equal(result.mappingsAdded, 4);
+
+		const agentsDir = path.join(tmpDir, ".pi", "agents");
+		const slug = slugOf(tmpDir);
+		for (const role of REVIEWER_ROLES_UNDER_TEST) {
+			assert.ok(
+				!fs.existsSync(path.join(agentsDir, `${slug}-${role}.md`)),
+				`${role} must not be generated at Phase 1`,
+			);
+		}
 	});
 });

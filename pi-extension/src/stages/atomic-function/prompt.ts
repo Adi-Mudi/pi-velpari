@@ -36,7 +36,7 @@ import type { CompactProfileMetadata } from "../../core/profile.js";
 
 /** Inputs to `buildAtomicFunctionPrompt`. Strict subset of
  *  `BuildStagePromptInput` limited to what atomic-function needs. */
-export interface AtomicPromptInput {
+interface AtomicPromptInput {
 	stage: "analyzing-atomic-functions" | "analyzed-atomic-functions";
 	mission: string;
 	framework: string | undefined;

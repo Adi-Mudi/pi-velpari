@@ -210,10 +210,6 @@ export function isReviewerMode(x: unknown): x is ReviewerMode {
 }
 export const DEFAULT_REVIEWER_MODE: ReviewerMode = "tier-default";
 
-/** CLI flag names — mirrors the existing --velpari-skip-doctor pattern. */
-export const REVIEWER_OPT_IN_FLAG = "velpari-run-reviewer";
-export const REVIEWER_OPT_OUT_FLAG = "velpari-skip-reviewer";
-
 /**
  * Single source of truth for "does the reviewer run for this stage iteration".
  *
@@ -224,7 +220,7 @@ export const REVIEWER_OPT_OUT_FLAG = "velpari-skip-reviewer";
  *   4. tier ∈ REVIEWER_GATE_RULES    → true
  *   5. otherwise                     → false (Entry, Basic without overlay)
  */
-export interface ReviewerGateInput {
+interface ReviewerGateInput {
 	profile: AtomicProfile;
 	overlayRequiresReviewer?: boolean;
 	reviewerMode?: ReviewerMode;

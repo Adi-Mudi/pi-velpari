@@ -275,7 +275,7 @@ export async function handleDesignLogging(
 		"",
 		"After writing the working copy, run `validateLoggingPlan` (via `node -e` against `dist/pi-extension/src/core/logging-plan.js`, OR by reading the file back and checking every section heading against `LOGGING_PLAN_REQUIRED_SECTIONS`).",
 		"",
-		"If validation passes, copy the working copy to the published path with `mkdir -p Doc/observability && cp <workingCopy> <publishedPath>`. Then update `.IDE_Plans/velpari/state.json` by setting `loggingPlanPublishedPath` to the published path. Use `jq` for the JSON patch or rewrite via Python.",
+		"If validation passes, copy the working copy to the published path with `mkdir -p Doc/observability && cp <workingCopy> <publishedPath>`. Then update `.pi/velpari/state.json` by setting `loggingPlanPublishedPath` to the published path. Use `jq` for the JSON patch or rewrite via Python.",
 		"",
 		"If validation fails, leave the working copy in place and tell the user which section(s) need fixing.",
 		updateModeBlock,

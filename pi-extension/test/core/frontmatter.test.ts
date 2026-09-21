@@ -192,3 +192,30 @@ describe("missingFrontmatterFields", () => {
 		assert.equal(parsed.fields.sunset, undefined);
 	});
 });
+
+describe("withArtifactFrontmatter — B4 freshness inputs stamp", () => {
+	it("writes the inputs JSON scalar and round-trips it unchanged", () => {
+		const inputs = JSON.stringify({
+			"brainstorm:cli-todo": "a".repeat(64),
+			"prd:TestApp": "b".repeat(64),
+		});
+		const out = withArtifactFrontmatter("# RTM\n", { ...INPUT, inputs });
+		const parsed = parseFrontmatterBlock(out)!;
+		assert.equal(parsed.fields.inputs, inputs);
+		assert.deepEqual(JSON.parse(parsed.fields.inputs!), JSON.parse(inputs));
+	});
+
+	it("refreshes a stale inputs line carried into the working copy", () => {
+		const content = `---\ninputs: {"old":"${"0".repeat(64)}"}\n---\n\n# RTM\n`;
+		const inputs = JSON.stringify({ "prd:TestApp": "c".repeat(64) });
+		const out = withArtifactFrontmatter(content, { ...INPUT, inputs });
+		const parsed = parseFrontmatterBlock(out)!;
+		assert.equal(parsed.fields.inputs, inputs);
+	});
+
+	it("renderFrontmatter keeps the JSON scalar on one line", () => {
+		const inputs = JSON.stringify({ "prd:TestApp": "d".repeat(64) });
+		const block = renderFrontmatter({ artifact: "PRD", inputs });
+		assert.ok(block.includes(`inputs: ${inputs}\n`));
+	});
+});

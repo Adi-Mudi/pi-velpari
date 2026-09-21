@@ -9,6 +9,10 @@
  *    flat layout fallback.
  * 3a. MVP coverage gate: Phase-1 requirements with no RTM row or
  *    coverage "missing" block the handoff; partial/no-tests warn.
+ * 3b. Staleness gate (A6): any input-changed/input-missing artifact in
+ *    the freshness stale set blocks; no-stamp legacy artifacts warn (D8).
+ * 3c. ID-coverage gate (A4): a machine-checkable downstream doc missing
+ *    upstream ids blocks; not-checkable docs + duplicates warn (D7/D1/D2).
  * 4. Build architect-inputs.json with versioned schema
  * 5. Validate against our schema mirror of chirpi's expected shape
  *    (schema owned by @adi-mudi/pi-chirpi, architect/inputs-config.ts)
@@ -29,6 +33,8 @@ import {
 } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
+import { computeStaleSet } from "../core/freshness.js";
+import { checkIdCoverage } from "../core/id-coverage.js";
 import { parseADRSection, type ADR } from "../core/adr.js";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 import { getEffectiveProjectNames } from "../core/projectnames.js";
@@ -56,7 +62,7 @@ export interface ArchitectDocument {
  * Senai's `implement` stage reads `observability.loggingPlan[*]` and
  * uses the path + version to wire up the logger per the design.
  */
-export interface ObservabilityLoggingPlan {
+interface ObservabilityLoggingPlan {
 	path: string;
 	version: string;
 	status: "draft" | "approved" | "deprecated";
@@ -248,6 +254,78 @@ export async function runHandoff(
 		}
 	}
 
+	// Staleness gate (A6): handoff refuses while anything in the chain is
+	// stale — blocking BEFORE the payload is built guarantees the package
+	// reflects a consistent chain. input-changed / input-missing block;
+	// no-stamp (legacy unstamped artifact) warns only (D8).
+	const stale = computeStaleSet(cwd);
+	const staleBlocking = stale.filter((s) => s.reason !== "no-stamp");
+	if (staleBlocking.length > 0) {
+		ctx.ui.notify(
+			`Handoff blocked — ${staleBlocking.length} stale artifact(s):\n` +
+				staleBlocking
+					.map((s) =>
+						s.reason === "input-changed"
+							? `  - ${s.key} (${s.reason}: ${s.changedInputs.join(", ")}) — republish, or /velpari-reconfirm if the change has no impact on this artifact.`
+							: `  - ${s.key} (${s.reason}: ${s.changedInputs.join(", ")}) — republish required.`,
+					)
+					.join("\n") +
+				`\nRepublish the listed stages (stage command in update mode + the matching /velpari-<stage>-approve), or /velpari-reconfirm the input-changed ones.`,
+			"error",
+		);
+		return;
+	}
+	const unstamped = stale.filter((s) => s.reason === "no-stamp");
+	if (unstamped.length > 0) {
+		ctx.ui.notify(
+			`Freshness warnings (handoff allowed):\n` +
+				unstamped
+					.map((s) => `  - ${s.key}: no freshness stamp — republish to stamp.`)
+					.join("\n"),
+			"warning",
+		);
+	}
+
+	// ID-coverage gate (A4 + A6): a machine-checkable downstream doc missing
+	// upstream ids blocks (D7); not-checkable legacy docs and dev-order
+	// duplicates warn (D1/D2).
+	const coverage = checkIdCoverage(cwd);
+	const coverageBlocking = coverage.results.filter((r) => r.status === "missing");
+	if (coverageBlocking.length > 0) {
+		ctx.ui.notify(
+			`Handoff blocked — ID coverage gaps:\n` +
+				coverageBlocking
+					.map(
+						(r) =>
+							`  - ${r.rule.id} (${r.rule.downstream}, ${r.projectName}): ` +
+							`missing ${r.missingIds.join(", ")}`,
+					)
+					.join("\n") +
+				`\nRevise the listed downstream stages to cover the missing ids, then republish.`,
+			"error",
+		);
+		return;
+	}
+	const coverageWarnings = coverage.results.filter(
+		(r) => r.status === "not-checkable" || r.duplicateIds.length > 0,
+	);
+	if (coverageWarnings.length > 0) {
+		const lines: string[] = [];
+		for (const r of coverageWarnings) {
+			if (r.status === "not-checkable") {
+				lines.push(
+					`  - ${r.rule.id} (${r.rule.downstream}, ${r.projectName}): not machine-checkable — regenerate the stage to gain ID traceability.`,
+				);
+			}
+			if (r.duplicateIds.length > 0) {
+				lines.push(
+					`  - ${r.rule.id} (${r.rule.downstream}, ${r.projectName}): duplicate ids ${r.duplicateIds.join(", ")}.`,
+				);
+			}
+		}
+		ctx.ui.notify(`ID coverage warnings (handoff allowed):\n${lines.join("\n")}`, "warning");
+	}
+
 	const inputs: ArchitectInputs = {
 		version: 1,
 		projectName,
@@ -386,7 +464,7 @@ export function buildObservabilitySection(
  * payload. Returns an empty array when the design doc is missing or the
  * section is absent (consistent with gateADR's lenient mode).
  */
-export function collectADRDecisions(
+function collectADRDecisions(
 	_state: RunState,
 	projectName: string,
 	cwd: string,

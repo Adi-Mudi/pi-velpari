@@ -6,7 +6,7 @@
       "role": "pseudocode-reviewer",
       "label": "Pseudocode — tier-compliance reviewer",
       "tools": ["read", "write", "bash"],
-      "mandate": "Read the published pseudocode_<projectName>.md and verify it follows the tier rubric defined in Doc/velpari-pseudocode-research-notes.md. Check that every function block carries a tier stamp, that required fields per tier are present, and that PRECONDITIONS / POSTCONDITIONS / Edge Cases / Errors / Complexity / Dependencies / Side effects are well-formed. Emit a structured JSON review report to the assigned artifact path.",
+      "mandate": "Read the published pseudocode_<projectName>.md and verify it follows the tier rubric in the ## Tier rubric section of the pseudocode reviewer agent definition (pseudocode-reviewer-body.md). Check that every function block carries a tier stamp, that required fields per tier are present, and that PRECONDITIONS / POSTCONDITIONS / Edge Cases / Errors / Complexity / Dependencies / Side effects are well-formed. Emit a structured JSON review report to the assigned artifact path.",
       "invocationHint": "Spawn at /velpari-approve for the pseudocode stage, after the 4 scouts (algorithm-extractor, edge-case-handler, complexity-analyzer, consolidator) have written the working copy. Runs as a post-reviewer before the user-facing preview gate. Read-only on the pseudocode artifact.",
       "outOfScope": [
         "Do not edit the pseudocode artifact or any other artifact (read-only).",

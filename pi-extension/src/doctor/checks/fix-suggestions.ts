@@ -34,6 +34,8 @@ export const SUGGESTIONS = {
 		"Rewrite the flagged FR rows in EARS shape with an RFC 2119 keyword, e.g. \"When a user submits X, the system SHALL save X\" — see skills/velpari-prd.md 'Requirement Wording'.",
 	"psrs-legacy-only":
 		"Rerun `/velpari-prd` to regenerate the grouped PSRS with current schema.",
+	"trace-link-asymmetric":
+		"RTM sidecar `tests[]` is the requirement↔test link authority (D3) — reconcile the asymmetric link at the next `/velpari-rtm` or `/velpari-testplan` revise and republish.",
 	"rtm-missing": "Run `/velpari-rtm` after the PRD stage.",
 	"rtm-unknown-id":
 		"Either add the missing ids to the PSRS or remove them from the RTM. Traceability is bidirectional.",
@@ -66,14 +68,28 @@ export const SUGGESTIONS = {
 		"Fix the listed section issues in the feasibility working copy (template: skills/velpari-feasibility.md), then `/velpari-final-design-approve`.",
 	"feasibility-session-incomplete":
 		"Re-run `/velpari-feasibility` and finish the reuse-scan decision + language selection (velpari_feasibility_session tool) before approving.",
+	"feasibility-record-missing":
+		"Republish the feasibility study (`/velpari-feasibility` update mode + approve) — the publish serializes the decision record from the session automatically (B3/D9).",
+	"feasibility-record-invalid":
+		"Republish the feasibility study (`/velpari-feasibility` update mode + approve) so the decision record is regenerated from the settled session.",
 
 	// Living documents
 	"stale-downstream":
 		"Re-run the named stage command — it runs in update mode and revises the published artifact against the updated upstream.",
+	"stale-input":
+		"Republish the stale stage: re-run its stage command (update mode), then the matching `/velpari-<stage>-approve` — or run `/velpari-reconfirm` to mark the artifact as reviewed when the changed input has no impact on it (spec 02: one artifact at a time). The stale set is tracked in `.pi/velpari/freshness.json`.",
+	"stale-input-missing":
+		"An input artifact vanished — re-confirm is not valid here (D4). Republish the stale stage: re-run its stage command (update mode), then the matching `/velpari-<stage>-approve`. The stale set is tracked in `.pi/velpari/freshness.json`.",
+	"freshness-no-stamp":
+		"Republish the artifact (stage command in update mode + the matching `/velpari-<stage>-approve`) — publish stamps input hashes automatically (B4).",
+	"id-coverage-missing":
+		"Revise the downstream stage (re-run its stage command in update mode) so every upstream id is referenced, then the matching `/velpari-<stage>-approve`. Layer-2 coverage rules are in Doc/velpari-sequence/03-staleness-and-validation.md.",
+	"id-coverage-not-checkable":
+		"The downstream doc is a pre-A4 format (no parseable id references) — regenerate or revise its stage to gain ID traceability. Nothing is blocked; this is a traceability upgrade path.",
 	"rtm-deprecated-ref":
 		"Mark the RTM rows for deprecated requirements as `deprecated` (never delete them), or re-run `/velpari-rtm` in update mode.",
 	"stale-run-lock":
-		"The lock holder is gone. It is auto-stolen on the next state mutation; if it persists, delete `.IDE_Plans/velpari/.lock/`.",
+		"The lock holder is gone. It is auto-stolen on the next state mutation; if it persists, delete `.pi/velpari/.lock/`.",
 
 	// Multiplexer / subagent provider
 	"unknown-multiplexer":
@@ -164,6 +180,26 @@ export const SUGGESTIONS = {
 		"Reduce coupling=high — refactor dependencies into separate atomic functions or introduce an interface boundary.",
 	"atomic-risk-missing":
 		"Set risk to {low, medium, high} per PMBOK. Advanced tier (regulated industry) requires explicit risk classification.",
+
+	// B3 — YAML sidecars (D6/D7)
+	"af-data-missing":
+		"Re-run `/velpari-atomic-function` (update mode) so the working copy gains the YAML sidecar, then republish — approve regenerates the markdown from the data.",
+	"af-data-invalid":
+		"Fix the atomic-functions YAML sidecar issues in the working copy, then republish. The schema is in skills/velpari-atomic-function.md (two-file contract).",
+	"af-data-drift":
+		"Never hand-edit the published atomic-functions markdown — edit the YAML sidecar via `/velpari-atomic-function` update mode and republish; approve regenerates the markdown from the data.",
+	"tc-data-missing":
+		"Re-run `/velpari-testplan` (update mode) so the working copy gains the YAML sidecar, then republish — approve regenerates the markdown from the data.",
+	"tc-data-invalid":
+		"Fix the test-cases YAML sidecar issues in the working copy, then republish. The schema is in skills/velpari-testplan.md (two-file contract).",
+	"tc-data-drift":
+		"Never hand-edit the published test-cases markdown — edit the YAML sidecar via `/velpari-testplan` update mode and republish; approve regenerates the markdown from the data.",
+	"do-data-missing":
+		"Re-run `/velpari-development-order` (update mode) so the working copy gains the YAML sidecar, then republish — approve regenerates the markdown from the data.",
+	"do-data-invalid":
+		"Fix the development-order YAML sidecar issues in the working copy, then republish. The D8 schema (steps with id/module/afs/dependsOn, acyclic) is in skills/velpari-development-order.md (two-file contract).",
+	"do-data-drift":
+		"Never hand-edit the published development-order markdown — edit the YAML sidecar via `/velpari-development-order` update mode and republish; approve regenerates the markdown from the data.",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

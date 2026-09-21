@@ -27,7 +27,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
@@ -39,70 +39,94 @@ import {
 	GROUPED_CATEGORIES,
 	hasPublishedFeasibility,
 	resolveDocArtifact,
+	slugify,
 } from "../core/paths.js";
 import { comparePsrs, readSectionBody } from "../core/psrs.js";
-import { withArtifactFrontmatter } from "../core/frontmatter.js";
+import { withArtifactFrontmatter, type ArtifactFrontmatterInput } from "../core/frontmatter.js";
+import type { RtmData } from "../core/rtm-data.js";
+import { writeFeasibilityRecord } from "../core/feasibility-record.js";
 import {
-	diffRtmData,
-	renderRtmMarkdown,
-	validateRtmData,
-	type RtmData,
-} from "../core/rtm-data.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
+	hashFileContent,
+	hashFileContentNormalized,
 } from "../core/fingerprints.js";
+import { SIDECAR_REGISTRY } from "./sidecar-registry.js";
+import {
+	computeInputHashes,
+	recordPublish,
+	resolveDeclaredInputs,
+} from "../core/freshness.js";
 import { runPublishGate } from "../doctor/gate.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
-import { PATHS, type Stage, nextCommandsFor } from "../core/constants.js";
+import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
+import {
+	generationHintForPhase,
+	phaseBoundaryCrossed,
+} from "../core/agent-freshness.js";
+import { STAGE_REGISTRY, STAGE_LOCK_SPECS, type StageSpec } from "../stages/registry.js";
+import { computeLegalCommands } from "../stages/transition-lock.js";
+
+/**
+ * One stage→approve mapping (D4 — audit item c7). Single source consumed by
+ * both `stageToArtifact` (working-copy category + published artifact name)
+ * and `perStageApproveCommand` (the actor string passed to `advanceStage`,
+ * recorded in state history). The table-driven regression guard in
+ * test/ops/approve-development-order.test.ts now guards this one table:
+ * every publishable stage in STAGE_TRANSITIONS must appear here.
+ *
+ * `stages[0]` is the in-progress stage enum (e.g. "designing"); `stages[1]`
+ * is the rest state right after that stage's approve (e.g. "designed") —
+ * a re-publish from the rest state still stamps.
+ */
+interface StageApproveSpec {
+	/** v1.6.0 per-stage approve command (STAGE_TRANSITIONS rows use this
+	 *  exact string). */
+	readonly command: string;
+	/** Working-copy category under <runDir>/ (GROUPED_CATEGORIES key). */
+	readonly workingDir: string;
+	/** Published artifact name passed to runPublishGate. */
+	readonly artifact: string;
+	/** Additional published artifacts (testplan publishes test-cases too). */
+	readonly extras?: readonly string[];
+	/** [in-progress stage, rest state] pair this row covers. */
+	readonly stages: readonly [Stage, Stage];
+}
+
+const STAGE_APPROVE_MAP: readonly StageApproveSpec[] = [
+	{ command: "/velpari-prd-approve", workingDir: "prd", artifact: "PRD", stages: ["drafting-prd", "drafted-prd"] },
+	{ command: "/velpari-rtm-approve", workingDir: "rtm", artifact: "RTM", stages: ["building-rtm", "built-rtm"] },
+	{ command: "/velpari-feasibility-approve", workingDir: "feasibility", artifact: "feasibility-study", stages: ["analyzing-feasibility", "analyzed-feasibility"] },
+	{ command: "/velpari-architecture-generator-approve", workingDir: "design", artifact: "design", stages: ["designing", "designed"] },
+	// Stage 6 — atomic function working copy lives under
+	// <runDir>/atomic-functions/atomic-functions_<project>.md
+	// (per buildWorkingGroupedPath's GROUPED_CATEGORIES map).
+	// The publish gate (doctor/gate.ts:runPublishGate) routes
+	// atomic-functions artifacts through the reviewer verdict (the
+	// reviewer verdict is the source of truth for tier checks).
+	{ command: "/velpari-atomic-function-approve", workingDir: "atomic-functions", artifact: "atomic-functions", stages: ["analyzing-atomic-functions", "analyzed-atomic-functions"] },
+	{ command: "/velpari-pseudocode-approve", workingDir: "pseudocode", artifact: "pseudocode", stages: ["writing-pseudocode", "wrote-pseudocode"] },
+	{ command: "/velpari-testplan-approve", workingDir: "tests", artifact: "test-plan", extras: ["test-cases"], stages: ["planning-tests", "planned-tests"] },
+	{ command: "/velpari-development-order-approve", workingDir: "development-order", artifact: "development-order", stages: ["ordering-development", "ordered-development"] },
+	{ command: "/velpari-final-design-approve", workingDir: "final-design", artifact: "final-design", stages: ["finalizing-design", "finalized-design"] },
+];
 
 /**
  * Map a stage to (working-copy category, published artifact name,
- * additional published artifacts for testplan).
+ * additional published artifacts for testplan). Derived from
+ * STAGE_APPROVE_MAP. Exported for the table-driven regression guard in
+ * test/ops/approve-development-order.test.ts.
  */
-function stageToArtifact(stage: Stage): {
+export function stageToArtifact(stage: Stage): {
 	workingDir: string;
 	artifact: string;
 	extras?: string[];
 } | null {
-	switch (stage) {
-		case "drafting-prd":
-		case "drafted-prd":
-			return { workingDir: "prd", artifact: "PRD" };
-		case "building-rtm":
-		case "built-rtm":
-			return { workingDir: "rtm", artifact: "RTM" };
-		case "analyzing-feasibility":
-		case "analyzed-feasibility":
-			return { workingDir: "feasibility", artifact: "feasibility-study" };
-		case "designing":
-		case "designed":
-			return { workingDir: "design", artifact: "design" };
-		case "finalizing-design":
-		case "finalized-design":
-			return { workingDir: "final-design", artifact: "final-design" };
-		case "writing-pseudocode":
-		case "wrote-pseudocode":
-			return { workingDir: "pseudocode", artifact: "pseudocode" };
-		case "planning-tests":
-		case "planned-tests":
-			return {
-				workingDir: "tests",
-				artifact: "test-plan",
-				extras: ["test-cases"],
-			};
-		case "analyzing-atomic-functions":
-		case "analyzed-atomic-functions":
-			// Stage 6 — atomic function working copy lives under
-			// <runDir>/atomic-functions/atomic-functions_<project>.md
-			// (per buildWorkingGroupedPath's GROUPED_CATEGORIES map).
-			// The publish gate (doctor/gate.ts:runPublishGate) routes
-			// atomic-functions artifacts through loadReviewerVerdict (the
-			// reviewer verdict is the source of truth for tier checks).
-			return { workingDir: "atomic-functions", artifact: "atomic-functions" };
-		default:
-			return null;
-	}
+	const row = STAGE_APPROVE_MAP.find((r) => r.stages.includes(stage));
+	if (!row) return null;
+	return {
+		workingDir: row.workingDir,
+		artifact: row.artifact,
+		...(row.extras ? { extras: [...row.extras] } : {}),
+	};
 }
 
 /**
@@ -110,30 +134,33 @@ function stageToArtifact(stage: Stage): {
  * command. Used as the actor string passed to `advanceStage` (and
  * therefore recorded in state.json:history). STAGE_TRANSITIONS rows
  * for each publishable stage use the exact string returned here.
+ * Derived from STAGE_APPROVE_MAP (D4) — keyed on the in-progress stage
+ * (`stages[0]`) only, so rest-state lookups keep the legacy default.
  */
 function perStageApproveCommand(stage: Stage): string {
-	switch (stage) {
-		case "drafting-prd":
-			return "/velpari-prd-approve";
-		case "building-rtm":
-			return "/velpari-rtm-approve";
-		case "analyzing-feasibility":
-			return "/velpari-feasibility-approve";
-		case "designing":
-			return "/velpari-architecture-generator-approve";
-		case "analyzing-atomic-functions":
-			return "/velpari-atomic-function-approve";
-		case "writing-pseudocode":
-			return "/velpari-pseudocode-approve";
-		case "planning-tests":
-			return "/velpari-testplan-approve";
-		case "ordering-development":
-			return "/velpari-development-order-approve";
-		case "finalizing-design":
-			return "/velpari-final-design-approve";
-		default:
-			return "/velpari-brainstorm-approve";
-	}
+	return (
+		STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ??
+		"/velpari-brainstorm-approve"
+	);
+}
+
+/**
+ * Find the registry spec whose stage the current state belongs to. Matches
+ * the in-progress stage enum (e.g. "designing") AND the rest state right
+ * after that stage's approve (e.g. "designed") — a re-publish from the
+ * rest state still stamps. Returns null for stages outside the registry;
+ * callers skip freshness stamping then (publish stays intact, per the B4
+ * failure policy).
+ */
+function specForStage(stage: Stage): StageSpec | null {
+	return (
+		Object.values(STAGE_REGISTRY).find((s) => {
+			if (s.stageEnum === stage) return true;
+			return STAGE_TRANSITIONS.some(
+				(t) => t.from === s.stageEnum && t.to === stage && t.command.endsWith("-approve"),
+			);
+		}) ?? null
+	);
 }
 
 /**
@@ -180,9 +207,22 @@ export async function handleApprove(
 		return;
 	}
 
-	if (state.currentStage === "brainstorming" || state.currentStage === "brainstormed") {
+	if (state.currentStage === "brainstorming") {
+		// A1: the refusal routes through the transition lock — the guide
+		// message names the two doors and the discard path.
+		const lock = computeLegalCommands(cwd, STAGE_LOCK_SPECS);
 		ctx.ui.notify(
-			`Use /velpari-feasibility-approve-brainstorm for the brainstorm stage. ` +
+			lock.reasonFor("/velpari-prd") ??
+				`Use /velpari-approve-brainstorm for the brainstorm stage. ` +
+					`Current stage: "${state.currentStage}".`,
+			"error",
+		);
+		return;
+	}
+
+	if (state.currentStage === "brainstormed") {
+		ctx.ui.notify(
+			`The brainstorm is already approved. Run /velpari-prd to start the PRD stage. ` +
 				`Current stage: "${state.currentStage}".`,
 			"error",
 		);
@@ -271,7 +311,7 @@ export async function handleApprove(
 		groupedAbs: string;
 		/** Absolute path of the already-published copy, when one exists. */
 		publishedPath: string | null;
-		/** JSON sidecar published next to the markdown (RTM, Phase 2). */
+		/** Sidecar published next to the markdown (B3 registry artifacts). */
 		sidecar?: { name: string; content: string };
 	}
 	const targets: PublishTarget[] = [];
@@ -311,76 +351,91 @@ export async function handleApprove(
 	// Any failure → notify the exact issues, publish NOTHING, do not
 	// advance the stage.
 	const revisionIssues: string[] = [];
-	// Set inside the RTM block below; consumed by the publish gate.
+	// Set inside the sidecar registry loop below; consumed by the publish
+	// gate (the gate API takes rtmData specifically — RTM-only plumbing).
 	let rtmDataForGate: RtmData | null = null;
 
-	// RTM JSON sidecar (RTM traceability upgrade, Phase 2). When the
-	// working copy carries RTM_<project>.json, the JSON is the source of
-	// truth: it is validated, the published markdown is REGENERATED from
-	// it (never the LLM's hand-written table), and revisions must satisfy
-	// the living-document rules against the previously published JSON.
-	if (mapping.artifact === "RTM") {
-		const jsonFile = readdirSync(workingDirPath).find(
-			(f) => f.startsWith("RTM_") && f.endsWith(".json"),
-		);
-		if (jsonFile) {
-			const jsonText = readFileSync(join(workingDirPath, jsonFile), "utf8");
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(jsonText);
-			} catch {
-				ctx.ui.notify(`RTM JSON sidecar ${jsonFile} is not valid JSON. Fix it, then re-run /velpari-architecture-generator-approve.`, "error");
-				return;
-			}
-			const validation = validateRtmData(parsed);
-			if (!validation.ok) {
+	// Sidecar registry (B3/D3): one entry per sidecar-backed artifact.
+	// When the working copy carries the LLM-authored sidecar, the data is
+	// the source of truth: it is validated, the published markdown is
+	// RE-RENDERED from it (never the LLM's hand-written table), and
+	// revisions must satisfy the living-document rules against the
+	// previously published sidecar. D6: the publish REQUIRES the sidecar —
+	// a markdown-only working copy of a sidecar artifact is blocked.
+	const triggeredArtifacts = new Set<string>();
+	if (SIDECAR_REGISTRY[mapping.artifact]) triggeredArtifacts.add(mapping.artifact);
+	for (const t of targets) {
+		if (SIDECAR_REGISTRY[t.fileArtifact]) triggeredArtifacts.add(t.fileArtifact);
+	}
+	if (triggeredArtifacts.size > 0) {
+		const workingFiles = readdirSync(workingDirPath);
+		for (const artifactKey of triggeredArtifacts) {
+			const entry = SIDECAR_REGISTRY[artifactKey]!;
+			const sidecarFile = entry.detectWorkingSidecar(workingFiles);
+			if (!sidecarFile) {
 				ctx.ui.notify(
-					`RTM JSON sidecar is invalid. Fix these issues, then re-run /velpari-atomic-function-approve:\n` +
-						validation.issues.map((i) => `  - ${i}`).join("\n"),
+					`${entry.label} publish requires a sidecar (${entry.sidecarName(projectName)}) in the working copy — ` +
+						`the data file is the source of truth and the published markdown is re-rendered from it. ` +
+						`Add it, then re-run the approve.`,
 					"error",
 				);
 				return;
 			}
-			const rtmData = parsed as RtmData;
-			const rtmTarget = targets.find((t) => t.fileArtifact === "RTM");
-			const publishedJsonPath = join(cwd, "Doc", "requirements", `RTM_${projectName}.json`);
-			if (existsSync(publishedJsonPath)) {
-				try {
-					const baseline = JSON.parse(readFileSync(publishedJsonPath, "utf8")) as RtmData;
-					for (const issue of diffRtmData(baseline, rtmData).issues) {
-						revisionIssues.push(`[${jsonFile}] ${issue}`);
-					}
-				} catch {
-					revisionIssues.push(`[${jsonFile}] published RTM JSON at ${publishedJsonPath} is not readable JSON — cannot verify revision rules.`);
+			const sidecarText = readFileSync(join(workingDirPath, sidecarFile), "utf8");
+			const parsed = entry.parseAndValidate(sidecarText);
+			if (!parsed.ok) {
+				ctx.ui.notify(
+					`${entry.label} sidecar is invalid. Fix these issues, then re-run the approve:\n` +
+						parsed.issues.map((i) => `  - ${i}`).join("\n"),
+					"error",
+				);
+				return;
+			}
+			let data = parsed.data;
+			if (entry.validateWithCtx) {
+				const ctxIssues = entry.validateWithCtx(data, { cwd, projectName });
+				if (ctxIssues.length > 0) {
+					ctx.ui.notify(
+						`${entry.label} sidecar failed tier/profile validation. Fix these issues, then re-run the approve:\n` +
+							ctxIssues.map((i) => `  - ${i}`).join("\n"),
+						"error",
+					);
+					return;
 				}
 			}
-			// Stamp requirement fingerprints from the published PSRS
-			// (Phase 3). The LLM never hashes; rows with unknown ids stay
-			// unstamped and are reported by doctor.
-			const psrs = resolveDocArtifact("PRD", projectName, cwd);
-			if (psrs) {
-				rtmData.rows = stampFingerprints(
-					rtmData.rows,
-					extractRequirementFingerprints(readFileSync(psrs.path, "utf8")),
-				);
+			// Diff against the previously published sidecar.
+			const baseline = entry.loadPublishedBaseline(cwd, projectName);
+			if (baseline) {
+				if (baseline.data) {
+					for (const issue of entry.diff(baseline.data, data)) {
+						revisionIssues.push(`[${sidecarFile}] ${issue}`);
+					}
+				} else {
+					revisionIssues.push(`[${sidecarFile}] published ${entry.label} sidecar at ${baseline.path} is not readable — cannot verify revision rules.`);
+				}
 			}
-			const rendered = renderRtmMarkdown(rtmData);
-			rtmDataForGate = rtmData;
+			if (entry.postValidate) {
+				data = entry.postValidate(data, { cwd, projectName });
+			}
+			const rendered = entry.render(data);
+			if (artifactKey === "RTM") rtmDataForGate = data as RtmData;
 			const sidecar = {
-				name: `RTM_${projectName}.json`,
-				content: JSON.stringify(rtmData, null, 2) + "\n",
+				name: entry.sidecarName(projectName),
+				content: entry.serialize(data),
 			};
-			if (rtmTarget) {
-				rtmTarget.content = rendered;
-				rtmTarget.sidecar = sidecar;
+			const mdTarget = targets.find((t) => t.fileArtifact === artifactKey);
+			if (mdTarget) {
+				mdTarget.content = rendered;
+				mdTarget.sidecar = sidecar;
 			} else {
-				// The LLM wrote only the JSON — synthesize the markdown target.
+				// The LLM wrote only the sidecar — synthesize the markdown target.
+				const category = GROUPED_CATEGORIES[artifactKey] ?? "";
 				targets.push({
-					file: jsonFile,
-					fileArtifact: "RTM",
+					file: sidecarFile,
+					fileArtifact: artifactKey,
 					content: rendered,
-					groupedAbs: join(cwd, "Doc", "requirements", `RTM_${projectName}.md`),
-					publishedPath: resolveDocArtifact("RTM", projectName, cwd)?.path ?? null,
+					groupedAbs: join(cwd, "Doc", category, `${artifactKey}_${projectName}.md`),
+					publishedPath: resolveDocArtifact(artifactKey, projectName, cwd)?.path ?? null,
 					sidecar,
 				});
 			}
@@ -446,6 +501,35 @@ export async function handleApprove(
 		);
 	}
 
+	// Freshness stamps (B4): hash the stage's declared inputs (registry
+	// is the single source of truth — D2) so every published artifact is
+	// self-describing (frontmatter `inputs:` JSON scalar) and the stale
+	// set is machine-checkable (.pi/velpari/freshness.json). Failure
+	// policy: a hash failure warns and publishes unstamped — it never
+	// corrupts or blocks the publish.
+	const publishNow = new Date().toISOString();
+	let inputHashes: Record<string, string> | null = null;
+	const stageSpec = specForStage(state.currentStage);
+	if (stageSpec) {
+		const hashed = computeInputHashes(
+			cwd,
+			resolveDeclaredInputs(cwd, stageSpec.inputs, {
+				projectName,
+				topicSlug: slugify(state.mission),
+			}),
+			hashFileContentNormalized,
+		);
+		if (!hashed.ok) {
+			ctx.ui.notify(
+				`Freshness stamp skipped: declared inputs not hashable (${hashed.missing.join(", ")}). ` +
+					`Publishing without stamp; republish after the inputs exist to stamp.`,
+				"warning",
+			);
+		} else {
+			inputHashes = hashed.hashes;
+		}
+	}
+
 	for (const target of targets) {
 		// Stamp the uniform artifact frontmatter at publish time (RTM
 		// traceability upgrade, Phase 1). Existing fields (e.g. the PSRS
@@ -466,19 +550,13 @@ export async function handleApprove(
 			sunsetInfo.sunset !== null &&
 			isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
 		const alreadyArchived = sunsetInfo?.status === "deprecated";
-		const input: {
-							artifact: string;
-							project: string;
-							stage: string;
-							run: string;
-							supersedes?: string;
-							sunset?: string;
-							deprecatedAt?: string;
-					  } = {
+		const input: ArtifactFrontmatterInput = {
 			artifact: target.fileArtifact,
 			project: projectName,
 			stage: state.currentStage,
 			run: state.runId,
+			now: publishNow,
+			...(inputHashes ? { inputs: JSON.stringify(inputHashes) } : {}),
 		};
 		if (sunsetInfo?.supersedes !== undefined) input.supersedes = sunsetInfo.supersedes;
 		if (sunsetInfo?.sunset) input.sunset = sunsetInfo.sunset;
@@ -509,6 +587,44 @@ export async function handleApprove(
 		atomicWriteFile(target.groupedAbs, stamped, "utf8");
 		if (target.sidecar) {
 			atomicWriteFile(join(dirname(target.groupedAbs), target.sidecar.name), target.sidecar.content, "utf8");
+		}
+		// B3/D9 — code-generated feasibility decision record: serialize
+		// the settled session BEFORE clearFeasibilitySession destroys it
+		// below, so the decision data survives the publish.
+		let decisionRecordAbs: string | null = null;
+		if (target.fileArtifact === "feasibility-study" && state.feasibilitySession) {
+			decisionRecordAbs = writeFeasibilityRecord(cwd, projectName, state.feasibilitySession, publishNow);
+		}
+		if (inputHashes) {
+			try {
+				// D3 — the manifest entry also records the sidecar hash
+				// (both files are the publish). D9 — the feasibility record
+				// joins the study's own extraPaths the same way.
+				const extraPaths: Record<string, string> = {};
+				if (target.sidecar) {
+					const sidecarAbs = join(dirname(target.groupedAbs), target.sidecar.name);
+					const sidecarHash = hashFileContent(sidecarAbs);
+					if (sidecarHash) extraPaths[relative(cwd, sidecarAbs)] = sidecarHash;
+				}
+				if (decisionRecordAbs) {
+					const recordHash = hashFileContent(decisionRecordAbs);
+					if (recordHash) extraPaths[relative(cwd, decisionRecordAbs)] = recordHash;
+				}
+				recordPublish(cwd, {
+					artifact: target.fileArtifact.toLowerCase(),
+					projectName,
+					path: relative(cwd, target.groupedAbs),
+					...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
+					publishedAt: publishNow,
+					inputs: inputHashes,
+					hashv: 2,
+				});
+			} catch {
+				ctx.ui.notify(
+					`Freshness manifest write failed for ${target.fileArtifact} — the publish is intact, only the stamp was skipped.`,
+					"warning",
+				);
+			}
 		}
 		ctx.ui.notify(
 			target.publishedPath
@@ -615,7 +731,7 @@ export async function handleApprove(
 		// language, spikes) is settled — clear it so a later re-run starts clean.
 		next = clearFeasibilitySession(next, cwd);
 	}
-	if (pi) appendStageEntry(pi, next);
+	if (pi) appendStageEntry(pi, next, cwd);
 	// v0.5.1 Phase J.2: reflect the new stage in the footer status bar
 	// via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
@@ -630,7 +746,15 @@ export async function handleApprove(
 	const feasibilitySkip =
 		next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
 	const nextCommands = nextCommandsFor(next.currentStage, { feasibilitySkip });
-	const nextHint = `Next: ${nextCommands.join(" or ")}`;
+	// Generator v2 (D5): an approve that crosses into a new phase prepends
+	// the generation step to the next-hint when the target phase lacks
+	// fresh generated agents. Informational only — the bundled scouts
+	// remain the permanent fallback, legality is untouched.
+	const enteredPhase = phaseBoundaryCrossed(state.currentStage, next.currentStage);
+	const genHint = enteredPhase !== null ? generationHintForPhase(cwd, enteredPhase) : null;
+	const nextHint = genHint
+		? `Next: ${genHint}, then ${nextCommands.join(" or ")}`
+		: `Next: ${nextCommands.join(" or ")}`;
 	if (next.currentStage === "built-rtm") {
 		ctx.ui.notify(
 			feasibilitySkip

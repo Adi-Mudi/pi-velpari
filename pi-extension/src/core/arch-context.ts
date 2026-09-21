@@ -38,7 +38,7 @@ export interface ArchContext {
 	missingInputs: MissingInput[];
 }
 
-export interface LoadedDoc {
+interface LoadedDoc {
 	path: string;
 	content: string;
 }
@@ -50,7 +50,7 @@ export interface StandardsProfile {
 	selectedBy: string;
 }
 
-export interface AgentsConfigSnapshot {
+interface AgentsConfigSnapshot {
 	roles: Record<string, string>;
 }
 

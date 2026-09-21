@@ -34,15 +34,12 @@ import {
 } from "../../core/scan-options.js";
 import type { ScanType } from "../../core/state.js";
 
-export interface ScanGateOptions {
+interface ScanGateOptions {
 	/** FilesConfig from .pi/velpari/files.json (v4). */
 	config: FilesConfig;
 	/** Project cwd for filesystem probes (defaults to process.cwd()). */
 	cwd?: string;
 }
-
-/** Backward-compatible alias — the `scans` field of ScanGateResult. */
-export type ScanGateChoice = ScanType[];
 
 /**
  * Rich result object. Lets the state tool distinguish:

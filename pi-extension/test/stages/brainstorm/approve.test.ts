@@ -28,12 +28,17 @@ import {
 	createRun,
 	incrementBrainstormDispatchCount,
 	loadState,
+	openBrainstormSession,
+	saveState,
 	setScansSelected,
 	upsertBrainstormQuestion,
 	type RunState,
 } from "../../../src/core/state.js";
 import { buildRunDir, slugify } from "../../../src/core/paths.js";
 import { AUDIT_LOG_MARKER, auditLogPath } from "../../../src/stages/brainstorm/audit.js";
+import { parseFrontmatterBlock } from "../../../src/core/frontmatter.js";
+import { hashFileContent } from "../../../src/core/fingerprints.js";
+import { loadFreshnessManifest } from "../../../src/core/freshness.js";
 
 let tmpDir: string;
 let notifications: Array<{ message: string; level: string }>;
@@ -159,7 +164,7 @@ describe("handleApproveBrainstorm", () => {
 		// Simulate an already-approved run.
 		const past: RunState = { ...state, currentStage: "brainstormed" };
 		fs.writeFileSync(
-			path.join(tmpDir, ".IDE_Plans", "velpari", "state.json"),
+			path.join(tmpDir, ".pi", "velpari", "state.json"),
 			JSON.stringify(past),
 			"utf8",
 		);
@@ -278,6 +283,72 @@ describe("handleApproveBrainstorm", () => {
 		);
 	});
 
+	it("B4: stamps inputs frontmatter + writes a slug-keyed freshness entry", async () => {
+		let state = createRun(MISSION, tmpDir);
+		state = confirmUnderstanding(state, tmpDir);
+		writeNotes(state.runId);
+		// files.json v4 with one configured input document.
+		const configPath = path.join(tmpDir, ".pi", "velpari", "files.json");
+		fs.mkdirSync(path.dirname(configPath), { recursive: true });
+		fs.writeFileSync(
+			configPath,
+			JSON.stringify({
+				version: 4,
+				projectName: "TestApp",
+				framework: {},
+				codePaths: [],
+				inputDocuments: ["README.md"],
+				testPaths: [],
+				outputPaths: {},
+				excludedPaths: [],
+			}),
+			"utf8",
+		);
+		fs.writeFileSync(path.join(tmpDir, "README.md"), "# readme\n", "utf8");
+
+		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
+
+		const published = path.join(publishedDir(), `brainstorm-${MISSION_SLUG}.md`);
+		const parsed = parseFrontmatterBlock(fs.readFileSync(published, "utf8"))!;
+		const expectedHash = hashFileContent(path.join(tmpDir, "README.md"))!;
+		assert.deepEqual(JSON.parse(parsed.fields.inputs!), {
+			"input-doc:README.md": expectedHash,
+		});
+
+		const manifest = loadFreshnessManifest(tmpDir);
+		const entry = manifest.artifacts[`brainstorm:${MISSION_SLUG}`];
+		assert.ok(entry, "expected a slug-keyed freshness entry");
+		assert.equal(entry.slug, MISSION_SLUG);
+		assert.equal(entry.path, path.join("Doc", "brainstorm", `brainstorm-${MISSION_SLUG}.md`));
+		assert.deepEqual(entry.inputs, { "input-doc:README.md": expectedHash });
+	});
+
+	it("D8: re-brainstorm of the same topic upserts ONE base-key manifest entry pointing at the suffixed file", async () => {
+		// First brainstorm + approve (base file).
+		let state = createRun(MISSION, tmpDir);
+		state = confirmUnderstanding(state, tmpDir);
+		writeNotes(state.runId);
+		writeFilesConfig();
+		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
+		assert.equal(publishedFiles().length, 1);
+
+		// Re-brainstorm the same topic (same mission → same slug) + approve.
+		let reopened = openBrainstormSession(tmpDir);
+		reopened = confirmUnderstanding(reopened, tmpDir);
+		writeNotes(reopened.runId);
+		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
+
+		assert.equal(publishedFiles().length, 2, "old file preserved, suffixed file added");
+		const manifest = loadFreshnessManifest(tmpDir);
+		const keys = Object.keys(manifest.artifacts).filter((k) => k.startsWith("brainstorm:"));
+		assert.deepEqual(keys, [`brainstorm:${MISSION_SLUG}`], "one base-key entry per topic");
+		assert.match(
+			manifest.artifacts[`brainstorm:${MISSION_SLUG}`]!.path,
+			/brainstorm-test-mission-\d{8}-\d{6}\.md$/,
+			"manifest path points at the latest (suffixed) file",
+		);
+	});
+
 	it("is idempotent: a second approve call fails at the stage check", async () => {
 		let state = createRun(MISSION, tmpDir);
 		state = confirmUnderstanding(state, tmpDir);
@@ -290,5 +361,111 @@ describe("handleApproveBrainstorm", () => {
 		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
 		assert.match(lastError(), /current stage is "brainstormed"/);
 		assert.equal(publishedFiles().length, 1, "second call must not publish again");
+	});
+});
+
+/**
+ * Approve doors (brainstorm-anytime, D3). When the brainstorm was opened
+ * from a later stage (pausedStage set), approve offers two doors:
+ *   door 1 (continue — default, picker cancel, no-TUI) resumes the paused
+ *          stage;
+ *   door 2 (--restart-prd argument, or the picker choice) lands at
+ *          "brainstormed" so the PRD chain restarts.
+ * A first run (no pausedStage) keeps the existing advance to "brainstormed"
+ * — covered by the clean-path test above.
+ */
+describe("handleApproveBrainstorm — doors (D3)", () => {
+	function enterPausedSession(pausedStage: string): RunState {
+		const run = createRun(MISSION, tmpDir);
+		const paused: RunState = { ...run, currentStage: pausedStage as never };
+		saveState(paused, tmpDir);
+		let state = openBrainstormSession(tmpDir);
+		state = confirmUnderstanding(state, tmpDir);
+		writeNotes(state.runId);
+		writeFilesConfig();
+		return state;
+	}
+
+	function makePickerCtx(choice: string | undefined): ExtensionCommandContext {
+		const ctx = {
+			hasUI: true,
+			ui: {
+				notify: (message: string, level: string) => {
+					notifications.push({ message, level });
+				},
+				setStatus: (key: string, text: string) => {
+					statusUpdates.push({ key, text });
+				},
+				select: async (_title: string, _labels: string[]) => choice,
+			},
+		};
+		return ctx as unknown as ExtensionCommandContext;
+	}
+
+	it("door 1 (no TUI — default continue): publishes and resumes the paused stage", async () => {
+		enterPausedSession("building-rtm");
+
+		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
+
+		assert.equal(publishedFiles().length, 1, "expected the publish to land");
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "building-rtm");
+		assert.equal(loaded.pausedStage, undefined);
+		assert.equal(loaded.understandingConfirmed, undefined);
+		assert.equal(loaded.brainstormQuestions, undefined);
+	});
+
+	it("door 2 via --restart-prd argument: publishes and lands at brainstormed", async () => {
+		enterPausedSession("building-rtm");
+
+		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir, "--restart-prd");
+
+		assert.equal(publishedFiles().length, 1);
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "brainstormed");
+		assert.equal(loaded.pausedStage, undefined);
+		const nextHint = notifications.find((n) =>
+			n.message.includes("Brainstorm notes published") &&
+			n.message.includes("/velpari-prd"),
+		);
+		assert.ok(nextHint, "expected a 'Next: /velpari-prd' hint for door 2");
+	});
+
+	it("door picker: choosing restart lands at brainstormed", async () => {
+		enterPausedSession("drafted-prd");
+
+		await handleApproveBrainstorm(
+			makePickerCtx("Restart at the PRD stage"),
+			makePi(),
+			tmpDir,
+		);
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "brainstormed");
+		assert.equal(loaded.pausedStage, undefined);
+	});
+
+	it("door picker: choosing continue resumes the paused stage", async () => {
+		enterPausedSession("drafted-prd");
+
+		await handleApproveBrainstorm(
+			makePickerCtx('Continue at "drafted-prd"'),
+			makePi(),
+			tmpDir,
+		);
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "drafted-prd");
+		assert.equal(loaded.pausedStage, undefined);
+	});
+
+	it("door picker: a cancelled picker defaults to continue", async () => {
+		enterPausedSession("designing");
+
+		await handleApproveBrainstorm(makePickerCtx(undefined), makePi(), tmpDir);
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "designing");
+		assert.equal(loaded.pausedStage, undefined);
 	});
 });

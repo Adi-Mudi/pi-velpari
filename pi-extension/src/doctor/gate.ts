@@ -27,27 +27,34 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolveDocArtifact } from "../core/paths.js";
+import { resolveDocArtifact, slugify } from "../core/paths.js";
 import { extractRequirementPhases, validatePsrs } from "../core/psrs.js";
 import { validateFeasibilityDoc } from "../core/feasibility-doc.js";
 import {
 	checkRowFingerprints,
 	extractRequirementFingerprints,
 } from "../core/fingerprints.js";
+import {
+	loadFreshnessManifest,
+	manifestKey,
+	resolveDeclaredInputs,
+} from "../core/freshness.js";
+import { checkDownstreamCoverage } from "../core/id-coverage.js";
 import { loadState } from "../core/state.js";
+import { STAGE_REGISTRY } from "../stages/registry.js";
 import { gateArchSubCycle } from "./checks/arch-sub-cycle.js";
 import { gateStandardsProfile } from "./checks/standards-profile.js";
 import { gateADR } from "./checks/adr.js";
 import { gateDesignReadiness } from "./checks/design-readiness.js";
-import { loadReviewerVerdict } from "./checks/atomic-tier.js";
-import { loadPseudocodeReviewerVerdict } from "./checks/pseudocode-reviewer.js";
-import { loadTestplanReviewerVerdict } from "./checks/testplan-reviewer.js";
-import { loadDesignReviewerVerdict } from "./checks/design-reviewer.js";
+import {
+	loadReviewerVerdictForStage,
+	verifierSpecForArtifact,
+} from "./checks/reviewer-verdict.js";
 import { deriveAtomicProfile } from "../core/atomic-tier.js";
 import { loadFilesConfig } from "../core/config.js";
 import type { RtmData } from "../core/rtm-data.js";
 
-export interface PublishGateInput {
+interface PublishGateInput {
 	/** Artifact key of the file being published ("PRD", "RTM", ...). */
 	artifact: string;
 	/** Working-copy content (for RTM: the markdown rendered from the JSON). */
@@ -58,7 +65,7 @@ export interface PublishGateInput {
 	projectName: string;
 }
 
-export interface PublishGateResult {
+interface PublishGateResult {
 	errors: string[];
 	warnings: string[];
 }
@@ -141,62 +148,98 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 		}
 	}
 
-	// Reviewer-verdict gates (Plan A + Plan D). The reviewer sub-agent is
-	// the single source of truth for stage-specific tier checks. Doctor
-	// surfaces the verdict but does NOT re-derive any rule. Each stage
-	// has its own reviewer + verdict path; see REVIEWER_STAGE_SPECS in
-	// checks/reviewer-verdict.ts. Tier + overlay gate (core/atomic-tier.ts:
-	// shouldRunReviewer) decides whether the reviewer was spawned at all;
-	// if it was skipped, the gate emits a clear error.
-	const reviewerArtifactKeys: Record<string, () => void> = {
-		"atomic-functions": () => {
-			const config = loadFilesConfig(input.cwd);
-			const profile = deriveAtomicProfile(config);
-			const section = loadReviewerVerdict(input.cwd, profile);
-			for (const item of section.items) {
-				if (item.status === "error") errors.push(item.message);
-				else if (item.status === "warning") warnings.push(item.message);
+	// Reviewer-verdict gates (Plan A + Plan D; C3 — map-driven). The
+	// reviewer sub-agent is the single source of truth for stage-specific
+	// tier checks. Doctor surfaces the verdict but does NOT re-derive any
+	// rule. The stage→verifier map (REVIEWER_STAGE_SPECS in
+	// checks/reviewer-verdict.ts) decides which verdict — if any — this
+	// artifact's publish consumes. Tier + overlay gate
+	// (core/atomic-tier.ts:shouldRunReviewer) decides whether the reviewer
+	// was spawned at all; each spec's missingVerdict policy decides what a
+	// missing verdict file means.
+	const verifierSpec = verifierSpecForArtifact(input.artifact);
+	if (verifierSpec) {
+		const config = loadFilesConfig(input.cwd);
+		const profile = deriveAtomicProfile(config);
+		const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
+		const section = loadReviewerVerdictForStage(input.cwd, verifierSpec, tierContext, profile);
+		for (const item of section.items) {
+			if (item.status === "error") errors.push(item.message);
+			else if (item.status === "warning") warnings.push(item.message);
+		}
+	}
+
+	// Freshness (B4/A3) — the last checkpoint before Doc/ is written.
+	//  1. Refuse to publish when a declared input of the stage is missing
+	//     (it vanished between the stage run and the publish).
+	//  2. Informational: downstream artifacts that consume this artifact
+	//     become stale the moment it is (re)published — the post-publish
+	//     doctor audit reports the resulting stale set as errors (D7),
+	//     so the user sees the cascade immediately after publish.
+	{
+		const spec = Object.values(STAGE_REGISTRY).find(
+			(s) =>
+				s.workingCopyArtifact === input.artifact ||
+				s.additionalWorkingCopies?.includes(input.artifact),
+		);
+		if (spec) {
+			const state = loadState(input.cwd);
+			const declared = resolveDeclaredInputs(input.cwd, spec.inputs, {
+				projectName: input.projectName,
+				topicSlug: slugify(state.mission),
+			});
+			for (const d of declared) {
+				if (d.status === "missing" && !d.optional) {
+					errors.push(
+						`freshness-input-missing: declared input ${d.id} is missing — ` +
+							`restore it or republish the upstream stage before publishing.`,
+					);
+				}
 			}
-		},
-		pseudocode: () => {
-			const config = loadFilesConfig(input.cwd);
-			const profile = deriveAtomicProfile(config);
-			const section = loadPseudocodeReviewerVerdict(input.cwd, profile);
-			for (const item of section.items) {
-				if (item.status === "error") errors.push(item.message);
-				else if (item.status === "warning") warnings.push(item.message);
+			const ownKey = manifestKey(input.artifact, input.projectName);
+			const manifest = loadFreshnessManifest(input.cwd);
+			for (const [key, entry] of Object.entries(manifest.artifacts)) {
+				if (key === ownKey || !entry.inputs) continue;
+				if (ownKey in entry.inputs) {
+					warnings.push(
+						`freshness-downstream: publishing ${ownKey} makes ${key} stale — ` +
+							`republish it next (the post-publish audit will flag it).`,
+					);
+				}
 			}
-		},
-		"test-plan": () => {
-			const config = loadFilesConfig(input.cwd);
-			const profile = deriveAtomicProfile(config);
-			const section = loadTestplanReviewerVerdict(input.cwd, profile);
-			for (const item of section.items) {
-				if (item.status === "error") errors.push(item.message);
-				else if (item.status === "warning") warnings.push(item.message);
-			}
-		},
-		"test-cases": () => {
-			const config = loadFilesConfig(input.cwd);
-			const profile = deriveAtomicProfile(config);
-			const section = loadTestplanReviewerVerdict(input.cwd, profile);
-			for (const item of section.items) {
-				if (item.status === "error") errors.push(item.message);
-				else if (item.status === "warning") warnings.push(item.message);
-			}
-		},
-		design: () => {
-			const config = loadFilesConfig(input.cwd);
-			const profile = deriveAtomicProfile(config);
-			const section = loadDesignReviewerVerdict(input.cwd, profile);
-			for (const item of section.items) {
-				if (item.status === "error") errors.push(item.message);
-				else if (item.status === "warning") warnings.push(item.message);
-			}
-		},
-	};
-	const reviewerHandler = reviewerArtifactKeys[input.artifact];
-	if (reviewerHandler) reviewerHandler();
+		}
+	}
+
+	// Layer-2 ID coverage (A4): when publishing artifact X, run the rules
+	// where X is the downstream — the working copy is checked against the
+	// published upstreams. missing → error (blocks, D1); not-checkable →
+	// warning (legacy pre-A4 doc, publish continues); duplicates → warning
+	// (D2). A rule whose upstream artifact is absent is skipped.
+	for (const result of checkDownstreamCoverage(
+		input.cwd,
+		input.artifact,
+		input.workingContent,
+		input.projectName,
+	)) {
+		if (result.status === "missing") {
+			errors.push(
+				`id-coverage:${result.rule.id}: missing ${result.missingIds.join(", ")} — ` +
+					`revise the ${result.rule.downstream} working copy to reference them ` +
+					`(${result.rule.downstreamRefHint}).`,
+			);
+		} else if (result.status === "not-checkable") {
+			warnings.push(
+				`id-coverage:${result.rule.id}: not machine-checkable — no parseable references ` +
+					`(${result.rule.downstreamRefHint}); regenerate the stage to gain ID traceability.`,
+			);
+		}
+		if (result.duplicateIds.length > 0) {
+			warnings.push(
+				`id-coverage:${result.rule.id}: duplicate ids ${result.duplicateIds.join(", ")} — ` +
+					`each upstream id should appear exactly once.`,
+			);
+		}
+	}
 
 	return { errors, warnings };
 }

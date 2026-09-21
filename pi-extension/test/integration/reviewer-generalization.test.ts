@@ -45,7 +45,7 @@ function makePi(): ExtensionAPI {
 }
 
 function makeState(stage: RunState["currentStage"]): void {
-	const dir = path.join(tmpDir, ".IDE_Plans", "velpari");
+	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState = {
 		version: 1,
@@ -240,6 +240,16 @@ describe("Plan D — reviewer generalization end-to-end (handleApprove)", () => 
 			makeState(stage.currentStage);
 			makeFilesConfig({ projectName: "TestApp", tier: "advanced" });
 			makeDocInputs("TestApp");
+			// B4: the publish gate refuses when a declared input is missing.
+			// Seed the rest of the stage's input chain (legacy flat paths
+			// resolve fine as published inputs).
+			const extraInputs: Record<string, string[]> = {
+				pseudocode: ["atomic-functions"],
+				testplan: ["atomic-functions", "pseudocode"],
+			};
+			for (const a of extraInputs[stage.stageKey] ?? []) {
+				fs.writeFileSync(path.join(tmpDir, "Doc", `${a}_TestApp.md`), `# ${a}\n`, "utf8");
+			}
 			preInstallScouts(stage.scoutNames);
 			writeStageArtifacts({
 				stageKey: stage.stageKey,

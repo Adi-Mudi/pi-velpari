@@ -200,8 +200,8 @@ describe("spawnPersistentSessions — error paths", () => {
 	});
 
 	it("errors when state.json is corrupt (JSON parse failure surfaces)", () => {
-		fs.mkdirSync(path.join(tmpDir, ".IDE_Plans/velpari"), { recursive: true });
-		fs.writeFileSync(path.join(tmpDir, ".IDE_Plans/velpari/state.json"), "{ broken json");
+		fs.mkdirSync(path.join(tmpDir, ".pi/velpari"), { recursive: true });
+		fs.writeFileSync(path.join(tmpDir, ".pi/velpari/state.json"), "{ broken json");
 
 		const result = spawnPersistentSessions({ cwd: tmpDir, mission: "Mission" });
 

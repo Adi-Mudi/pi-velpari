@@ -31,7 +31,7 @@ import { parseADRSection } from "../../core/adr.js";
 import { STYLE_CATALOG } from "../../core/style-catalog.js";
 import { isKnownTactic } from "../../core/tactic-catalog.js";
 
-export interface DesignReadinessError {
+interface DesignReadinessError {
 	code: string;
 	message: string;
 }
@@ -191,7 +191,7 @@ export function gateDesignReadiness(workingContent: string | null): DesignReadin
 	if (HEADINGS_REQUIRED.qaScenarios.test(workingContent)) {
 		const qaRows = extractQAScenarioRows(workingContent);
 		for (const row of qaRows) {
-			const approach = row["Approach"] ?? "";
+			const approach = row.Approach ?? "";
 			if (approach && !isKnownTactic(approach)) {
 				errors.push({
 					code: "design.tactic-unknown",
@@ -253,7 +253,7 @@ export function gateDesignReadiness(workingContent: string | null): DesignReadin
  * under the §14 heading. Stops walking at the next `## ` heading.
  * Exported for testability.
  */
-export function extractC4Blocks(content: string): Set<string> {
+function extractC4Blocks(content: string): Set<string> {
 	const keywords = new Set<string>();
 	const start = content.match(/^##\s+14\.\s+Diagrams\s+\(C4\)/m);
 	if (!start) return keywords;

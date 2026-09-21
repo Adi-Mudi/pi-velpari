@@ -20,6 +20,10 @@ import * as path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handleApprove } from "../../src/ops/approve.js";
 import { createRun, loadState, saveState } from "../../src/core/state.js";
+import { parseFrontmatterBlock } from "../../src/core/frontmatter.js";
+import { hashFileContent } from "../../src/core/fingerprints.js";
+import { loadFreshnessManifest } from "../../src/core/freshness.js";
+import { readYamlFile } from "../../src/core/yaml-data.js";
 
 interface Notice {
 	message: string;
@@ -160,14 +164,18 @@ describe("publish — publish gate", () => {
 		assert.equal(loadState(tmpDir).currentStage, "building-rtm");
 	});
 
-	it("publishes a clean RTM: regenerated markdown + JSON with fingerprints", async () => {
+	it("publishes a clean RTM: regenerated markdown + YAML sidecar with fingerprints (legacy .json working sidecar accepted, .yaml written — D4)", async () => {
 		enterBuildingRtm(rtmJson(["FR-01", "FR-02", "NFR-01"]));
 		await handleApprove(makeCtx(), undefined, tmpDir);
 
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
-		const jsonPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.json");
+		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(mdPath), "markdown published");
-		assert.ok(fs.existsSync(jsonPath), "JSON sidecar published");
+		assert.ok(fs.existsSync(yamlPath), "YAML sidecar published (writes are always .yaml)");
+		assert.ok(
+			!fs.existsSync(path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.json")),
+			"no .json copy is published",
+		);
 
 		// Markdown is regenerated from the data — not the LLM's preview file.
 		const md = fs.readFileSync(mdPath, "utf8");
@@ -176,8 +184,25 @@ describe("publish — publish gate", () => {
 		assert.ok(!md.includes("# RTM preview"), "preview content must not be published");
 
 		// Fingerprints were stamped from the published PSRS.
-		const data = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-		assert.ok(data.rows.every((r: { fingerprint?: string }) => typeof r.fingerprint === "string" && r.fingerprint.length === 64));
+		const data = readYamlFile(yamlPath) as { rows: { fingerprint?: string }[] };
+		assert.ok(data.rows.every((r) => typeof r.fingerprint === "string" && r.fingerprint.length === 64));
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
+
+		// B4 freshness stamps: the published markdown carries an `inputs:`
+		// JSON scalar hashing the declared input (the published PRD), and
+		// `.pi/velpari/freshness.json` records the rtm:TestApp entry with
+		// the YAML sidecar hash in extraPaths (D3/D5).
+		const prdHash = hashFileContent(path.join(tmpDir, "Doc", "requirements", "PRD_TestApp.md"))!;
+		const fm = parseFrontmatterBlock(md)!;
+		assert.deepEqual(JSON.parse(fm.fields.inputs!), { "prd:TestApp": prdHash });
+		const manifest = loadFreshnessManifest(tmpDir);
+		const entry = manifest.artifacts["rtm:TestApp"];
+		assert.ok(entry, "expected a freshness manifest entry for rtm:TestApp");
+		assert.equal(entry.path, path.join("Doc", "requirements", "RTM_TestApp.md"));
+		assert.deepEqual(entry.inputs, { "prd:TestApp": prdHash });
+		const sidecarHash = hashFileContent(yamlPath)!;
+		assert.deepEqual(entry.extraPaths, {
+			[path.join("Doc", "requirements", "RTM_TestApp.yaml")]: sidecarHash,
+		});
 	});
 });

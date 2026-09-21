@@ -15,7 +15,7 @@
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import type { RunState } from "../../core/state.js";
 
-export interface ArchSubCycleGateError {
+interface ArchSubCycleGateError {
 	code: string;
 	message: string;
 }

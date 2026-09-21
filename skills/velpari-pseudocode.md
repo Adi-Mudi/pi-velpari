@@ -140,6 +140,8 @@ updated: <ISO timestamp>
 
 ### Function: createUser(email, password)
 
+AF: AF-1
+
 #### Pseudocode
 ```
 FUNCTION createUser(email, password):
@@ -181,6 +183,11 @@ FUNCTION createUser(email, password):
 Every function in the pseudocode must trace back to a public function
 declared in the design's interface contracts. If the design doesn't
 declare a function, do not pseudocode it.
+
+Every function also names the atomic function it implements via a
+mandatory `AF: AF-N` reference line directly under its `### Function:`
+heading (Layer-2 ID coverage). Every `AF-N` from the published
+atomic-functions doc must appear at least once in the pseudocode.
 
 ## Project-Name Substitution (FR-67, NFR-15)
 

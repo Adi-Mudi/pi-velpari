@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadState } from "./state.js";
+import { loadHistory } from "./history.js";
 import { PATHS } from "./constants.js";
 
 /**
@@ -27,7 +28,7 @@ export function buildCompactionSummary(cwd: string = process.cwd()): string {
 			`Updated: ${state.updatedAt || "(unknown)"}`,
 			``,
 			`History:`,
-			...state.history.map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`),
+			...loadHistory(cwd, state.runId).map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`),
 		];
 		return lines.join("\n");
 	} catch (err) {

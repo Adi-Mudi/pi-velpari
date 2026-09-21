@@ -27,6 +27,7 @@ import {
 	saveState,
 	type RunState,
 } from "../../src/core/state.js";
+import { loadHistory } from "../../src/core/history.js";
 import { STAGE_TRANSITIONS } from "../../src/core/constants.js";
 
 let tmpDir: string;
@@ -126,28 +127,30 @@ describe("STAGE_TRANSITIONS — Stages 6–10 entries exist", () => {
 describe("history tracking — Stages 6–10", () => {
 	it("the full Option B walk produces exactly 20 history entries", () => {
 		const finalState = walkToFinalizedDesign();
+		const history = loadHistory(tmpDir, finalState.runId);
 		// 20 = 1 createRun + 19 walk commands
 		assert.equal(
-			finalState.history.length,
+			history.length,
 			20,
-			`expected 20 history entries, got ${finalState.history.length}`,
+			`expected 20 history entries, got ${history.length}`,
 		);
 	});
 
 	it("the first history entry is the initial createRun (brainstorming + /velpari-brainstorm)", () => {
 		const finalState = walkToFinalizedDesign();
-		const first = finalState.history[0]!;
+		const first = loadHistory(tmpDir, finalState.runId)[0]!;
 		assert.equal(first.stage, "brainstorming");
 		assert.equal(first.command, "/velpari-brainstorm");
 	});
 
 	it("every transition records exactly one history entry", () => {
 		const finalState = walkToFinalizedDesign();
+		const history = loadHistory(tmpDir, finalState.runId);
 		// Each history entry's `stage` field must equal the previous target.
 		// The first entry's stage is the initial state.
-		for (let i = 1; i < finalState.history.length; i++) {
-			const prev = finalState.history[i - 1]!;
-			const curr = finalState.history[i]!;
+		for (let i = 1; i < history.length; i++) {
+			const prev = history[i - 1]!;
+			const curr = history[i]!;
 			// Skip: redrafts don't add entries (but our walk has none).
 			// The curr.stage should equal what advanceStage produced.
 			assert.ok(curr.stage.length > 0, `entry ${i} has empty stage`);

@@ -22,7 +22,7 @@ const PLACEHOLDER_HINTS = [
 	"??",
 ];
 
-export interface PsrsMetadata {
+interface PsrsMetadata {
 	documentType: string;
 	version: string;
 	status: string;
@@ -32,12 +32,12 @@ export interface PsrsMetadata {
 	projectName: string;
 }
 
-export interface PsrsRequirementEntry {
+interface PsrsRequirementEntry {
 	id: string;
 	title: string;
 }
 
-export interface PsrsRequirementSection {
+interface PsrsRequirementSection {
 	heading: string;
 	entries: PsrsRequirementEntry[];
 	/** Unique ids detected in this section. */
@@ -46,14 +46,14 @@ export interface PsrsRequirementSection {
 	duplicateIds: string[];
 }
 
-export interface PsrsValidationIssue {
+interface PsrsValidationIssue {
 	severity: "error" | "warning";
 	code: string;
 	message: string;
 	section?: string;
 }
 
-export interface PsrsValidationResult {
+interface PsrsValidationResult {
 	ok: boolean;
 	metadata: PsrsMetadata | null;
 	sections: Record<string, PsrsRequirementSection>;
@@ -97,7 +97,7 @@ const REQUIRED_SECTIONS = [
 ] as const;
 
 /** Requirement status lifecycle (Jama/Wiegers; ISO/IEC/IEEE 29148 §6.5). */
-export const REQUIREMENT_STATUSES = [
+const REQUIREMENT_STATUSES = [
 	"proposed",
 	"approved",
 	"implemented",
@@ -105,7 +105,6 @@ export const REQUIREMENT_STATUSES = [
 	"deferred",
 	"deprecated",
 ] as const;
-export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
 /**
  * Parse a markdown section by its `## Heading` marker and return
@@ -126,7 +125,7 @@ export function readSectionBody(markdown: string, heading: string): string {
 /**
  * Read all `## Heading` markers in order. The first H1 is skipped.
  */
-export function listHeadings(markdown: string): string[] {
+function listHeadings(markdown: string): string[] {
 	const out: string[] = [];
 	const lines = markdown.split("\n");
 	let inFrontmatter = false;
@@ -222,7 +221,7 @@ export function extractIdRows(
  * Detect duplicate ids within a section's rows. Returns the duplicate
  * id list.
  */
-export function findDuplicateIds(ids: string[]): string[] {
+function findDuplicateIds(ids: string[]): string[] {
 	const seen = new Set<string>();
 	const dups = new Set<string>();
 	for (const id of ids) {
@@ -268,7 +267,7 @@ export function findFrRowsMissingKeywords(markdown: string): string[] {
  * Quick heuristic for placeholder text inside a body string.
  * Returns true if any placeholder hint is present.
  */
-export function bodyHasPlaceholder(body: string): boolean {
+function bodyHasPlaceholder(body: string): boolean {
 	const lower = body.toLowerCase();
 	return PLACEHOLDER_HINTS.some((hint) => lower.includes(hint));
 }
@@ -729,7 +728,7 @@ export function validatePsrs(markdown: string): PsrsValidationResult {
 }
 
 /** Result of comparing a published baseline PSRS against a revision. */
-export interface PsrsCompareResult {
+interface PsrsCompareResult {
 	ok: boolean;
 	removedIds: string[];
 	versionFrom: string | null;

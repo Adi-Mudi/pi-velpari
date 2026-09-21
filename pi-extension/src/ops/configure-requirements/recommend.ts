@@ -64,7 +64,7 @@ export function pickRecommendation(
 }
 
 /** Type of the user's fallback choice in the no-match flow. */
-export type FallbackChoice = "core" | "closest" | "stop";
+type FallbackChoice = "core" | "closest" | "stop";
 
 /**
  * Ask the user to pick a fallback action when no exact built-in profile

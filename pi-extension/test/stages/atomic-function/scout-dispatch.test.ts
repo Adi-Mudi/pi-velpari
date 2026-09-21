@@ -44,7 +44,7 @@ function makeCtx(): ExtensionCommandContext {
 function makeState(stage: RunState["currentStage"], opts: {
 	standardsProfile?: { id: string; version: string };
 } = {}): void {
-	const dir = path.join(tmpDir, ".IDE_Plans", "velpari");
+	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
 		version: 1,

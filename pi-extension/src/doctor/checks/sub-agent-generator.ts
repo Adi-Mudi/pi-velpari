@@ -1,11 +1,12 @@
 /**
- * Sub-agent generator completeness check (Phase 7).
+ * Sub-agent generator completeness check (Phase 7; generator v2 scope).
  *
- * Surfaces the health of the 4 brainstorm sub-agents shipped by
- * `/velpari-generate-sub-agents` (v1 brainstorm-only scope; v2+ will
- * extend the same check to stage scouts).
+ * Surfaces the health of every sub-agent `/velpari-generate-sub-agents`
+ * can ship — all roles across the 4 generation phases
+ * (`core/agents-config.ts:GENERATION_PHASES`), not only the brainstorm
+ * four.
  *
- * For each row in `VELPARI_BRAINSTORM_GENERATED_ROLES`:
+ * For each generatable role:
  *
  *   1. Resolve the effective agent name through `.pi/velpari/agents.json`
  *      (identity when absent).
@@ -25,8 +26,8 @@
  *
  * A project-wide "stale-version" pass also walks every `.pi/agents/*.md`
  * with a footer carrying `N < GENERATOR_VERSION` and reports a single
- * warning per stale file — even ones NOT registered as brainstorm roles
- * (e.g. v2+ stage scouts shipped earlier).
+ * warning per stale file — even ones NOT registered as generatable roles
+ * (e.g. hand-copied agents shipped earlier).
  *
  * Layer 1 (doctor). Imports only `node:*`, same-layer doctor modules,
  * and L0 `core/` modules. Never imports upward to ops/, ui/, hooks/,
@@ -40,10 +41,11 @@ import { suggestionFor } from "./fix-suggestions.js";
 import { GENERATOR_VERSION, getProjectSlug } from "../../core/agents-generator.js";
 import {
 	DEFAULT_AGENTS,
-	VELPARI_BRAINSTORM_GENERATED_ROLES,
+	GENERATION_PHASES,
 	loadAgentConfig,
 	resolveAgentName,
 	type AgentConfig,
+	type GenerationPhase,
 	type VelpariRole,
 } from "../../core/agents-config.js";
 
@@ -206,17 +208,33 @@ function scanStaleVersions(cwd: string, exclude: ReadonlySet<string>): Diagnosti
 	return items;
 }
 
+/** Every role the generator can produce, in phase order (P1 → P4),
+ *  deduplicated. Derived from GENERATION_PHASES — never hand-copied. */
+function allGeneratableRoles(): string[] {
+	const seen = new Set<string>();
+	const roles: string[] = [];
+	for (const phase of [1, 2, 3, 4] as readonly GenerationPhase[]) {
+		for (const role of GENERATION_PHASES[phase].roles) {
+			if (seen.has(role)) continue;
+			seen.add(role);
+			roles.push(role);
+		}
+	}
+	return roles;
+}
+
 /** Doctor section "Sub-agent generator completeness". */
 export function checkSubAgentGeneratorSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const config = readAgentConfig(cwd);
 	const slug = getProjectSlug(cwd);
+	const generatableRoles = allGeneratableRoles();
 
 	// Track files already flagged by the per-role loop so the project-wide
 	// scan doesn't double-count stale files for registered roles.
 	const alreadyFlagged = new Set<string>();
-	for (const def of VELPARI_BRAINSTORM_GENERATED_ROLES) {
-		const roleItems = checkRoleAgent(cwd, slug, config, def.role);
+	for (const role of generatableRoles) {
+		const roleItems = checkRoleAgent(cwd, slug, config, role);
 		items.push(...roleItems);
 		for (const item of roleItems) {
 			if (item.status === "warning" || item.status === "error") {
@@ -232,7 +250,7 @@ export function checkSubAgentGeneratorSection(cwd: string): DiagnosticSection {
 	const warningCount = items.filter((i) => i.status === "warning").length;
 	items.push({
 		status: errorCount === 0 ? (warningCount === 0 ? "ok" : "info") : "info",
-		message: `Sub-agent generator summary: ${VELPARI_BRAINSTORM_GENERATED_ROLES.length} brainstorm role(s) checked (current generator v${GENERATOR_VERSION}); ${errorCount} error(s), ${warningCount} warning(s).`,
+		message: `Sub-agent generator summary: ${generatableRoles.length} role(s) across 4 generation phase(s) checked (current generator v${GENERATOR_VERSION}); ${errorCount} error(s), ${warningCount} warning(s).`,
 	});
 
 	return { title: "Sub-agent generator completeness", items };

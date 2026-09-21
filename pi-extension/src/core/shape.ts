@@ -48,7 +48,7 @@ export const CURRENT_SHAPE_MAJOR = 1;
 export const REQUIRED_SECTION_COUNT = 14;
 
 /** ISO 8601 calendar date (YYYY-MM-DD). */
-export const RFC3339_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const RFC3339_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Parse a SemVer `MAJOR.MINOR.PATCH[-prerelease][+build]` string and

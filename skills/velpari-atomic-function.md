@@ -119,16 +119,65 @@ After all 4 scouts complete:
 1. Read the 4 reports. Each proposes AFs from a different source.
 2. Deduplicate by `name + filePath` (lowercase, forward-slash).
 3. Sort by `afId` (AF-1, AF-2, ...).
-4. Build the atomic-functions markdown (see "Output Format" below).
-5. Write to `<workingCopy>`.
+4. Build the atomic-functions YAML sidecar (schema in "Output Format"
+   below) and write it to `<workingCopy>`
+   (`atomic-functions_<projectName>.yaml`). The YAML is the source of
+   truth.
+5. Render the markdown table FROM the YAML and write it to `<workingCopy>`
+   (`atomic-functions_<projectName>.md`). The publish gate re-generates
+   the published markdown from the YAML — the published table is always
+   derived from the data, never from hand-written markdown.
 
 ## Output Format
 
-Write the working copy as `atomic-functions_<projectName>.md` at `<workingCopy>`:
+Write TWO working-copy files at `<workingCopy>`:
 
-The schema is **tier-driven** (ISO/IEC 29110 + IEC 61508/IEC 62304). The prompt
-carries a `## Atomic Profile` block declaring which fields are required at the
-selected tier. Use the matching schema below.
+### File 1: `atomic-functions_<projectName>.yaml` — source of truth
+
+The YAML sidecar is the source of truth. The publish gate validates it
+(hard-block on schema errors, including the tier-required fields) and
+RE-RENDERS the published markdown from it — a markdown-only working copy
+is blocked.
+
+```yaml
+project: <projectName>
+version: 1.0.0
+tier: basic
+functions:
+  - afId: AF-1
+    name: validateEmail
+    filePath: src/utils/validate-email.ts
+    signature: "function validateEmail(email: string): boolean"
+    purpose: Validates email against RFC 5322
+    source: RTM
+    cohesion: perfect-atomic
+    verification: Test
+    testable: yes
+    # tier-added fields per the Atomic Profile block, e.g. basic tier:
+    calledByFrIds: [FR-1, FR-2]
+    designRef: M-3
+    extractedFrom: HF-01
+    satisfactionFrId: FR-1
+    feasibilityRef: ""
+changeLog: []
+```
+
+Rules: `afId` matches `AF-<n>`, no duplicates; the 8 base-core fields +
+`filePath` are required at every tier; the fields listed in the prompt's
+`## Atomic Profile` block are required at the configured tier (the
+publish gate blocks on any missing one). Array fields
+(`calledByFrIds`, `inputs`, `outputs`, `errors`, `dependencies`) are
+string lists; `complexity` / `argCount` / `storyPoints` are numbers.
+Update mode: never delete a function — keep it with
+`status: deprecated` + a `reason`, bump the version, add a `changeLog`
+entry.
+
+### File 2: `atomic-functions_<projectName>.md` — rendered preview
+
+Render the markdown FROM the YAML (approve re-renders it at publish
+time). The schema is **tier-driven** (ISO/IEC 29110 + IEC 61508/IEC
+62304). The prompt carries a `## Atomic Profile` block declaring which
+fields are required at the selected tier. Use the matching schema below.
 
 ### Tier 1 — Entry (ISO/IEC 29110 entry profile; safety class A only)
 

@@ -34,7 +34,7 @@ import { REQUIRED_NOTES_SECTIONS, sectionBody } from "./notes.js";
 export const AUDIT_LOG_MARKER = "<!-- pi-velpari brainstorm-dispatch -->";
 
 /** Decisions a parent LLM can make on each turn. */
-export type DecisionKind = "inline" | "dispatched" | "skipped" | "side-channel";
+type DecisionKind = "inline" | "dispatched" | "skipped" | "side-channel";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -75,7 +75,7 @@ export interface AuditSession {
 }
 
 /** Summary stats computed at finalize. */
-export interface AuditSummary {
+interface AuditSummary {
 	totalDispatches: number;
 	dispatchesByAgent: Record<string, number>;
 	inlineReads: number;

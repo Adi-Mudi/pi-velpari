@@ -96,7 +96,7 @@ export function actionableItemCount(report: DiagnosticReport): number {
 	return listActionableItems(report).length;
 }
 
-export interface DispatchFixChoiceOptions {
+interface DispatchFixChoiceOptions {
 	ctx: ExtensionCommandContext;
 	pi: ExtensionAPI;
 	cwd: string;

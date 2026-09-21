@@ -11,7 +11,7 @@ Velpari produces the requirements package that Senai's `/senai-generate-architec
 All 10 stages are required, in this order. Standards aligned with V-Model,
 SA/SD, IEEE 12207 / 29148, and PMBOK.
 
-> See [Doc/velpari-sequence.md](Doc/velpari-sequence.md) for the full overview, per-stage inputs, scout pattern, and the 7 sequence nuances (each stage reads all prior artifacts, files.json/profile are global, one-command stage publish via `velpari_stage_publish`, feasibility skip, two approve commands, etc.).
+> See [Doc/velpari-sequence/](Doc/velpari-sequence/README.md) for the full overview, per-stage inputs, scout pattern, and the 7 sequence nuances (each stage reads all prior artifacts, files.json/profile are global, one-command stage publish via `velpari_stage_publish`, feasibility skip, two approve commands, etc.).
 
 ## Install (canonical)
 
@@ -44,7 +44,7 @@ See [`Doc/testing-guide.md`](Doc/testing-guide.md) for the test pyramid (L1/L2/L
 
 `/velpari-architecture-generator` runs a discipline prelude before any scout spawns: it loads the project context (PRD, RTM, feasibility, profiles, configs), shows the developer a one-paragraph summary, and asks Proceed / Adjust scope / Pick a different profile. The doctor gate refuses to publish when the developer doesn't confirm.
 
-See [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) §11 for the full sub-life cycle.
+See [`Doc/velpari-sequence/01-first-run-sequence.md`](Doc/velpari-sequence/01-first-run-sequence.md) for the full sub-life cycle.
 
 ## Standards overlays
 
@@ -71,11 +71,11 @@ See [`skills/standards/README.md`](skills/standards/README.md) for the full guid
 
 Every conflict surfaced by the `design-conflict-detector` scout is captured as an Architecture Decision Record in the design doc's `## Architecture Decisions` section. ADRs support supersession chains (`supersedes: "ADR-NNN"`). The handoff payload exports every ADR to Senai.
 
-See [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) §13 for the ADR format.
+See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-artifact-formats.md) for the ADR format.
 
 ## Commands
 
-32 commands total (v1.4.0: + `/velpari-design-logging`, `/velpari-show-logging`). See [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) §5 for the full list. Quick reference:
+32 commands total (v1.4.0: + `/velpari-design-logging`, `/velpari-show-logging`). See [`Doc/velpari-sequence/08-command-reference.md`](Doc/velpari-sequence/08-command-reference.md) for the full list. Quick reference:
 
 | Category | Commands |
 |---|---|
@@ -84,19 +84,9 @@ See [`Doc/velpari-sequence.md`](Doc/velpari-sequence.md) §13 for the ADR format
 | Wrapper | `/velpari-prd-rtm` |
 | View | `/velpari-show-brainstorm`, `/velpari-show-prd`, `/velpari-show-rtm`, `/velpari-show-feasibility`, `/velpari-show-design`, `/velpari-show-pseudocode`, `/velpari-show-testplan`, **`/velpari-show-logging`** |
 
-<<<<<<< HEAD
-=======
-### Sub-agent generator flag (v2.0)
+### Sub-agent generator (v2)
 
-`/velpari-generate-sub-agents` accepts `--stages=<csv>` to target specific stages:
-
-- No flag → emits brainstorm + reviewer (default, unchanged from v1)
-- `--stages=brainstorm` → 4 brainstorm scouts
-- `--stages=prd` → 4 PRD scouts
-- `--stages=brainstorm,prd` → 8 scouts total
-- `--stages=all` → every supported stage (brainstorm + prd today; more in subsequent plans)
-
-v2.0 scope covers brainstorm + prd only. Other stages (rtm / feasibility / design / atomic-function / pseudocode / testplan / development-order / final-design / logging) land in separate plans; passing an unknown stage id surfaces a "coming soon" notice. See [`Doc/velpari-custom-sub-agent-generator-design.md`](Doc/velpari-custom-sub-agent-generator-design.md) §B for the full design.
+`/velpari-generate-sub-agents` generates project-specific sub-agents for the current pipeline phase (auto-detected from run state; `--phase N` overrides with 1–4). See [`Doc/velpari-sequence/05-sub-agent-generation.md`](Doc/velpari-sequence/05-sub-agent-generation.md) for the full design.
 
 ## Brainstorm v1.x — dynamic community / official / industrial / standard-practice scan
 
@@ -129,7 +119,6 @@ On `/velpari-approve-brainstorm`, the handler fires a graceful close (sends a pr
 
 FR-52 web-research role anchor: `web-research` (the v3 name) is rejected for non-community sessions by the dispatcher, same as `web-search-agent` was in v1.x.
 
->>>>>>> 2d9b017 (feat(brainstorm): v3 — persistent sub-agent sessions (AUTOMATIC SPAWN))
 ## Architecture
 
 `pi-extension/src/` follows the official 4-layer architecture: domain → stage-logic → presentation → composition. Each layer has a single concern and a strict dependency direction. See [`pi-extension/src/AGENTS.md`](pi-extension/src/AGENTS.md) for the contributor-facing contract.

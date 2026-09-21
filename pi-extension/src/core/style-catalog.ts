@@ -20,7 +20,7 @@
 
 import type { QualityScenario } from "./quality-scenario.js";
 
-export interface ArchitecturalStyle {
+interface ArchitecturalStyle {
 	id: string;
 	label: string;
 	description: string;

@@ -11,9 +11,8 @@
  * even when every other section is clean.
  */
 
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { loadState } from "../../core/state.js";
+import { loadHistory } from "../../core/history.js";
 import { loadFilesConfig } from "../../core/config.js";
 import { loadRequirementsProfile } from "../../core/profile.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
@@ -46,32 +45,48 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		state = null;
 	}
 	const stage = state?.currentStage ?? "none";
+	// D2 (audit item c6) — a paused mid-run brainstorm keeps currentStage at
+	// "brainstorming"; the run's real progress is the PAUSED stage. Evaluate
+	// the gates as of pausedStage when a session is open. History is the
+	// fallback "has ever happened" evidence (e.g. an approved brainstorm in
+	// this run proves step 2 even when the stage alone reads as pre-brainstorm).
+	const effectiveStage = state?.pausedStage ?? stage;
+	const history = (() => {
+		try {
+			return state?.runId ? loadHistory(cwd, state.runId) : [];
+		} catch {
+			return [];
+		}
+	})();
+	const brainstormEverApproved = history.some(
+		(e) => e.command === "/velpari-approve-brainstorm",
+	);
+	const anyApproveEver = history.some((e) => /approve/.test(e.command));
 
+	const brainstormDone =
+		(effectiveStage !== "none" && effectiveStage !== "brainstorming") ||
+		brainstormEverApproved;
 	items.push({
-		status: stage !== "none" && stage !== "brainstorming" ? "ok" : "info",
-		message:
-			stage !== "none" && stage !== "brainstorming"
-				? "2. Brainstorm completed — done"
-				: "2. Brainstorm completed — pending",
-		suggestion:
-			stage !== "none" && stage !== "brainstorming"
-				? undefined
-				: suggestionFor("setup-brainstorm"),
+		status: brainstormDone ? "ok" : "info",
+		message: brainstormDone
+			? "2. Brainstorm completed — done"
+			: "2. Brainstorm completed — pending",
+		suggestion: brainstormDone ? undefined : suggestionFor("setup-brainstorm"),
 	});
 
 	const prdDone =
-		stage === "drafted-prd" ||
-		stage === "building-rtm" ||
-		stage === "built-rtm" ||
-		stage === "analyzing-feasibility" ||
-		stage === "analyzed-feasibility" ||
-		stage === "designing" ||
-		stage === "designed" ||
-		stage === "writing-pseudocode" ||
-		stage === "wrote-pseudocode" ||
-		stage === "planning-tests" ||
-		stage === "planned-tests" ||
-		stage === "handoff-ready";
+		effectiveStage === "drafted-prd" ||
+		effectiveStage === "building-rtm" ||
+		effectiveStage === "built-rtm" ||
+		effectiveStage === "analyzing-feasibility" ||
+		effectiveStage === "analyzed-feasibility" ||
+		effectiveStage === "designing" ||
+		effectiveStage === "designed" ||
+		effectiveStage === "writing-pseudocode" ||
+		effectiveStage === "wrote-pseudocode" ||
+		effectiveStage === "planning-tests" ||
+		effectiveStage === "planned-tests" ||
+		effectiveStage === "handoff-ready";
 	items.push({
 		status: prdDone ? "ok" : "info",
 		message: prdDone ? "3. PRD drafted — done" : "3. PRD drafted — pending",
@@ -79,16 +94,16 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	});
 
 	const rtmDone =
-		stage === "built-rtm" ||
-		stage === "analyzing-feasibility" ||
-		stage === "analyzed-feasibility" ||
-		stage === "designing" ||
-		stage === "designed" ||
-		stage === "writing-pseudocode" ||
-		stage === "wrote-pseudocode" ||
-		stage === "planning-tests" ||
-		stage === "planned-tests" ||
-		stage === "handoff-ready";
+		effectiveStage === "built-rtm" ||
+		effectiveStage === "analyzing-feasibility" ||
+		effectiveStage === "analyzed-feasibility" ||
+		effectiveStage === "designing" ||
+		effectiveStage === "designed" ||
+		effectiveStage === "writing-pseudocode" ||
+		effectiveStage === "wrote-pseudocode" ||
+		effectiveStage === "planning-tests" ||
+		effectiveStage === "planned-tests" ||
+		effectiveStage === "handoff-ready";
 	items.push({
 		status: rtmDone ? "ok" : "info",
 		message: rtmDone ? "4. RTM built — done" : "4. RTM built — pending",
@@ -111,8 +126,14 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 		suggestion: profile ? undefined : suggestionFor("setup-profile"),
 	});
 
-	// Step 6 — first approve.
-	const approved = stage !== "none" && stage !== "brainstorming" && stage !== "brainstormed";
+	// Step 6 — first approve. Stage position is the primary evidence; history
+	// covers the "approved earlier in this run, now back at an early stage"
+	// case (e.g. a paused/restarted brainstorm).
+	const approved =
+		(effectiveStage !== "none" &&
+			effectiveStage !== "brainstorming" &&
+			effectiveStage !== "brainstormed") ||
+		anyApproveEver;
 	items.push({
 		status: approved ? "ok" : "info",
 		message: approved
@@ -136,9 +157,4 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	}
 
 	return { title: "Setup progress", items };
-}
-
-// Helper kept exported for tests; suppresses unused-import warnings.
-export function _stateFileExists(cwd: string): boolean {
-	return existsSync(join(cwd, ".IDE_Plans", "velpari", "state.json"));
 }

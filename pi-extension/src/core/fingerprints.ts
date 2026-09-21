@@ -17,11 +17,65 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readSectionBody } from "./psrs.js";
 import { resolveDocArtifact } from "./paths.js";
-import type { RtmData, RtmRow } from "./rtm-data.js";
+import { loadRtmSidecarData, type RtmData, type RtmRow } from "./rtm-data.js";
 
 /** SHA-256 hex of the normalized requirement text. */
 export function hashRequirementText(text: string): string {
 	return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * SHA-256 hex of a file's UTF-8 content. Returns null when the file is
+ * missing or unreadable so callers can distinguish "input absent" from
+ * "input changed". Used by the freshness stamps (B4).
+ */
+export function hashFileContent(absolutePath: string): string | null {
+	if (!existsSync(absolutePath)) return null;
+	try {
+		return createHash("sha256").update(readFileSync(absolutePath, "utf8"), "utf8").digest("hex");
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Remove the `## Change Log` section (from the `^## Change Log` heading to
+ * the next `^## ` heading or EOF). Change Log entries are audit metadata,
+ * not artifact substance — appending the mandated re-confirm line there
+ * must not stale downstream consumers (A5/D3). Files without the section
+ * are returned unchanged, so the normalized hash equals the whole-file
+ * hash for them.
+ */
+export function stripChangeLogSection(content: string): string {
+	const lines = content.split("\n");
+	const start = lines.findIndex((line) => /^## Change Log\s*$/.test(line));
+	if (start === -1) return content;
+	let end = lines.length;
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^## /.test(lines[i]!)) {
+			end = i;
+			break;
+		}
+	}
+	lines.splice(start, end - start);
+	return lines.join("\n");
+}
+
+/**
+ * SHA-256 hex of a file's UTF-8 content with the `## Change Log` section
+ * stripped (D3). Returns null when the file is missing or unreadable —
+ * same contract as `hashFileContent`. Freshness manifest entries stamped
+ * with `hashv: 2` are checked with this hash so a Change Log append (the
+ * re-confirm audit line) never cascades into downstream staleness.
+ */
+export function hashFileContentNormalized(absolutePath: string): string | null {
+	if (!existsSync(absolutePath)) return null;
+	try {
+		const stripped = stripChangeLogSection(readFileSync(absolutePath, "utf8"));
+		return createHash("sha256").update(stripped, "utf8").digest("hex");
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -49,9 +103,9 @@ export function extractRequirementFingerprints(psrsMarkdown: string): Map<string
 	return out;
 }
 
-export type FingerprintProblem = "suspect" | "untracked" | "unknown-id" | "orphan";
+type FingerprintProblem = "suspect" | "untracked" | "unknown-id" | "orphan";
 
-export interface FingerprintIssue {
+interface FingerprintIssue {
 	id: string;
 	problem: FingerprintProblem;
 	message: string;
@@ -133,10 +187,11 @@ export function countTraceIssues(cwd: string, projectName: string): number | nul
 	const psrs = resolveDocArtifact("PRD", projectName, cwd);
 	const rtm = resolveDocArtifact("RTM", projectName, cwd);
 	if (!psrs || !rtm) return null;
-	const jsonPath = rtm.path.replace(/\.md$/, ".json");
-	if (!existsSync(jsonPath)) return null;
+	// B3/D4: dual-read — .yaml preferred, legacy .json fallback.
+	const sidecar = loadRtmSidecarData(rtm.path);
+	if (!sidecar) return null;
 	try {
-		const data = JSON.parse(readFileSync(jsonPath, "utf8")) as RtmData;
+		const data = sidecar.data as RtmData;
 		if (!Array.isArray(data.rows)) return null;
 		const fingerprints = extractRequirementFingerprints(readFileSync(psrs.path, "utf8"));
 		return checkRowFingerprints(data.rows, fingerprints).filter(

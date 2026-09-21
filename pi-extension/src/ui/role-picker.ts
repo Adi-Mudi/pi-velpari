@@ -32,7 +32,7 @@ const GUIDANCE_COLORS: Record<RoleGuidance, "success" | "warning" | "dim"> = {
 	optional: "dim",
 };
 
-export interface RolePickerOptions {
+interface RolePickerOptions {
 	title: string;
 	items: RolePickerItem[];
 	pageSize?: number;
@@ -41,7 +41,7 @@ export interface RolePickerOptions {
 	showBack?: boolean;
 }
 
-export type RolePickerResult =
+type RolePickerResult =
 	| { kind: "role"; role: string }
 	| { kind: "finish" }
 	| { kind: "back" };

@@ -28,7 +28,7 @@ import {
 } from "../core/standards-catalogue.js";
 import { loadState, saveState, type RunState, type StandardsProfile } from "../core/state.js";
 
-export interface ConfigureStandardsContext {
+interface ConfigureStandardsContext {
 	ui: {
 		select?: (title: string, options: string[]) => Promise<string | null>;
 		confirm?: (title: string, message: string) => Promise<boolean>;
@@ -37,7 +37,7 @@ export interface ConfigureStandardsContext {
 	cwd: string;
 }
 
-export interface ConfigureStandardsResult {
+interface ConfigureStandardsResult {
 	outcome: "selected" | "cancelled" | "no-catalogue" | "no-ui";
 	profile: StandardsProfile | null;
 }
@@ -45,7 +45,7 @@ export interface ConfigureStandardsResult {
 /**
  * Default location of the standards profile JSON.
  */
-export const STANDARDS_PROFILE_FILE = ".pi/velpari/standards-profile.json";
+const STANDARDS_PROFILE_FILE = ".pi/velpari/standards-profile.json";
 
 export function standardsProfilePath(cwd: string): string {
 	return join(cwd, STANDARDS_PROFILE_FILE);
@@ -71,7 +71,7 @@ export function loadStandardsProfileFromDisk(cwd: string): StandardsProfile | nu
 	}
 }
 
-export function saveStandardsProfileToDisk(profile: StandardsProfile, cwd: string): void {
+function saveStandardsProfileToDisk(profile: StandardsProfile, cwd: string): void {
 	const path = standardsProfilePath(cwd);
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(path, JSON.stringify(profile, null, 2), "utf8");

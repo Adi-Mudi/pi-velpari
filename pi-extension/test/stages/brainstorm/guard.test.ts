@@ -276,49 +276,51 @@ describe("guardBrainstormMutation", () => {
 });
 
 /**
- * guardStageForBrainstorm (v2.2) — single-shot brainstorm per run.
+ * guardStageForBrainstorm (brainstorm-anytime, D9) — only a nested open blocks.
  *
- * Covers the re-run guard: only `none` (fresh) and `brainstorming` (resume)
- * are allowed. Anything else names the next command via `nextCommandsFor`.
+ * A brainstorm session may be opened from ANY stage: `none` starts a fresh
+ * run, any other stage pauses via openBrainstormSession. The single blocked
+ * case is re-running /velpari-brainstorm while a session is already open
+ * (currentStage === "brainstorming") — the message names approve and
+ * discard as the exits (the /velpari-reset hint is gone).
  */
-describe("guardStageForBrainstorm (v2.2)", () => {
+describe("guardStageForBrainstorm (brainstorm-anytime)", () => {
 	it("allows fresh start (currentStage === none)", () => {
 		const res = guardStageForBrainstorm(makeState({ currentStage: "none" }));
 		assert.equal(res.ok, true);
 	});
 
-	it("allows resume (currentStage === brainstorming)", () => {
-		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstorming" }));
+	it("allows opening after brainstorm approved (currentStage === brainstormed)", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstormed" }));
 		assert.equal(res.ok, true);
 	});
 
-	it("blocks after brainstorm approved (currentStage === brainstormed)", () => {
-		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstormed" }));
-		assert.equal(res.ok, false);
-		assert.match(res.reason!, /brainstormed/);
-		assert.match(res.reason!, /\/velpari-prd/);
-		assert.match(res.reason!, /\/velpari-reset/);
-	});
-
-	it("blocks during PRD drafting (currentStage === drafting-prd)", () => {
+	it("allows opening during PRD drafting (currentStage === drafting-prd)", () => {
 		const res = guardStageForBrainstorm(makeState({ currentStage: "drafting-prd" }));
-		assert.equal(res.ok, false);
-		// Auto-publish mode hides the per-stage approve commands from the live
-	// command surface during a brainstorm,
-		// but the guard still names the canonical command for clarity.
-		assert.match(res.reason!, /drafting-prd/);
+		assert.equal(res.ok, true);
 	});
 
-	it("blocks near handoff (currentStage === planned-tests)", () => {
+	it("allows opening near handoff (currentStage === planned-tests)", () => {
 		const res = guardStageForBrainstorm(makeState({ currentStage: "planned-tests" }));
-		assert.equal(res.ok, false);
-		// In the industry-standard order, planned-tests → development-order (Stage 9) is the next step.
-		assert.match(res.reason!, /\/velpari-development-order/);
+		assert.equal(res.ok, true);
 	});
 
-	it("blocks past handoff (currentStage === handoff-ready) with reset hint", () => {
+	it("allows opening past handoff (currentStage === handoff-ready)", () => {
 		const res = guardStageForBrainstorm(makeState({ currentStage: "handoff-ready" }));
+		assert.equal(res.ok, true);
+	});
+
+	it("blocks a nested open (currentStage === brainstorming) and names approve + discard", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstorming" }));
 		assert.equal(res.ok, false);
-		assert.match(res.reason!, /\/velpari-reset/);
+		assert.match(res.reason!, /already open/);
+		assert.match(res.reason!, /\/velpari-approve-brainstorm/);
+		assert.match(res.reason!, /discard/);
+	});
+
+	it("block message no longer hints at /velpari-reset", () => {
+		const res = guardStageForBrainstorm(makeState({ currentStage: "brainstorming" }));
+		assert.equal(res.ok, false);
+		assert.ok(!res.reason!.includes("/velpari-reset"));
 	});
 });

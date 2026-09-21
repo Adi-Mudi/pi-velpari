@@ -27,23 +27,16 @@ import {
 import { loadState } from "../core/state.js";
 import { PATHS } from "../core/constants.js";
 import { handleApprove } from "../ops/approve.js";
+import { STAGE_LOCK_SPECS } from "./registry.js";
 
 /**
- * The 9 in-progress stages whose working copy can be published.
+ * The 9 in-progress stages whose working copy can be published — derived
+ * from the transition-lock specs (each spec's redraft self-loop stage is
+ * its in-progress value), so the whitelist has exactly one home (A1).
  * Completed stages (`drafted-prd`, `built-rtm`, ...) and `handoff-ready`
  * have nothing left to publish — the next stage command must run first.
  */
-const PUBLISHABLE_STAGES = [
-	"drafting-prd",
-	"building-rtm",
-	"analyzing-feasibility",
-	"designing",
-	"analyzing-atomic-functions",
-	"writing-pseudocode",
-	"planning-tests",
-	"ordering-development",
-	"finalizing-design",
-] as const;
+const PUBLISHABLE_STAGES = STAGE_LOCK_SPECS.map((s) => s.gate[s.gate.length - 1]!);
 
 export function registerStagePublishTool(pi: ExtensionAPI): void { // (publish tool)
 	pi.registerTool({

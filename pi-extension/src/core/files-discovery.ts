@@ -21,7 +21,7 @@ export interface FileDiscoveryResult {
 	testFiles: string[];
 }
 
-export interface SuggestedFolder {
+interface SuggestedFolder {
 	path: string;
 	reason: string;
 }

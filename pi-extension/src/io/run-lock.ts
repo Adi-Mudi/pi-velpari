@@ -9,7 +9,7 @@
  * attempt, so a crashed previous session never wedges the run.
  *
  * Layout on disk:
- *   .IDE_Plans/velpari/.lock/
+ *   .pi/velpari/.lock/
  *     meta.json      # { pid, host, command, startedAt, heartbeatAt }
  *
  * Algorithm:
@@ -47,12 +47,12 @@ export interface RunLockMeta {
 	heartbeatAt: string;
 }
 
-export interface RunLockHandle {
+interface RunLockHandle {
 	meta: RunLockMeta;
 	release: () => void;
 }
 
-export type AcquireRunLockResult =
+type AcquireRunLockResult =
 	| { ok: true; handle: RunLockHandle }
 	| { ok: false; reason: string; holder: RunLockMeta | null };
 

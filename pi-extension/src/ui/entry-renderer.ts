@@ -18,7 +18,7 @@ import { Box, Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 
 /** Shape of the data attached to each "velpari-status" entry. */
-export interface VelpariStatusEntryData {
+interface VelpariStatusEntryData {
 	runId?: string;
 	mission?: string;
 	stage?: string;

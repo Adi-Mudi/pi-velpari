@@ -27,6 +27,7 @@ import {
 	slugify,
 } from "../core/paths.js";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
+import { loadFeasibilityRecord } from "../core/feasibility-record.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -110,6 +111,15 @@ export async function showFeasibility(
 	if (!projectName) return;
 	const resolved = resolveDocArtifact("feasibility-study", projectName, cwd);
 	readAndPrint(ctx, resolved, `Feasibility study (${projectName})`);
+	// B3/D9 — surface the code-generated decision record next to the study.
+	const record = loadFeasibilityRecord(cwd, projectName);
+	if (record) {
+		ctx.ui.notify(
+			`Decision record: Doc/feasibility/feasibility-decision_${projectName}.yaml ` +
+				`(verdict: ${record.verdict}, language: ${record.selectedLanguage})`,
+			"info",
+		);
+	}
 }
 
 export async function showDesign(

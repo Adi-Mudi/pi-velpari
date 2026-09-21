@@ -25,7 +25,7 @@ export interface DiagnosticSection {
 	items: DiagnosticItem[];
 }
 
-export interface DiagnosticSummary {
+interface DiagnosticSummary {
 	ok: number;
 	warning: number;
 	error: number;

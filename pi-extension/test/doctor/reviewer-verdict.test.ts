@@ -28,6 +28,8 @@ import {
 } from "../../src/doctor/checks/design-reviewer.js";
 import {
 	REVIEWER_STAGE_SPECS,
+	checkVerifierVerdictsSection,
+	verifierSpecForArtifact,
 } from "../../src/doctor/checks/reviewer-verdict.js";
 import {
 	DEFAULT_ATOMIC_PROFILE,
@@ -219,5 +221,170 @@ describe("loadDesignReviewerVerdict", () => {
 		fs.writeFileSync(path.join(runDir, spec.verdictSubpath), "NOT JSON {", "utf8");
 		const section = loadDesignReviewerVerdict(tmpDir, advancedProfile);
 		assert.ok(section.items.some((i: { status: string }) => i.status === "error"));
+	});
+});
+describe("verifierSpecForArtifact — C3 stage→verifier map", () => {
+	it("maps every gated artifact to its verifier spec", () => {
+		assert.equal(verifierSpecForArtifact("atomic-functions")?.stageKey, "atomic-function");
+		assert.equal(verifierSpecForArtifact("pseudocode")?.stageKey, "pseudocode");
+		assert.equal(verifierSpecForArtifact("test-plan")?.stageKey, "testplan");
+		assert.equal(verifierSpecForArtifact("test-cases")?.stageKey, "testplan");
+		assert.equal(verifierSpecForArtifact("design")?.stageKey, "architecture-generator");
+	});
+
+	it("returns undefined for artifacts without a verifier", () => {
+		assert.equal(verifierSpecForArtifact("PRD"), undefined);
+		assert.equal(verifierSpecForArtifact("RTM"), undefined);
+		assert.equal(verifierSpecForArtifact("development-order"), undefined);
+	});
+
+	it("every spec carries the C3 consumption metadata", () => {
+		for (const spec of REVIEWER_STAGE_SPECS) {
+			assert.ok(spec.gateArtifacts.length > 0, `${spec.stageKey} gateArtifacts`);
+			assert.ok(
+				spec.missingVerdict === "tier-aware" || spec.missingVerdict === "always-error",
+				`${spec.stageKey} missingVerdict`,
+			);
+			assert.ok(spec.publishedArtifactKind.length > 0, `${spec.stageKey} publishedArtifactKind`);
+		}
+		// Legacy policy pinned: atomic-function errors on a missing verdict
+		// even at basic tier; the Plan-D stages are tier-aware.
+		assert.equal(
+			REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!.missingVerdict,
+			"always-error",
+		);
+		for (const key of ["pseudocode", "testplan", "architecture-generator"]) {
+			assert.equal(
+				REVIEWER_STAGE_SPECS.find((s) => s.stageKey === key)!.missingVerdict,
+				"tier-aware",
+			);
+		}
+	});
+});
+
+describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
+	it("returns the section title 'Verifier verdicts (Layer 3)'", () => {
+		const section = checkVerifierVerdictsSection(tmpDir);
+		assert.equal(section.title, "Verifier verdicts (Layer 3)");
+	});
+
+	it("empty project → info per stage + summary, no errors", () => {
+		const section = checkVerifierVerdictsSection(tmpDir);
+		const noVerdict = section.items.filter(
+			(i: { status: string; message: string }) =>
+				i.status === "info" && /no verifier verdict on disk yet/.test(i.message),
+		);
+		assert.equal(noVerdict.length, REVIEWER_STAGE_SPECS.length);
+		assert.equal(
+			section.items.filter((i: { status: string }) => i.status === "error").length,
+			0,
+		);
+		const summary = section.items.find((i: { message: string }) =>
+			/Verifier verdict summary/.test(i.message),
+		);
+		assert.ok(summary);
+		assert.match(summary!.message, /0 of 4 verifier stage\(s\)/);
+	});
+
+	it("approve verdict → ok item naming the stage + verdict", () => {
+		writeReviewerVerdict("pseudocode", {
+			verdict: "approve",
+			issues: [],
+			summary: "clean",
+			timestamp: "2026-09-17T12:00:00.000Z",
+		});
+		const section = checkVerifierVerdictsSection(tmpDir);
+		const okItem = section.items.find(
+			(i: { status: string; message: string }) =>
+				i.status === "ok" && /pseudocode: verdict approve/.test(i.message),
+		);
+		assert.ok(okItem, "expected an ok item for the approve verdict");
+		assert.equal(
+			section.items.filter((i: { status: string }) => i.status === "error").length,
+			0,
+		);
+	});
+
+	it("block verdict → error item", () => {
+		writeReviewerVerdict("testplan", {
+			verdict: "block",
+			issues: [{ severity: "error", rule: "r1", message: "coverage gap" }],
+			summary: "blocked",
+			timestamp: "2026-09-17T12:00:00.000Z",
+		});
+		const section = checkVerifierVerdictsSection(tmpDir);
+		assert.ok(
+			section.items.some(
+				(i: { status: string; message: string }) =>
+					i.status === "error" && /testplan: verdict block/.test(i.message),
+			),
+		);
+	});
+
+	it("malformed verdict JSON → warning (gate owns the error)", () => {
+		const spec = REVIEWER_STAGE_SPECS.find((s: { stageKey: string }) => s.stageKey === "pseudocode")!;
+		const runDir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", "2026-09-17-test");
+		fs.mkdirSync(path.dirname(path.join(runDir, spec.verdictSubpath)), { recursive: true });
+		fs.writeFileSync(path.join(runDir, spec.verdictSubpath), "NOT JSON {", "utf8");
+		const section = checkVerifierVerdictsSection(tmpDir);
+		assert.ok(
+			section.items.some(
+				(i: { status: string; message: string }) =>
+					i.status === "warning" && /not valid JSON/.test(i.message),
+			),
+		);
+		assert.equal(
+			section.items.filter((i: { status: string }) => i.status === "error").length,
+			0,
+		);
+	});
+
+	it("verdict older than the published artifact → stale warning", () => {
+		makeFilesConfig({ projectName: "TestApp", tier: "basic" });
+		writeReviewerVerdict("pseudocode", {
+			verdict: "approve",
+			issues: [],
+			summary: "clean",
+			timestamp: "2026-09-17T12:00:00.000Z",
+		});
+		// Published pseudocode doc NEWER than the verdict timestamp.
+		const docDir = path.join(tmpDir, "Doc");
+		fs.mkdirSync(docDir, { recursive: true });
+		const docPath = path.join(docDir, "pseudocode_TestApp.md");
+		fs.writeFileSync(docPath, "# pseudocode\n", "utf8");
+		const newer = new Date("2026-09-18T12:00:00.000Z");
+		fs.utimesSync(docPath, newer, newer);
+
+		const section = checkVerifierVerdictsSection(tmpDir);
+		assert.ok(
+			section.items.some(
+				(i: { status: string; message: string }) =>
+					i.status === "warning" && /predates the published pseudocode/.test(i.message),
+			),
+		);
+	});
+
+	it("verdict newer than the published artifact → no stale warning", () => {
+		makeFilesConfig({ projectName: "TestApp", tier: "basic" });
+		writeReviewerVerdict("pseudocode", {
+			verdict: "approve",
+			issues: [],
+			summary: "clean",
+			timestamp: "2026-09-18T12:00:00.000Z",
+		});
+		const docDir = path.join(tmpDir, "Doc");
+		fs.mkdirSync(docDir, { recursive: true });
+		const docPath = path.join(docDir, "pseudocode_TestApp.md");
+		fs.writeFileSync(docPath, "# pseudocode\n", "utf8");
+		const older = new Date("2026-09-17T12:00:00.000Z");
+		fs.utimesSync(docPath, older, older);
+
+		const section = checkVerifierVerdictsSection(tmpDir);
+		assert.equal(
+			section.items.filter((i: { status: string; message: string }) =>
+				/predates the published/.test(i.message),
+			).length,
+			0,
+		);
 	});
 });

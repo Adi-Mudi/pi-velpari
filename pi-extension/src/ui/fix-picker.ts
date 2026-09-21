@@ -27,7 +27,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runSimplePicker, type SimplePickerItem } from "./simple-picker.js";
 import type { ActionableItem, FixChoice } from "../doctor/fix-dispatch.js";
 
-export interface FixPickerOptions {
+interface FixPickerOptions {
 	title: string;
 	subtitle?: string;
 	items: ActionableItem[];

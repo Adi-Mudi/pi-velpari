@@ -155,7 +155,18 @@ function enterDraftingPrd(workingContent: string): void {
 	const run = createRun("TestApp", tmpDir);
 	const brainstormed = advanceStage(run, "/velpari-approve-brainstorm", tmpDir);
 	advanceStage(brainstormed, "/velpari-prd", tmpDir);
+	seedPublishedBrainstorm();
 	writeWorkingPrd(workingContent);
+}
+
+/**
+ * B4: the publish gate refuses a PRD publish when its declared input (the
+ * published brainstorm) is missing. Mission "TestApp" → slug "testapp".
+ */
+function seedPublishedBrainstorm(): void {
+	const dir = path.join(tmpDir, "Doc", "brainstorm");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, "brainstorm-testapp.md"), "# brainstorm\n", "utf8");
 }
 
 /**
@@ -166,6 +177,7 @@ function enterDraftingPrd(workingContent: string): void {
 function reenterDraftingPrd(workingContent: string): void {
 	const state = loadState(tmpDir);
 	saveState({ ...state, currentStage: "drafting-prd" }, tmpDir);
+	seedPublishedBrainstorm();
 	writeWorkingPrd(workingContent);
 }
 

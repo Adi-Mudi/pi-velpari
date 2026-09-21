@@ -122,7 +122,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 		assert.equal(harness.userMessages.length, 1, "parent LLM prompt should be sent");
 
 		// State file was created (createRun ran)
-		assert.ok(existsSync(join(tmpDir, ".IDE_Plans", "velpari", "state.json")), "state.json must exist after handler proceeds");
+		assert.ok(existsSync(join(tmpDir, ".pi", "velpari", "state.json")), "state.json must exist after handler proceeds");
 	});
 
 	it("proceeds past the gate when TMUX env var is set", async () => {
@@ -135,7 +135,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 		);
 		assert.equal(muxErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
-		assert.ok(existsSync(join(tmpDir, ".IDE_Plans", "velpari", "state.json")));
+		assert.ok(existsSync(join(tmpDir, ".pi", "velpari", "state.json")));
 	});
 
 	it("proceeds past the gate when ZELLIJ_PANE_ID is set", async () => {
@@ -195,7 +195,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 		// No state.json was created — no orphan run
 		assert.equal(
-			existsSync(join(tmpDir, ".IDE_Plans", "velpari", "state.json")),
+			existsSync(join(tmpDir, ".pi", "velpari", "state.json")),
 			false,
 			"no state.json must be created when the gate fails",
 		);

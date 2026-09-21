@@ -9,13 +9,14 @@
  *  - untracked:  row without a fingerprint (warning — pre-Phase-3 data).
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import {
 	checkRowFingerprints,
 	extractRequirementFingerprints,
 } from "../../core/fingerprints.js";
-import type { RtmData } from "../../core/rtm-data.js";
+import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
+import { readYamlFile } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -33,12 +34,13 @@ export function checkFingerprintsSection(cwd: string, projectName: string): Diag
 
 	const psrs = resolveDocArtifact("PRD", projectName, cwd);
 	const rtm = resolveDocArtifact("RTM", projectName, cwd);
-	const rtmJsonPath = rtm ? rtm.path.replace(/\.md$/, ".json") : null;
+	// B3/D4: dual-read — .yaml preferred, legacy .json fallback.
+	const sidecar = rtm ? resolveRtmSidecar(rtm.path) : null;
 
-	if (!psrs || !rtmJsonPath || !existsSync(rtmJsonPath)) {
+	if (!psrs || !sidecar) {
 		items.push({
 			status: "info",
-			message: "Fingerprint check skipped — needs both the published PSRS and the RTM JSON sidecar.",
+			message: "Fingerprint check skipped — needs both the published PSRS and the RTM sidecar.",
 			suggestion: !psrs ? suggestionFor("psrs-missing") : suggestionFor("rtm-json-missing"),
 		});
 		return { title: "Trace-link fingerprints", items };
@@ -46,11 +48,12 @@ export function checkFingerprintsSection(cwd: string, projectName: string): Diag
 
 	let data: RtmData;
 	try {
-		data = JSON.parse(readFileSync(rtmJsonPath, "utf8")) as RtmData;
+		data = readYamlFile(sidecar.path) as RtmData;
+		if (!data || !Array.isArray(data.rows)) throw new Error("invalid");
 	} catch {
 		items.push({
 			status: "error",
-			message: "RTM JSON sidecar is not readable JSON.",
+			message: `RTM sidecar (${sidecar.format}) is not readable.`,
 			suggestion: suggestionFor("rtm-json-invalid"),
 		});
 		return { title: "Trace-link fingerprints", items };

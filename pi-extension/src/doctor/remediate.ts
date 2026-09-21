@@ -24,13 +24,13 @@
 import { SAFE_WHITELIST } from "./checks/fix-suggestions.js";
 import { REMEDIATE_FNS, type RemediateOutcome } from "./checks/remediate/index.js";
 
-export interface RunRemediateOptions {
+interface RunRemediateOptions {
 	cwd: string;
 	projectName: string;
 	fingerprint: string;
 }
 
-export interface RunRemediateResult {
+interface RunRemediateResult {
 	ok: boolean;
 	/** Human-readable message for `ctx.ui.notify`. */
 	message: string;

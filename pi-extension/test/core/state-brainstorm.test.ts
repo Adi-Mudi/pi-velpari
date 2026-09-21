@@ -4,7 +4,8 @@
  * Asserts the invariants the lifecycle v2 depends on:
  *   - helpers mutate ONLY the brainstorm session fields (+ updatedAt);
  *     currentStage NEVER changes (the stage machine stays chained)
- *   - an old state.json (without the new fields) loads unchanged
+ *   - a legacy .IDE_Plans state.json migrates to .pi/velpari (B1) with
+ *     inline history split into the per-run history.jsonl (B2)
  *   - upsert enforces reason for not-wanted / replaced
  *   - invalid question states and scan types are rejected
  */
@@ -18,13 +19,18 @@ import {
 	clearBrainstormSession,
 	confirmUnderstanding,
 	createRun,
+	discardBrainstormSession,
 	incrementBrainstormDispatchCount,
 	loadState,
+	openBrainstormSession,
+	resumeFromBrainstorm,
+	saveState,
 	setActiveSubagents,
 	setScansSelected,
 	upsertBrainstormQuestion,
 	type BrainstormQuestion,
 } from "../../src/core/state.js";
+import { loadHistory } from "../../src/core/history.js";
 import { PATHS } from "../../src/core/constants.js";
 
 let tmpDir: string;
@@ -192,7 +198,7 @@ describe("core/state brainstorm helpers", () => {
 		assert.deepEqual(loadState(tmpDir).currentStage, "brainstorming");
 	});
 
-	it("an old state.json without the new fields loads unchanged", () => {
+	it("B1/B2 migration: a legacy .IDE_Plans state.json moves to .pi/velpari and inline history splits to history.jsonl", () => {
 		const legacy = {
 			version: 1,
 			runId: "2026-09-12-01-15-legacy-run",
@@ -203,16 +209,36 @@ describe("core/state brainstorm helpers", () => {
 			],
 			updatedAt: "2026-09-12T01:20:00.000Z",
 		};
-		const filePath = path.join(tmpDir, PATHS.STATE_FILE);
-		fs.mkdirSync(path.dirname(filePath), { recursive: true });
-		fs.writeFileSync(filePath, JSON.stringify(legacy, null, 2), "utf8");
+		const legacyPath = path.join(tmpDir, PATHS.LEGACY_STATE_FILE);
+		fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+		fs.writeFileSync(legacyPath, JSON.stringify(legacy, null, 2), "utf8");
 
 		const loaded = loadState(tmpDir);
-		assert.deepEqual(loaded, legacy);
+
+		// New state.json exists at the new location; the legacy file is gone.
+		const newPath = path.join(tmpDir, PATHS.STATE_FILE);
+		assert.ok(fs.existsSync(newPath), "migrated state.json must exist at .pi/velpari/");
+		assert.ok(!fs.existsSync(legacyPath), "legacy state.json must be removed after migration");
+
+		// State fields survive; the inline history does not (B2 split).
+		assert.equal(loaded.runId, legacy.runId);
+		assert.equal(loaded.mission, legacy.mission);
+		assert.equal(loaded.currentStage, "drafting-prd");
+		assert.equal(loaded.updatedAt, legacy.updatedAt);
+		assert.deepEqual(loaded.history, []);
 		assert.equal(loaded.understandingConfirmed, undefined);
 		assert.equal(loaded.scansSelected, undefined);
 		assert.equal(loaded.brainstormQuestions, undefined);
 		assert.equal(loaded.brainstormDispatchCount, undefined);
+
+		// History landed in the per-run history.jsonl.
+		assert.deepEqual(loadHistory(tmpDir, legacy.runId), legacy.history);
+
+		// One-time backup kept until the next successful saveState.
+		assert.ok(
+			fs.existsSync(`${newPath}.premigration.bak`),
+			"premigration backup must exist until the next save",
+		);
 	});
 
 	// ── v3 — activeSubagents (persistent sub-agent sessions) ────────────
@@ -307,5 +333,102 @@ describe("core/state brainstorm helpers", () => {
 		assert.deepEqual(loaded.scansSelected, ["code", "doc"]);
 		assert.equal(loaded.brainstormDispatchCount, 2);
 		assert.equal(loaded.activeSubagents, undefined);
+	});
+});
+
+describe("brainstorm-anytime session primitives (A2 — D1/D2/D5/D7)", () => {
+	function enterStage(stage: string): void {
+		const run = createRun("Mid-run mission", tmpDir);
+		saveState({ ...run, currentStage: stage as never }, tmpDir);
+	}
+
+	it("open from a mid-run stage pauses it and resets the dispatch count (D5)", () => {
+		enterStage("designing");
+		saveState({ ...loadState(tmpDir), brainstormDispatchCount: 3 }, tmpDir);
+
+		const opened = openBrainstormSession(tmpDir);
+		assert.equal(opened.currentStage, "brainstorming");
+		assert.equal(opened.pausedStage, "designing");
+		assert.equal(opened.brainstormDispatchCount, 0);
+
+		const loaded = loadState(tmpDir);
+		assert.equal(loaded.currentStage, "brainstorming");
+		assert.equal(loaded.pausedStage, "designing");
+		const history = loadHistory(tmpDir, loaded.runId);
+		assert.match(history[history.length - 1]!.command, /open-session/);
+	});
+
+	it("open while a session is open throws (no nesting)", () => {
+		enterStage("designing");
+		openBrainstormSession(tmpDir);
+		assert.throws(() => openBrainstormSession(tmpDir), /already open/);
+	});
+
+	it("resume continue restores the paused stage and clears session fields", () => {
+		enterStage("planned-tests");
+		openBrainstormSession(tmpDir);
+		saveState(
+			{ ...loadState(tmpDir), understandingConfirmed: true, brainstormDispatchCount: 2 },
+			tmpDir,
+		);
+
+		const resumed = resumeFromBrainstorm(tmpDir, "continue");
+		assert.equal(resumed.currentStage, "planned-tests");
+		assert.equal(resumed.pausedStage, undefined);
+		assert.equal(resumed.understandingConfirmed, undefined);
+		assert.equal(resumed.brainstormDispatchCount, undefined);
+
+		const history = loadHistory(tmpDir, resumed.runId);
+		assert.match(history[history.length - 1]!.command, /\(continue\)/);
+	});
+
+	it("resume restart-prd lands at brainstormed from any paused stage", () => {
+		enterStage("ordered-development");
+		openBrainstormSession(tmpDir);
+
+		const resumed = resumeFromBrainstorm(tmpDir, "restart-prd");
+		assert.equal(resumed.currentStage, "brainstormed");
+		assert.equal(resumed.pausedStage, undefined);
+	});
+
+	it("resume continue without a paused stage throws (first-run shape)", () => {
+		createRun("First-run mission", tmpDir);
+		assert.throws(() => resumeFromBrainstorm(tmpDir, "continue"), /requires a paused stage/);
+		// restart-prd works — this IS the first-run approve path.
+		const resumed = resumeFromBrainstorm(tmpDir, "restart-prd");
+		assert.equal(resumed.currentStage, "brainstormed");
+	});
+
+	it("resume/discard with no open session throws", () => {
+		enterStage("designing");
+		assert.throws(() => resumeFromBrainstorm(tmpDir, "restart-prd"), /No brainstorm session is open/);
+		assert.throws(() => discardBrainstormSession(tmpDir), /No brainstorm session is open/);
+	});
+
+	it("discard mid-run resumes the paused stage and writes no artifact (D7)", () => {
+		enterStage("writing-pseudocode");
+		openBrainstormSession(tmpDir);
+		saveState({ ...loadState(tmpDir), understandingConfirmed: true }, tmpDir);
+
+		const discarded = discardBrainstormSession(tmpDir);
+		assert.equal(discarded.currentStage, "writing-pseudocode");
+		assert.equal(discarded.pausedStage, undefined);
+		assert.equal(discarded.understandingConfirmed, undefined);
+
+		const history = loadHistory(tmpDir, discarded.runId);
+		assert.match(history[history.length - 1]!.command, /discard/);
+		assert.equal(fs.existsSync(path.join(tmpDir, "Doc", "brainstorm")), false);
+	});
+
+	it("discard on a first-run session returns to none", () => {
+		createRun("First-run mission", tmpDir);
+		const discarded = discardBrainstormSession(tmpDir);
+		assert.equal(discarded.currentStage, "none");
+		assert.equal(discarded.pausedStage, undefined);
+	});
+
+	it("an old state.json without pausedStage loads unchanged", () => {
+		enterStage("designing");
+		assert.equal(loadState(tmpDir).pausedStage, undefined);
 	});
 });

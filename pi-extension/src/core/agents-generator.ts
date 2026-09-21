@@ -15,8 +15,11 @@
  * Mirrors `pi-seani/pi-extension/src/agents/generator.ts` (Senai parity).
  * Velpari-specific simplifications:
  *   - No runtime dep on `@adi-mudi/pi-chirpi` (Velpari standalone)
- *   - `GENERATOR_VERSION = 1` (Velpari's first release of this feature)
- *   - `ArchitectReport` shape is a v1 stub; PRD/RTM-driven context lands in v2+
+ *   - `GENERATOR_VERSION = 2` (per-phase generation — v1 was brainstorm-only)
+ *   - The `ArchitectReport` slot is fed by `core/project-context.ts:
+ *     loadProjectContext(cwd, state, phase)` from published `Doc/`
+ *     artifacts (sidecar-first), per spec
+ *     `Doc/velpari-sequence/05-sub-agent-generation.md`.
  */
 
 import * as fs from "node:fs";
@@ -31,22 +34,19 @@ import {
 } from "./generated-manifest.js";
 import {
 	DEFAULT_AGENTS,
+	ROLE_LABELS,
 	loadAgentConfig,
 	resolveAgentName,
 	saveAgentConfig,
 	type VelpariRole,
 } from "./agents-config.js";
-import {
-	loadCustomRoles,
-	validateCustomRole,
-	type CustomRole,
-} from "./custom-roles.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Bump when the generated agent format changes. Footer carries this number so
- *  doctor can flag files from an older format. v1: initial release. */
-export const GENERATOR_VERSION = 1;
+ *  doctor can flag files from an older format. v1: brainstorm-only release.
+ *  v2: per-phase generation (Phases 1–4 via GENERATION_PHASES). */
+export const GENERATOR_VERSION = 2;
 
 export interface GeneratedRoleDef {
 	role: string;
@@ -70,10 +70,15 @@ export interface GeneratedRoleDef {
 	bodyFile?: string;
 }
 
-/** v1 of the brainstorm-only generator. Phase 3 fills in the 4 brainstorm
- *  rows from `skills/agents/{extractor,prd-checker,rtm-checker,web-search-agent}.md`.
- *  Subsequent phases extend with stage scouts. */
-export const GENERATED_ROLES: GeneratedRoleDef[] = [];
+/** Architect report shape — the generator's project-context input slot.
+ *  Structurally identical to `core/project-context.ts:ProjectContext`
+ *  (the v2 loader's return type); kept as a separate name so the
+ *  generator's contract reads in domain terms. */
+export interface ArchitectReport {
+	techStack: string[];
+	atomicFunctions: string[];
+	constraints: string[];
+}
 
 export interface TechnologyResource {
 	id: string;
@@ -91,8 +96,7 @@ export interface GeneratedAgentPlan {
 	content: string;
 }
 
-/** Result of `writeGeneratedAgents`. Phase 4 wires this up; declared here
- *  so the planner / previewer can share types. */
+/** Result of `writeGeneratedAgents`. */
 export interface WriteAgentsResult {
 	created: string[];
 	regenerated: string[];
@@ -107,15 +111,6 @@ export interface RegenerationPreview {
 	overwrite: string[];
 	keptDrifted: string[];
 	unknown: string[];
-}
-
-/** Architect report shape. v1 stub — Phase 2 only TYPES this; Phase 2
- *  does not require a real report. Phase 3 will likely replace with a
- *  Velpari-specific report shape (PRD-driven + RTM-driven). */
-export interface ArchitectReport {
-	techStack: string[];
-	atomicFunctions: string[];
-	constraints: string[];
 }
 
 // ─── Resource loading ─────────────────────────────────────────────────────
@@ -305,6 +300,9 @@ export function resolveBodyFilePath(bodyFile: string): string | null {
 		// compiled layout (dist/pi-extension/src/agents/ — would require a
 		// build step to copy the .md file; included for completeness)
 		path.join(pkgRoot, "dist", "pi-extension", "src", "agents", bodyFile),
+		// bundled stage-scout templates (generator v2 — Phases 2–4 derive
+		// their canonical bodies from skills/agents/<role>.md)
+		path.join(pkgRoot, "skills", "agents", bodyFile),
 	];
 	for (const c of candidates) {
 		if (fs.existsSync(c)) return c;
@@ -328,6 +326,58 @@ export function loadCanonicalBody(bodyFile: string): string | null {
 		if (end !== -1) return raw.slice(end + 4).trim();
 	}
 	return raw.trim();
+}
+
+/**
+ * Build a `GeneratedRoleDef` from a bundled stage-scout template
+ * (`skills/agents/<role>.md`). The template's frontmatter supplies the
+ * tools + description; its body becomes the canonical body via
+ * `bodyFile` (the real scout contract — report paths, output JSON
+ * shape — survives verbatim into the generated copy).
+ *
+ * Used by the v2 per-phase generator for every Phase 2–4 role (stage
+ * scouts + reviewers); Phase 1 keeps the hand-authored
+ * `VELPARI_BRAINSTORM_GENERATED_ROLES` table.
+ *
+ * Returns null when the template is missing or malformed — the caller
+ * skips the role (the bundled scout remains the permanent fallback).
+ */
+export function scoutTemplateRoleDef(role: string): GeneratedRoleDef | null {
+	const pkgRoot = findPackageRoot(__dirname);
+	const filePath = path.join(pkgRoot, "skills", "agents", `${role}.md`);
+	let raw: string;
+	try {
+		raw = fs.readFileSync(filePath, "utf8");
+	} catch {
+		return null;
+	}
+	const match = raw.match(/^---\n([\s\S]*?)\n---\n/);
+	if (!match || match[1] === undefined) return null;
+	const fm = match[1];
+	const descMatch = fm.match(/^description:\s*(.+)$/m);
+	if (!descMatch || descMatch[1] === undefined) return null;
+	const description = descMatch[1].trim();
+	if (!description) return null;
+	const toolsMatch = fm.match(/^tools:\s*(.+)$/m);
+	const tools =
+		toolsMatch?.[1] !== undefined
+			? toolsMatch[1]
+					.split(",")
+					.map((t) => t.trim())
+					.filter(Boolean)
+			: ["read", "write", "bash"];
+	return {
+		role,
+		label: ROLE_LABELS[role as VelpariRole] ?? role,
+		tools: tools.length > 0 ? tools : ["read", "write", "bash"],
+		mandate: description,
+		invocationHint: description,
+		outOfScope: [
+			"Do not call other subagents (you are a leaf specialist).",
+			"Do not write or modify anything outside the report path assigned in your task.",
+		],
+		bodyFile: `${role}.md`,
+	};
 }
 
 /** Assemble a single agent's markdown. The output is deterministic for
@@ -434,58 +484,6 @@ export function planAgentGeneration(
 			content: buildGeneratedAgentMarkdown(def, agentName, projectName, resources, report),
 		};
 	});
-}
-
-/** Convert a project-defined `CustomRole` into the generator's internal
- *  `GeneratedRoleDef`. The shapes are intentionally compatible; this is
- *  a defensive copy in case the two diverge later. */
-function customRoleToGeneratedRoleDef(role: CustomRole): GeneratedRoleDef {
-	validateCustomRole(role);
-	return {
-		role: role.role,
-		label: role.label,
-		tools: role.tools,
-		mandate: role.mandate,
-		invocationHint: role.invocationHint,
-		outOfScope: role.outOfScope,
-		interactive: role.interactive,
-		bodyFile: role.bodyFile,
-	};
-}
-
-/** Plan a generation run for project-defined custom roles. Returns one
- *  GeneratedAgentPlan per role id found in the project's
- *  `.pi/velpari/custom-roles.json`. Unknown role ids are skipped with
- *  no error (the user may have removed them between runs).
- *
- *  The custom-role agents are emitted alongside the bundled brainstorm
- *  roles by `/velpari-generate-sub-agents --custom` (Phase 2 of the
- *  custom-role upgrade). */
-export function planCustomAgentGeneration(
-	cwd: string,
-	roleIds: readonly string[],
-): GeneratedAgentPlan[] {
-	const config = loadCustomRoles(cwd);
-	if (!config) return [];
-	const resources = discoverTechnologyResources(cwd);
-	const report: ArchitectReport | null = null;
-	const slug = getProjectSlug(cwd);
-	const projectName = slug;
-	const plans: GeneratedAgentPlan[] = [];
-	for (const id of roleIds) {
-		const role = config.roles.find((r) => r.role === id);
-		if (!role) continue;
-		const def = customRoleToGeneratedRoleDef(role);
-		const agentName = `${slug}-${def.role}`;
-		plans.push({
-			role: def.role,
-			agentName,
-			description: `${def.label} for ${projectName}. Generated by pi-velpari.`,
-			tools: def.tools,
-			content: buildGeneratedAgentMarkdown(def, agentName, projectName, resources, report),
-		});
-	}
-	return plans;
 }
 
 // ─── Generated-manifest re-export ─────────────────────────────────────────
@@ -635,8 +633,7 @@ export function updateAgentsJson(cwd: string, plans: readonly GeneratedAgentPlan
 	let addedCount = 0;
 	for (const plan of plans) {
 		// Skip roles that are not in the Velpari role registry (defensive:
-		// the v1 generator only emits the 4 brainstorm roles, but a future
-		// extension might add others).
+		// project-defined custom roles are not mapped into agents.json).
 		if (!(plan.role in DEFAULT_AGENTS)) continue;
 		const role = plan.role as VelpariRole;
 		const currentResolved = resolveAgentName(config, role);

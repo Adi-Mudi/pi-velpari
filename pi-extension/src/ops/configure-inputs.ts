@@ -36,7 +36,7 @@ export async function ask(
 }
 
 /** Interview answers that buildFilesConfig merges over the existing config. */
-export interface ConfigureAnswers {
+interface ConfigureAnswers {
 	/** Legacy single-design projectName. v1.3.0+ accepts EITHER
 	 *  `projectName` (single, legacy) or `projectNames` (multi-design).
 	 *  Exactly one of the two must be set. */

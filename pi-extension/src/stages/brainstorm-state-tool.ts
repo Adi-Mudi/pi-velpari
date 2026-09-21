@@ -31,6 +31,9 @@
  *   - close-sessions (v3): clears state.activeSubagents. Called by the
  *     approve-brainstorm command after subagent_interrupt fires on both
  *     panes (graceful close — Phase 8).
+ *   - discard (brainstorm-anytime, D7): closes the session WITHOUT
+ *     publishing. Clears the session fields and resumes the paused stage
+ *     (or "none" on a first run); a history entry records the discard.
  *
  * The tool is gated on an active brainstorm: velpari's brainstorm is a real
  * stage in the chained stage machine, so "active" means a run exists and
@@ -54,6 +57,7 @@ import { loadFilesConfig } from "../core/config.js";
 import {
 	appendWebDispatchConsent,
 	confirmUnderstanding,
+	discardBrainstormSession,
 	loadState,
 	saveState,
 	setActiveSubagents,
@@ -99,7 +103,8 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 			"set-scans (persist the scan selection from the scan-plan gate), " +
 			"upsert-question (record one question state change during DISCUSS; reason is required for not-wanted/replaced), " +
 			"spawn-sessions (v3: persist the 2 persistent sub-agent session handles returned from the AUTOMATIC SPAWN subagent() calls; needs web + docCode strings), " +
-			"close-sessions (v3: clear state.activeSubagents after subagent_interrupt fires on both panes — called by /velpari-approve-brainstorm on graceful close). " +
+			"close-sessions (v3: clear state.activeSubagents after subagent_interrupt fires on both panes — called by /velpari-approve-brainstorm on graceful close), " +
+			"discard (close the session WITHOUT publishing — clears the session fields and resumes the paused stage, or \"none\" on a first run; no artifact is written). " +
 			"Returns the updated session snapshot.",
 		parameters: Type.Object({
 			action: Type.Union([
@@ -111,6 +116,7 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 				Type.Literal("upsert-question"),
 				Type.Literal("spawn-sessions"),
 				Type.Literal("close-sessions"),
+				Type.Literal("discard"),
 			]),
 			scans: Type.Optional(
 				Type.Array(Type.Union(SCAN_TYPES.map((s) => Type.Literal(s))), {
@@ -291,6 +297,25 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					saveState(next, ctx.cwd);
 					persistEntry(next);
 					return okResult(snapshot(next));
+				}
+
+				if (params.action === "discard") {
+					// D7 — close the session WITHOUT publishing. Clears the
+					// brainstorm session fields and resumes the paused stage
+					// (or "none" on a first run). No artifact is written; a
+					// history entry records the discard.
+					const resumedFrom = state.pausedStage ?? "none";
+					const next = discardBrainstormSession(ctx.cwd);
+					persistEntry(next);
+					return okResult({
+						...snapshot(next),
+						discarded: true,
+						resumedStage: next.currentStage,
+						message:
+							next.currentStage === "none"
+								? "Brainstorm session discarded — no artifact published. Back to a fresh project state."
+								: `Brainstorm session discarded — no artifact published. Resumed "${resumedFrom}".`,
+					});
 				}
 
 				// upsert-question

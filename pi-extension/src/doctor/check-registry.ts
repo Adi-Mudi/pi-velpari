@@ -15,7 +15,7 @@ import { loadCatalogue, findOverlay } from "../core/standards-catalogue.js";
 import { loadOverlay, overlayDir } from "../core/standards-overlay.js";
 
 /** Absolute path to the overlay's check-overlay.md. */
-export function overlayCheckPath(cwd: string, overlayId: string): string {
+function overlayCheckPath(cwd: string, overlayId: string): string {
 	return join(overlayDir(cwd, overlayId), "doctor", "check-overlay.md");
 }
 

@@ -1,5 +1,5 @@
 /**
- * /velpari-generate-sub-agents flow tests (Phase 5+6 combined).
+ * /velpari-generate-sub-agents flow tests (generator v2 — per-phase).
  *
  * Mocks `ctx.ui` to drive the orchestration without a real TUI.
  * Mirrors `pi-seani/.../test/commands/16-generator-preview.e2e.test.ts`
@@ -7,16 +7,16 @@
  *
  * Coverage:
  *   - TUI-less headless guard returns early with "warning" notify.
- *   - Nothing-to-do guard (all-custom mapping): notify + return.
+ *   - Nothing-to-do guard (all-custom mapping for the phase): notify + return.
  *   - Cancelled project-type picker: returns cancelled: true.
  *   - Empty language: notify + return cancelled.
  *   - Single confirmation gate: ctx.ui.confirm is called exactly ONCE.
  *   - User-declined confirmation: nothing written, cancelled: true.
- *   - Happy path: 3 questions → preview → confirm → 8 agents written
- *     (4 brainstorm + 4 reviewer) + 4 mappings added.
- *     Plan E extends the generator to emit per-stage reviewer copies
- *     (atomic-function / pseudocode / testplan / design) on top of the
- *     4 brainstorm roles.
+ *   - Happy path Phase 1 (auto-detected on an empty project): 4 brainstorm
+ *     agents written + 4 mappings added.
+ *   - Phase override + auto-detect for Phase 3: 17 roles generated from the
+ *     bundled templates (13 scouts + 4 reviewers), interview shrinks to the
+ *     project-type picker when language/framework are on disk (D3).
  *   - Custom-agent non-clobber: a hand-made file under .pi/agents/
  *     stays on disk untouched.
  *   - Post-write notify carries the create count.
@@ -28,7 +28,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { runAgentGenerator } from "../../src/commands/generate-sub-agents.js";
+import { parsePhaseArg, runAgentGenerator } from "../../src/commands/generate-sub-agents.js";
+import { feasibilityRecordPath } from "../../src/core/feasibility-record.js";
+import { writeYamlFile } from "../../src/core/yaml-data.js";
 
 interface MockUiCall {
 	method: "select" | "input" | "confirm" | "notify";
@@ -113,7 +115,7 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 		}
 	});
 
-	it("Plan E: all 4 brainstorm roles custom → write only 4 reviewer copies (silently)", async () => {
+	it("all Phase 1 roles custom → bail with nothing-to-generate (no writes)", async () => {
 		const cwd = freshTmp();
 		try {
 			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
@@ -132,32 +134,24 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			);
 			const ctx = makeCtx(cwd, {});
 			const result = await runAgentGenerator(ctx);
-			// Plan E: brainstorm is fully custom (no write). Reviewer roles
-			// (4) have default mappings → all 4 reviewer copies are written.
-			// No mappings are added to agents.json because reviewer roles
-			// don't go through the default-column mapping path.
-			assert.equal(result.created, 4, "4 reviewer agents written; 0 brainstorm");
+			// v2: reviewers belong to Phase 3 — an all-custom Phase 1 bails
+			// instead of silently writing reviewer copies.
+			assert.equal(result.created, 0);
 			assert.equal(result.mappingsAdded, 0);
 			assert.equal(result.cancelled, false);
-			// Expect a post-write summary notify, NOT the headless / all-custom bail.
-			const summary = ctx.__calls.find(
-				(c) =>
-					c.method === "notify" &&
-					/4 agents written/.test(String(c.args[0])),
-			);
-			assert.ok(summary, "expected the post-write summary '4 agents written'");
-			// The "all 4 brainstorm roles already have custom" notify should NOT fire.
 			const allCustomNotify = ctx.__calls.find(
 				(c) =>
-					c.method === "notify" && /already have custom agents/.test(String(c.args[0])),
+					c.method === "notify" && /All Phase 1 roles already have custom agents/.test(String(c.args[0])),
 			);
-			assert.equal(allCustomNotify, undefined, "should NOT bail with all-custom");
+			assert.ok(allCustomNotify, "expected the all-custom bail notify");
+			// No confirm gate, no files.
+			assert.equal(ctx.__calls.filter((c) => c.method === "confirm").length, 0);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("happy path: 3 questions → preview → confirm → 8 agents written + 4 mappings added", async () => {
+	it("happy path Phase 1: picker + 2 inputs → preview → confirm → 4 agents written + 4 mappings", async () => {
 		const cwd = freshTmp();
 		try {
 			const ctx = makeCtx(cwd, {
@@ -168,9 +162,9 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			const result = await runAgentGenerator(ctx);
 
 			assert.equal(result.cancelled, false);
-			// Plan E: 4 brainstorm + 4 reviewer = 8 agents written.
-			assert.equal(result.created, 8, "all 8 agents should be created");
-			// Mappings added only for brainstorm roles (4 default mappings).
+			// Phase 1 (auto-detected — empty project, stage "none"): the 4
+			// brainstorm roles only.
+			assert.equal(result.created, 4, "all 4 brainstorm agents should be created");
 			assert.equal(result.mappingsAdded, 4);
 
 			// The slug is derived from the cwd's directory basename (no
@@ -319,9 +313,152 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 				(c) => c.method === "notify" && /Done\./.test(String(c.args[0])),
 			);
 			assert.ok(summary, "expected the post-write summary notify");
-			assert.match(String(summary!.args[0]), /8 agents written/);
+			assert.match(String(summary!.args[0]), /4 agents written/);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("/velpari-generate-sub-agents — per-phase selection (generator v2)", () => {
+	function slugOf(cwd: string): string {
+		return cwd
+			.split("/")
+			.pop()!
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "");
+	}
+
+	it("--phase 3 override generates all 17 Phase-3 roles from the bundled templates", async () => {
+		const cwd = freshTmp();
+		try {
+			const ctx = makeCtx(cwd, {
+				select: async (_t, labels) => labels[0] ?? null,
+				input: async () => "typescript",
+				confirm: async () => true,
+			});
+			const result = await runAgentGenerator(ctx, { phase: 3 });
+			assert.equal(result.cancelled, false);
+			assert.equal(result.created, 17, "13 stage scouts + 4 reviewers");
+			assert.equal(result.mappingsAdded, 17);
+
+			const slug = slugOf(cwd);
+			const agentsDir = join(cwd, ".pi", "agents");
+			for (const role of [
+				"design-style-selector",
+				"af-source-rtm",
+				"pseudo-consolidator",
+				"reviewer",
+				"pseudocode-reviewer",
+				"testplan-reviewer",
+				"design-reviewer",
+			]) {
+				assert.ok(existsSync(join(agentsDir, `${slug}-${role}.md`)), `${role} should be generated`);
+			}
+			// agents.json maps reviewer roles too (D4 — all generated roles).
+			const agentsJson = JSON.parse(
+				readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8"),
+			) as { agents: Record<string, string> };
+			assert.equal(agentsJson.agents.reviewer, `${slug}-reviewer`);
+			assert.equal(Object.keys(agentsJson.agents).length, 17);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("auto-detect: currentStage analyzed-feasibility → Phase 3", async () => {
+		const cwd = freshTmp();
+		try {
+			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+			writeFileSync(
+				join(cwd, ".pi", "velpari", "state.json"),
+				JSON.stringify({ version: 1, currentStage: "analyzed-feasibility", mission: "demo" }),
+				"utf8",
+			);
+			const ctx = makeCtx(cwd, {
+				select: async (_t, labels) => labels[0] ?? null,
+				input: async () => "typescript",
+				confirm: async () => true,
+			});
+			const result = await runAgentGenerator(ctx);
+			assert.equal(result.created, 17, "Phase 3 auto-detected from run state");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("auto-detect: currentStage brainstormed → Phase 2 (14 roles)", async () => {
+		const cwd = freshTmp();
+		try {
+			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+			writeFileSync(
+				join(cwd, ".pi", "velpari", "state.json"),
+				JSON.stringify({ version: 1, currentStage: "brainstormed", mission: "demo" }),
+				"utf8",
+			);
+			const ctx = makeCtx(cwd, {
+				select: async (_t, labels) => labels[0] ?? null,
+				input: async () => "typescript",
+				confirm: async () => true,
+			});
+			const result = await runAgentGenerator(ctx);
+			assert.equal(result.created, 14, "Phase 2: prd 4 + rtm 4 + feasibility 4 + 2 conditional");
+			assert.equal(result.mappingsAdded, 14);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("D3: interview asks only the project type when language + framework are on disk", async () => {
+		const cwd = freshTmp();
+		try {
+			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+			writeFileSync(
+				join(cwd, ".pi", "velpari", "files.json"),
+				JSON.stringify({
+					version: 4,
+					projectName: "demo",
+					framework: { language: "rust", runtime: "tokio" },
+				}),
+				"utf8",
+			);
+			writeYamlFile(feasibilityRecordPath(cwd, "demo"), {
+				project: "demo",
+				verdict: "build",
+				selectedLanguage: "rust",
+				selectedBy: "user",
+				languageCandidates: [],
+				spikeResults: [],
+				reuseSummary: [],
+				recordedAt: "2026-09-21T00:00:00.000Z",
+			});
+			const ctx = makeCtx(cwd, {
+				select: async (_t, labels) => labels[0] ?? null,
+				input: async () => {
+					throw new Error("ctx.ui.input must not be called — language and framework are on disk");
+				},
+				confirm: async () => true,
+			});
+			const result = await runAgentGenerator(ctx, { phase: 3 });
+			assert.equal(result.created, 17);
+			assert.equal(
+				ctx.__calls.filter((c) => c.method === "input").length,
+				0,
+				"no input questions when language + framework are on disk",
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("parsePhaseArg: parses --phase N, distinguishes absent from malformed", () => {
+		assert.equal(parsePhaseArg(""), null);
+		assert.equal(parsePhaseArg("--phase 3"), 3);
+		assert.equal(parsePhaseArg("--phase=2"), 2);
+		assert.equal(parsePhaseArg("--phase 1"), 1);
+		assert.equal(parsePhaseArg("--phase 9"), "invalid");
+		assert.equal(parsePhaseArg("--phase x"), "invalid");
+		assert.equal(parsePhaseArg("--phase"), "invalid");
 	});
 });

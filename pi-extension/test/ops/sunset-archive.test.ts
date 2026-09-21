@@ -195,6 +195,10 @@ function setupCwd(designContent: string, sunset: string | null): void {
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "PRD_TestApp.md"), PSRS);
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md"), "# RTM\n");
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.json"), RTM_JSON);
+	// B4: the publish gate refuses a design publish when its declared input
+	// (the published feasibility study) is missing.
+	fs.mkdirSync(path.join(tmpDir, "Doc", "feasibility"), { recursive: true });
+	fs.writeFileSync(path.join(tmpDir, "Doc", "feasibility", "feasibility-study_TestApp.md"), "# Feasibility\n");
 	const run = createRun("TestApp", tmpDir);
 	saveState(
 		{

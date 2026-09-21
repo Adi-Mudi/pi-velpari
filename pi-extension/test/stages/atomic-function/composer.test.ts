@@ -57,7 +57,7 @@ function makePi(): ExtensionAPI {
 }
 
 function makeState(stage: RunState["currentStage"]): void {
-	const dir = path.join(tmpDir, ".IDE_Plans", "velpari");
+	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState = {
 		version: 1,

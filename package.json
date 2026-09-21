@@ -62,5 +62,8 @@
       "./skills"
     ]
   },
-  "bundleDependencies": []
+  "bundleDependencies": [],
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
 }

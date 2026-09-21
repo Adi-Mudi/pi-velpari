@@ -57,6 +57,7 @@ async function runModuleScript<T>(client: RpcClient, script: string): Promise<T>
 
 const STATE_JS = JSON.stringify(distModuleUrl("core/state.js"));
 const CONSTANTS_JS = JSON.stringify(distModuleUrl("core/constants.js"));
+const HISTORY_JS = JSON.stringify(distModuleUrl("core/history.js"));
 const REGISTRY_JS = JSON.stringify(distModuleUrl("stages/registry.js"));
 const APPROVE_JS = JSON.stringify(distModuleUrl("ops/approve.js"));
 
@@ -84,6 +85,7 @@ describe("e2e/stage-gates", () => {
 			client,
 			`import { clearRun, createRun, advanceStage, loadState } from ${STATE_JS}; ` +
 				`import { STAGE_TRANSITIONS } from ${CONSTANTS_JS}; ` +
+				`import { loadHistory } from ${HISTORY_JS}; ` +
 				`const cwd = process.cwd(); ` +
 				`clearRun(cwd); ` +
 				`let state = createRun("E2E sequence walk", cwd); ` +
@@ -96,7 +98,7 @@ describe("e2e/stage-gates", () => {
 				`  visited.push(state.currentStage); ` +
 				`  if (loadState(cwd).currentStage !== state.currentStage) mismatches++; ` +
 				`} ` +
-				`process.stdout.write(JSON.stringify({ visited, mismatches, historyLen: state.history.length, transitions: STAGE_TRANSITIONS.length }));`,
+				`process.stdout.write(JSON.stringify({ visited, mismatches, historyLen: loadHistory(cwd, state.runId).length, transitions: STAGE_TRANSITIONS.length }));`,
 		);
 
 		assert.strictEqual(out.mismatches, 0, "state.json on disk diverged from in-memory state during the walk");
@@ -183,6 +185,39 @@ describe("e2e/stage-gates", () => {
 		}
 	});
 
+	it("brainstorm-anytime (A2): open from a mid-run stage pauses it, the lock names the pause, both doors land correctly", { timeout: 60_000 }, async (t) => {
+		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
+		assert.ok(client && home, "test setup missing");
+
+		const out = await runModuleScript<any>(
+			client,
+			`import { clearRun, createRun, advanceStage, openBrainstormSession, resumeFromBrainstorm } from ${STATE_JS}; ` +
+				`import { runStage } from ${REGISTRY_JS}; ` +
+				`const cwd = process.cwd(); ` +
+				`clearRun(cwd); ` +
+				`const s0 = createRun("E2E anytime", cwd); ` +
+				`const s1 = advanceStage(s0, "/velpari-approve-brainstorm", cwd); ` + // brainstormed
+				`advanceStage(s1, "/velpari-prd", cwd); ` + // drafting-prd
+				`const opened = openBrainstormSession(cwd); ` +
+				`const notes = []; ` +
+				`const ctx = { ui: { notify: (m, l) => notes.push({ m, l }) } }; ` +
+				`await runStage("rtm", ctx, { sendUserMessage: () => {} }, cwd); ` +
+				`const guide = notes.filter((n) => n.l === "error").map((n) => n.m).join("|"); ` +
+				`const resumed = resumeFromBrainstorm(cwd, "continue"); ` +
+				`openBrainstormSession(cwd); ` +
+				`const restarted = resumeFromBrainstorm(cwd, "restart-prd"); ` +
+				`process.stdout.write(JSON.stringify({ openedStage: opened.currentStage, paused: opened.pausedStage, guide, resumedStage: resumed.currentStage, restartedStage: restarted.currentStage, restartedPaused: restarted.pausedStage ?? null }));`,
+		);
+
+		assert.strictEqual(out.openedStage, "brainstorming");
+		assert.strictEqual(out.paused, "drafting-prd", "the mid-run stage is paused, not lost");
+		assert.match(out.guide, /brainstorm session open/);
+		assert.match(out.guide, /paused at "drafting-prd"/);
+		assert.strictEqual(out.resumedStage, "drafting-prd", "door 1 (continue) resumes the paused stage");
+		assert.strictEqual(out.restartedStage, "brainstormed", "door 2 (restart-prd) lands at brainstormed");
+		assert.strictEqual(out.restartedPaused, null, "pause cleared after resume");
+	});
+
 	it("gate pass: runStage(prd) from brainstormed hands off no prompt (v1.6.2: no auto-chain)", { timeout: 60_000 }, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
@@ -241,6 +276,10 @@ describe("e2e/stage-gates", () => {
 				`for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-prd-approve", "/velpari-rtm", "/velpari-rtm-approve", "/velpari-feasibility"]) { ` +
 				`  state = advanceStage(state, cmd, cwd); ` +
 				`} ` +
+				// B4: the publish gate refuses a feasibility publish when its
+				// declared input (the published RTM) is missing.
+				`mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true }); ` +
+				`writeFileSync(join(cwd, "Doc", "requirements", "RTM_E2EFixture.md"), "# RTM\\n", "utf8"); ` +
 				// Full v2-template working copy (all 13 sections + verdict word).
 				`const sections = ["Executive Summary", "Options Analysis", "Build-vs-Reuse Comparison", "Language Selection", "Technical Feasibility", "Schedule Feasibility", "Cost Feasibility", "Risk Feasibility", "Overall Verdict", "Conditions", "Top 5 Risks", "Open Questions", "Change Log"]; ` +
 				`const body = sections.map((s, i) => "## " + (i + 1) + ". " + s + "\\n" + (s === "Overall Verdict" ? "All pass.\\nFinal: Go" : s + " content.")).join("\\n\\n"); ` +
@@ -345,7 +384,10 @@ describe("e2e/stage-gates", () => {
 		);
 
 		assert.strictEqual(out.stage, "brainstorming", "reject test should not advance the stage");
-		assert.match(out.rejectError, /Cannot run \/velpari-final-design at stage "brainstorming"/);
+		// A1 anytime semantics: at an open brainstorm the block is the
+		// two-door guide (approve to continue/restart, or discard).
+		assert.match(out.rejectError, /Cannot run \/velpari-final-design: brainstorm session open/);
+		assert.match(out.rejectError, /\/velpari-approve-brainstorm/);
 	});
 
 	it("final-design accept: at ordered-development advanceStage lands on finalizing-design", { timeout: 60_000 }, async (t) => {

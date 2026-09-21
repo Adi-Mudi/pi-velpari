@@ -10,7 +10,7 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import type { RunState } from "../../core/state.js";
 import { loadCatalogue, findOverlay } from "../../core/standards-catalogue.js";
 
-export interface StandardsProfileGateError {
+interface StandardsProfileGateError {
 	code: string;
 	message: string;
 }

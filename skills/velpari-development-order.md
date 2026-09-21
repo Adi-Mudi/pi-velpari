@@ -127,12 +127,57 @@ After all 4 scouts complete:
  - value rank: weight 1.5 (deliver user value early)
 3. Sort modules by ascending weighted average rank.
 4. Tie-breaker: lower topology rank wins.
-5. Build the development-order markdown (see "Output Format" below).
-6. Write to `<workingCopy>`.
+5. Build the development-order YAML sidecar (schema in "Output Format"
+   below) and write it to `<workingCopy>`
+   (`development-order_<projectName>.yaml`). The YAML is the source of
+   truth.
+6. Render the markdown FROM the YAML and write it to `<workingCopy>`
+   (`development-order_<projectName>.md`). The publish gate re-generates
+   the published markdown from the YAML — the published doc is always
+   derived from the data, never from hand-written markdown.
 
 ## Output Format
 
-Write the working copy as `development-order_<projectName>.md` at `<workingCopy>`:
+Write TWO working-copy files at `<workingCopy>`:
+
+### File 1: `development-order_<projectName>.yaml` — source of truth
+
+The YAML sidecar is the source of truth (D8 schema). The publish gate
+validates it (hard-block on schema errors, unknown `dependsOn`
+references, dependency CYCLES, and dependency-first ordering) and
+RE-RENDERS the published markdown from it — a markdown-only working
+copy is blocked.
+
+```yaml
+project: <projectName>
+version: 1.0.0
+steps:
+  - id: DO-1
+    module: M-3 (database-schema)
+    afs: [AF-3, AF-7]
+    dependsOn: []
+    rationale: "No deps; foundation"
+  - id: DO-2
+    module: M-1 (auth-service)
+    afs: [AF-1, AF-2]
+    dependsOn: [DO-1]
+    rationale: "Depends on schema; high-value signup path"
+changeLog: []
+```
+
+Rules: step ids match `DO-<n>`, no duplicates; `module` is a required
+string; `afs` lists the `AF-N` ids the step delivers (every AF from the
+published atomic-functions doc must appear in exactly one step);
+`dependsOn` lists step ids from THIS file — every reference must
+resolve, the graph must be ACYCLIC, and a step must be listed after
+every step it depends on. Update mode: never delete a step — mark it
+superseded in its `rationale`, bump the version, add a `changeLog`
+entry.
+
+### File 2: `development-order_<projectName>.md` — rendered preview
+
+Render the markdown FROM the YAML (approve re-renders it at publish
+time):
 
 ```markdown
 ---
@@ -179,8 +224,14 @@ updated: <ISO timestamp>
 ## Recommended Execution Plan
 
 1. **Week 1-2:** M-3 (database schema) + spike on M-5 (external integration)
+   AFs: AF-3, AF-7
 2. **Week 3-4:** M-1 (auth-service) with full test coverage
+   AFs: AF-1, AF-2
 3. ...
+
+Each step carries a mandatory `AFs: AF-N, …` list (Layer-2 ID coverage)
+naming the atomic functions that step delivers. Every `AF-N` from the
+published atomic-functions doc must appear in exactly one step.
 ```
 
 ## Zero-Hallucination Rule (FR-22)

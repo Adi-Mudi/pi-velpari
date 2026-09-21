@@ -4,11 +4,12 @@
  * Living-documents safety net (the brainstorm-first update flow is the
  * mechanism; doctor only reports drift):
  *
- *   1. Stale downstream — adjacent published pairs
- *      (PRD → RTM → feasibility → design → pseudocode → test-plan):
- *      when the upstream artifact's mtime is NEWER than the downstream
- *      one's, the upstream was revised after the downstream was
- *      published → error naming the stage to re-run (update mode).
+ *   1. Stale downstream — hash-based (B4/A3): rendered from the shared
+ *      stale set (`core/freshness.ts:computeStaleSet`). A published
+ *      artifact is stale when one of its declared inputs changed
+ *      (content hash differs) or vanished since it was published.
+ *      Replaces the old mtime adjacent-pair comparisons — touch is not
+ *      change; content hashes are the spec'd mechanism.
  *   2. Deprecated reference — a PRD requirement row marked `deprecated`
  *      whose RTM row is NOT marked `deprecated` → error per ID.
  *      Deprecate-don't-delete must propagate downstream.
@@ -18,27 +19,15 @@
  *      mutates.
  */
 
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { STAGE_FOLDERS } from "../../core/constants.js";
+import { computeStaleSet, loadFreshnessManifest } from "../../core/freshness.js";
 import { extractIdRows, readSectionBody } from "../../core/psrs.js";
 import { readLockInfo } from "../../io/run-lock.js";
-import { STAGE_GATE, STAGE_KEYS } from "../../stages/registry.js";
+import { STAGE_GATE, STAGE_KEYS, STAGE_REGISTRY } from "../../stages/registry.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
-
-/** Adjacent published pairs + the command that republishes the downstream. */
-const DOWNSTREAM_PAIRS: ReadonlyArray<{
-	upstream: string;
-	downstream: string;
-	command: string;
-}> = [
-	{ upstream: "PRD", downstream: "RTM", command: "/velpari-rtm" },
-	{ upstream: "RTM", downstream: "feasibility-study", command: "/velpari-feasibility" },
-	{ upstream: "feasibility-study", downstream: "design", command: "/velpari-architecture-generator" },
-	{ upstream: "design", downstream: "pseudocode", command: "/velpari-pseudocode" },
-	{ upstream: "pseudocode", downstream: "test-plan", command: "/velpari-testplan" },
-];
 
 /** PRD sections whose rows carry a Status column. */
 const STATUS_SECTIONS: ReadonlyArray<{ heading: string; prefixes: string[] }> = [
@@ -77,28 +66,29 @@ export function checkStaleDownstreamSection(
 		return { title: "Stale downstream artifacts", items };
 	}
 
-	// 1. Adjacent-pair freshness.
-	let checkedPairs = 0;
-	for (const pair of DOWNSTREAM_PAIRS) {
-		const upstream = resolveDocArtifact(pair.upstream, projectName, cwd);
-		const downstream = resolveDocArtifact(pair.downstream, projectName, cwd);
-		if (!upstream || !downstream) continue; // missing artifacts are reported elsewhere
-		checkedPairs++;
-		const upstreamMtime = statSync(upstream.path).mtimeMs;
-		const downstreamMtime = statSync(downstream.path).mtimeMs;
-		if (upstreamMtime > downstreamMtime) {
-			items.push({
-				status: "error",
-				message:
-					`${pair.downstream} is stale: ${pair.upstream} was revised after ` +
-					`${pair.downstream} was published. Re-run ${pair.command} (update mode) to sync.`,
-				details: [
-					`upstream:   ${upstream.path}`,
-					`downstream: ${downstream.path}`,
-				],
-				suggestion: suggestionFor("stale-downstream"),
-			});
-		}
+	// 1. Hash-based staleness from the shared stale set (B4/A3). Legacy
+	//    no-stamp items are the freshness section's job (warning, D7) —
+	//    this section reports genuine input drift as errors.
+	const stale = computeStaleSet(cwd).filter((item) => item.reason !== "no-stamp");
+	for (const item of stale) {
+		const upstreamSpec = Object.values(STAGE_REGISTRY).find(
+			(candidate) => candidate.workingCopyArtifact.toLowerCase() === item.artifact,
+		);
+		const command =
+			item.artifact === "brainstorm"
+				? "/velpari-brainstorm"
+				: upstreamSpec
+					? `/velpari-${upstreamSpec.key}`
+					: null;
+		items.push({
+			status: "error",
+			message:
+				`${item.key} is stale (${item.reason}): inputs changed since publish ` +
+				`(${item.changedInputs.join(", ")}).` +
+				(command ? ` Re-run ${command} (update mode) to sync.` : ""),
+			details: [`artifact: ${item.path}`],
+			suggestion: suggestionFor("stale-downstream"),
+		});
 	}
 
 	// 2. Deprecated PRD ids still live in the RTM.
@@ -132,12 +122,13 @@ export function checkStaleDownstreamSection(
 
 	const errorCount = items.filter((i) => i.status === "error").length;
 	if (errorCount === 0) {
+		const trackedCount = Object.keys(loadFreshnessManifest(cwd).artifacts).length;
 		items.push({
 			status: "ok",
 			message:
-				checkedPairs === 0 && deprecatedChecked === 0
-					? "No published artifact pairs to compare yet."
-					: `All ${checkedPairs} published pair(s) in sync; ${deprecatedChecked} deprecated id(s) correctly propagated.`,
+				trackedCount === 0 && deprecatedChecked === 0
+					? "No stale artifacts; nothing to compare yet."
+					: `All tracked artifact(s) in sync; ${deprecatedChecked} deprecated id(s) correctly propagated.`,
 		});
 	}
 

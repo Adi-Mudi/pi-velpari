@@ -138,7 +138,7 @@ describe("withRunLock", () => {
 	it("fails open on unexpected I/O errors (lock path blocked by a file)", () => {
 		// A regular file where the lock DIRECTORY should be: mkdir/read/write
 		// all fail with ENOTDIR/EEXIST — the mutation must still run.
-		const plansDir = path.join(tmpDir, ".IDE_Plans", "velpari");
+		const plansDir = path.join(tmpDir, ".pi", "velpari");
 		fs.mkdirSync(plansDir, { recursive: true });
 		fs.writeFileSync(path.join(plansDir, ".lock"), "not a dir", "utf8");
 

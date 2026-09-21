@@ -131,6 +131,11 @@ After all 4 scouts complete:
 
 ## Output Format (BOTH files)
 
+For the test-cases artifact, write the YAML sidecar FIRST — it is the
+source of truth; the markdown is rendered FROM it and the publish gate
+re-renders it at publish time (a markdown-only test-cases working copy
+is blocked).
+
 ### File 1: `<primaryWorkingCopy>` = `test-plan_<projectName>.md`
 
 ```markdown
@@ -170,7 +175,43 @@ updated: <ISO timestamp>
 For specific test cases, see test-cases_<projectName>.md.
 ```
 
-### File 2: `<additionalWorkingCopy>` = `test-cases_<projectName>.md`
+### File 2: `<additionalWorkingCopy>` sidecar = `test-cases_<projectName>.yaml` — source of truth
+
+```yaml
+project: <projectName>
+version: 1.0.0
+unitTests:
+  - id: TC-1
+    name: createUser with valid input returns userId
+    target: M-1.createUser
+    steps: "1. ... 2. ..."
+    expected: userId (UUID)
+    edgeCases: valid input
+    traces: [FR-1, AF-1]
+integrationTests:
+  - id: IT-1
+    name: "signup flow: auth → email"
+    target: signup
+    modules: [M-1, M-2]
+    steps: "..."
+    expected: email sent within 5s
+    traces: [FR-1, NFR-2]
+changeLog: []
+```
+
+Rules: unit ids match `TC-<n>`, integration ids match `IT-<n>`, no
+duplicates across both lists; `name` / `target` / `steps` / `expected`
+are required strings; `traces` is MANDATORY on every record — a
+non-empty list of `FR-N` / `NFR-N` / `AF-N` ids the test verifies
+(Layer-2 ID coverage). Every Phase-1 (MVP) FR must be reachable through
+at least one TC. Update mode: never delete a test — append new ids at
+the next free number, bump the version, add a `changeLog` entry. The
+publish gate validates this schema and BLOCKS the publish on errors.
+
+### File 3: `<additionalWorkingCopy>` = `test-cases_<projectName>.md` — rendered preview
+
+Render the markdown FROM the YAML (approve re-renders it at publish
+time):
 
 ```markdown
 ---
@@ -188,18 +229,22 @@ updated: <ISO timestamp>
 
 ## Unit Tests
 
-| TC ID | Name | Target | Steps | Expected | Edge Cases |
-|---|---|---|---|---|---|
-| TC-1 | createUser with valid input returns userId | M-1.createUser | 1. ... 2. ... | userId (UUID) | valid input |
-| TC-2 | createUser with duplicate email raises | M-1.createUser | ... | EmailAlreadyTaken | duplicate |
-| ... | | | | | |
+| TC ID | Name | Target | Steps | Expected | Edge Cases | Traces |
+|---|---|---|---|---|---|---|
+| TC-1 | createUser with valid input returns userId | M-1.createUser | 1. ... 2. ... | userId (UUID) | valid input | FR-1, AF-1 |
+| TC-2 | createUser with duplicate email raises | M-1.createUser | ... | EmailAlreadyTaken | duplicate | FR-1, AF-1 |
+| ... | | | | | | |
 
 ## Integration Tests
 
-| TC ID | Name | Target | Modules | Steps | Expected |
-|---|---|---|---|---|---|
-| IT-1 | signup flow: auth → email | signup | M-1, M-2 | ... | email sent within 5s |
-| ... | | | | | |
+| TC ID | Name | Target | Modules | Steps | Expected | Traces |
+|---|---|---|---|---|---|---|
+| IT-1 | signup flow: auth → email | signup | M-1, M-2 | ... | email sent within 5s | FR-1, NFR-2 |
+| ... | | | | | | |
+
+The `Traces` column is mandatory (Layer-2 ID coverage): comma-separated
+`FR-N` / `NFR-N` / `AF-N` ids the test case verifies. Every Phase-1 (MVP)
+FR must be reachable through at least one TC.
 
 For test strategy, see test-plan_<projectName>.md.
 ```

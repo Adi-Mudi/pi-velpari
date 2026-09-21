@@ -46,10 +46,10 @@ function setupProject(version: string, sectionCount: number): ArchContext {
 		JSON.stringify({ version: 4, projectName: "TodoApp" }),
 		"utf8",
 	);
-	// .IDE_Plans/velpari/state.json
-	fs.mkdirSync(path.join(tmpDir, ".IDE_Plans", "velpari"), { recursive: true });
+	// .pi/velpari/state.json
+	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
 	fs.writeFileSync(
-		path.join(tmpDir, ".IDE_Plans", "velpari", "state.json"),
+		path.join(tmpDir, ".pi", "velpari", "state.json"),
 		JSON.stringify({ runId: "run-test", mission: "Test mission" }),
 		"utf8",
 	);
@@ -71,9 +71,9 @@ describe("arch-confirm prelude shape wiring", () => {
 			JSON.stringify({ version: 4, projectName: "TodoApp" }),
 			"utf8",
 		);
-		fs.mkdirSync(path.join(tmpDir, ".IDE_Plans", "velpari"), { recursive: true });
+		fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
 		fs.writeFileSync(
-			path.join(tmpDir, ".IDE_Plans", "velpari", "state.json"),
+			path.join(tmpDir, ".pi", "velpari", "state.json"),
 			JSON.stringify({ runId: "run-test", mission: "Test mission" }),
 			"utf8",
 		);

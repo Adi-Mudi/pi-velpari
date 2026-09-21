@@ -1,10 +1,16 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { atomicWriteJson } from "../io/atomic-write.js";
+import { atomicWriteFile, atomicWriteJson } from "../io/atomic-write.js";
 import { withRunLock } from "../io/run-lock.js";
 import type { Stage } from "./constants.js";
 import { PATHS, STAGE_TRANSITIONS } from "./constants.js";
+import {
+	appendHistory,
+	historyFilePath,
+	loadHistory,
+	migrateInlineHistory,
+} from "./history.js";
 import type { SpikeResult } from "./spike.js";
 
 /**
@@ -26,8 +32,19 @@ export interface RunState {
 	runId: string;
 	mission: string;
 	currentStage: Stage;
-	history: HistoryEntry[];
+	/** @deprecated B2 — history lives in the per-run `history.jsonl`
+	 *  (see core/history.ts); state.json no longer carries it. The field
+	 *  stays in the schema as optional so legacy state.json files and
+	 *  existing fixtures still parse; runtime readers use `loadHistory`. */
+	history?: HistoryEntry[];
 	updatedAt: string;
+	/** A2 — stage that was in progress when a brainstorm session opened
+	 *  mid-run (brainstorm-anytime). Absent on a first-run brainstorm
+	 *  (createRun seeds "brainstorming" with nothing to pause). Set by
+	 *  `openBrainstormSession`, consumed by the approve-time door choice
+	 *  (continue → resume it; restart-prd → land at "brainstormed"), and
+	 *  cleared by `resumeFromBrainstorm`/`discardBrainstormSession`. */
+	pausedStage?: Stage;
 	/** Hard lock for the brainstorm lifecycle: true only after the user has
 	 *  confirmed the parent's one-paragraph understanding. */
 	understandingConfirmed?: boolean;
@@ -108,7 +125,7 @@ export interface StandardsProfile {
 /** Architecture sub-life cycle state. Persists the read → confirm → write
  *  discipline so a session resume knows whether the developer already
  *  approved the working context. */
-export interface ArchSubCycleState {
+interface ArchSubCycleState {
 	/** True after the developer has picked "Proceed" on the confirm step. */
 	developerConfirmed?: boolean;
 	/** Outcome of the confirm step ("proceed" | "adjust" | "profile" | "no-ui"). */
@@ -173,7 +190,7 @@ export const BRAINSTORM_QUESTION_STATES = [
 	"not-wanted",
 	"replaced",
 ] as const;
-export type BrainstormQuestionState = (typeof BRAINSTORM_QUESTION_STATES)[number];
+type BrainstormQuestionState = (typeof BRAINSTORM_QUESTION_STATES)[number];
 
 export interface BrainstormQuestion {
 	id: string;
@@ -189,7 +206,7 @@ export interface BrainstormQuestion {
  *  dispatch. The topic is a short label the parent LLM chose (e.g.
  *  "community patterns for BSE"). `confirmedAt` is the ISO timestamp of
  *  the user's yes on the consent prompt. */
-export interface WebDispatchConfirmation {
+interface WebDispatchConfirmation {
 	topic: string;
 	confirmedAt: string;
 }
@@ -205,10 +222,18 @@ const EMPTY_STATE: RunState = {
 
 /**
  * Load the current run state from disk. Returns an empty state if no run exists.
+ *
+ * B1 one-time migration: when `.pi/velpari/state.json` is missing but the
+ * legacy `.IDE_Plans/velpari/state.json` exists, the legacy file is moved
+ * (history split out to the per-run history.jsonl) before the normal load.
  */
 export function loadState(cwd: string = process.cwd()): RunState {
 	const filePath = join(cwd, PATHS.STATE_FILE);
-	if (!existsSync(filePath)) return { ...EMPTY_STATE };
+	if (!existsSync(filePath)) {
+		const legacyPath = join(cwd, PATHS.LEGACY_STATE_FILE);
+		if (!existsSync(legacyPath)) return { ...EMPTY_STATE };
+		migrateLegacyState(cwd, legacyPath, filePath);
+	}
 	const raw = readFileSync(filePath, "utf8");
 	const parsed = JSON.parse(raw) as Partial<RunState>;
 	return {
@@ -220,13 +245,47 @@ export function loadState(cwd: string = process.cwd()): RunState {
 }
 
 /**
+ * B1/B2 migration: read legacy state → write the new state.json without
+ * inline history → split inline history into the per-run history.jsonl →
+ * verify read-back → keep a one-time `.premigration.bak` (removed by the
+ * next successful saveState) → delete the legacy file. Any failure before
+ * the unlink leaves the legacy file in place so the next load retries.
+ */
+function migrateLegacyState(cwd: string, legacyPath: string, filePath: string): void {
+	const raw = readFileSync(legacyPath, "utf8");
+	const parsed = JSON.parse(raw) as Partial<RunState>;
+	const { history, ...rest } = parsed;
+	const migrated: RunState = { ...EMPTY_STATE, ...rest, version: 1 };
+	atomicWriteJson(filePath, migrated);
+	if (migrated.runId && history && history.length > 0) {
+		migrateInlineHistory(cwd, migrated.runId, history);
+	}
+	const verified = JSON.parse(readFileSync(filePath, "utf8")) as Partial<RunState>;
+	if (verified.runId !== migrated.runId) {
+		throw new Error(
+			`State migration verification failed: read-back runId "${verified.runId}" ` +
+				`does not match "${migrated.runId}". Legacy state left in place.`,
+		);
+	}
+	atomicWriteFile(`${filePath}.premigration.bak`, raw, "utf8");
+	unlinkSync(legacyPath);
+}
+
+/**
  * Save run state to disk. Creates parent directories if missing.
  * Writes are atomic (temp + rename) via the io layer.
+ *
+ * B2: the deprecated `history` field is stripped before write — history
+ * persists only in the per-run history.jsonl. A leftover migration
+ * `.premigration.bak` is removed here: by the time the next save succeeds,
+ * the new state.json is proven live.
  */
 export function saveState(state: RunState, cwd: string = process.cwd()): void {
 	const filePath = join(cwd, PATHS.STATE_FILE);
-	const updated: RunState = { ...state, updatedAt: new Date().toISOString() };
-	atomicWriteJson(filePath, updated);
+	const { history: _history, ...rest } = { ...state, updatedAt: new Date().toISOString() };
+	atomicWriteJson(filePath, rest);
+	const bakPath = `${filePath}.premigration.bak`;
+	if (existsSync(bakPath)) unlinkSync(bakPath);
 }
 
 /**
@@ -237,21 +296,21 @@ export function createRun(mission: string, cwd: string = process.cwd()): RunStat
 		const now = new Date();
 		const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 16);
 		const slug = mission.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32);
+		const seed: HistoryEntry = {
+			stage: "brainstorming",
+			command: "/velpari-brainstorm",
+			timestamp: now.toISOString(),
+		};
 		const state: RunState = {
 			version: 1,
 			runId: `${stamp}-${slug}`,
 			mission,
 			currentStage: "brainstorming",
-			history: [
-				{
-					stage: "brainstorming",
-					command: "/velpari-brainstorm",
-					timestamp: now.toISOString(),
-				},
-			],
+			history: [seed],
 			updatedAt: now.toISOString(),
 		};
 		saveState(state, cwd);
+		appendHistory(cwd, state.runId, seed);
 		return state;
 	});
 }
@@ -288,37 +347,57 @@ export function advanceStage(
 		const targetStage: Stage =
 			(stageOverride as Stage | undefined) ?? transition!.to;
 		const now = new Date().toISOString();
+		const entry: HistoryEntry = { stage: targetStage, command, timestamp: now };
 		const next: RunState = {
 			...state,
 			currentStage: targetStage,
-			history: [...state.history, { stage: targetStage, command, timestamp: now }],
+			history: [...(state.history ?? []), entry],
 			updatedAt: now,
 		};
 		saveState(next, cwd);
+		appendHistory(cwd, next.runId, entry);
 		return next;
 	});
 }
 
 /**
- * Clear the current run. Deletes state.json.
+ * Clear the current run. Deletes state.json (both the live and the legacy
+ * location), the migration `.premigration.bak` if one is still around, and
+ * the run's history.jsonl.
  */
 export function clearRun(cwd: string = process.cwd()): void {
 	withRunLock(cwd, "clearRun", () => {
 		const filePath = join(cwd, PATHS.STATE_FILE);
+		const legacyPath = join(cwd, PATHS.LEGACY_STATE_FILE);
+		const runId = readRunId(filePath) ?? readRunId(legacyPath);
+		if (runId) {
+			const historyPath = historyFilePath(cwd, runId);
+			if (existsSync(historyPath)) {
+				unlinkSync(historyPath);
+			}
+		}
 		if (existsSync(filePath)) {
 			unlinkSync(filePath);
+		}
+		if (existsSync(legacyPath)) {
+			unlinkSync(legacyPath);
+		}
+		const bakPath = `${filePath}.premigration.bak`;
+		if (existsSync(bakPath)) {
+			unlinkSync(bakPath);
 		}
 	});
 }
 
-/**
- * Publish a working copy to Doc/. Phase A stub.
- */
-export function publishToDoc(_source: string, _target: string, cwd: string = process.cwd()): void {
-	void _source;
-	void _target;
-	void cwd;
-	// Phase A: no-op.
+/** Best-effort runId probe — never triggers migration, never throws. */
+function readRunId(filePath: string): string | undefined {
+	try {
+		if (!existsSync(filePath)) return undefined;
+		const parsed = JSON.parse(readFileSync(filePath, "utf8")) as Partial<RunState>;
+		return parsed.runId;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -332,13 +411,17 @@ export function publishToDoc(_source: string, _target: string, cwd: string = pro
  * Callers: ops/approve.ts and stages/brainstorm-approve.ts immediately
  * after a successful `advanceStage`.
  */
-export function appendStageEntry(pi: ExtensionAPI, state: RunState): void {
+export function appendStageEntry(
+	pi: ExtensionAPI,
+	state: RunState,
+	cwd: string = process.cwd(),
+): void {
 	pi.appendEntry("velpari-state", {
 		runId: state.runId,
 		mission: state.mission,
 		stage: state.currentStage,
 		updatedAt: state.updatedAt,
-		history: state.history,
+		history: loadHistory(cwd, state.runId),
 	});
 }
 
@@ -537,15 +620,138 @@ export function clearBrainstormSession(
 	return withRunLock(cwd, "clearBrainstormSession", () => {
 		const next: RunState = {
 			...state,
-			understandingConfirmed: undefined,
-			scansSelected: undefined,
-			brainstormQuestions: undefined,
-			brainstormDispatchCount: undefined,
-			webDispatchConfirmations: undefined,
-			activeSubagents: undefined,
+			...clearedBrainstormSessionFields(),
 			updatedAt: new Date().toISOString(),
 		};
 		saveState(next, cwd);
+		return next;
+	});
+}
+
+/** The six lifecycle fields `clearBrainstormSession` wipes, as a patch. */
+function clearedBrainstormSessionFields(): Partial<RunState> {
+	return {
+		understandingConfirmed: undefined,
+		scansSelected: undefined,
+		brainstormQuestions: undefined,
+		brainstormDispatchCount: undefined,
+		webDispatchConfirmations: undefined,
+		activeSubagents: undefined,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Brainstorm-anytime (A2) — pause/resume session primitives (D1/D2/D5/D7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Open a brainstorm session mid-run: pause the current stage and move to
+ * `brainstorming`. First-run (`none`) keeps `pausedStage` absent — the
+ * caller uses `createRun` there instead, so this primitive is for existing
+ * runs. Throws when a session is already open (no nesting). Resets the
+ * dispatch counter (D5 — caps are per-session). Run-locked, history-
+ * appending; NOT a STAGE_TRANSITIONS row (D2).
+ */
+export function openBrainstormSession(cwd: string = process.cwd()): RunState {
+	return withRunLock(cwd, "openBrainstormSession", () => {
+		const state = loadState(cwd);
+		if (state.currentStage === "brainstorming") {
+			throw new Error(
+				"A brainstorm session is already open — approve or discard it first.",
+			);
+		}
+		const now = new Date().toISOString();
+		const paused = state.currentStage === "none" ? undefined : state.currentStage;
+		const entry: HistoryEntry = {
+			stage: "brainstorming",
+			command: "/velpari-brainstorm (open-session)",
+			timestamp: now,
+		};
+		const next: RunState = {
+			...state,
+			currentStage: "brainstorming",
+			pausedStage: paused,
+			brainstormDispatchCount: 0,
+			history: [...(state.history ?? []), entry],
+			updatedAt: now,
+		};
+		saveState(next, cwd);
+		if (next.runId) appendHistory(cwd, next.runId, entry);
+		return next;
+	});
+}
+
+/**
+ * Close an open brainstorm after a successful approve, through one of the
+ * two doors (D3): `continue` resumes the paused stage (requires one);
+ * `restart-prd` lands at `brainstormed` — the same state a first-run
+ * approve reaches, so `/velpari-prd` is next. Clears the session fields
+ * (inline — the run lock is not recursive).
+ */
+export function resumeFromBrainstorm(
+	cwd: string = process.cwd(),
+	door: "continue" | "restart-prd" = "continue",
+): RunState {
+	return withRunLock(cwd, `resumeFromBrainstorm:${door}`, () => {
+		const state = loadState(cwd);
+		if (state.currentStage !== "brainstorming") {
+			throw new Error("No brainstorm session is open.");
+		}
+		if (door === "continue" && !state.pausedStage) {
+			throw new Error(
+				'Door "continue" requires a paused stage — first-run brainstorms land at "brainstormed" (restart-prd).',
+			);
+		}
+		const target: Stage = door === "restart-prd" ? "brainstormed" : state.pausedStage!;
+		const now = new Date().toISOString();
+		const entry: HistoryEntry = {
+			stage: target,
+			command: `/velpari-approve-brainstorm (${door})`,
+			timestamp: now,
+		};
+		const next: RunState = {
+			...state,
+			currentStage: target,
+			pausedStage: undefined,
+			...clearedBrainstormSessionFields(),
+			history: [...(state.history ?? []), entry],
+			updatedAt: now,
+		};
+		saveState(next, cwd);
+		if (next.runId) appendHistory(cwd, next.runId, entry);
+		return next;
+	});
+}
+
+/**
+ * Discard an open brainstorm without publishing (D7): clear the session
+ * fields and resume the paused stage (first-run sessions return to `none`
+ * — equivalent to a reset for a never-published brainstorm). No artifact
+ * is written; a history entry records the discard.
+ */
+export function discardBrainstormSession(cwd: string = process.cwd()): RunState {
+	return withRunLock(cwd, "discardBrainstormSession", () => {
+		const state = loadState(cwd);
+		if (state.currentStage !== "brainstorming") {
+			throw new Error("No brainstorm session is open.");
+		}
+		const target: Stage = state.pausedStage ?? "none";
+		const now = new Date().toISOString();
+		const entry: HistoryEntry = {
+			stage: target,
+			command: "/velpari-brainstorm-session (discard)",
+			timestamp: now,
+		};
+		const next: RunState = {
+			...state,
+			currentStage: target,
+			pausedStage: undefined,
+			...clearedBrainstormSessionFields(),
+			history: [...(state.history ?? []), entry],
+			updatedAt: now,
+		};
+		saveState(next, cwd);
+		if (next.runId) appendHistory(cwd, next.runId, entry);
 		return next;
 	});
 }

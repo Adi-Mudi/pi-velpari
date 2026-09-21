@@ -23,7 +23,7 @@ import type {
 	WriteAgentsResult,
 } from "../core/agents-generator.js";
 
-export interface WriteSetPreviewOptions {
+interface WriteSetPreviewOptions {
 	/** Maximum line width (terminal columns). Defaults to 80. */
 	width?: number;
 	/** When true, the bucket labels use the regenerate-friendly copy

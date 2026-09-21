@@ -37,13 +37,13 @@ afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** Write `.IDE_Plans/velpari/state.json` directly with the given stage. */
+/** Write `.pi/velpari/state.json` directly with the given stage. */
 function makeState(stage: RunState["currentStage"], opts: {
 	runId?: string;
 	mission?: string;
 	standardsProfile?: { id: string; version: string };
 } = {}): void {
-	const dir = path.join(tmpDir, ".IDE_Plans", "velpari");
+	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
 		version: 1,

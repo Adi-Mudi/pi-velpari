@@ -21,6 +21,7 @@ import { remediate as frontmatter } from "../../src/doctor/checks/remediate/fron
 import { remediate as fingerprintUntracked } from "../../src/doctor/checks/remediate/fingerprint-untracked.js";
 import { remediate as workingPublishedDrift } from "../../src/doctor/checks/remediate/working-published-drift.js";
 import { REMEDIATE_FNS } from "../../src/doctor/checks/remediate/index.js";
+import { readYamlFile } from "../../src/core/yaml-data.js";
 
 let tmpDir: string;
 
@@ -191,8 +192,19 @@ describe("fingerprint-untracked remediate", () => {
 			cwd: tmpDir,
 			projectName: "TestApp",
 		});
-		assert.equal(first.changedFiles.length, 2, "stamps both JSON and MD");
-		const after = JSON.parse(fs.readFileSync(rtmJsonPath, "utf8"));
+		assert.equal(first.changedFiles.length, 2, "stamps both sidecar and MD");
+		// B3/D4: the legacy .json is read but the write lands in .yaml; the
+		// .json is left untouched (no deletion).
+		const rtmYamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
+		assert.ok(fs.existsSync(rtmYamlPath), "remediate writes the .yaml sidecar");
+		assert.deepEqual(
+			JSON.parse(fs.readFileSync(rtmJsonPath, "utf8")),
+			rtmJson,
+			"legacy .json stays untouched",
+		);
+		const after = readYamlFile(rtmYamlPath) as typeof rtmJson & {
+			rows: { id: string; fingerprint?: string }[];
+		};
 		for (const row of after.rows) {
 			// hashRequirementText returns raw hex (no "sha256:" prefix).
 			assert.match(
@@ -222,7 +234,7 @@ describe("working-published-drift remediate", () => {
 			recursive: true,
 		});
 		fs.writeFileSync(
-			path.join(tmpDir, ".IDE_Plans", "velpari", "state.json"),
+			path.join(tmpDir, ".pi", "velpari", "state.json"),
 			JSON.stringify({
 				version: 1,
 				runId: "2026-09-19-test",

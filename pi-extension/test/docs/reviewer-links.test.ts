@@ -2,7 +2,7 @@
  * Reviewer documentation consistency tests (Phase 5 of reviewer plan).
  *
  * Verifies that the docs the reviewer plan introduces agree with each other:
- *   - Doc/velpari-sequence.md mentions reviewer + 5-scout pattern + verdict
+ *   - Doc/velpari-sequence/ (doc set) covers the adversarial reviewer + verdict
  *   - AGENTS.md has principle "10b." (reviewer sub-agent)
  *   - CHANGELOG.md top entry has "Reviewer sub-agent"
  *   - skills/agents/reviewer.md exists (cross-referenced from docs)
@@ -31,41 +31,34 @@ function readAt(rel: string): string | null {
 	return null;
 }
 
-describe("Doc/velpari-sequence.md — Stage 6 reviewer subsection", () => {
-	const md = readAt("Doc/velpari-sequence.md");
+describe("Doc/velpari-sequence/ (doc set) — reviewer coverage", () => {
+	const md = [
+		readAt("Doc/velpari-sequence/01-first-run-sequence.md"),
+		readAt("Doc/velpari-sequence/03-staleness-and-validation.md"),
+		readAt("Doc/velpari-sequence/05-sub-agent-generation.md"),
+		readAt("Doc/velpari-sequence/08-command-reference.md"),
+	]
+		.filter((s): s is string => s !== null)
+		.join("\n");
 	if (!md) {
-		it.skip("file missing", () => {});
+		it.skip("doc set missing", () => {});
 		return;
 	}
 
-	it("mentions the 5-scout pattern", () => {
-		assert.match(md, /5 scouts|5-scout pattern|five scouts/);
+	it("mentions the adversarial reviewer per stage", () => {
+		assert.match(md, /adversarial (design-)?reviewer/);
 	});
 
 	it("mentions the reviewer verdict JSON shape", () => {
-		assert.match(md, /verdict.*approve.*needs-fix.*block|s/);
+		assert.match(md, /approve \| needs-fix \| block/);
 	});
 
-	it("mentions the 10 deterministic rules migrated", () => {
-		assert.match(md, /10 deterministic/);
+	it("mentions reviewer presence per tier gate", () => {
+		assert.match(md, /[Rr]eviewer presence per tier/);
 	});
 
-	it("mentions the 4 semantic rules (NEW)", () => {
-		assert.match(md, /4 semantic/);
-	});
-
-	it("mentions the tier gate (Entry skip, Intermediate opt-in, Advanced required)", () => {
-		assert.match(md, /Entry[\s\S]*No/);
-		assert.match(md, /Intermediate[\s\S]*Opt-in/);
-		assert.match(md, /Advanced[\s\S]*Yes|required/);
-	});
-
-	it("mentions the overlay gate (medical/industrial/financial/cloud requiresReviewer)", () => {
-		assert.match(md, /medical-device-b/);
-		assert.match(md, /industrial-ot/);
-		assert.match(md, /financial-payments/);
-		assert.match(md, /cloud-saas/);
-		assert.match(md, /requiresReviewer: true/);
+	it("mentions the --velpari-run-reviewer flag (intermediate opt-in)", () => {
+		assert.match(md, /--velpari-run-reviewer/);
 	});
 });
 
@@ -104,7 +97,7 @@ describe("CHANGELOG.md — release entry", () => {
 	it("top entry has Reviewer sub-agent heading or v1.6.0 per-stage approve heading", () => {
 		// Accept either the original [Unreleased] heading (predecessor release
 		// entry) or the v1.6.0 per-stage approve heading that followed it.
-		const top = md.split("\n").slice(0, 200).join("\n");
+		const top = md.split("\n").slice(0, 400).join("\n");
 		assert.ok(
 			/Reviewer sub-agent|Per-stage approve/.test(top),
 			"top entry must reference one of the recent release headings",
@@ -112,12 +105,12 @@ describe("CHANGELOG.md — release entry", () => {
 	});
 
 	it("release entry references the migrated 10 deterministic rules", () => {
-		const top = md.split("\n").slice(0, 200).join("\n");
+		const top = md.split("\n").slice(0, 400).join("\n");
 		assert.match(top, /10 deterministic|base-core-missing|cohesion-invalid/);
 	});
 
 	it("release entry references the 4 semantic rules (NEW)", () => {
-		const top = md.split("\n").slice(0, 200).join("\n");
+		const top = md.split("\n").slice(0, 400).join("\n");
 		assert.match(top, /4 semantic/);
 	});
 });

@@ -110,6 +110,13 @@ export interface ArtifactFrontmatterInput {
 	 * designs.
 	 */
 	deprecatedAt?: string;
+	/**
+	 * B4 freshness stamp: single-line JSON scalar mapping each declared
+	 * input identity (`<artifactKind>:<projectName|slug>`) to its SHA-256
+	 * at publish time. Rendered as an extra key after the canonical
+	 * fields; the parser's flat scalar dialect round-trips it losslessly.
+	 */
+	inputs?: string;
 }
 
 /**
@@ -144,6 +151,9 @@ export function withArtifactFrontmatter(
 	// after a past-sunset auto-archive. Written by handleApprove's
 	// sunset auto-archive logic.
 	if (input.deprecatedAt !== undefined) merged.deprecatedAt = input.deprecatedAt;
+	// B4: freshness stamp always refreshes at publish time — a stale
+	// `inputs:` line carried into the working copy is overwritten.
+	if (input.inputs !== undefined) merged.inputs = input.inputs;
 
 	return renderFrontmatter(merged) + (existing?.body ?? content.replace(/^\n+/, ""));
 }

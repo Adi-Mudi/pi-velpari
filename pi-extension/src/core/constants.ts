@@ -43,7 +43,7 @@ export type Stage =
  * The `command` is the /velpari-* slash command that triggers the transition.
  * `from` is the current stage; `to` is the next stage after the command.
  */
-export interface StageTransition {
+interface StageTransition {
 	from: Stage;
 	to: Stage;
 	command: string;
@@ -120,8 +120,10 @@ export const STAGE_FOLDERS: Readonly<Partial<Record<Stage, string>>> = {
 
 /** Path helpers (Phase A stubs — full implementation in Phase E). */
 export const PATHS = {
-	RUN_STATE_DIR: ".IDE_Plans/velpari",
-	STATE_FILE: ".IDE_Plans/velpari/state.json",
+	RUN_STATE_DIR: ".pi/velpari",
+	STATE_FILE: ".pi/velpari/state.json",
+	LEGACY_STATE_FILE: ".IDE_Plans/velpari/state.json",
+	FRESHNESS_FILE: ".pi/velpari/freshness.json",
 	DOCTOR_REPORT: ".IDE_Plans/velpari/doctor-report.md",
 	RUNS_DIR: ".IDE_Plans/velpari/runs",
 	DOC_DIR: "Doc",

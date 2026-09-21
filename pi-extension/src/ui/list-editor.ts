@@ -10,7 +10,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { isTui } from "./is-tui.js";
 
-export type ListEditorItemKind = "suggestion" | "selected" | "action";
+type ListEditorItemKind = "suggestion" | "selected" | "action";
 
 export interface ListEditorItem {
 	id: string;
@@ -20,12 +20,12 @@ export interface ListEditorItem {
 	value: string;
 }
 
-export interface ListEditorCustomAction {
+interface ListEditorCustomAction {
 	id: string;
 	label: string;
 }
 
-export interface ListEditorOptions {
+interface ListEditorOptions {
 	title: string;
 	items: ListEditorItem[];
 	filterQuery?: string;

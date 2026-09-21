@@ -17,7 +17,7 @@
  *     by tactic coverage)
  */
 
-export type QACategory =
+type QACategory =
 	| "performance"
 	| "availability"
 	| "security"

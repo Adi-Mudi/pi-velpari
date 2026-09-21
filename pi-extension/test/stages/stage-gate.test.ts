@@ -17,6 +17,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { runStage, STAGE_GATE } from "../../src/stages/registry.js";
 import { advanceStage, createRun } from "../../src/core/state.js";
 import { nextCommandsFor, STAGE_TRANSITIONS } from "../../src/core/constants.js";
+import { hashFileContent } from "../../src/core/fingerprints.js";
+import { recordPublish } from "../../src/core/freshness.js";
 
 interface Notice {
 	message: string;
@@ -90,13 +92,14 @@ describe("nextCommandsFor", () => {
 });
 
 describe("runStage hard gate", () => {
-	it("blocks /velpari-prd while brainstorming and names the correct command", async () => {
+	it("blocks /velpari-prd while brainstorming with the two-door guide (A1)", async () => {
 		createRun("Test mission", tmpDir);
 		await runStage("prd", makeCtx(), pi, tmpDir);
 		const n = lastNotice();
 		assert.equal(n.level, "error");
-		assert.match(n.message, /Cannot run \/velpari-prd at stage "brainstorming"/);
+		assert.match(n.message, /Cannot run \/velpari-prd: brainstorm session open/);
 		assert.match(n.message, /\/velpari-approve-brainstorm/);
+		assert.match(n.message, /restart at \/velpari-prd/);
 	});
 
 	it("blocks /velpari-rtm at brainstormed and names /velpari-prd", async () => {
@@ -226,6 +229,155 @@ describe("Stages 6–10 gate values (industry-standard order)", () => {
 			allowed.includes("ordered-development"),
 			"final-design must run only after development-order is approved",
 		);
+	});
+});
+
+describe("runStage stage-start freshness check (A3)", () => {
+	function advanceToDraftedPrd(): void {
+		const s0 = createRun("Test mission", tmpDir);
+		const s1 = advanceStage(s0, "/velpari-approve-brainstorm", tmpDir);
+		const s2 = advanceStage(s1, "/velpari-prd", tmpDir);
+		advanceStage(s2, "/velpari-prd-approve", tmpDir); // drafted-prd
+	}
+
+	function seedConfigAndPrd(): string {
+		const configDir = path.join(tmpDir, ".pi", "velpari");
+		fs.mkdirSync(configDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(configDir, "files.json"),
+			JSON.stringify({ version: 4, projectName: "TestApp" }),
+		);
+		const prdDir = path.join(tmpDir, "Doc", "requirements");
+		fs.mkdirSync(prdDir, { recursive: true });
+		const prdPath = path.join(prdDir, "PRD_TestApp.md");
+		fs.writeFileSync(prdPath, "# PSRS\n", "utf8");
+		return prdPath;
+	}
+
+	function stampPrdWithBrainstormInput(brainstormHash: string): void {
+		recordPublish(tmpDir, {
+			artifact: "prd",
+			projectName: "TestApp",
+			path: path.join("Doc", "requirements", "PRD_TestApp.md"),
+			publishedAt: "2026-09-20T17:00:00.000Z",
+			inputs: { "brainstorm:test-mission": brainstormHash },
+		});
+	}
+
+	function piMock(sent: string[]): ExtensionAPI {
+		return {
+			sendUserMessage: (message: string) => {
+				sent.push(message);
+			},
+		} as unknown as ExtensionAPI;
+	}
+
+	it("blocks stage start when a declared input artifact is itself stale (input-changed)", async () => {
+		advanceToDraftedPrd();
+		seedConfigAndPrd();
+		// Brainstorm file stamped at v1, then edited → prd:TestApp goes stale.
+		const brainstormDir = path.join(tmpDir, "Doc", "brainstorm");
+		fs.mkdirSync(brainstormDir, { recursive: true });
+		const brainstormPath = path.join(brainstormDir, "brainstorm-test-mission.md");
+		fs.writeFileSync(brainstormPath, "# brainstorm v1\n", "utf8");
+		stampPrdWithBrainstormInput(hashFileContent(brainstormPath)!);
+		fs.writeFileSync(brainstormPath, "# brainstorm v2\n", "utf8");
+
+		const sent: string[] = [];
+		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
+		const n = lastNotice();
+		assert.equal(n.level, "error");
+		assert.match(n.message, /Cannot run \/velpari-rtm: declared inputs are stale/);
+		assert.match(n.message, /prd:TestApp is stale \(input-changed: brainstorm:test-mission\)/);
+		assert.match(n.message, /\/velpari-prd, then \/velpari-prd-approve/);
+		assert.match(n.message, /\.pi\/velpari\/freshness\.json/);
+		assert.equal(sent.length, 0, "stage must not start");
+	});
+
+	it("blocks stage start when a declared input's own input vanished (input-missing)", async () => {
+		advanceToDraftedPrd();
+		seedConfigAndPrd();
+		stampPrdWithBrainstormInput("0".repeat(64)); // no brainstorm file on disk
+
+		const sent: string[] = [];
+		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
+		const n = lastNotice();
+		assert.equal(n.level, "error");
+		assert.match(n.message, /declared inputs are stale/);
+		assert.match(n.message, /input-missing/);
+		assert.equal(sent.length, 0);
+	});
+
+	it("re-brainstorm republish stales the PRD; the block names the remedy (D8)", async () => {
+		advanceToDraftedPrd();
+		seedConfigAndPrd();
+		// Brainstorm v1 published (base-slug manifest entry), PRD stamped on it.
+		const brainstormDir = path.join(tmpDir, "Doc", "brainstorm");
+		fs.mkdirSync(brainstormDir, { recursive: true });
+		const v1rel = path.join("Doc", "brainstorm", "brainstorm-test-mission.md");
+		const v1abs = path.join(tmpDir, v1rel);
+		fs.writeFileSync(v1abs, "# brainstorm v1\n", "utf8");
+		recordPublish(tmpDir, {
+			artifact: "brainstorm",
+			slug: "test-mission",
+			path: v1rel,
+			publishedAt: "2026-09-20T17:00:00.000Z",
+			inputs: {},
+		});
+		stampPrdWithBrainstormInput(hashFileContent(v1abs)!);
+
+		// Re-brainstorm the same topic: suffixed file, base-key upsert (D8).
+		const v2rel = path.join(
+			"Doc", "brainstorm", "brainstorm-test-mission-20260920-180000.md",
+		);
+		fs.writeFileSync(path.join(tmpDir, v2rel), "# brainstorm v2\n", "utf8");
+		recordPublish(tmpDir, {
+			artifact: "brainstorm",
+			slug: "test-mission",
+			path: v2rel,
+			publishedAt: "2026-09-20T18:00:00.000Z",
+			inputs: {},
+		});
+
+		const sent: string[] = [];
+		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
+		const n = lastNotice();
+		assert.equal(n.level, "error");
+		assert.match(n.message, /Cannot run \/velpari-rtm: declared inputs are stale/);
+		assert.match(n.message, /prd:TestApp is stale \(input-changed: brainstorm:test-mission\)/);
+		assert.match(n.message, /\/velpari-prd, then \/velpari-prd-approve/);
+		assert.equal(sent.length, 0, "stage must not start on stale inputs");
+	});
+
+	it("legacy no-stamp input warns but does not block (D7)", async () => {
+		advanceToDraftedPrd();
+		seedConfigAndPrd();
+		// Legacy entry: no inputs map.
+		recordPublish(tmpDir, {
+			artifact: "prd",
+			projectName: "TestApp",
+			path: path.join("Doc", "requirements", "PRD_TestApp.md"),
+			publishedAt: "2026-09-20T17:00:00.000Z",
+		});
+
+		const sent: string[] = [];
+		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
+		assert.ok(
+			notices.some((n) => n.level === "warning" && /no freshness stamp/.test(n.message)),
+			"expected a no-stamp warning",
+		);
+		assert.ok(notices.every((n) => n.level !== "error"), "no-stamp must not block");
+		assert.equal(sent.length, 1, "stage started");
+	});
+
+	it("no manifest at all → stage starts without freshness notices", async () => {
+		advanceToDraftedPrd();
+		seedConfigAndPrd();
+
+		const sent: string[] = [];
+		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
+		assert.ok(notices.every((n) => !/freshness/i.test(n.message)));
+		assert.equal(sent.length, 1);
 	});
 });
 

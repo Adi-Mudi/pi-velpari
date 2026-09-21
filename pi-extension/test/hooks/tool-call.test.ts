@@ -17,8 +17,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerToolCallHook } from "../../src/hooks/tool-call.js";
-import { advanceStage, createRun, loadState } from "../../src/core/state.js";
+import { registerToolCallHook, guardStageMutation } from "../../src/hooks/tool-call.js";
+import {
+	advanceStage,
+	createRun,
+	discardBrainstormSession,
+	loadState,
+	openBrainstormSession,
+	saveState,
+} from "../../src/core/state.js";
 import { PATHS } from "../../src/core/constants.js";
 
 type ToolCallHandler = (
@@ -200,5 +207,64 @@ describe("tool_call hook (scout spawn guard)", () => {
 		const state = createRun("Test mission", tmpDir);
 		advanceStage(state, "/velpari-approve-brainstorm", tmpDir); // brainstormed
 		assert.equal(fire("subagent", { task: "anything" }), undefined);
+	});
+});
+
+describe("tool_call hook (mutation-lock precedence, D4)", () => {
+	function openPausedBrainstorm(pausedStage: string) {
+		const run = createRun("Test mission", tmpDir);
+		saveState({ ...run, currentStage: pausedStage as never }, tmpDir);
+		return openBrainstormSession(tmpDir);
+	}
+
+	it("brainstorm lock wins over the stage lock while a session is open (pausedStage set)", () => {
+		const opened = openPausedBrainstorm("drafting-prd");
+		assert.equal(loadState(tmpDir).currentStage, "brainstorming");
+		assert.equal(loadState(tmpDir).pausedStage, "drafting-prd");
+
+		// A write INSIDE the paused stage's folder would be allowed by the
+		// stage lock — but the brainstorm lock owns the whole project while
+		// the session is open and blocks it.
+		const prdWorking = path.join(
+			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md",
+		);
+		const res = fire("write", { path: prdWorking });
+		assert.equal(res?.block, true);
+		assert.match(res?.reason ?? "", /read-only/);
+		assert.match(res?.reason ?? "", /velpari-approve-brainstorm/);
+
+		// Writes inside the brainstorm folder stay allowed.
+		const inside = path.join(
+			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "brainstorm", "brainstorm-notes.md",
+		);
+		assert.equal(fire("write", { path: inside }), undefined);
+	});
+
+	it("guardStageMutation is suppressed at brainstorming even when called directly", () => {
+		openPausedBrainstorm("drafting-prd");
+		const state = loadState(tmpDir);
+		const res = guardStageMutation(
+			"write",
+			{ path: "src/index.ts" },
+			state,
+			tmpDir,
+		);
+		assert.equal(res, undefined, "stage lock must not fire while a brainstorm is open");
+	});
+
+	it("discard lifts the brainstorm lock and restores the stage lock at the resumed stage", () => {
+		const opened = openPausedBrainstorm("drafting-prd");
+		const prdWorking = path.join(
+			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md",
+		);
+		assert.equal(fire("write", { path: prdWorking })?.block, true);
+
+		discardBrainstormSession(tmpDir);
+		assert.equal(loadState(tmpDir).currentStage, "drafting-prd");
+
+		// Stage lock back in force: inside the stage folder allowed,
+		// outside blocked.
+		assert.equal(fire("write", { path: prdWorking }), undefined);
+		assert.equal(fire("write", { path: "src/index.ts" })?.block, true);
 	});
 });

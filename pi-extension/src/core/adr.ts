@@ -9,9 +9,9 @@
  * Pure functions. No IO. No LLM calls. No UI calls.
  */
 
-export type ADRStatus = "proposed" | "accepted" | "rejected" | "superseded";
+type ADRStatus = "proposed" | "accepted" | "rejected" | "superseded";
 
-export interface ADROption {
+interface ADROption {
 	id: string;
 	label: string;
 	pros: string;

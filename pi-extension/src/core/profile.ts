@@ -70,7 +70,7 @@ export const DEVELOPMENT_METHODS = [
 export type DevelopmentMethod = (typeof DEVELOPMENT_METHODS)[number];
 
 /** Required sections a profile can demand. */
-export const PROFILE_SECTIONS = [
+const PROFILE_SECTIONS = [
 	"security",
 	"audit",
 	"transaction-integrity",
@@ -86,7 +86,7 @@ export const PROFILE_SECTIONS = [
 export type ProfileSection = (typeof PROFILE_SECTIONS)[number];
 
 /** Output variant suggested by the profile. */
-export type OutputVariant = "compact" | "standard" | "compliance" | "feature";
+type OutputVariant = "compact" | "standard" | "compliance" | "feature";
 
 /** Security levels that influence required sections. */
 export type SecurityLevel = "low" | "medium" | "high";
@@ -103,7 +103,7 @@ export type SecurityLevel = "low" | "medium" | "high";
  *     matched".
  *   - `built-in`     — a specialized profile in the built-in library.
  */
-export type ProfileKind = "common-core" | "built-in";
+type ProfileKind = "common-core" | "built-in";
 
 /** Stable id for the common PSRS core profile. */
 export const COMMON_PSRS_CORE_PROFILE_ID = "core-psrs-v1" as const;
@@ -189,7 +189,7 @@ export interface CompactProfileMetadata {
 // ---------------------------------------------------------------------------
 
 /** Where the profile lives under the project config dir. */
-export const REQUIREMENTS_PROFILE_FILE = "requirements-profile.json" as const;
+const REQUIREMENTS_PROFILE_FILE = "requirements-profile.json" as const;
 
 /** Load a persisted profile, or null when missing/invalid. */
 export function loadRequirementsProfile(cwd: string = process.cwd()): RequirementsProfile | null {

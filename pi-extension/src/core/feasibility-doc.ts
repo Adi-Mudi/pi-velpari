@@ -32,12 +32,12 @@ export const FEASIBILITY_REQUIRED_SECTIONS = [
 	"Change Log",
 ] as const;
 
-export interface FeasibilityDocIssue {
+interface FeasibilityDocIssue {
 	code: "feasibility-section-missing" | "feasibility-section-empty" | "feasibility-verdict-missing";
 	message: string;
 }
 
-export interface FeasibilityDocResult {
+interface FeasibilityDocResult {
 	ok: boolean;
 	issues: FeasibilityDocIssue[];
 }

@@ -35,7 +35,7 @@ import type { PreConditionOk } from "./pre-condition.js";
 
 /** Result of `dispatchScouts`. The composer hands `paths` to Phase 2's
  *  prompt builder and `slots` to the parent LLM via the metadata block. */
-export interface DispatchResult {
+interface DispatchResult {
 	scouts: readonly ScoutSlot[];
 	paths: {
 		runDir: string;
@@ -52,7 +52,7 @@ export interface DispatchResult {
 }
 
 /** Inputs to `dispatchScouts`. */
-export interface DispatchDeps {
+interface DispatchDeps {
 	ctx: ExtensionCommandContext;
 	cwd: string;
 	pre: PreConditionOk;

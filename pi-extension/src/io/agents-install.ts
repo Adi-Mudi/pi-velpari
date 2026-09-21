@@ -47,7 +47,7 @@ export const PERSISTENT_AGENT_IDS = ["web-research", "doc-code-analyst"] as cons
 
 export type PersistentAgentId = (typeof PERSISTENT_AGENT_IDS)[number];
 
-export interface EnsureScoutAgentsResult {
+interface EnsureScoutAgentsResult {
 	installed: ScoutAgentId[];
 	alreadyPresent: ScoutAgentId[];
 }
@@ -223,7 +223,7 @@ void readFileSync;
  * Missing scout files are reported via the result (do not throw) so
  * the parent LLM can surface a clear error at spawn time.
  */
-export interface BootstrapOverlayScoutsResult {
+interface BootstrapOverlayScoutsResult {
 	installed: string[];
 	alreadyPresent: string[];
 	missing: string[];

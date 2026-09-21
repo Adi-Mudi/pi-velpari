@@ -70,14 +70,14 @@ export const DEFAULT_SCANS: readonly ScanType[] = Object.freeze([]);
 
 /** Read-only tools every brainstorm dispatch keeps after stripping.
  *  Lowercase pi tool names (velpari convention). */
-export const READ_ONLY_ALLOWED_TOOLS: readonly string[] = ["read", "grep", "glob"];
+const READ_ONLY_ALLOWED_TOOLS: readonly string[] = ["read", "grep", "glob"];
 
 /** Extra read-only tools allowed for COMMUNITY scans only — the
  *  web-search-agent needs them to do web research. */
-export const COMMUNITY_EXTRA_TOOLS: readonly string[] = ["websearch", "fetchurl"];
+const COMMUNITY_EXTRA_TOOLS: readonly string[] = ["websearch", "fetchurl"];
 
 /** Default tools every brainstorm dispatch receives. */
-export const DEFAULT_DISPATCH_TOOLS: readonly string[] = [...READ_ONLY_ALLOWED_TOOLS];
+const DEFAULT_DISPATCH_TOOLS: readonly string[] = [...READ_ONLY_ALLOWED_TOOLS];
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -101,10 +101,10 @@ export const DEFAULT_DISPATCH_TOOLS: readonly string[] = [...READ_ONLY_ALLOWED_T
  * the dispatch number via `currentDispatchCount`; the handle is looked
  * up from state per call.
  */
-export type DispatchMode = "ephemeral" | "persistent";
+type DispatchMode = "ephemeral" | "persistent";
 
 /** What the parent LLM hands us when it wants to dispatch a scout. */
-export interface DispatchRequest {
+interface DispatchRequest {
 	/** Scout ROLE id — must be one of SCOUT_AGENT_IDS and serve scanType.
 	 *  Roles are fixed; only the spawned agent NAME is swappable via
 	 *  `.pi/velpari/agents.json` (resolved in prepareDispatch). */
@@ -167,7 +167,7 @@ export interface PreparedDispatch {
 }
 
 /** Result of dispatch preparation. */
-export type DispatchPrepResult =
+type DispatchPrepResult =
 	| { ok: true; prepared: PreparedDispatch }
 	| { ok: false; reason: string; details?: string[] };
 

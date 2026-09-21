@@ -17,7 +17,7 @@ import {
 	validateFirstADR,
 } from "../../core/adr.js";
 
-export interface AdrGateError {
+interface AdrGateError {
 	code: string;
 	message: string;
 }
