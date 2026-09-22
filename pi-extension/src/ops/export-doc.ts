@@ -24,6 +24,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import {
 	readArtifact,
@@ -542,7 +543,7 @@ export function runExport(input: ExportInput): ExportResult {
 	if (!existsSync(input.dbPath)) {
 		return { ok: false, problem: `store DB not found at ${input.dbPath}` };
 	}
-	let db;
+	let db: DatabaseSync;
 	try {
 		db = openStoreDb(input.dbPath);
 	} catch (err) {
