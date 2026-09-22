@@ -64,13 +64,13 @@ describe("db-schema — v001 core schema", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	test("v001 applied: user_version = 1, all tables + G6 indexes present", () => {
+	test("v001 applied: user_version >= 1 (Phase 6 sets it to 2 after v002 prose migration), all tables + G6 indexes present", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 1);
+			assert.ok(v.user_version >= 1, "v001 DDL applied (user_version >= 1)");
 			const tables = (
 				db
 					.prepare(
@@ -461,5 +461,162 @@ describe("db-schema — v001 core schema", () => {
 			buildStoreYamlPath("TodoApp", "test-cases", cwd),
 			join(cwd, "Doc", "store", "TodoApp", "test-cases_TodoApp.yaml"),
 		);
+	});
+});
+
+/**
+ * Phase 6 amendment (decision §14): the prose columns listed in §14.4 land
+ * as a forward-only ALTER TABLE migration v2. Each new column is TEXT and
+ * nullable so existing rows stay valid with NULL prose until re-published
+ * or backfilled. ADD COLUMN is supported since SQLite 3.1.3 (no gate).
+ */
+describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "velpari-schema-v002-"));
+	});
+
+	after(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	/** Columns the v002 amendment must land (table → column → table for inspection). */
+	const V002_COLUMNS: ReadonlyArray<[string, string]> = [
+		["fr", "text"],
+		["nfr", "text"],
+		["prd_section", "body"],
+		["pseudocode_block", "content"],
+		["test_case", "steps"],
+		["test_case", "objective"],
+		["test_case", "expected"],
+		["design_module", "description"],
+		["atomic_function", "purpose"],
+		["atomic_function", "source"],
+		["atomic_function", "cohesion"],
+		["atomic_function", "verification"],
+		["atomic_function", "testable"],
+		["dev_step", "description"],
+	];
+
+	test("v002 applies on a fresh open: user_version = 2, all 14 prose columns present + nullable", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const v = db.prepare("PRAGMA user_version").get() as {
+				user_version: number;
+			};
+			assert.equal(v.user_version, 2, "v002 migration applied → user_version = 2");
+			for (const [table, col] of V002_COLUMNS) {
+				const info = db
+					.prepare(`PRAGMA table_info(${table})`)
+					.all() as Array<{ name: string; notnull: number; type: string }>;
+				const found = info.find((r) => r.name === col);
+				assert.ok(found, `column ${table}.${col} must exist after v002`);
+				assert.equal(found.type.toUpperCase(), "TEXT", `${table}.${col} type = TEXT`);
+				assert.equal(found.notnull, 0, `${table}.${col} is nullable (NOT NULL = 0)`);
+			}
+			// Schema integrity still ok after the migration (G4 + Phase 2 invariant).
+			const row = db.prepare("PRAGMA quick_check").get() as Record<string, unknown>;
+			assert.equal(Object.values(row)[0], "ok");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("v002 idempotent: re-opening the same DB does not re-run the migration", () => {
+		const path = join(dir, "index.db");
+		const db1 = openStoreDb(path);
+		closeStoreDb(db1);
+		const db2 = openStoreDb(path);
+		try {
+			const v = db2.prepare("PRAGMA user_version").get() as {
+				user_version: number;
+			};
+			assert.equal(v.user_version, 2);
+		} finally {
+			closeStoreDb(db2);
+		}
+	});
+
+	test("G3 downgrade guard: user_version > 2 refuses to open", async () => {
+		const path = join(dir, "index.db");
+		const seed = openStoreDb(path);
+		closeStoreDb(seed);
+		// Bump to v3 — a future, unknown migration. This extension only knows up to v2.
+		// Uses dynamic import (ESM-friendly) to reach node:sqlite without polluting
+		// the registered lazy loader. The test proves the downgrade guard reads
+		// PRAGMA user_version directly and refuses an opening from an older extension.
+		const sqlite = (await import("node:sqlite")) as typeof import("node:sqlite");
+		const bump = new sqlite.DatabaseSync(path);
+		bump.exec("PRAGMA user_version = 3");
+		bump.close();
+		assert.throws(
+			() => openStoreDb(path),
+			/schema version|Upgrade your extension/,
+		);
+	});
+
+	test("prose columns land with NULL on existing rows after a v001→v002 migration", () => {
+		const path = join(dir, "index.db");
+		const seed = openStoreDb(path);
+		try {
+			insertEnvelope(seed, "r1", "prd");
+			insertEnvelope(seed, "r1", "pseudocode");
+			insertEnvelope(seed, "r1", "testplan");
+			insertEnvelope(seed, "r1", "atomic-functions");
+			insertEnvelope(seed, "r1", "design");
+			insertEnvelope(seed, "r1", "development-order");
+			seed
+				.prepare(
+					"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
+				)
+				.run();
+			seed
+				.prepare(
+					"INSERT INTO nfr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'NFR-1', 1, 'h2')",
+				)
+				.run();
+		} finally {
+			closeStoreDb(seed);
+		}
+		// Re-open via the registered flow — migration applies, rows stay.
+		const reopened = openStoreDb(path);
+		try {
+			const frText = reopened
+				.prepare("SELECT text FROM fr WHERE id = 'FR-1'")
+				.get() as { text: unknown };
+			const nfrText = reopened
+				.prepare("SELECT text FROM nfr WHERE id = 'NFR-1'")
+				.get() as { text: unknown };
+			assert.equal(frText.text, null, "v001 rows carry NULL prose before backfill/republish");
+			assert.equal(nfrText.text, null);
+		} finally {
+			closeStoreDb(reopened);
+		}
+	});
+
+	test("tables untouched by v002 still keep their v001 shape (no accidental drops)", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			// art / rtm_row / diagram / adr / feasibility_* / links have no
+			// new prose columns per §14.4. Spot-check a couple of column lists.
+			const rtmCols = (db
+				.prepare("PRAGMA table_info(rtm_row)")
+				.all() as Array<{ name: string }>).map((r) => r.name);
+			assert.ok(rtmCols.includes("fr_ref"));
+			assert.ok(rtmCols.includes("af_ref"));
+			const adrCols = (db
+				.prepare("PRAGMA table_info(adr)")
+				.all() as Array<{ name: string }>).map((r) => r.name);
+			assert.ok(adrCols.includes("options"));
+			assert.ok(adrCols.includes("chosen"));
+			assert.ok(adrCols.includes("rationale"));
+			const linksCols = (db
+				.prepare("PRAGMA table_info(links)")
+				.all() as Array<{ name: string }>).map((r) => r.name);
+			assert.equal(linksCols.length, 6, "links table still has 6 columns (no adds)");
+		} finally {
+			closeStoreDb(db);
+		}
 	});
 });

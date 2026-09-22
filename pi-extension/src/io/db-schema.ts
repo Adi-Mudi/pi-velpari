@@ -1,8 +1,12 @@
 // ============================================================================
 // io/db-schema.ts — v001 DDL (Phase 2: core schema; Phase 4 final amendment)
+//              + v002 ADDITIONS (Phase 6: prose columns, decision §14)
 // ============================================================================
-// Decision record §5 (row-sets), §4.6 (links), §11 (STRICT/FK standards).
+// Decision record §5 (row-sets), §4.6 (links), §11 (STRICT/FK standards),
+// §14 (Phase 6 amendment: 14 prose columns, strict DB-primary reads).
 // One batch of DDL applied by migration v001 in io/db.ts. All tables STRICT.
+// v002 = forward-only ALTER TABLE … ADD COLUMN additions that promote
+// strictly-read stages: slices now need TEXT prose, not just hashes.
 //
 // Envelope convention: every child table carries `run_id TEXT NOT NULL,
 // kind TEXT NOT NULL` + FOREIGN KEY (run_id, kind) REFERENCES
@@ -288,4 +292,45 @@ CREATE TABLE links (
 
 CREATE INDEX idx_links_from ON links(run_id, from_kind, from_id);
 CREATE INDEX idx_links_to ON links(run_id, to_kind, to_id);
+`;
+
+/**
+ * v002 prose column additions (Phase 6 amendment, decision §14).
+ * Forward-only; ADD COLUMN is supported since SQLite 3.1.3 (no gate).
+ * All new columns are TEXT and nullable — existing rows stay valid with
+ * NULL prose until re-published or backfilled. `text_hash`/`content_hash`
+ * remain authoritative for fingerprint binding (prose is the canonical
+ * text behind those hashes; the hashes do NOT change when prose lands).
+ *
+ * Columns added (14 total):
+ *  - fr.text                       (requirement prose for slice reads)
+ *  - nfr.text                      (NFR prose)
+ *  - prd_section.body              (PRD section prose, body_ref stays)
+ *  - pseudocode_block.content      (pseudocode prose, content_hash stays)
+ *  - test_case.steps               (REQUIRED for testplan kind; LLM writes prose)
+ *  - test_case.objective
+ *  - test_case.expected
+ *  - design_module.description     (module responsibility prose)
+ *  - atomic_function.purpose       (5 of 8 base-core fields, principle 10a)
+ *  - atomic_function.source
+ *  - atomic_function.cohesion
+ *  - atomic_function.verification
+ *  - atomic_function.testable
+ *  - dev_step.description          (dev-step prose for the DB-rendered doc)
+ */
+export const SCHEMA_V002_ADDITIONS = `
+ALTER TABLE fr ADD COLUMN text TEXT;
+ALTER TABLE nfr ADD COLUMN text TEXT;
+ALTER TABLE prd_section ADD COLUMN body TEXT;
+ALTER TABLE pseudocode_block ADD COLUMN content TEXT;
+ALTER TABLE test_case ADD COLUMN steps TEXT;
+ALTER TABLE test_case ADD COLUMN objective TEXT;
+ALTER TABLE test_case ADD COLUMN expected TEXT;
+ALTER TABLE design_module ADD COLUMN description TEXT;
+ALTER TABLE atomic_function ADD COLUMN purpose TEXT;
+ALTER TABLE atomic_function ADD COLUMN source TEXT;
+ALTER TABLE atomic_function ADD COLUMN cohesion TEXT;
+ALTER TABLE atomic_function ADD COLUMN verification TEXT;
+ALTER TABLE atomic_function ADD COLUMN testable TEXT;
+ALTER TABLE dev_step ADD COLUMN description TEXT;
 `;

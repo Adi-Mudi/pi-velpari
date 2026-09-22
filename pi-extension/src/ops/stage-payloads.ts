@@ -1,6 +1,6 @@
 // ============================================================================
 // ops/stage-payloads.ts — stage payload validation + per-kind adapters
-// (Layer 1, DB-primary publish path, Phase 4)
+// (Layer 1, DB-primary publish path, Phase 4; v002 prose columns, Phase 6)
 // ============================================================================
 // User decision 2026-09-22 (Option 1 — LLM emits payload): the structured
 // DB rows for each published artifact come from a small JSON payload the
@@ -94,6 +94,9 @@ const FR_NFR: Record<string, FieldSpec> = {
 	id: { type: "string" },
 	phase: { type: "int", min: 1 },
 	textHash: { type: "string" },
+	// v002 — REQUIRED at payload validation: strict-read stages cannot
+	// produce slices without requirement prose (decision §14).
+	text: { type: "string" },
 };
 const MODULE_REF: Record<string, FieldSpec> = {
 	moduleId: { type: "string" },
@@ -114,6 +117,9 @@ const PRD_ROWS: Record<string, RowSetSpec> = {
 			no: { type: "int", min: 1 },
 			title: { type: "string" },
 			bodyRef: { type: "string", optional: true, nullable: true },
+			// v002 — PRD section prose (optional/nullable at validation;
+			// publish gate enforces per-kind strictness).
+			body: { type: "string", optional: true, nullable: true },
 		},
 	},
 };
@@ -160,7 +166,15 @@ const FEASIBILITY_ROWS: Record<string, RowSetSpec> = {
 	},
 };
 const DESIGN_ROWS: Record<string, RowSetSpec> = {
-	designModule: { fields: { id: { type: "string" }, name: { type: "string" } } },
+	designModule: {
+		fields: {
+			id: { type: "string" },
+			name: { type: "string" },
+			// v002 — module responsibility prose (optional at validation;
+			// publish gate may require for scope).
+			description: { type: "string", optional: true, nullable: true },
+		},
+	},
 	moduleSourceFr: { fields: MODULE_REF },
 	adr: {
 		fields: {
@@ -201,6 +215,13 @@ const ATOMIC_ROWS: Record<string, RowSetSpec> = {
 				values: ["none", "sil-1", "sil-2", "sil-3", "sil-4"],
 			},
 			isLeaf: { type: "bool01" },
+			// v002 — 5 of 8 base-core fields (principle 10a). Tier-gate
+			// decides when required; doctor warns for advanced tiers.
+			purpose: { type: "string", optional: true, nullable: true },
+			source: { type: "string", optional: true, nullable: true },
+			cohesion: { type: "string", optional: true, nullable: true },
+			verification: { type: "string", optional: true, nullable: true },
+			testable: { type: "string", optional: true, nullable: true },
 		},
 	},
 };
@@ -210,6 +231,9 @@ const PSEUDOCODE_ROWS: Record<string, RowSetSpec> = {
 			id: { type: "string" },
 			afRef: { type: "string" },
 			contentHash: { type: "string" },
+			// v002 — REQUIRED at payload validation (mirrors contentHash):
+			// slice reads render the prose, not the hash.
+			content: { type: "string" },
 		},
 	},
 };
@@ -219,6 +243,12 @@ const TESTPLAN_ROWS: Record<string, RowSetSpec> = {
 			id: { type: "string" },
 			tcKind: { type: "string", values: ["TC", "IT"] },
 			strategyRef: { type: "string", optional: true, nullable: true },
+			// v002 — test-case prose. Validator permits omission for
+			// legacy payloads; publish gate enforces REQUIRED for the
+			// testplan kind (DB-rendered test-cases.md cannot render empty).
+			steps: { type: "string", optional: true, nullable: true },
+			objective: { type: "string", optional: true, nullable: true },
+			expected: { type: "string", optional: true, nullable: true },
 		},
 	},
 	tcTrace: {
@@ -230,7 +260,14 @@ const TESTPLAN_ROWS: Record<string, RowSetSpec> = {
 	},
 };
 const DEV_ORDER_ROWS: Record<string, RowSetSpec> = {
-	devStep: { fields: { id: { type: "string" }, module: { type: "string" } } },
+	devStep: {
+		fields: {
+			id: { type: "string" },
+			module: { type: "string" },
+			// v002 — dev-step prose for the DB-rendered development-order doc.
+			description: { type: "string", optional: true, nullable: true },
+		},
+	},
 	stepAf: {
 		fields: { stepId: { type: "string" }, afId: { type: "string" } },
 	},
@@ -291,7 +328,7 @@ function checkFields(
 	fields: Record<string, FieldSpec>,
 	problems: string[],
 ): void {
-	for (const [name, value] of Object.entries(row)) {
+	for (const [name, _value] of Object.entries(row)) {
 		if (!(name in fields)) {
 			problems.push(`${where}: unknown field "${name}"`);
 		}

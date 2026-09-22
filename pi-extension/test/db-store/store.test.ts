@@ -28,7 +28,9 @@ import {
 } from "../../src/io/store.js";
 
 /** Deterministic G5 golden: exportArtifactYaml('prd') bytes, captured from
- * the real driver (yaml stringify, lineWidth: 0, single trailing \n). */
+ * the real driver (yaml stringify, lineWidth: 0, single trailing \n).
+ * Phase 6 v002 (§14): the rows include the new `text` and `body` prose
+ * columns as YAML nulls because both seeded rows have NULL prose. */
 const GOLDEN_PRD = [
 	"runId: r1",
 	"kind: prd",
@@ -43,13 +45,16 @@ const GOLDEN_PRD = [
 	"    - id: FR-1",
 	"      phase: 1",
 	"      textHash: a1b2c3",
+	"      text: null",
 	"    - id: FR-2",
 	"      phase: 1",
 	"      textHash: d4e5f6",
+	"      text: null",
 	"  prdSection:",
 	"    - no: 1",
 	"      title: Purpose",
 	"      bodyRef: null",
+	"      body: null",
 ].join("\n") + "\n";
 
 /** Envelope input with deterministic defaults; overrides per test. */
@@ -66,8 +71,8 @@ function env(overrides: Partial<ArtifactEnvelopeInput> = {}): ArtifactEnvelopeIn
 }
 
 const FR_SEED = [
-	{ id: "FR-1", phase: 1, textHash: "a1b2c3" },
-	{ id: "FR-2", phase: 1, textHash: "d4e5f6" },
+	{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: null as string | null },
+	{ id: "FR-2", phase: 1, textHash: "d4e5f6", text: null as string | null },
 ];
 
 describe("io/store — Store API", () => {
@@ -100,9 +105,11 @@ describe("io/store — Store API", () => {
 		assert.equal(read.envelope.status, "draft");
 		assert.match(read.envelope.sha256Fingerprint, /^[0-9a-f]{64}$/);
 		assert.deepEqual(read.rows.fr, FR_SEED);
-		assert.deepEqual(read.rows.nfr, [{ id: "NFR-1", phase: 1, textHash: "n1" }]);
+		assert.deepEqual(read.rows.nfr, [
+			{ id: "NFR-1", phase: 1, textHash: "n1", text: null },
+		]);
 		assert.deepEqual(read.rows.prdSection, [
-			{ no: 1, title: "Purpose", bodyRef: null },
+			{ no: 1, title: "Purpose", bodyRef: null, body: null },
 		]);
 	});
 
@@ -128,7 +135,9 @@ describe("io/store — Store API", () => {
 		assert.ok(read);
 		assert.equal(read.envelope.kind, "design");
 		assert.equal(read.envelope.status, "draft");
-		assert.deepEqual(read.rows.designModule, [{ id: "M-1", name: "core" }]);
+		assert.deepEqual(read.rows.designModule, [
+			{ id: "M-1", name: "core", description: null },
+		]);
 		assert.deepEqual(read.rows.moduleSourceFr, [
 			{ moduleId: "M-1", frId: "FR-1" },
 		]);
@@ -174,7 +183,9 @@ describe("io/store — Store API", () => {
 		});
 		const read = readArtifact(db, "r1", "prd");
 		assert.ok(read);
-		assert.deepEqual(read.rows.fr, [{ id: "FR-1", phase: 2, textHash: "fresh" }]);
+		assert.deepEqual(read.rows.fr, [
+			{ id: "FR-1", phase: 2, textHash: "fresh", text: null },
+		]);
 		const count = db
 			.prepare("SELECT COUNT(*) AS n FROM fr WHERE run_id = ? AND kind = ?")
 			.get("r1", "prd") as { n: number };
@@ -351,7 +362,9 @@ describe("io/store — Store API", () => {
 		});
 		const read1b = readArtifact(db, "run1", "prd");
 		assert.ok(read1b);
-		assert.deepEqual(read1b.rows.fr, [{ id: "FR-1", phase: 2, textHash: "revised" }]);
+		assert.deepEqual(read1b.rows.fr, [
+			{ id: "FR-1", phase: 2, textHash: "revised", text: null },
+		]);
 		const read2b = readArtifact(db, "run2", "prd");
 		assert.ok(read2b);
 		assert.deepEqual(read2b.rows.fr, FR_SEED, "run2 untouched by run1 rewrite");
@@ -390,5 +403,108 @@ describe("io/store — Store API", () => {
 		// After revert, the draft can be published again (retry path).
 		publishArtifact(db, "r1", "prd");
 		assert.equal(readArtifact(db, "r1", "prd")?.envelope.status, "published");
+	});
+
+	test("17. v002 prose round-trip: write→read restores text/content/body/steps/objective/expected/description on every prose table", () => {
+		// Phase 6 §14.4: all 14 v002 columns survive a round-trip. Validator
+		// doesn't run here (pure store API); the test pins the SQL ↔ TS
+		// round-trip contract for the eight tables that gained prose columns.
+		// Write order respects FK chains: pseudocode_block.af_ref →
+		// atomic_function.id; step_af.af_id → atomic_function.id;
+		// step_dep.dev_step_id → dev_step.id; rtmm; module_source_fr.fr_id.
+		writeArtifact(db, "prd", "r1", env(), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall greet users warmly." }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "p95 latency under 200ms." }],
+			prdSection: [{ no: 1, title: "Purpose", bodyRef: null, body: "Why we are building this." }],
+		});
+		writeArtifact(db, "atomic-functions", "r1", env(), {
+			atomicFunction: [
+				{
+					id: "AF-1",
+					name: "greet",
+					signature: "greet(name: string): string",
+					tier: "basic",
+					criticality: "A",
+					sil: "none",
+					isLeaf: 1,
+					purpose: "Render a friendly greeting for the given name.",
+					source: "Brainstorm 2026-09-22 / welcome flow",
+					cohesion: "Single responsibility: render greeting string.",
+					verification: "Unit test TC-1 must pass.",
+					testable: "yes — pure function, single out-parameter",
+				},
+			],
+		});
+		writeArtifact(db, "pseudocode", "r1", { ...env(), stage: "writing-pseudocode" }, {
+			pseudocodeBlock: [
+				{ id: "PC-1", afRef: "AF-1", contentHash: "ch1", content: "greet(name) := print('hello', name)" },
+			],
+		});
+		writeArtifact(db, "testplan", "r1", { ...env(), stage: "planning-tests" }, {
+			testCase: [
+				{
+					id: "TC-1",
+					tcKind: "TC",
+					strategyRef: null,
+					steps: "1. Run greet('A')\\n2. Expect 'hello A' on stdout",
+					objective: "Verify the greet function greets by name",
+					expected: "Stdout contains 'hello A'",
+				},
+			],
+		});
+		writeArtifact(db, "design", "r1", { ...env(), stage: "designing" }, {
+			designModule: [
+				{ id: "M-1", name: "core", description: "Owns the greeting flow end-to-end." },
+			],
+		});
+		writeArtifact(db, "development-order", "r1", env(), {
+			devStep: [
+				{
+					id: "S1",
+					module: "core",
+					description: "Implement AF-1 greet() and wire it into the request entry point.",
+				},
+			],
+			stepAf: [{ stepId: "S1", afId: "AF-1" }],
+		});
+
+		// Read back + assert prose exact on every kind.
+		const prd = readArtifact(db, "r1", "prd");
+		assert.ok(prd);
+		const fr = prd.rows.fr as Array<Record<string, unknown>>;
+		assert.equal(fr[0]?.text, "The system shall greet users warmly.");
+		const nfr = prd.rows.nfr as Array<Record<string, unknown>>;
+		assert.equal(nfr[0]?.text, "p95 latency under 200ms.");
+		const sections = prd.rows.prdSection as Array<Record<string, unknown>>;
+		assert.equal(sections[0]?.body, "Why we are building this.");
+
+		const pseudo = readArtifact(db, "r1", "pseudocode");
+		assert.ok(pseudo);
+		const blocks = pseudo.rows.pseudocodeBlock as Array<Record<string, unknown>>;
+		assert.equal(blocks[0]?.content, "greet(name) := print('hello', name)");
+
+		const tp = readArtifact(db, "r1", "testplan");
+		assert.ok(tp);
+		const tcs = tp.rows.testCase as Array<Record<string, unknown>>;
+		assert.equal(tcs[0]?.steps, "1. Run greet('A')\\n2. Expect 'hello A' on stdout");
+		assert.equal(tcs[0]?.objective, "Verify the greet function greets by name");
+		assert.equal(tcs[0]?.expected, "Stdout contains 'hello A'");
+
+		const design = readArtifact(db, "r1", "design");
+		assert.ok(design);
+		const modules = design.rows.designModule as Array<Record<string, unknown>>;
+		assert.equal(modules[0]?.description, "Owns the greeting flow end-to-end.");
+
+		const af = readArtifact(db, "r1", "atomic-functions");
+		assert.ok(af);
+		const afs = af.rows.atomicFunction as Array<Record<string, unknown>>;
+		assert.equal(afs[0]?.purpose, "Render a friendly greeting for the given name.");
+		assert.equal(afs[0]?.cohesion, "Single responsibility: render greeting string.");
+		assert.equal(afs[0]?.verification, "Unit test TC-1 must pass.");
+
+		const dev = readArtifact(db, "r1", "development-order");
+		assert.ok(dev);
+		const steps = dev.rows.devStep as Array<Record<string, unknown>>;
+		assert.equal(steps[0]?.description, "Implement AF-1 greet() and wire it into the request entry point.");
 	});
 });

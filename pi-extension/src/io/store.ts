@@ -52,22 +52,35 @@ export type ArtifactKind =
 // Row interfaces — camelCase TS ↔ snake_case columns, v001 DDL mirrored 1:1.
 // Payload rows carry their natural columns only; the store injects
 // `run_id`, `kind`, and (non-edge tables) `status` itself.
+//
+// v002 prose columns (Phase 6, decision §14) are added as OPTIONAL/NULLABLE
+// fields. The store round-trips any keys present in the payload via the
+// snake_case converter in insertRow + SELECT * in readRows — widening the
+// TS interfaces is the only code change required; the SQL itself is
+// schema-generic. Tables touched in v002: fr / nfr / prd_section /
+// pseudocode_block / test_case / design_module / atomic_function / dev_step.
 // ---------------------------------------------------------------------------
 
 export interface FrRow {
 	id: string;
 	phase: number;
 	textHash: string;
+	/** v002 — requirement prose for slice reads (textHash stays authoritative for fingerprints). */
+	text?: string | null;
 }
 export interface NfrRow {
 	id: string;
 	phase: number;
 	textHash: string;
+	/** v002 — NFR prose for slice reads. */
+	text?: string | null;
 }
 export interface PrdSectionRow {
 	no: number;
 	title: string;
 	bodyRef?: string | null;
+	/** v002 — PRD section prose (the canonical text behind bodyRef when present). */
+	body?: string | null;
 }
 export interface RtmRowRow {
 	id: string;
@@ -100,6 +113,8 @@ export interface ReuseScanRow {
 export interface DesignModuleRow {
 	id: string;
 	name: string;
+	/** v002 — module responsibility prose (drives the DB-rendered design view). */
+	description?: string | null;
 }
 export interface ModuleSourceFrRow {
 	moduleId: string;
@@ -129,16 +144,28 @@ export interface AtomicFunctionRow {
 	criticality: "A" | "B" | "C";
 	sil: "none" | "sil-1" | "sil-2" | "sil-3" | "sil-4";
 	isLeaf: 0 | 1;
+	/** v002 — 5 of 8 base-core fields (principle 10a); tier-gate decides when required. */
+	purpose?: string | null;
+	source?: string | null;
+	cohesion?: string | null;
+	verification?: string | null;
+	testable?: string | null;
 }
 export interface PseudocodeBlockRow {
 	id: string;
 	afRef: string;
 	contentHash: string;
+	/** v002 — pseudocode prose (the canonical text behind contentHash). */
+	content?: string | null;
 }
 export interface TestCaseRow {
 	id: string;
 	tcKind: "TC" | "IT";
 	strategyRef?: string | null;
+	/** v002 — REQUIRED for the testplan kind (DB-rendered test-cases.md must not render empty). */
+	steps?: string | null;
+	objective?: string | null;
+	expected?: string | null;
 }
 export interface TcTraceRow {
 	tcId: string;
@@ -148,6 +175,8 @@ export interface TcTraceRow {
 export interface DevStepRow {
 	id: string;
 	module: string;
+	/** v002 — dev-step prose for the DB-rendered development-order doc. */
+	description?: string | null;
 }
 export interface StepAfRow {
 	stepId: string;

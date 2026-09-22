@@ -18,12 +18,15 @@
 // (§11 governance). v000 = identity (verifies PRAGMA set, creates nothing).
 // v001 = core schema DDL (io/db-schema.ts): metadata envelope + 9 §5
 // row-sets + links adjacency (Phase 2).
+// v002 = prose columns ADD COLUMN (Phase 6, decision §14): 14 nullable
+// TEXT additions across fr / nfr / prd_section / pseudocode_block /
+// test_case / design_module / atomic_function / dev_step.
 // ============================================================================
 
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_V001_DDL } from "./db-schema.js";
+import { SCHEMA_V001_DDL, SCHEMA_V002_ADDITIONS } from "./db-schema.js";
 import type { DatabaseSync } from "node:sqlite";
 
 // Lazy driver load (D9): `node:sqlite` is experimental and prints an
@@ -83,6 +86,13 @@ export const MIGRATIONS: readonly Migration[] = [
 		name: "core schema — metadata envelope, 9 artifact row-sets, links adjacency",
 		up: (db: DatabaseSync) => {
 			db.exec(SCHEMA_V001_DDL);
+		},
+	},
+	{
+		version: 2,
+		name: "prose columns — Phase 6 amendment (§14), 14 nullable TEXT additions",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V002_ADDITIONS);
 		},
 	},
 ];
