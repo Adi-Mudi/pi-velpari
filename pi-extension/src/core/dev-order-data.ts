@@ -17,6 +17,8 @@
 
 import { existsSync } from "node:fs";
 import { compareVersions, readYamlFile } from "./yaml-data.js";
+import { resolveDocArtifact } from "./paths.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
 export interface DevOrderStep {
 	/** Step id, e.g. "DO-1". */
@@ -64,6 +66,60 @@ export function resolveDevOrderSidecar(mdPath: string): string | null {
 }
 
 /**
+ * Engine-side loader: DB-first with sidecar fallback (Phase 6 §14.3).
+ * Returns the legacy `DevOrderData` shape (steps with afs + deps) so
+ * downstream engines keep working unchanged. The DB dev_step / step_af /
+ * step_dep shapes carry a subset of fields; missing legacy decorations
+ * get safe defaults.
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose dev-order to load.
+ * @returns {DevOrderData | null} The legacy DevOrderData shape, or null when neither DB nor sidecar has published rows.
+ */
+export function loadDevOrderDataForEngine(
+	cwd: string,
+	projectName: string,
+): DevOrderData | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "development-order");
+	if (fromDb) {
+		const steps = (fromDb.rows.devStep as Array<Record<string, unknown>> | undefined) ?? [];
+		const afs = (fromDb.rows.stepAf as Array<Record<string, unknown>> | undefined) ?? [];
+		const deps = (fromDb.rows.stepDep as Array<Record<string, unknown>> | undefined) ?? [];
+		const afMap = new Map<string, string[]>();
+		for (const a of afs) {
+			const stepId = String(a.stepId);
+			const list = afMap.get(stepId) ?? [];
+			list.push(String(a.afId));
+			afMap.set(stepId, list);
+		}
+		const depMap = new Map<string, string[]>();
+		for (const d of deps) {
+			const stepId = String(d.stepId);
+			const list = depMap.get(stepId) ?? [];
+			list.push(String(d.dependsOnId));
+			depMap.set(stepId, list);
+		}
+		return {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			steps: steps.map((s) => ({
+				id: String(s.id),
+				module: String(s.module ?? ""),
+				afs: afMap.get(String(s.id)) ?? [],
+				dependsOn: depMap.get(String(s.id)) ?? [],
+				status: "proposed",
+			})),
+		};
+	}
+	const md = resolveDocArtifact("development-order", projectName, cwd);
+	if (!md) return null;
+	const sidecar = resolveDevOrderSidecar(md.path);
+	if (!sidecar) return null;
+	const data = readYamlFile(sidecar);
+	if (!data) return null;
+	return data as DevOrderData;
+}
+
+/**
  * Loose AF-ref extraction (D7): the union of every step's `afs` when a
  * sidecar exists and parses, null otherwise (caller falls back to
  * markdown scraping). Never throws.
@@ -103,6 +159,13 @@ export function findDependencyCycle(steps: readonly DevOrderStep[]): string[] | 
 	const color = new Map<string, number>(steps.map((s) => [s.id, WHITE]));
 	const stack: string[] = [];
 
+	/**
+	 * DFS visit one step (DFS three-color cycle detection). Records
+	 * the path on the call stack; returns the cycle slice on a back-edge,
+	 * null on success, and propagates a non-null return up.
+	 * @param {string} id - The step id to visit.
+	 * @returns {string[] | null} The cycle path as a list of step ids when a back-edge is detected; null on success.
+	 */
 	const visit = (id: string): string[] | null => {
 		color.set(id, GRAY);
 		stack.push(id);

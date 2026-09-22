@@ -18,6 +18,8 @@
 
 import { existsSync } from "node:fs";
 import { compareVersions, readYamlFile } from "./yaml-data.js";
+import { resolveDocArtifact } from "./paths.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
 interface TestCaseRecord {
 	/** Test case id — "TC-<n>" (unit) or "IT-<n>" (integration). */
@@ -72,6 +74,68 @@ export function resolveTestCasesSidecar(mdPath: string): string | null {
 }
 
 /**
+ * Engine-side loader: DB-first with sidecar fallback (Phase 6 §14.3).
+ * Returns the legacy `TestCasesData` shape (unitTests +
+ * integrationTests) so downstream engines (id-coverage, etc.) keep
+ * working unchanged. The DB test_case shape carries a subset of
+ * fields; missing legacy decorations get safe defaults.
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose test-cases to load.
+ * @returns {TestCasesData | null} The legacy TestCasesData shape, or null when neither DB nor sidecar has published rows.
+ */
+export function loadTestCasesDataForEngine(
+	cwd: string,
+	projectName: string,
+): TestCasesData | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
+	if (fromDb) {
+		const cases = (fromDb.rows.testCase as Array<Record<string, unknown>> | undefined) ?? [];
+		const traces = (fromDb.rows.tcTrace as Array<Record<string, unknown>> | undefined) ?? [];
+		const traceMap = new Map<string, string[]>();
+		for (const t of traces) {
+			const tcId = String(t.tcId);
+			const targetId = String(t.targetId);
+			const list = traceMap.get(tcId) ?? [];
+			list.push(targetId);
+			traceMap.set(tcId, list);
+		}
+/**
+ * Map one DB test_case row to the legacy TestCasesData per-record shape.
+ * Joins `tc_trace` rows into the per-record `traces` list.
+ * @param {Record<string, unknown>} r - The raw DB row.
+ * @returns The legacy per-test-case record shape.
+ */
+		const toRecord = (r: Record<string, unknown>) => ({
+			id: String(r.id),
+			name: String(r.id),
+			target: "",
+			modules: [] as string[],
+			steps: r.steps !== undefined && r.steps !== null ? String(r.steps) : "",
+			expected: r.expected !== undefined && r.expected !== null ? String(r.expected) : "",
+			edgeCases: "",
+			traces: traceMap.get(String(r.id)) ?? [],
+		});
+		return {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			unitTests: cases
+				.filter((r) => r.tcKind === "TC")
+				.map(toRecord),
+			integrationTests: cases
+				.filter((r) => r.tcKind === "IT")
+				.map(toRecord),
+		};
+	}
+	const md = resolveDocArtifact("test-cases", projectName, cwd);
+	if (!md) return null;
+	const sidecar = resolveTestCasesSidecar(md.path);
+	if (!sidecar) return null;
+	const data = readYamlFile(sidecar);
+	if (!data) return null;
+	return data as TestCasesData;
+}
+
+/**
  * Loose trace extraction (D7): every trace id from the sidecar when one
  * exists and parses with the expected lists, null otherwise (caller
  * falls back to markdown scraping). Never throws.
@@ -102,6 +166,18 @@ export function extractTestCaseTracesFromSidecar(mdPath: string): string[] | nul
 // Validation
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate one test-case record shape, id pattern, uniqueness, and
+ * required fields. Pushes actionable issues into `issues`. Never
+ * throws — malformed input produces line-labeled errors for the user.
+ * @param {unknown} record - The raw record to validate.
+ * @param {string} at - Human-readable location (e.g. "unitTests[0]") for problem messages.
+ * @param {RegExp} idPattern - Regex the id must match.
+ * @param {"unit" | "integration"} kind - Which test-case list this belongs to (drives vocabulary).
+ * @param {Set<string>} seen - Mutable set of ids seen so far (duplicate detection).
+ * @param {string[]} issues - Accumulator for validation problems.
+ * @returns {void}
+ */
 function validateRecord(
 	record: unknown,
 	at: string,
@@ -210,6 +286,13 @@ export function diffTestCasesData(baseline: TestCasesData, updated: TestCasesDat
 // Render
 // ---------------------------------------------------------------------------
 
+/**
+ * Render a single table-cell value as markdown text.
+ * Empty / whitespace-only input becomes `(none)`; everything else is
+ * passed through verbatim.
+ * @param {string | undefined} v - The raw cell value.
+ * @returns {string} The markdown-safe string for the cell.
+ */
 function cell(v: string | undefined): string {
 	return v && v.trim() !== "" ? v : "(none)";
 }
