@@ -695,6 +695,27 @@ export function readLatestPublishedRows(
 	}
 }
 
+/**
+ * Pull the AF id list straight from the project store (Phase 6 §14.3
+ * DB-primary reader for id-coverage). Returns null when no published
+ * AF rows exist — caller falls back to the legacy sidecar reader.
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose AF ids to list.
+ * @returns {string[] | null} Unique sorted AF ids, or null when no published rows exist.
+ */
+export function extractAfIdsFromStore(
+	cwd: string,
+	projectName: string,
+): string[] | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "atomic-functions");
+	if (!fromDb) return null;
+	const rows = (fromDb.rows.atomicFunction as Array<{ id: unknown }> | undefined) ?? [];
+	const ids = rows
+		.map((r) => String(r.id))
+		.filter((id) => /^AF-\d+$/.test(id));
+	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle primitives
 // ---------------------------------------------------------------------------

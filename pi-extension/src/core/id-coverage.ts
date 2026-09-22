@@ -31,6 +31,7 @@
 import { readFileSync } from "node:fs";
 import { loadFilesConfig } from "./config.js";
 import { extractAfIdsFromSidecar } from "./af-data.js";
+import { extractAfIdsFromStore } from "../io/store.js";
 import { extractTestCaseTracesFromSidecar } from "./test-cases-data.js";
 import { extractDevOrderAfRefsFromSidecar } from "./dev-order-data.js";
 import { resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
@@ -126,6 +127,13 @@ export function extractIds(text: string, prefixes: string[]): string[] {
 	return text.match(re) ?? [];
 }
 
+/**
+ * Split a markdown table row line into its cell strings, trimming
+ * whitespace and dropping the empty edge-cells produced by the
+ * leading/trailing `|`.
+ * @param {string} line - A raw markdown table row line.
+ * @returns {string[]} The trimmed cell strings.
+ */
 function splitCells(line: string): string[] {
 	return line
 		.split("|")
@@ -133,6 +141,13 @@ function splitCells(line: string): string[] {
 		.filter((c) => c.length > 0);
 }
 
+/**
+ * True when every cell is a markdown table separator (e.g. `---`,
+ * `:---`, `---:`, `:---:`). Used to skip the row that appears under
+ * a markdown table header.
+ * @param {string[]} cells - The cell strings of one table row.
+ * @returns {boolean} true when the row is a separator.
+ */
 function isSeparatorRow(cells: string[]): boolean {
 	return cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
@@ -214,6 +229,12 @@ function extractDownstreamRefs(rule: CoverageRule, markdown: string): string[] {
 // Rule evaluation
 // ---------------------------------------------------------------------------
 
+/**
+ * Deduplicate and sort a list of id strings (lexicographic, ASC).
+ * Used to produce stable, comparable id sets for coverage diffs.
+ * @param {string[]} ids - The raw id list (may contain duplicates).
+ * @returns {string[]} Unique, sorted ids.
+ */
 function uniqueSorted(ids: string[]): string[] {
 	return Array.from(new Set(ids)).sort();
 }
@@ -297,11 +318,15 @@ export function checkDownstreamCoverage(
 			}
 			upstreamMarkdown.set(source.artifact, readFileSync(found.path, "utf8"));
 			// D7 — sidecar-first (af→pseudocode, af→dev-order): AF ids come
-			// from the YAML sidecar when one exists; markdown scraping is
-			// the fallback (legacy not-checkable behavior unchanged).
+			// from the project store (Phase 6 §14.3 DB-primary readers) when
+			// one exists; sidecar fallback (legacy not-checkable) unchanged.
 			if (source.artifact === "atomic-functions") {
-				const sidecarIds = extractAfIdsFromSidecar(found.path);
-				if (sidecarIds) upstreamIdOverrides.set(source.artifact, sidecarIds);
+				const dbIds = extractAfIdsFromStore(cwd, projectName);
+				if (dbIds) upstreamIdOverrides.set(source.artifact, dbIds);
+				else {
+					const sidecarIds = extractAfIdsFromSidecar(found.path);
+					if (sidecarIds) upstreamIdOverrides.set(source.artifact, sidecarIds);
+				}
 			}
 		}
 		if (skipped) continue;
