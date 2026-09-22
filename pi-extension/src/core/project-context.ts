@@ -25,7 +25,7 @@ import { loadState } from "./state.js";
 import { loadFilesConfig } from "./config.js";
 import { loadFeasibilityRecord } from "./feasibility-record.js";
 import { resolveBrainstormArtifact, resolveDocArtifact, slugify } from "./paths.js";
-import { loadRtmSidecarData } from "./rtm-data.js";
+import { loadRtmDataForEngine } from "./rtm-data.js";
 import { loadAfSidecarData } from "./af-data.js";
 import type { GenerationPhase } from "./agents-config.js";
 
@@ -87,6 +87,14 @@ export function emptyProjectContext(): ProjectContext {
 	return { techStack: [], atomicFunctions: [], constraints: [] };
 }
 
+/**
+ * Pull the tech stack strings out of a free-form text body (e.g. the
+ * published feasibility study). Scans for known tokens (Python, TypeScript,
+ * etc.) using a fixed allow-list, deduplicates case-insensitively, and
+ * preserves first-appearance order.
+ * @param {string | undefined} text - The body to scan (undefined / empty → empty list).
+ * @returns {string[]} Ordered, deduplicated tech-stack tokens.
+ */
 function extractTechStack(text: string | undefined): string[] {
 	if (!text) return [];
 	const haystack = text.toLowerCase();
@@ -163,14 +171,13 @@ function feasibilityTechHints(cwd: string, projectName: string): string[] {
 
 /** Phase 3+ — the concrete requirement list ("FR-1 — title") from the
  *  published RTM sidecar. Deprecated rows are dropped. Loose read: any
- *  shape problem yields an empty list, never a throw. */
+ *  shape problem yields an empty list, never a throw. Phase 6 §14.3:
+ *  DB-first via `loadRtmDataForEngine` (project store), sidecar fallback. */
 function rtmConstraints(cwd: string, projectName: string): string[] {
 	if (!projectName) return [];
-	const resolved = resolveDocArtifact("RTM", projectName, cwd);
-	if (!resolved) return [];
-	const sidecar = loadRtmSidecarData(resolved.path);
-	if (!sidecar) return [];
-	const rows = (sidecar.data as { rows?: unknown }).rows;
+	const data = loadRtmDataForEngine(cwd, projectName);
+	if (!data) return [];
+	const rows = (data as { rows?: unknown }).rows;
 	if (!Array.isArray(rows)) return [];
 	const constraints: string[] = [];
 	for (const row of rows) {
