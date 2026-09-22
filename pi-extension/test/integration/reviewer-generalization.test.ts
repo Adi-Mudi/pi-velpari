@@ -218,7 +218,7 @@ describe("Plan D — reviewer generalization end-to-end (handleApprove)", () => 
 			// was written), so we only assert the doctor doesn't error
 			// on the missing-reviewer case.
 			try {
-				await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true });
+				await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 			} catch {
 				// Expected — no working copy exists. We're testing the gate.
 			}
@@ -261,7 +261,7 @@ describe("Plan D — reviewer generalization end-to-end (handleApprove)", () => 
 
 			const ctx = makeCtx();
 			const pi = makePi();
-			await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true });
+			await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 
 			// Doc/artifact should exist (skipAutoDoctor = no doctor run).
 			const docPath = path.join(tmpDir, "Doc", ...(stage.artifactKey === "test-plan"

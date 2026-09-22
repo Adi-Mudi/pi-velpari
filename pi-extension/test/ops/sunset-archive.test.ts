@@ -238,7 +238,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 	it("auto-archives when sunset is in the past", async () => {
 		// Past date
 		setupCwd(designBody("1.2.3", "2024-01-01", "published"), "2024-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		assert.ok(fs.existsSync(published), "design was published");
@@ -259,7 +259,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 		// Already deprecated in the working copy; the archive action
 		// should not double-archive (idempotent).
 		setupCwd(designBody("2.0.0", "2024-01-01", "deprecated"), "2024-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		const body = fs.readFileSync(published, "utf8");
@@ -272,7 +272,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 	it("does not archive when sunset is in the future", async () => {
 		// Future date
 		setupCwd(designBody("1.2.3", "2099-01-01", "published"), "2099-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		const body = fs.readFileSync(published, "utf8");

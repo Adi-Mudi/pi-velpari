@@ -127,7 +127,7 @@ afterEach(() => {
 describe("publish — publish gate", () => {
 	it("blocks an invalid PRD working copy and writes nothing", async () => {
 		enterDraftingPrd("# Just a title, no sections\n");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Publish gate blocked the publish/);
 		assert.match(allMessages(), /psrs-section-missing|psrs-frontmatter-missing/);
@@ -137,7 +137,7 @@ describe("publish — publish gate", () => {
 
 	it("blocks an RTM sidecar with an unknown id", async () => {
 		enterBuildingRtm(rtmJson(["FR-01", "FR-02", "NFR-01", "FR-99"]));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Publish gate blocked the publish/);
 		assert.match(allMessages(), /FR-99: no such requirement in the PSRS/);
@@ -147,7 +147,7 @@ describe("publish — publish gate", () => {
 
 	it("blocks an RTM sidecar that misses a PSRS requirement (orphan)", async () => {
 		enterBuildingRtm(rtmJson(["FR-01", "NFR-01"]));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Publish gate blocked the publish/);
 		assert.match(allMessages(), /FR-02: PSRS requirement has no RTM row/);
@@ -156,7 +156,7 @@ describe("publish — publish gate", () => {
 
 	it("blocks an RTM row whose phase differs from the PRD Phase column", async () => {
 		enterBuildingRtm(rtmJson(["FR-01", "FR-02", "NFR-01"], { "FR-02": 5 }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Publish gate blocked the publish/);
 		assert.match(allMessages(), /FR-02: RTM phase 5 does not match the PRD phase 1/);
@@ -166,7 +166,7 @@ describe("publish — publish gate", () => {
 
 	it("publishes a clean RTM: regenerated markdown + YAML sidecar with fingerprints (legacy .json working sidecar accepted, .yaml written — D4)", async () => {
 		enterBuildingRtm(rtmJson(["FR-01", "FR-02", "NFR-01"]));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
 		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");

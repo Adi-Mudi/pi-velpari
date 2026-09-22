@@ -39,6 +39,10 @@ interface MockPi {
 	getFlag?: (name: string) => string | undefined;
 }
 
+/**
+ * Build a minimal ExtensionCommandContext with a notice-capturing ui.
+ * @returns {ExtensionCommandContext} Fresh ctx; `notices` captures notify calls.
+ */
 function makeCtx(): ExtensionCommandContext {
 	notices = [];
 	return {
@@ -53,6 +57,10 @@ function makeCtx(): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
+/**
+ * Build a minimal ExtensionAPI that captures sendUserMessage calls.
+ * @returns {ExtensionAPI} Fresh pi stub; `sentMessages` records sends.
+ */
 function makePi(): ExtensionAPI {
 	sentMessages = [];
 	return {
@@ -65,6 +73,12 @@ function makePi(): ExtensionAPI {
 	} as unknown as ExtensionAPI;
 }
 
+/**
+ * Build a RunState at the given stage with the given mission.
+ * @param {RunState["currentStage"]} stage - Stage to place the run in.
+ * @param {string} mission - Mission topic greed (files.json projectName fallback).
+ * @returns {RunState} A minimal but valid run state.
+ */
 function makeState(stage: RunState["currentStage"], mission: string): RunState {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
@@ -80,6 +94,11 @@ function makeState(stage: RunState["currentStage"], mission: string): RunState {
 	return state;
 }
 
+/**
+ * Build a files.json config for the test cwd.
+ * @param {object} opts - Overrides ({ projectNames?, topicSlug? } etc. as needed).
+ * @returns {unknown} The config object to persist into `.pi/velpari/files.json`.
+ */
 function makeFilesConfig(opts: {
 	projectName: string;
 	atomicTier?: "entry" | "basic" | "intermediate" | "advanced";
@@ -106,6 +125,12 @@ function makeFilesConfig(opts: {
 	);
 }
 
+/**
+ * Materialize the published Doc/ inputs the atomic-function stage reads
+ * (PRD/RTM/feasibility/design) as minimal markdown files.
+ * @param {string} projectName - Project name suffix for the file paths.
+ * @returns {void}
+ */
 function makeDocInputs(projectName: string): void {
 	const docDir = path.join(tmpDir, "Doc");
 	fs.mkdirSync(docDir, { recursive: true });
@@ -115,6 +140,11 @@ function makeDocInputs(projectName: string): void {
 	}
 }
 
+/**
+ * Pre-install the 4 atomic-function scout agent files into `.pi/agents/` so
+ * the stage runner's dispatch resolves them (no-op when already present).
+ * @returns {void}
+ */
 function preInstallScouts(): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
@@ -272,7 +302,7 @@ updated: 2026-09-17T13:00:00.000Z
 		// The tool's execute() calls handleApprove. We call it directly here
 		// to assert the full publish flow end-to-end. skipAutoDoctor=true
 		// is the documented test affordance (see ops/approve.ts:ApproveOpts).
-		await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true });
+		await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 
 		// ====== Step 4: Verify Doc/atomic-functions/<project>.md exists ======
 		const listDir = path.join(tmpDir, "Doc");
@@ -375,7 +405,7 @@ updated: 2026-09-17T13:00:00.000Z
 		);
 
 		// handleApprove should refuse to publish.
-		await handleApprove(ctx, pi, tmpDir);
+		await handleApprove(ctx, pi, tmpDir, { skipDbPublish: true });
 
 		// No Doc/artifact should exist.
 		const published = resolveDocArtifact("atomic-functions", projectName, tmpDir);

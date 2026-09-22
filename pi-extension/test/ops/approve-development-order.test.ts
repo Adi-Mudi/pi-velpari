@@ -157,7 +157,7 @@ describe("/velpari-development-order-approve — real publish path", () => {
 		enterOrderingDevelopment();
 		seedDeclaredInputs();
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const pubPath = path.join(
 			tmpDir,

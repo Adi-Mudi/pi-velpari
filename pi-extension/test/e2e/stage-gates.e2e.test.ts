@@ -266,6 +266,7 @@ describe("e2e/stage-gates", () => {
 		const out = await runModuleScript<any>(
 			client,
 			`process.env.VELPARI_SKIP_AUTO_DOCTOR = "1"; ` +
+				`process.env.VELPARI_SKIP_DB_PUBLISH = "1"; ` +
 				`import { clearRun, createRun, advanceStage, loadState, setFeasibilitySession } from ${STATE_JS}; ` +
 				`import { handleApprove } from ${APPROVE_JS}; ` +
 				`import { mkdirSync, writeFileSync, existsSync } from "node:fs"; ` +

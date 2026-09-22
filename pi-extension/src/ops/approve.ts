@@ -202,9 +202,19 @@ export interface ApproveOpts {
 	 * covered by `approve-doctor-skip.test.ts`.
 	 */
 	skipAutoDoctor?: boolean;
+	/**
+	 * Skip the Phase-4 DB publish chain (stage payload pre-check + DB
+	 * write/YAML export/git commit). Production callers never set this;
+	 * pre-Phase-4 tests that build minimal cwds (no payload files, no git
+	 * repo) opt in here so the markdown publish path stays testable on its
+	 * own. Mirrors `skipAutoDoctor`. With this set, the publish behaves
+	 * exactly as before Phase 4 (markdown only).
+	 */
+	skipDbPublish?: boolean;
 }
 
 const AUTO_DOCTOR_SKIP_ENV = "VELPARI_SKIP_AUTO_DOCTOR";
+const DB_PUBLISH_SKIP_ENV = "VELPARI_SKIP_DB_PUBLISH";
 
 export async function handleApprove(
 	ctx: ExtensionCommandContext,
@@ -514,17 +524,23 @@ export async function handleApprove(
 
 	// ---- Phase 4 (DB-primary storage): payload + git pre-checks (Q6a) ----
 	// Run BEFORE anything is written: the LLM-written payload must be valid
-	// and git must be usable, or nothing publishes.
+	// and git must be usable, or nothing publishes. `skipDbPublish` is the
+	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
+	// `skipAutoDoctor`); production never sets it.
+	const skipDbPublish =
+		opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
 	const storeKind = kindForWorkingDir(mapping.workingDir);
-	if (!storeKind) {
+	if (!skipDbPublish && !storeKind) {
 		ctx.ui.notify(
 			`No store kind for working dir "${mapping.workingDir}" — publish blocked (Phase 4 payload convention).`,
 			"error",
 		);
 		return;
 	}
-	const payloadResult = loadStagePayload(workingDirPath, storeKind);
-	if (!payloadResult.ok || !payloadResult.envelope || !payloadResult.payload) {
+	const payloadResult = skipDbPublish
+		? null
+		: loadStagePayload(workingDirPath, storeKind!);
+	if (payloadResult && !payloadResult.ok) {
 		ctx.ui.notify(
 			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
 				payloadResult.problems.map((p) => `  - ${p}`).join("\n"),
@@ -532,14 +548,16 @@ export async function handleApprove(
 		);
 		return;
 	}
-	const gitPre = precheckGitForPublish(cwd);
-	if (!gitPre.ok) {
-		ctx.ui.notify(
-			`Git pre-check failed — publish blocked (Q6a):\n` +
-				gitPre.problems.map((p) => `  - ${p}`).join("\n"),
-			"error",
-		);
-		return;
+	if (!skipDbPublish) {
+		const gitPre = precheckGitForPublish(cwd);
+		if (!gitPre.ok) {
+			ctx.ui.notify(
+				`Git pre-check failed — publish blocked (Q6a):\n` +
+					gitPre.problems.map((p) => `  - ${p}`).join("\n"),
+				"error",
+			);
+			return;
+		}
 	}
 
 	// Freshness stamps (B4): hash the stage's declared inputs (registry
@@ -681,7 +699,7 @@ export async function handleApprove(
 	// G8 PRD mirror → checkpoint → explicit-path git commit. Any failure
 	// reverts the DB rows to draft, deletes the YAML, and blocks the
 	// stage advance; markdown stays (accepted risk R1).
-	{
+	if (!skipDbPublish && storeKind && payloadResult && payloadResult.envelope && payloadResult.payload) {
 		// Feasibility adapter (4.3): decision + spike rows come from the
 		// settled session (the gate above guaranteed decision + language).
 		// The payload JSON carries envelope + optional reuseScan rows only.

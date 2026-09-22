@@ -123,7 +123,7 @@ afterEach(() => {
 describe("/velpari-atomic-function-approve — feasibility session gate", () => {
 	it("blocks when no session exists (no decision, no language)", async () => {
 		enterFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Feasibility stage is not settled/);
 		assert.match(allMessages(), /build-vs-reuse decision missing/);
@@ -139,7 +139,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 	it("blocks when decision is set but language is missing", async () => {
 		enterFeasibility();
 		setFeasibilitySession(loadState(tmpDir), { decision: "build" }, tmpDir);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /language not selected/);
 		assert.ok(!allMessages().includes("build-vs-reuse decision missing"));
@@ -170,7 +170,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 			},
 			tmpDir,
 		);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.ok(fs.existsSync(publishedStudyPath()), "study published");
 		const state = loadState(tmpDir);
@@ -217,7 +217,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 		fs.mkdirSync(dir, { recursive: true });
 		fs.writeFileSync(path.join(dir, "PRD_TestApp.md"), "# draft\n", "utf8");
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		assert.ok(!allMessages().includes("Feasibility stage is not settled"));
 	});
 });

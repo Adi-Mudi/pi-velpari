@@ -349,7 +349,7 @@ describe("/velpari-rtm-approve end-to-end on a real-cwd with full doctor", () =>
 		// We do NOT pre-create Doc/design/design_TestApp.md so the first
 		// publish is a fresh generation (the revision gate would
 		// otherwise require a new Change Log entry to pass).
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		// 1. The doctor report must be on disk (since auto-doctor runs
 		//    on every approve, v1.2.1).
@@ -389,7 +389,7 @@ describe("/velpari-rtm-approve end-to-end on a real-cwd with full doctor", () =>
 
 	it("publishes a design with 14 sections + stamped frontmatter", async () => {
 		setupFullCwd();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		// If the doctor blocked, the design was still written (the
 		// publish-gate + atomic-write happens before the doctor audit).

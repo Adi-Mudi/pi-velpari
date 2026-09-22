@@ -31,7 +31,7 @@ import {
 	runDbPublish,
 } from "../../src/ops/db-publish.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import { readArtifact } from "../../src/io/store.js";
+import { readArtifact, writeArtifact, type ArtifactPayload } from "../../src/io/store.js";
 import { buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
 import type { FeasibilitySession } from "../../src/core/state.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -158,6 +158,34 @@ function openRunDb(projectName: string): DatabaseSync {
 	return openStoreDb(buildStoreDbPath(projectName, dir));
 }
 
+/**
+ * Seed the PRD artifact (fr row) in the same run BEFORE publishing design
+ * / rtm — mirrors the real pipeline (PRD publishes before design). The
+ * composite FK fr(run_id, id) is referenced by module_source_fr.fr_id and
+ * rtm_row.fr_ref; without the parent rows the child publish fails.
+ * @param {string} projectName - files.json projectName (DB file owner).
+ * @param {string} runId - Owning run.
+ * @param {string} frId - Fr id the child rows reference.
+ */
+function seedPrd(projectName: string, runId: string, frId: string): void {
+	const db = openRunDb(projectName);
+	try {
+		writeArtifact(
+			db,
+			"prd",
+			runId,
+			{
+				version: 1,
+				stage: "drafting-prd",
+				generatedAt: "2026-09-22T00:00:00Z",
+			},
+			{ fr: [{ id: frId, phase: 1, textHash: "a1b2c3" }] } as ArtifactPayload,
+		);
+	} finally {
+		closeStoreDb(db);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 1. Payload validation (loadStagePayload)
 // ---------------------------------------------------------------------------
@@ -235,6 +263,7 @@ describe("stage payload validation (4.3)", () => {
 describe("runDbPublish happy path (design + rtm)", () => {
 	test("design: rows published, YAML beside DB, checksum ok, git commit lands", () => {
 		initGitRepo();
+		seedPrd("Demo", "r1", "FR-1");
 		const workingDir = writePayload("design", "design", designRows());
 		const payload = loadStagePayload(workingDir, "design");
 		assert.equal(payload.ok, true);
@@ -284,6 +313,8 @@ describe("runDbPublish happy path (design + rtm)", () => {
 
 	test("rtm (sidecar kind): publish works; second run coexists in the same DB", () => {
 		initGitRepo();
+		seedPrd("Demo", "r1", "FR-1");
+		seedPrd("Demo", "r2", "FR-1");
 		const workingDir = writePayload("rtm", "rtm", rtmRows());
 		const payload = loadStagePayload(workingDir, "rtm");
 		assert.equal(payload.ok, true);
@@ -331,6 +362,7 @@ describe("runDbPublish happy path (design + rtm)", () => {
 describe("failure paths", () => {
 	test("git commit failure → rows reverted to draft, YAML deleted, problems reported", () => {
 		initGitRepo();
+		seedPrd("Fail", "r1", "FR-1");
 		const workingDir = writePayload("design-fail", "design", designRows());
 		const payload = loadStagePayload(workingDir, "design");
 		const markdown = fakeMarkdown("Doc/design/design_Fail.md");
@@ -368,6 +400,7 @@ describe("failure paths", () => {
 		// --- ok case ---
 		const prdMarkdown = fakeMarkdown("Doc/requirements/PRD_Ok.md");
 		const fileHash = createHash("sha256").update(readFileSync(prdMarkdown)).digest("hex");
+		// --- ok case ---
 		const okDir = writePayload("prd-ok", "prd", { fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3" }] }, {
 			inputs: { "prd-file": fileHash },
 		});
@@ -509,6 +542,8 @@ describe("feasibility vocabulary + multi-design", () => {
 
 	test("multi-design: two projectNames → two separate DB files", () => {
 		initGitRepo();
+		seedPrd("alpha", "r1", "FR-1");
+		seedPrd("beta", "r1", "FR-1");
 		const workingDir = writePayload("design-md", "design", designRows());
 		const payload = loadStagePayload(workingDir, "design");
 		const markdown = fakeMarkdown("Doc/design/design_alpha.md");

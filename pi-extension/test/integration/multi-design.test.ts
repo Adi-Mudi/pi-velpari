@@ -260,10 +260,10 @@ describe("/velpari-architecture-generator end-to-end on a federation", () => {
 		setupFederationCwd();
 		// Publish the alpha design.
 		enterBuildingRtmFor("alpha", "FR-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		// Publish the beta design.
 		enterBuildingRtmFor("beta", "FR-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		// Both designs exist on disk as separate files.
 		const alphaPath = path.join(tmpDir, "Doc", "design", "design_alpha.md");

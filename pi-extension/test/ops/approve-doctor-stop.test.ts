@@ -118,7 +118,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		enterBuildingRtm();
 		const stageBefore = loadState(tmpDir).currentStage;
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		// The markdown + YAML sidecar WERE published (gate passes; the
 		// working copy carried a legacy .json sidecar — D4 dual-read —
@@ -157,7 +157,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		// config — exactly the v1.2.1 case to verify.
 		enterBuildingRtm();
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const state = loadState(tmpDir);
 		// Either errors > 0 OR warnings > 0 → state did not advance.
@@ -178,7 +178,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 
 	it("v1.2.3: notify groups findings by section title", async () => {
 		enterBuildingRtm();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const doctorMsg = notices
 			.map((n) => n.message)

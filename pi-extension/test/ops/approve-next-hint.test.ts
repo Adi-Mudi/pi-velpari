@@ -97,7 +97,7 @@ afterEach(() => {
 describe("/velpari-architecture-generator-approve — built-rtm next-step hint", () => {
 	it("suggests only /velpari-feasibility when no feasibility doc is published", async () => {
 		enterBuildingRtm();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		// nextCommandsFor(built-rtm) without feasibilitySkip returns only
@@ -109,7 +109,7 @@ describe("/velpari-architecture-generator-approve — built-rtm next-step hint",
 	it("suggests the design skip plus feasibility revise when a doc exists", async () => {
 		enterBuildingRtm();
 		seedPublishedFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		// nextCommandsFor(built-rtm, { feasibilitySkip: true }) returns both
@@ -204,7 +204,7 @@ function writePhase3GeneratedAgents(): void {
 describe("phase-boundary generation hint (generator v2, D5)", () => {
 	it("feasibility-approve crossing into Phase 3 prepends the generation hint", async () => {
 		enterSettledFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "analyzed-feasibility");
 		assert.match(
@@ -215,7 +215,7 @@ describe("phase-boundary generation hint (generator v2, D5)", () => {
 
 	it("same-phase approves never show the generation hint", async () => {
 		enterBuildingRtm();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		assert.ok(!allMessages().includes("generate Phase"), "no generation hint on a same-phase advance");
@@ -224,7 +224,7 @@ describe("phase-boundary generation hint (generator v2, D5)", () => {
 	it("fresh Phase 3 agents suppress the hint", async () => {
 		enterSettledFeasibility();
 		writePhase3GeneratedAgents();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "analyzed-feasibility");
 		assert.ok(!allMessages().includes("generate Phase"), "hint suppressed when Phase 3 agents are fresh");

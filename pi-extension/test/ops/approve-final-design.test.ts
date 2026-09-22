@@ -173,7 +173,7 @@ describe("/velpari-rtm-approve final-design publish path", () => {
 		}
 
 		const ctx = makeCtx();
-		await handleApprove(ctx, undefined, cwd);
+		await handleApprove(ctx, undefined, cwd, { skipDbPublish: true });
 
 		const pubPath = join(cwd, "Doc", "design", "final-design_FinalApp.md");
 		assert.ok(existsSync(pubPath), `expected publish at ${pubPath}; messages: ${allMessages()}`);
@@ -224,7 +224,7 @@ describe("/velpari-rtm-approve final-design publish path", () => {
 		);
 
 		const ctx = makeCtx();
-		await handleApprove(ctx, undefined, cwd);
+		await handleApprove(ctx, undefined, cwd, { skipDbPublish: true });
 
 		const after = loadState(cwd);
 		assert.strictEqual(after.currentStage, "finalizing-design", "blocked publish must not advance");
