@@ -335,6 +335,29 @@ export function renderTestplanMarkdown(rows: Record<string, unknown>): string {
 	);
 }
 
+/**
+ * test-cases — DB-rendered markdown (Phase 6, decision §14.2). Sourced
+ * from `testCase` + `tcTrace` rows. Compact per-stage template on top of
+ * the Phase 5 renderer pattern (decision 9): the prose columns
+ * (`steps`/`objective`/`expected`, added in v002) carry the actual test
+ * text — the DB IS the source of truth.
+ */
+export function renderTestCasesMarkdown(rows: Record<string, unknown>): string {
+	const cases = sorted((rows.testCase as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
+	const traces = sorted(
+		(rows.tcTrace as RowLikeAlias[] | undefined) ?? [],
+		(r) => `${r.tcId} ${r.targetKind} ${r.targetId}`,
+	);
+	return (
+		table("Test Cases", ["ID", "Kind", "Strategy", "Objective"],
+			cases.map((r) => [r.id, r.tcKind, r.strategyRef, r.objective])) +
+		table("Test Steps", ["TC", "Steps", "Expected"],
+			cases.map((r) => [r.id, r.steps, r.expected])) +
+		table("Traces", ["TC", "Target Kind", "Target ID"],
+			traces.map((r) => [r.tcId, r.targetKind, r.targetId]))
+	);
+}
+
 /** development-order — steps with AF membership + dependency edges. */
 export function renderDevelopmentOrderMarkdown(rows: Record<string, unknown>): string {
 	const steps = sorted((rows.devStep as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));

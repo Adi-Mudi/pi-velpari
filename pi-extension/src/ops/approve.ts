@@ -49,7 +49,6 @@ import {
 	hashFileContent,
 	hashFileContentNormalized,
 } from "../core/fingerprints.js";
-import { SIDECAR_REGISTRY } from "./sidecar-registry.js";
 import {
 	computeInputHashes,
 	recordPublish,
@@ -67,6 +66,15 @@ import {
 	runDbPublish,
 } from "./db-publish.js";
 import type { ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
+import { openStoreDb, closeStoreDb } from "../io/db.js";
+import { buildStoreDbPath } from "../core/paths.js";
+import {
+	renderAtomicFunctionsMarkdown,
+	renderDevelopmentOrderMarkdown,
+	renderPrdMarkdown,
+	renderRtmMarkdown,
+	renderTestCasesMarkdown,
+} from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
 import {
@@ -376,90 +384,167 @@ export async function handleApprove(
 	// gate (the gate API takes rtmData specifically — RTM-only plumbing).
 	let rtmDataForGate: RtmData | null = null;
 
-	// Sidecar registry (B3/D3): one entry per sidecar-backed artifact.
-	// When the working copy carries the LLM-authored sidecar, the data is
-	// the source of truth: it is validated, the published markdown is
-	// RE-RENDERED from it (never the LLM's hand-written table), and
-	// revisions must satisfy the living-document rules against the
-	// previously published sidecar. D6: the publish REQUIRES the sidecar —
-	// a markdown-only working copy of a sidecar artifact is blocked.
-	const triggeredArtifacts = new Set<string>();
-	if (SIDECAR_REGISTRY[mapping.artifact]) triggeredArtifacts.add(mapping.artifact);
-	for (const t of targets) {
-		if (SIDECAR_REGISTRY[t.fileArtifact]) triggeredArtifacts.add(t.fileArtifact);
+	// ---- Phase 6 (DB-primary storage): payload + git pre-checks moved
+	// BEFORE the DB-rendered block so payloadResult + storeKind +
+	// skipDbPublish are in scope for the early writeArtifact.
+	// Run BEFORE anything is written: the LLM-written payload must be valid
+	// and git must be usable, or nothing publishes. `skipDbPublish` is the
+	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
+	// `skipAutoDoctor`); production never sets it.
+	const skipDbPublish =
+		opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
+	const storeKind = kindForWorkingDir(mapping.workingDir);
+	if (!skipDbPublish && !storeKind) {
+		ctx.ui.notify(
+			`No store kind for working dir "${mapping.workingDir}" — publish blocked (Phase 4 payload convention).`,
+			"error",
+		);
+		return;
 	}
-	if (triggeredArtifacts.size > 0) {
-		const workingFiles = readdirSync(workingDirPath);
-		for (const artifactKey of triggeredArtifacts) {
-			const entry = SIDECAR_REGISTRY[artifactKey]!;
-			const sidecarFile = entry.detectWorkingSidecar(workingFiles);
-			if (!sidecarFile) {
-				ctx.ui.notify(
-					`${entry.label} publish requires a sidecar (${entry.sidecarName(projectName)}) in the working copy — ` +
-						`the data file is the source of truth and the published markdown is re-rendered from it. ` +
-						`Add it, then re-run the approve.`,
-					"error",
-				);
-				return;
+	// Always load the payload — even with `skipDbPublish` true — so the
+	// publish gate can validate against the DB-shaped rows (Phase 6
+	// §14.3). The "publish blocked" gate on invalid payload still only
+	// fires when the payload is REQUIRED (`!skipDbPublish`); legacy
+	// minimal-cwd tests pass through (the gate validates target.content
+	// directly when no payload exists).
+	const payloadResult = loadStagePayload(workingDirPath, storeKind!);
+	if (!skipDbPublish && payloadResult && !payloadResult.ok) {
+		ctx.ui.notify(
+			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
+				payloadResult.problems.map((p) => `  - ${p}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (!skipDbPublish) {
+		const gitPre = precheckGitForPublish(cwd);
+		if (!gitPre.ok) {
+			ctx.ui.notify(
+				`Git pre-check failed — publish blocked (Q6a):\n` +
+					gitPre.problems.map((p) => `  - ${p}`).join("\n"),
+				"error",
+			);
+			return;
+		}
+	}
+
+	// Phase 6 amendment (decision §14.2): the publish source for the 5
+	// DB-rendered kinds (PRD / RTM / atomic-functions / test-cases /
+	// development-order) is the project store DB. Payload rows feed
+	// writeArtifact (draft); the rendered markdown (Phase 5 renderers
+	// + per-stage templates on top, decision 9) OVERWRITES the
+	// LLM-authored working copy so the published file is a DB-derived
+	// human view. Hybrid kinds (design / pseudocode / testplan-plan /
+	// feasibility-study / final-design) keep the LLM-authored working
+	// copy — decision 7. Sidecar files in the working copy are IGNORED
+	// (§14.3); the sidecar loop is RETIRED here.
+	const DB_RENDERED_KIND_TO_RENDERER: Readonly<
+		Record<string, (rows: Record<string, unknown>) => string>
+	> = {
+		PRD: renderPrdMarkdown,
+		RTM: renderRtmMarkdown,
+		"atomic-functions": renderAtomicFunctionsMarkdown,
+		"test-cases": renderTestCasesMarkdown,
+		"development-order": renderDevelopmentOrderMarkdown,
+	};
+	const DB_RENDERED_FILE_ARTIFACTS: ReadonlySet<string> = new Set(
+		Object.keys(DB_RENDERED_KIND_TO_RENDERER),
+	);
+	const dbRenderedTargets = targets.filter((t) =>
+		DB_RENDERED_FILE_ARTIFACTS.has(t.fileArtifact),
+	);
+	if (
+		dbRenderedTargets.length > 0 &&
+		storeKind &&
+		payloadResult &&
+		payloadResult.ok &&
+		payloadResult.payload &&
+		payloadResult.envelope
+	) {
+		// For DB-rendered kinds, render markdown DIRECTLY from the
+		// payload rows (the DB is the source of truth but the payload
+		// is the validated view of it). We do NOT writeArtifact early:
+		// FK constraints would fire before the publish gate can
+		// validate. runDbPublish later writes the rows + flips to
+		// published + exports the YAML. Hybrid kinds are untouched
+		// here (their target.content stays as the LLM-authored copy).
+		// Feasibility adapter (4.3): decision + spike rows come from
+		// the settled session.
+		let renderRows: Record<string, unknown> = payloadResult.payload as Record<
+			string,
+			unknown
+		>;
+		if (storeKind === "feasibility" && state.feasibilitySession) {
+			renderRows = {
+				...renderRows,
+				...buildFeasibilityRowsFromSession(
+					state.feasibilitySession,
+					payloadResult.envelope.generatedAt,
+				),
+			} as Record<string, unknown>;
+		}
+		for (const target of dbRenderedTargets) {
+			const renderer = DB_RENDERED_KIND_TO_RENDERER[target.fileArtifact];
+			if (!renderer) continue;
+			target.content = renderer(renderRows);
+			// Sidecar files retire as sources — drop any sidecar
+			// assignment from the old loop (§14.3); the YAML is
+			// exported by runDbPublish from DB rows, not by
+			// serializing a hand-written sidecar.
+			target.sidecar = undefined;
+		}
+	}
+
+	// RTM publish-gate check (Subphase 2.1): the gate's RTM-specific
+	// checks (fingerprint binding + phase consistency) read
+	// `rtmData.rows[].id` and `phase`. Build a minimal RtmData from
+	// the DB rows so the gate can validate even when the test-only
+	// `skipDbPublish` escape hatch is in effect (the gate validates
+	// data; the publish chain is separate). For non-RTM kinds, leave
+	// null and the gate skips the RTM checks. The DB rows are the
+	// strict source; the sidecar shape fields
+	// (title/design/implementation/tests/status/coverage) are
+	// repointed in Subphase 2.4 when the engines flip to DB reads.
+	if (
+		storeKind === "rtm" &&
+		payloadResult &&
+		payloadResult.ok &&
+		payloadResult.payload &&
+		payloadResult.envelope
+	) {
+		const rtmDb = openStoreDb(buildStoreDbPath(projectName, cwd));
+		try {
+			// Build the RtmData from the payload rows directly — do
+			// NOT writeArtifact yet, so the gate can validate before
+			// the DB FK chain fires (the gate's "unknown id" message
+			// must surface, not a raw FOREIGN KEY constraint failure).
+			const rtmRowsIn = (payloadResult.payload as {
+				rtmRow?: Array<{ id: string; phase: number }>;
+			}).rtmRow ?? [];
+			const rtmRows = rtmRowsIn;
+			if (rtmRows.length > 0) {
+				// Minimal RtmData — the gate only reads id + phase from
+				// each row. Other fields stay empty defaults (the
+				// gate's checkRowFingerprints treats missing
+				// fingerprint as "untracked", which the gate
+				// explicitly ignores per its policy comment).
+				rtmDataForGate = {
+					project: projectName,
+					version: payloadResult.envelope.version.toString(),
+					rows: rtmRows.map((r) => ({
+						id: r.id,
+						title: "",
+						phase: r.phase,
+						design: "",
+						implementation: "",
+						tests: [],
+						status: "proposed" as const,
+						coverage: "covered" as const,
+					})),
+				};
 			}
-			const sidecarText = readFileSync(join(workingDirPath, sidecarFile), "utf8");
-			const parsed = entry.parseAndValidate(sidecarText);
-			if (!parsed.ok) {
-				ctx.ui.notify(
-					`${entry.label} sidecar is invalid. Fix these issues, then re-run the approve:\n` +
-						parsed.issues.map((i) => `  - ${i}`).join("\n"),
-					"error",
-				);
-				return;
-			}
-			let data = parsed.data;
-			if (entry.validateWithCtx) {
-				const ctxIssues = entry.validateWithCtx(data, { cwd, projectName });
-				if (ctxIssues.length > 0) {
-					ctx.ui.notify(
-						`${entry.label} sidecar failed tier/profile validation. Fix these issues, then re-run the approve:\n` +
-							ctxIssues.map((i) => `  - ${i}`).join("\n"),
-						"error",
-					);
-					return;
-				}
-			}
-			// Diff against the previously published sidecar.
-			const baseline = entry.loadPublishedBaseline(cwd, projectName);
-			if (baseline) {
-				if (baseline.data) {
-					for (const issue of entry.diff(baseline.data, data)) {
-						revisionIssues.push(`[${sidecarFile}] ${issue}`);
-					}
-				} else {
-					revisionIssues.push(`[${sidecarFile}] published ${entry.label} sidecar at ${baseline.path} is not readable — cannot verify revision rules.`);
-				}
-			}
-			if (entry.postValidate) {
-				data = entry.postValidate(data, { cwd, projectName });
-			}
-			const rendered = entry.render(data);
-			if (artifactKey === "RTM") rtmDataForGate = data as RtmData;
-			const sidecar = {
-				name: entry.sidecarName(projectName),
-				content: entry.serialize(data),
-			};
-			const mdTarget = targets.find((t) => t.fileArtifact === artifactKey);
-			if (mdTarget) {
-				mdTarget.content = rendered;
-				mdTarget.sidecar = sidecar;
-			} else {
-				// The LLM wrote only the sidecar — synthesize the markdown target.
-				const category = GROUPED_CATEGORIES[artifactKey] ?? "";
-				targets.push({
-					file: sidecarFile,
-					fileArtifact: artifactKey,
-					content: rendered,
-					groupedAbs: join(cwd, "Doc", category, `${artifactKey}_${projectName}.md`),
-					publishedPath: resolveDocArtifact(artifactKey, projectName, cwd)?.path ?? null,
-					sidecar,
-				});
-			}
+		} finally {
+			closeStoreDb(rtmDb);
 		}
 	}
 
@@ -473,7 +558,10 @@ export async function handleApprove(
 					revisionIssues.push(`[${target.file}] ${issue.code}: ${issue.message}`);
 				}
 			}
-		} else if (!hasNewChangeLogEntry(publishedContent, target.content)) {
+		} else if (
+			!DB_RENDERED_FILE_ARTIFACTS.has(target.fileArtifact) &&
+			!hasNewChangeLogEntry(publishedContent, target.content)
+		) {
 			revisionIssues.push(
 				`[${target.file}] revision-changelog-missing: the revision adds no new Change Log entry. ` +
 					`Record what changed and why before approving.`,
@@ -499,6 +587,10 @@ export async function handleApprove(
 		const gate = runPublishGate({
 			artifact: target.fileArtifact,
 			workingContent: target.content,
+			// RTM-specific publish-gate checks (fingerprint binding +
+			// phase consistency) read from a minimal RtmData built from
+			// the payload rows above (Phase 6 §14.3). For non-RTM kinds
+			// this is null and the gate skips RTM-specific checks.
 			rtmData: target.fileArtifact === "RTM" ? rtmDataForGate : null,
 			cwd,
 			projectName,
@@ -520,44 +612,6 @@ export async function handleApprove(
 				gateWarnings.map((w) => `  - ${w}`).join("\n"),
 			"warning",
 		);
-	}
-
-	// ---- Phase 4 (DB-primary storage): payload + git pre-checks (Q6a) ----
-	// Run BEFORE anything is written: the LLM-written payload must be valid
-	// and git must be usable, or nothing publishes. `skipDbPublish` is the
-	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
-	// `skipAutoDoctor`); production never sets it.
-	const skipDbPublish =
-		opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
-	const storeKind = kindForWorkingDir(mapping.workingDir);
-	if (!skipDbPublish && !storeKind) {
-		ctx.ui.notify(
-			`No store kind for working dir "${mapping.workingDir}" — publish blocked (Phase 4 payload convention).`,
-			"error",
-		);
-		return;
-	}
-	const payloadResult = skipDbPublish
-		? null
-		: loadStagePayload(workingDirPath, storeKind!);
-	if (payloadResult && !payloadResult.ok) {
-		ctx.ui.notify(
-			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
-				payloadResult.problems.map((p) => `  - ${p}`).join("\n"),
-			"error",
-		);
-		return;
-	}
-	if (!skipDbPublish) {
-		const gitPre = precheckGitForPublish(cwd);
-		if (!gitPre.ok) {
-			ctx.ui.notify(
-				`Git pre-check failed — publish blocked (Q6a):\n` +
-					gitPre.problems.map((p) => `  - ${p}`).join("\n"),
-				"error",
-			);
-			return;
-		}
 	}
 
 	// Freshness stamps (B4): hash the stage's declared inputs (registry

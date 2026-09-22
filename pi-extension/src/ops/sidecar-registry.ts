@@ -1,20 +1,37 @@
 /**
  * Sidecar registry (B3 — D3, generalized publish machinery; L1).
  *
- * One entry per sidecar-backed artifact. The publish branch in
- * `ops/approve.ts` consumes the registry instead of per-artifact
- * hardcoded blocks: detect the LLM-authored sidecar in the working copy
- * → parse + validate (hard-block on invalid, actionable issues) → diff
- * against the published baseline (revision rules) → RE-RENDER the
- * published markdown from the data → attach the serialized sidecar →
- * stamp both files (extraPaths). RTM is the first entry; its behavior is
- * unchanged (including the dual-read `.yaml` → `.json` fallback of D4
- * and the PSRS fingerprint stamping).
+ * **LEGACY — READ-ONLY FALLBACK (Phase 6, decision §14.3).**
  *
- * D6: for every registry artifact the publish REQUIRES the sidecar —
- * a markdown-only working copy of a sidecar artifact is blocked with an
- * actionable message. Legacy PUBLISHED artifacts without sidecars stay
- * doctor warnings (never blocks).
+ * As of Phase 6 (`/IDE_Plans/dbstore_phase6_plan_*.md`), the database is the
+ * single machine source of truth for all 9 stage kinds (PRD onward). The
+ * YAML/JSON sidecars (`RTM_<project>.yaml`, `atomic-functions_<project>.yaml`,
+ * `test-cases_<project>.yaml`, `development-order_<project>.yaml`,
+ * `feasibility-decision_<project>.yaml`) are **no longer the source of
+ * truth** — the publish path writes the structured rows to the store DB and
+ * exports YAML only as a download view (`exportArtifactYaml`). Nothing in
+ * the publish path reads from these sidecars; nothing writes them.
+ *
+ * This module's exports stay so the core engines + doctor checks can still
+ * **read** a published sidecar from a pre-v002 / pre-Phase-6 project
+ * (one place per engine, factored through a shared loader — see
+ * `core/{rtm-data,af-data,test-cases-data,dev-order-data}.ts` and the
+ * `resolve*Sidecar` helpers). The DB-first readers are wired in
+ * Subphase 2.4 and prefer the store rows; this registry is the
+ * LEGACY fallback ONLY — when the store has no published rows for the
+ * kind. Full removal is Phase 11 (`/velpari-migrate-store`).
+ *
+ * The render/serialize methods remain on each entry as a code reference
+ * (the legacy fallback chain uses them to materialize a markdown view
+ * when the engine must produce one) — but they are NOT consumed by
+ * `ops/approve.ts` anymore. Approve ignores sidecar files in working
+ * copies entirely (decision §14.3); the publish source is the stage
+ * payload (`ops/stage-payloads.ts`).
+ *
+ * D6 (legacy): for every registry artifact the **legacy** publish path
+ * required the sidecar — a markdown-only working copy was blocked. After
+ * Phase 6 the publish path no longer reads sidecars; the block message is
+ * gone. New working copies must ship a payload JSON instead.
  *
  * Entries are keyed by artifact kind as it appears in target
  * `fileArtifact` (`RTM`, `atomic-functions`, `test-cases`,
@@ -111,6 +128,12 @@ interface SidecarEntry {
 const rtmEntry: SidecarEntry = {
 	artifact: "RTM",
 	label: "RTM",
+	/**
+	 * Find the LLM-authored RTM sidecar in the working copy. Prefers
+	 * `.yaml` (D4); falls back to the legacy `.json` format.
+	 * @param {readonly string[]} workingFiles - Directory listing of the working copy.
+	 * @returns {string | null} The matching file name, or null when absent.
+	 */
 	detectWorkingSidecar(workingFiles) {
 		return (
 			workingFiles.find((f) => f.startsWith("RTM_") && f.endsWith(".yaml")) ??
@@ -118,6 +141,12 @@ const rtmEntry: SidecarEntry = {
 			null
 		);
 	},
+	/**
+	 * Parse + validate the working sidecar text. Returns either a typed
+	 * RtmData payload or an actionable list of issues.
+	 * @param {string} text - The raw sidecar file contents.
+	 * @returns {SidecarParseResult} ok=true with data on success; ok=false with issues on failure.
+	 */
 	parseAndValidate(text) {
 		const parsed = parseYaml(text);
 		if (!parsed.ok) {
@@ -131,18 +160,48 @@ const rtmEntry: SidecarEntry = {
 			? { ok: true, data: parsed.data as RtmData, issues: [] }
 			: { ok: false, issues: validation.issues };
 	},
+	/**
+	 * Diff an updated RtmData against a published baseline; returns the
+	 * list of revision-rule issues that block a publish.
+	 * @param {unknown} baseline - The published RtmData (or null fallback).
+	 * @param {unknown} updated - The newly validated RtmData.
+	 * @returns {string[]} Issue strings; empty array means revision-clean.
+	 */
 	diff(baseline, updated) {
 		return diffRtmData(baseline as RtmData, updated as RtmData).issues;
 	},
+	/**
+	 * Render the published RTM markdown from validated RtmData.
+	 * @param {unknown} data - Validated RtmData payload.
+	 * @returns {string} The full RTM markdown body.
+	 */
 	render(data) {
 		return renderRtmMarkdown(data as RtmData);
 	},
+	/**
+	 * The published sidecar file name (always YAML post-D4).
+	 * @param {string} projectName - Project name suffix for the filename.
+	 * @returns {string} The full sidecar file name.
+	 */
 	sidecarName(projectName) {
 		return `RTM_${projectName}.yaml`;
 	},
+	/**
+	 * Serialize validated RtmData to the published YAML sidecar bytes.
+	 * @param {unknown} data - Validated RtmData payload.
+	 * @returns {string} Deterministic YAML text (G5).
+	 */
 	serialize(data) {
 		return toYamlString(data);
 	},
+	/**
+	 * Locate and parse the previously published RTM sidecar (legacy
+	 * pre-v002 fallback — the DB-primary readers in `core/rtm-data.ts`
+	 * prefer the store rows when present).
+	 * @param {string} cwd - Project root.
+	 * @param {string} projectName - Project name suffix.
+	 * @returns {{ path: string; data: unknown | null } | null} null when no published sidecar exists; otherwise the path and parsed YAML (or null when unreadable).
+	 */
 	loadPublishedBaseline(cwd, projectName) {
 		const md = resolveDocArtifact("RTM", projectName, cwd);
 		const mdPath = md?.path ?? join(cwd, "Doc", "requirements", `RTM_${projectName}.md`);
@@ -151,6 +210,13 @@ const rtmEntry: SidecarEntry = {
 		const data = readYamlFile(sidecar.path);
 		return { path: sidecar.path, data };
 	},
+	/**
+	 * Post-validation hook: stamp PSRS-derived requirement fingerprints
+	 * into the RtmData rows (Phase 3).
+	 * @param {unknown} data - Validated RtmData payload.
+	 * @param {{ cwd: string; projectName: string }} ctx - Project context.
+	 * @returns {unknown} The stamped RtmData payload (mutates in place).
+	 */
 	postValidate(data, { cwd, projectName }) {
 		// Stamp requirement fingerprints from the published PSRS (Phase 3).
 		// The LLM never hashes; rows with unknown ids stay unstamped and
@@ -170,12 +236,24 @@ const rtmEntry: SidecarEntry = {
 const afEntry: SidecarEntry = {
 	artifact: "atomic-functions",
 	label: "Atomic-functions",
+	/**
+	 * Find the LLM-authored AF sidecar in the working copy (YAML only).
+	 * @param {readonly string[]} workingFiles - Directory listing of the working copy.
+	 * @returns {string | null} The matching file name, or null when absent.
+	 */
 	detectWorkingSidecar(workingFiles) {
 		return (
 			workingFiles.find((f) => f.startsWith("atomic-functions_") && f.endsWith(".yaml")) ??
 			null
 		);
 	},
+	/**
+	 * Parse + validate the working sidecar text. Base validation only;
+	 * tier-required fields are checked in `validateWithCtx` (needs the
+	 * configured profile from `files.json`).
+	 * @param {string} text - The raw sidecar file contents.
+	 * @returns {SidecarParseResult} ok=true with data on success; ok=false with issues on failure.
+	 */
 	parseAndValidate(text) {
 		const parsed = parseYaml(text);
 		if (!parsed.ok) {
@@ -191,6 +269,14 @@ const afEntry: SidecarEntry = {
 			? { ok: true, data: parsed.data as AfData, issues: [] }
 			: { ok: false, issues: validation.issues };
 	},
+	/**
+	 * Context-aware validation: stamps the configured tier (from
+	 * `.pi/velpari/files.json`) onto the AF data when absent, then runs
+	 * tier-aware validation. Returned issues hard-block the publish.
+	 * @param {unknown} data - Validated AfData payload (from parseAndValidate).
+	 * @param {{ cwd: string; projectName: string }} ctx - Project context.
+	 * @returns {string[]} Issue strings; empty array means tier-clean.
+	 */
 	validateWithCtx(data, { cwd }) {
 		const tier = deriveAtomicProfile(loadFilesConfig(cwd)).tier;
 		const afData = data as AfData;
@@ -198,18 +284,48 @@ const afEntry: SidecarEntry = {
 		afData.tier = afData.tier ?? tier;
 		return validateAfData(afData, { tier }).issues;
 	},
+	/**
+	 * Diff an updated AfData against a published baseline; returns the
+	 * list of revision-rule issues that block a publish.
+	 * @param {unknown} baseline - The published AfData (or null fallback).
+	 * @param {unknown} updated - The newly validated AfData.
+	 * @returns {string[]} Issue strings; empty array means revision-clean.
+	 */
 	diff(baseline, updated) {
 		return diffAfData(baseline as AfData, updated as AfData).issues;
 	},
+	/**
+	 * Render the published AF markdown from validated AfData.
+	 * @param {unknown} data - Validated AfData payload.
+	 * @returns {string} The full atomic-functions markdown body.
+	 */
 	render(data) {
 		return renderAfMarkdown(data as AfData);
 	},
+	/**
+	 * The published AF sidecar file name (always YAML).
+	 * @param {string} projectName - Project name suffix for the filename.
+	 * @returns {string} The full sidecar file name.
+	 */
 	sidecarName(projectName) {
 		return `atomic-functions_${projectName}.yaml`;
 	},
+	/**
+	 * Serialize validated AfData to the published YAML sidecar bytes.
+	 * @param {unknown} data - Validated AfData payload.
+	 * @returns {string} Deterministic YAML text (G5).
+	 */
 	serialize(data) {
 		return toYamlString(data);
 	},
+	/**
+	 * Locate and parse the previously published AF sidecar (legacy
+	 * pre-v002 fallback — the DB-primary readers in `core/af-data.ts`
+	 * prefer the store rows when present).
+	 * @param {string} cwd - Project root.
+	 * @param {string} projectName - Project name suffix.
+	 * @returns {{ path: string; data: unknown | null } | null} null when no published sidecar exists; otherwise the path and parsed YAML (or null when unreadable).
+	 */
 	loadPublishedBaseline(cwd, projectName) {
 		const md = resolveDocArtifact("atomic-functions", projectName, cwd);
 		const mdPath = md?.path ?? join(cwd, "Doc", "atomic-functions", `atomic-functions_${projectName}.md`);
@@ -223,12 +339,24 @@ const afEntry: SidecarEntry = {
 const testCasesEntry: SidecarEntry = {
 	artifact: "test-cases",
 	label: "Test-cases",
+	/**
+	 * Find the LLM-authored test-cases sidecar in the working copy
+	 * (YAML only).
+	 * @param {readonly string[]} workingFiles - Directory listing of the working copy.
+	 * @returns {string | null} The matching file name, or null when absent.
+	 */
 	detectWorkingSidecar(workingFiles) {
 		return (
 			workingFiles.find((f) => f.startsWith("test-cases_") && f.endsWith(".yaml")) ??
 			null
 		);
 	},
+	/**
+	 * Parse + validate the working sidecar text. Returns either a typed
+	 * TestCasesData payload or an actionable list of issues.
+	 * @param {string} text - The raw sidecar file contents.
+	 * @returns {SidecarParseResult} ok=true with data on success; ok=false with issues on failure.
+	 */
 	parseAndValidate(text) {
 		const parsed = parseYaml(text);
 		if (!parsed.ok) {
@@ -242,18 +370,48 @@ const testCasesEntry: SidecarEntry = {
 			? { ok: true, data: parsed.data as TestCasesData, issues: [] }
 			: { ok: false, issues: validation.issues };
 	},
+	/**
+	 * Diff an updated TestCasesData against a published baseline; returns
+	 * the list of revision-rule issues that block a publish.
+	 * @param {unknown} baseline - The published TestCasesData (or null fallback).
+	 * @param {unknown} updated - The newly validated TestCasesData.
+	 * @returns {string[]} Issue strings; empty array means revision-clean.
+	 */
 	diff(baseline, updated) {
 		return diffTestCasesData(baseline as TestCasesData, updated as TestCasesData).issues;
 	},
+	/**
+	 * Render the published test-cases markdown from validated TestCasesData.
+	 * @param {unknown} data - Validated TestCasesData payload.
+	 * @returns {string} The full test-cases markdown body.
+	 */
 	render(data) {
 		return renderTestCasesMarkdown(data as TestCasesData);
 	},
+	/**
+	 * The published test-cases sidecar file name (always YAML).
+	 * @param {string} projectName - Project name suffix for the filename.
+	 * @returns {string} The full sidecar file name.
+	 */
 	sidecarName(projectName) {
 		return `test-cases_${projectName}.yaml`;
 	},
+	/**
+	 * Serialize validated TestCasesData to the published YAML sidecar bytes.
+	 * @param {unknown} data - Validated TestCasesData payload.
+	 * @returns {string} Deterministic YAML text (G5).
+	 */
 	serialize(data) {
 		return toYamlString(data);
 	},
+	/**
+	 * Locate and parse the previously published test-cases sidecar
+	 * (legacy pre-v002 fallback — the DB-primary readers in
+	 * `core/test-cases-data.ts` prefer the store rows when present).
+	 * @param {string} cwd - Project root.
+	 * @param {string} projectName - Project name suffix.
+	 * @returns {{ path: string; data: unknown | null } | null} null when no published sidecar exists; otherwise the path and parsed YAML (or null when unreadable).
+	 */
 	loadPublishedBaseline(cwd, projectName) {
 		const md = resolveDocArtifact("test-cases", projectName, cwd);
 		const mdPath = md?.path ?? join(cwd, "Doc", "tests", `test-cases_${projectName}.md`);
@@ -267,12 +425,24 @@ const testCasesEntry: SidecarEntry = {
 const devOrderEntry: SidecarEntry = {
 	artifact: "development-order",
 	label: "Development-order",
+	/**
+	 * Find the LLM-authored development-order sidecar in the working
+	 * copy (YAML only).
+	 * @param {readonly string[]} workingFiles - Directory listing of the working copy.
+	 * @returns {string | null} The matching file name, or null when absent.
+	 */
 	detectWorkingSidecar(workingFiles) {
 		return (
 			workingFiles.find((f) => f.startsWith("development-order_") && f.endsWith(".yaml")) ??
 			null
 		);
 	},
+	/**
+	 * Parse + validate the working sidecar text. Returns either a typed
+	 * DevOrderData payload or an actionable list of issues.
+	 * @param {string} text - The raw sidecar file contents.
+	 * @returns {SidecarParseResult} ok=true with data on success; ok=false with issues on failure.
+	 */
 	parseAndValidate(text) {
 		const parsed = parseYaml(text);
 		if (!parsed.ok) {
@@ -286,18 +456,48 @@ const devOrderEntry: SidecarEntry = {
 			? { ok: true, data: parsed.data as DevOrderData, issues: [] }
 			: { ok: false, issues: validation.issues };
 	},
+	/**
+	 * Diff an updated DevOrderData against a published baseline; returns
+	 * the list of revision-rule issues that block a publish.
+	 * @param {unknown} baseline - The published DevOrderData (or null fallback).
+	 * @param {unknown} updated - The newly validated DevOrderData.
+	 * @returns {string[]} Issue strings; empty array means revision-clean.
+	 */
 	diff(baseline, updated) {
 		return diffDevOrderData(baseline as DevOrderData, updated as DevOrderData).issues;
 	},
+	/**
+	 * Render the published development-order markdown from validated DevOrderData.
+	 * @param {unknown} data - Validated DevOrderData payload.
+	 * @returns {string} The full development-order markdown body.
+	 */
 	render(data) {
 		return renderDevOrderMarkdown(data as DevOrderData);
 	},
+	/**
+	 * The published development-order sidecar file name (always YAML).
+	 * @param {string} projectName - Project name suffix for the filename.
+	 * @returns {string} The full sidecar file name.
+	 */
 	sidecarName(projectName) {
 		return `development-order_${projectName}.yaml`;
 	},
+	/**
+	 * Serialize validated DevOrderData to the published YAML sidecar bytes.
+	 * @param {unknown} data - Validated DevOrderData payload.
+	 * @returns {string} Deterministic YAML text (G5).
+	 */
 	serialize(data) {
 		return toYamlString(data);
 	},
+	/**
+	 * Locate and parse the previously published development-order
+	 * sidecar (legacy pre-v002 fallback — the DB-primary readers in
+	 * `core/dev-order-data.ts` prefer the store rows when present).
+	 * @param {string} cwd - Project root.
+	 * @param {string} projectName - Project name suffix.
+	 * @returns {{ path: string; data: unknown | null } | null} null when no published sidecar exists; otherwise the path and parsed YAML (or null when unreadable).
+	 */
 	loadPublishedBaseline(cwd, projectName) {
 		const md = resolveDocArtifact("development-order", projectName, cwd);
 		const mdPath = md?.path ?? join(cwd, "Doc", "development-order", `development-order_${projectName}.md`);

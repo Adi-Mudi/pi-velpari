@@ -25,6 +25,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handleApprove } from "../../src/ops/approve.js";
 import { createRun, loadState, saveState } from "../../src/core/state.js";
 import { PATHS } from "../../src/core/constants.js";
+import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import { writeArtifact, type ArtifactPayload } from "../../src/io/store.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 
 interface Notice {
 	message: string;
@@ -34,6 +37,12 @@ interface Notice {
 let tmpDir: string;
 let notices: Notice[];
 
+/**
+ * Build a minimal ExtensionCommandContext whose `ui.notify` captures
+ * every message into the module-level `notices` array for assertions.
+ * `ui.setStatus` is a no-op (footer status is irrelevant here).
+ * @returns {ExtensionCommandContext} The mock context for handleApprove.
+ */
 function makeCtx(): ExtensionCommandContext {
 	notices = [];
 	return {
@@ -64,6 +73,51 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build the legacy RTM sidecar JSON text. The publish path ignores
+ * this format in Phase 6 — `enterBuildingRtm` uses `rtmJsonAsPayload`
+ * to derive the v001-DDL payload rows from the same id list. Kept as
+ * the test's data-source-of-truth so the helpers stay coupled.
+ * @param {string[]} ids - Requirement ids each RTM row should cover.
+ * @returns {string} The JSON text for a legacy RTM sidecar.
+ */
+/**
+ * Adapter: convert the legacy sidecar JSON text (from `rtmJson`) into
+ * the v001-DDL payload JSON shape that `loadStagePayload` validates.
+ * Phase 6 — RTM is DB-primary, so the publish source is payload rows.
+ * @param {string} json - The legacy sidecar JSON text.
+ * @returns {string} The equivalent payload JSON text.
+ */
+function rtmJsonAsPayload(json: string): string {
+	const parsed = JSON.parse(json) as { rows: Array<{ id: string }> };
+	return JSON.stringify({
+		envelope: {
+			version: 1,
+			stage: "building-rtm",
+			generatedAt: "2026-09-22T00:00:00Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		},
+		rows: {
+			rtmRow: parsed.rows.map((r) => ({
+				id: r.id,
+				frRef: r.id,
+				phase: 1,
+				targetSha256: "f".repeat(64),
+			})),
+		},
+	});
+}
+
+/**
+ * Build the legacy RTM sidecar JSON text. The publish path ignores
+ * this format in Phase 6 — `enterBuildingRtm` uses `rtmJsonAsPayload`
+ * to derive the v001-DDL payload rows from the same id list. Kept as
+ * the test's data-source-of-truth so the helpers stay coupled.
+ * @param {string[]} ids - Requirement ids each RTM row should cover.
+ * @returns {string} The JSON text for a legacy RTM sidecar.
+ */
 function rtmJson(ids: string[]): string {
 	return JSON.stringify({
 		project: "TestApp",
@@ -81,6 +135,13 @@ function rtmJson(ids: string[]): string {
 	});
 }
 
+/**
+ * Move the state machine into the RTM building stage, seed the
+ * published PSRS, and write the RTM working copy + payload JSON.
+ * Phase 6 (§14): RTM is DB-primary; the working copy must carry a
+ * payload JSON. The legacy sidecar JSON is RETIRED.
+ * @returns {void}
+ */
 function enterBuildingRtm(): void {
 	const run = createRun("TestApp", tmpDir);
 	saveState({ ...run, currentStage: "building-rtm" }, tmpDir);
@@ -98,9 +159,79 @@ function enterBuildingRtm(): void {
 	);
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM preview\n", "utf8");
-	fs.writeFileSync(path.join(dir, "RTM_TestApp.json"), rtmJson(["FR-01", "FR-02", "NFR-01"]), "utf8");
+	// Phase 6 (§14): RTM is DB-primary; the working copy must carry a
+	// payload JSON. The legacy sidecar JSON is RETIRED.
+	fs.mkdirSync(path.join(dir, "payload"), { recursive: true });
+	fs.writeFileSync(
+		path.join(dir, "payload", "rtm-payload.json"),
+		rtmJsonAsPayload(rtmJson(["FR-01", "FR-02", "NFR-01"])),
+		"utf8",
+	);
+
+	// Seed the DB with fr/nfr rows so RTM rtm_row FK chains resolve
+	// (Phase 6 strict DB-primary reads).
+	seedFrNfrFromPsrs();
 }
 
+/**
+ * Read the seeded PSRS, parse out FR + NFR ids, and write them into
+ * the project store DB so the RTM payload's `rtm_row.fr_ref` FK
+ * resolves. Test-only — the production flow has PRD publish write
+ * the rows first.
+ */
+function seedFrNfrFromPsrs(): void {
+	const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
+	try {
+		const ids = Array.from(PSRS.matchAll(/\|\s*(FR-\d+|NFR-\d+)\s*\|/g)).map((m) =>
+			String(m[1]),
+		);
+		const seen = new Set<string>();
+		const frRows: ArtifactPayload = {
+			fr: ids.filter((id) => id.startsWith("FR-") && !seen.has(id)).map((id) => {
+				seen.add(id);
+				return {
+					id,
+					phase: 1,
+					textHash: "f".repeat(64),
+					text: `seeded prose for ${id}`,
+				};
+			}),
+			nfr: ids
+				.filter((id) => id.startsWith("NFR-") && !seen.has(id))
+				.map((id) => {
+					seen.add(id);
+					return {
+						id,
+						phase: 1,
+						textHash: "f".repeat(64),
+						text: `seeded prose for ${id}`,
+					};
+				}),
+		};
+		writeArtifact(
+			db,
+			"prd",
+			loadState(tmpDir).runId!,
+			{
+				version: 1,
+				stage: "drafting-prd",
+				generatedAt: "2026-09-22T00:00:00Z",
+				inputs: "{}",
+				reviewerVerdict: null,
+				changeLog: "[]",
+			},
+			frRows,
+		);
+	} finally {
+		closeStoreDb(db);
+	}
+}
+
+/**
+ * Concatenate every captured `ui.notify` message into one string for
+ * `assert.match` patterns.
+ * @returns {string} All captured messages joined by `\n`.
+ */
 function allMessages(): string {
 	return notices.map((n) => n.message).join("\n");
 }
@@ -120,13 +251,17 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
-		// The markdown + YAML sidecar WERE published (gate passes; the
-		// working copy carried a legacy .json sidecar — D4 dual-read —
-		// and writes are always .yaml).
+		// The markdown WAS published (gate passes; Phase 6: regenerated
+		// from DB rows). The YAML sidecar is a download view, NOT a
+		// publish product (§14.3); the publish chain that writes it
+		// is skipped here (`skipDbPublish: true`).
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
 		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(mdPath), "publish gate cleared — RTM markdown on disk");
-		assert.ok(fs.existsSync(yamlPath), "publish gate cleared — RTM YAML sidecar on disk");
+		assert.ok(
+			!fs.existsSync(yamlPath),
+			"publish gate cleared — no YAML sidecar written (download view only)",
+		);
 
 		// The doctor report was written.
 		const reportPath = path.join(tmpDir, PATHS.DOCTOR_REPORT);
