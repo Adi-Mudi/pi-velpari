@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 5 — `/velpari-export` (on-demand document download, 2026-09-22)
+
+New **42nd command** (view/ops group): export a published artifact version straight from the per-project SQLite store (`Doc/store/<project>/index.db`) to a file the user picks — read-only (D4). No publish/approve/gate changes; drafts are never listed or exported (Q2); export is an additional view, never a publish product (Q3).
+
+#### Added
+
+- **L0 store queries** (`io/store.ts`) — `listExportableKinds` (published kinds in canonical `KIND_ORDER`) + `listPublishedVersions` (published (run, kind) rows, newest first) + `PublishedVersionRef` interface. Read-only.
+- **L1 renderer + runner** (`ops/export-doc.ts`) — deterministic envelope header (frontmatter + fingerprint + reviewer verdict + change log), 9 per-kind markdown renderers with explicit natural-key sorts (G5), in-house `mdToHtml` converter over the bounded markdown subset our renderers emit (zero new dependencies), and the `runExport` entry point: open DB (missing → refusal), verify published + picked version, delegate yaml to `exportArtifactYaml` (byte-identical to publish-time sidecar bytes, RES-1), write via `atomicWriteFile`. Never writes to the DB.
+- **L3 picker flow** (`commands/export.ts`) — project (multi-design picker; approve.ts precedence), kind, version (newest first), format (md/yaml/html), output path with deterministic default suggestion (`Doc/export/<project>/<Artifact>_<project>.<ext>`), overwrite confirm gate (declined → file untouched). Every cancel notifies and exits cleanly. **32 new tests across `test/ops/export-doc.test.ts` + `test/commands/export-command.test.ts`.**
+
+#### Changed
+
+- **Command surface 41 → 42** (`commands/index.ts`, registration test, both AGENTS.md files — one pass so none drifts).
+
 ### Cleanup — dead exports, lint warnings, superseded docs (2026-09-21)
 
 #### Removed

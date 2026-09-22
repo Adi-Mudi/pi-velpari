@@ -167,13 +167,14 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 
 ## Command surface
 
-**41 commands total** (see `commands/COMMAND_NAMES` for the full list):
+**42 commands total** (see `commands/COMMAND_NAMES` for the full list):
 - **10 stage** — 5 pre-production (`brainstorm`, `prd`, `rtm`, `feasibility`, `architecture-generator`) + 3 build-planning (`atomic-function`, `pseudocode`, `testplan`) + 2 execution/consolidation (`development-order`, `final-design`).
 - **10 approve (fall-back)** — 9 per-stage `/velpari-<stage>-approve` + the bespoke `/velpari-approve-brainstorm`.
 - **6 ops/discipline** — `status`, `reset`, `handoff`, `doctor`, `design-logging`, `reconfirm` (A5).
 - **6 configure** — `configure-inputs`, `configure-requirements`, `configure-standards`, `configure-agents`, `agents`, `generate-sub-agents`.
 - **1 wrapper** — `prd-rtm`.
 - **8 view** — `show-<stage>` + `show-logging`.
+- **1 export** — `export` (Phase 5): on-demand document download from the DB store (read-only, no publish/gate changes).
 
 ## Coding conventions
 

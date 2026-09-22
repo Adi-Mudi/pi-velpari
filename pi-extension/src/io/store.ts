@@ -284,6 +284,15 @@ const KIND_TABLES: Record<ArtifactKind, readonly TableSpec[]> = {
 	"final-design": [{ table: "final_section", key: "finalSection", orderBy: "no" }],
 };
 
+/**
+ * Canonical kind order — the export/picker display order (Phase 5, plan
+ * subphase 1.1). Derived from KIND_TABLES keys so it can never drift from
+ * the dispatch table itself.
+ */
+export const KIND_ORDER: readonly ArtifactKind[] = Object.keys(
+	KIND_TABLES,
+) as ArtifactKind[];
+
 /** Values this store ever binds (STRICT tables reject anything else). */
 type SqlValue = string | number | null;
 
@@ -567,6 +576,59 @@ export function verifyExportChecksum(
 		expected: read.envelope.sha256Fingerprint,
 		actual,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Export-listing primitives (Phase 5 — read-only, D4 on-demand export)
+// ---------------------------------------------------------------------------
+
+/** One published (run_id, kind) row — the version picker's list item. */
+export interface PublishedVersionRef {
+	runId: string;
+	version: number;
+	generatedAt: string;
+	stage: string;
+}
+
+/**
+ * Kinds with at least one PUBLISHED version, in canonical KIND_ORDER
+ * (Phase 5 subphase 1.1 — the kind picker's menu). Drafts never count.
+ * @param {DatabaseSync} db - Open store connection (from openStoreDb).
+ * @returns {ArtifactKind[]} Kinds, ordered by KIND_ORDER (never SQL order).
+ */
+export function listExportableKinds(db: DatabaseSync): ArtifactKind[] {
+	const rows = db
+		.prepare(
+			"SELECT DISTINCT kind FROM artifacts WHERE status = 'published'",
+		)
+		.all() as Record<string, SqlValue>[];
+	const present = new Set(rows.map((r) => String(r.kind)));
+	return KIND_ORDER.filter((kind) => present.has(kind));
+}
+
+/**
+ * Published versions of one kind, newest first (Phase 5 subphase 1.2 — the
+ * version picker). Drafts are never listed.
+ * @param {DatabaseSync} db - Open store connection (from openStoreDb).
+ * @param {ArtifactKind} kind - Artifact kind to list.
+ * @returns {PublishedVersionRef[]} Newest first (generated_at DESC).
+ */
+export function listPublishedVersions(
+	db: DatabaseSync,
+	kind: ArtifactKind,
+): PublishedVersionRef[] {
+	const rows = db
+		.prepare(
+			`SELECT run_id, version, generated_at, stage FROM artifacts
+			 WHERE kind = ? AND status = 'published' ORDER BY generated_at DESC`,
+		)
+		.all(kind) as Record<string, SqlValue>[];
+	return rows.map((r) => ({
+		runId: String(r.run_id),
+		version: Number(r.version),
+		generatedAt: String(r.generated_at),
+		stage: String(r.stage),
+	}));
 }
 
 // ---------------------------------------------------------------------------

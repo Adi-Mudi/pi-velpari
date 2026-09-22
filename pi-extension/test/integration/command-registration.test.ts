@@ -17,8 +17,8 @@ import {
 } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 41 command names (A5: +velpari-reconfirm)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 41);
+	it("exports 42 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 42);
 	});
 
 	it("contains all expected user-facing commands", () => {
