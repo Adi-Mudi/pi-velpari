@@ -1,7 +1,8 @@
 // Unit tests — io/db-schema.ts (Phase 2: core schema DDL v001).
 // Covers: v001 application + table/index inventory, envelope FK integrity +
 // cascade, status CHECK (Q2), STRICT enforcement, links CHECKs (G6),
-// FK chains + step_dep self-edge ban, quick_check (G4), store path helpers.
+// FK chains + step_dep self-edge ban, quick_check (G4), store path helpers,
+// feasibility trio (3.1: decision/spike/reuse_scan).
 // Assertions follow observed node:sqlite driver behavior (probe-verified).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -25,6 +26,8 @@ const EXPECTED_TABLES = [
 	"design_module",
 	"dev_step",
 	"diagram",
+	"feasibility_decision",
+	"feasibility_spike",
 	"final_section",
 	"fr",
 	"links",
@@ -32,6 +35,7 @@ const EXPECTED_TABLES = [
 	"nfr",
 	"prd_section",
 	"pseudocode_block",
+	"reuse_scan",
 	"rtm_row",
 	"step_af",
 	"step_dep",
@@ -272,6 +276,81 @@ describe("db-schema — v001 core schema", () => {
 						.run(),
 				/CHECK constraint failed: step_id <> depends_on_id/,
 			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("feasibility tables (3.1): verdict CHECK + natural PKs + envelope cascade", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			insertEnvelope(db, "r1", "feasibility");
+			db.prepare(
+				"INSERT INTO feasibility_decision (run_id, kind, verdict, decided_by, at) VALUES ('r1', 'feasibility', 'go', 'user', '2026-09-22T00:00:00Z')",
+			).run();
+			// verdict CHECK rejects values outside the §5 vocabulary.
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO feasibility_decision (run_id, kind, verdict, decided_by, at) VALUES ('r1', 'feasibility', 'maybe', 'user', 't2')",
+						)
+						.run(),
+				/CHECK constraint failed/,
+			);
+			// One decision row per publish — PRIMARY KEY (run_id).
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO feasibility_decision (run_id, kind, verdict, decided_by, at) VALUES ('r1', 'feasibility', 'no-go', 'user', 't3')",
+						)
+						.run(),
+				/UNIQUE constraint failed|PRIMARY KEY constraint failed/,
+			);
+			// Spike: language natural key + passed CHECK.
+			db.prepare(
+				"INSERT INTO feasibility_spike (run_id, kind, language, passed, result_ref) VALUES ('r1', 'feasibility', 'typescript', 1, 'spike-out')",
+			).run();
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO feasibility_spike (run_id, kind, language, passed) VALUES ('r1', 'feasibility', 'typescript', 0)",
+						)
+						.run(),
+				/UNIQUE constraint failed|PRIMARY KEY constraint failed/,
+			);
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO feasibility_spike (run_id, kind, language, passed) VALUES ('r1', 'feasibility', 'golang', 2)",
+						)
+						.run(),
+				/CHECK constraint failed/,
+			);
+			// reuse_scan: candidate natural key, nullable license/freshness.
+			db.prepare(
+				"INSERT INTO reuse_scan (run_id, kind, candidate, license, repo_freshness, verdict) VALUES ('r1', 'feasibility', 'lib-a', 'MIT', 'fresh', 'reuse')",
+			).run();
+			db.prepare(
+				"INSERT INTO reuse_scan (run_id, kind, candidate, verdict) VALUES ('r1', 'feasibility', 'lib-b', 'build')",
+			).run();
+			// Envelope delete cascades all three feasibility child tables.
+			db.prepare(
+				"DELETE FROM artifacts WHERE run_id = 'r1' AND kind = 'feasibility'",
+			).run();
+			for (const table of [
+				"feasibility_decision",
+				"feasibility_spike",
+				"reuse_scan",
+			]) {
+				const row = db
+					.prepare("SELECT COUNT(*) AS n FROM " + table)
+					.get() as { n: number };
+				assert.equal(row.n, 0, table + " should be cascade-empty");
+			}
 		} finally {
 			closeStoreDb(db);
 		}

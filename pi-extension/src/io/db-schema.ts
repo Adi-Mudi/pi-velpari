@@ -12,7 +12,9 @@
 // Column-name deviations from §5 (all yields to the envelope, recorded in
 // the Phase 2 plan Risks note 4): `artifact_id` realized by `kind` itself;
 // `adr.status` → `adr_status`; `diagram.kind` → `diagram_kind`;
-// `test_case.kind` → `tc_kind`.
+// `test_case.kind` → `tc_kind`. Feasibility vocabulary: the store-level
+// feasibility tables use §5's `go/no-go/go-with-conditions`; the verified
+// record's `reuse/partial/build` maps at the Phase 4 adapter.
 // ============================================================================
 
 /** DDL applied by migration v001 (metadata envelope + row-sets + links). */
@@ -215,6 +217,40 @@ CREATE TABLE final_section (
 	source_ids TEXT NOT NULL DEFAULT '[]',
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
 	PRIMARY KEY (no),
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE feasibility_decision (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	verdict TEXT NOT NULL CHECK (verdict IN ('go','no-go','go-with-conditions')),
+	language TEXT,
+	decided_by TEXT NOT NULL,
+	at TEXT NOT NULL,
+	web_search_consent INTEGER CHECK (web_search_consent IN (0,1)),
+	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+	PRIMARY KEY (run_id),
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE feasibility_spike (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	language TEXT PRIMARY KEY,
+	passed INTEGER NOT NULL CHECK (passed IN (0,1)),
+	result_ref TEXT,
+	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE reuse_scan (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	candidate TEXT PRIMARY KEY,
+	license TEXT,
+	repo_freshness TEXT,
+	verdict TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
