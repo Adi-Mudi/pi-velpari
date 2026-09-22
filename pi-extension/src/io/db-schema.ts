@@ -1,5 +1,5 @@
 // ============================================================================
-// io/db-schema.ts — v001 DDL (Phase 2: core schema)
+// io/db-schema.ts — v001 DDL (Phase 2: core schema; Phase 4 final amendment)
 // ============================================================================
 // Decision record §5 (row-sets), §4.6 (links), §11 (STRICT/FK standards).
 // One batch of DDL applied by migration v001 in io/db.ts. All tables STRICT.
@@ -9,12 +9,22 @@
 // artifacts(run_id, kind) ON DELETE CASCADE — the parent's composite PK
 // supplies the required UNIQUE index.
 //
+// Per-run natural keys (Phase 4 final amendment, user decision C — the LAST
+// v001 amendment; the schema freezes at the first real publish): every
+// child table's natural PK is scoped per-run — `PRIMARY KEY (run_id, id)`
+// etc. — so two runs may publish the same natural ids without conflict
+// (update-mode). Cross-kind FKs are composite same-run references
+// (`FOREIGN KEY (run_id, fr_ref) REFERENCES fr(run_id, id)`), which makes
+// cross-run references structurally impossible.
+//
 // Column-name deviations from §5 (all yields to the envelope, recorded in
 // the Phase 2 plan Risks note 4): `artifact_id` realized by `kind` itself;
 // `adr.status` → `adr_status`; `diagram.kind` → `diagram_kind`;
-// `test_case.kind` → `tc_kind`. Feasibility vocabulary: the store-level
-// feasibility tables use §5's `go/no-go/go-with-conditions`; the verified
-// record's `reuse/partial/build` maps at the Phase 4 adapter.
+// `test_case.kind` → `tc_kind`. Feasibility vocabulary: BOTH vocabularies
+// are legal in the DDL — §5's `go/no-go/go-with-conditions` AND the
+// verified record's `reuse/partial/build` (user decision 2026-09-22: no
+// mapping loss, no third vocabulary). The Phase 4 adapter writes the
+// verified record's vocabulary verbatim.
 // ============================================================================
 
 /** DDL applied by migration v001 (metadata envelope + row-sets + links). */
@@ -40,7 +50,7 @@ CREATE TABLE fr (
 	phase INTEGER NOT NULL CHECK (phase >= 1),
 	text_hash TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -51,7 +61,7 @@ CREATE TABLE nfr (
 	phase INTEGER NOT NULL CHECK (phase >= 1),
 	text_hash TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -62,7 +72,7 @@ CREATE TABLE prd_section (
 	title TEXT NOT NULL,
 	body_ref TEXT,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (no),
+	PRIMARY KEY (run_id, no),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -70,13 +80,14 @@ CREATE TABLE rtm_row (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
 	id TEXT NOT NULL,
-	fr_ref TEXT NOT NULL REFERENCES fr(id) ON DELETE CASCADE,
+	fr_ref TEXT NOT NULL,
 	af_ref TEXT,
 	tc_ref TEXT,
 	phase INTEGER NOT NULL CHECK (phase >= 1),
 	target_sha256 TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
+	FOREIGN KEY (run_id, fr_ref) REFERENCES fr(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -86,16 +97,18 @@ CREATE TABLE design_module (
 	id TEXT NOT NULL,
 	name TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE module_source_fr (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	module_id TEXT NOT NULL REFERENCES design_module(id) ON DELETE CASCADE,
-	fr_id TEXT NOT NULL REFERENCES fr(id) ON DELETE CASCADE,
-	PRIMARY KEY (module_id, fr_id),
+	module_id TEXT NOT NULL,
+	fr_id TEXT NOT NULL,
+	PRIMARY KEY (run_id, module_id, fr_id),
+	FOREIGN KEY (run_id, module_id) REFERENCES design_module(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, fr_id) REFERENCES fr(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -108,7 +121,7 @@ CREATE TABLE adr (
 	chosen TEXT,
 	rationale TEXT,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -119,16 +132,17 @@ CREATE TABLE diagram (
 	diagram_kind TEXT NOT NULL,
 	mermaid_text TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE approach (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	module_id TEXT NOT NULL REFERENCES design_module(id) ON DELETE CASCADE,
+	module_id TEXT NOT NULL,
 	tactic_id TEXT NOT NULL,
-	PRIMARY KEY (module_id, tactic_id),
+	PRIMARY KEY (run_id, module_id, tactic_id),
+	FOREIGN KEY (run_id, module_id) REFERENCES design_module(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -143,7 +157,7 @@ CREATE TABLE atomic_function (
 	sil TEXT NOT NULL CHECK (sil IN ('none','sil-1','sil-2','sil-3','sil-4')),
 	is_leaf INTEGER NOT NULL CHECK (is_leaf IN (0,1)),
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -151,10 +165,11 @@ CREATE TABLE pseudocode_block (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
 	id TEXT NOT NULL,
-	af_ref TEXT NOT NULL REFERENCES atomic_function(id) ON DELETE CASCADE,
+	af_ref TEXT NOT NULL,
 	content_hash TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
+	FOREIGN KEY (run_id, af_ref) REFERENCES atomic_function(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -165,17 +180,18 @@ CREATE TABLE test_case (
 	tc_kind TEXT NOT NULL CHECK (tc_kind IN ('TC','IT')),
 	strategy_ref TEXT,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE tc_trace (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	tc_id TEXT NOT NULL REFERENCES test_case(id) ON DELETE CASCADE,
+	tc_id TEXT NOT NULL,
 	target_kind TEXT NOT NULL CHECK (target_kind IN ('fr','nfr','af')),
 	target_id TEXT NOT NULL,
-	PRIMARY KEY (tc_id, target_kind, target_id),
+	PRIMARY KEY (run_id, tc_id, target_kind, target_id),
+	FOREIGN KEY (run_id, tc_id) REFERENCES test_case(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -185,26 +201,30 @@ CREATE TABLE dev_step (
 	id TEXT NOT NULL,
 	module TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (id),
+	PRIMARY KEY (run_id, id),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE step_af (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	step_id TEXT NOT NULL REFERENCES dev_step(id) ON DELETE CASCADE,
-	af_id TEXT NOT NULL REFERENCES atomic_function(id) ON DELETE CASCADE,
-	PRIMARY KEY (step_id, af_id),
+	step_id TEXT NOT NULL,
+	af_id TEXT NOT NULL,
+	PRIMARY KEY (run_id, step_id, af_id),
+	FOREIGN KEY (run_id, step_id) REFERENCES dev_step(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, af_id) REFERENCES atomic_function(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE step_dep (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	step_id TEXT NOT NULL REFERENCES dev_step(id) ON DELETE CASCADE,
-	depends_on_id TEXT NOT NULL REFERENCES dev_step(id) ON DELETE CASCADE,
-	PRIMARY KEY (step_id, depends_on_id),
+	step_id TEXT NOT NULL,
+	depends_on_id TEXT NOT NULL,
+	PRIMARY KEY (run_id, step_id, depends_on_id),
 	CHECK (step_id <> depends_on_id),
+	FOREIGN KEY (run_id, step_id) REFERENCES dev_step(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, depends_on_id) REFERENCES dev_step(run_id, id) ON DELETE CASCADE,
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
@@ -216,14 +236,14 @@ CREATE TABLE final_section (
 	source_artifact TEXT NOT NULL,
 	source_ids TEXT NOT NULL DEFAULT '[]',
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
-	PRIMARY KEY (no),
+	PRIMARY KEY (run_id, no),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE feasibility_decision (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	verdict TEXT NOT NULL CHECK (verdict IN ('go','no-go','go-with-conditions')),
+	verdict TEXT NOT NULL CHECK (verdict IN ('go','no-go','go-with-conditions','reuse','partial','build')),
 	language TEXT,
 	decided_by TEXT NOT NULL,
 	at TEXT NOT NULL,
@@ -236,33 +256,36 @@ CREATE TABLE feasibility_decision (
 CREATE TABLE feasibility_spike (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	language TEXT PRIMARY KEY,
+	language TEXT NOT NULL,
 	passed INTEGER NOT NULL CHECK (passed IN (0,1)),
 	result_ref TEXT,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+	PRIMARY KEY (run_id, language),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE reuse_scan (
 	run_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
-	candidate TEXT PRIMARY KEY,
+	candidate TEXT NOT NULL,
 	license TEXT,
 	repo_freshness TEXT,
 	verdict TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+	PRIMARY KEY (run_id, candidate),
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE links (
+	run_id TEXT NOT NULL,
 	from_kind TEXT NOT NULL CHECK (from_kind IN ('fr','nfr','rtm','feasibility','design_module','adr','diagram','af','pseudocode','tc','dev_step','final_section')),
 	from_id TEXT NOT NULL,
 	to_kind TEXT NOT NULL CHECK (to_kind IN ('fr','nfr','rtm','feasibility','design_module','adr','diagram','af','pseudocode','tc','dev_step','final_section')),
 	to_id TEXT NOT NULL,
 	relation TEXT NOT NULL CHECK (relation IN ('traces','realizes','decomposes','depends_on','covers','calls')),
-	PRIMARY KEY (from_kind, from_id, to_kind, to_id, relation)
+	PRIMARY KEY (run_id, from_kind, from_id, to_kind, to_id, relation)
 ) STRICT;
 
-CREATE INDEX idx_links_from ON links(from_kind, from_id);
-CREATE INDEX idx_links_to ON links(to_kind, to_id);
+CREATE INDEX idx_links_from ON links(run_id, from_kind, from_id);
+CREATE INDEX idx_links_to ON links(run_id, to_kind, to_id);
 `;

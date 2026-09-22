@@ -363,6 +363,40 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-feasibil
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the feasibility content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/feasibility-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "analyzing-feasibility",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": {},
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "reuseScan": [{ "candidate": "lib-a", "license": "MIT", "repoFreshness": "fresh", "verdict": "reuse" }]
+  }
+}
+```
+
+FEASIBILITY SPECIAL CASE: the `feasibilityDecision` and `feasibilitySpike`
+rows are built BY CODE from `state.feasibilitySession` at publish time —
+the decision is written VERBATIM (`reuse` / `partial` / `build`), language
+= `selectedLanguage`, decidedBy = `selectedBy`, spikes from
+`spikeResults`. Do NOT put them in the payload; the payload carries the
+envelope + optional `reuseScan` rows only.
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

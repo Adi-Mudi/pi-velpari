@@ -13,9 +13,16 @@
 //   Q2    — rows are written 'draft'; publishArtifact flips draft→published
 //           (envelope + children) in ONE transaction; deleteRunDrafts removes
 //           draft envelopes ONLY — CASCADE removes their children; published
-//           rows survive untouched.
+//           rows survive untouched. revertPublish is the Q6d inverse: it
+//           flips published→draft (envelope + children) when a publish-gate
+//           step AFTER the DB write fails, so a retry starts clean.
 //   G1    — checkpointNow wraps PRAGMA wal_checkpoint(TRUNCATE) for pre-commit
 //           use (Phase 4).
+//
+// Phase 4 note: v001 was amended to per-run composite PKs (every child
+// table's natural key is scoped by run_id). All queries here were already
+// run_id+kind scoped, so no logic changed — the store is PK-agnostic by
+// construction; the coexistence invariant is locked in store tests 14/15.
 //
 // Export body excludes `sha256_fingerprint` (no self-reference — plan Risks
 // note 2) AND `status` (the draft→published flip must not invalidate the
@@ -71,7 +78,9 @@ export interface RtmRowRow {
 	targetSha256: string;
 }
 export interface FeasibilityDecisionRow {
-	verdict: "go" | "no-go" | "go-with-conditions";
+	// Dual vocabulary (Phase 4 amendment): §5 go/* AND the verified record's
+	// reuse/partial/build — both legal, DDL CHECK mirrored.
+	verdict: "go" | "no-go" | "go-with-conditions" | "reuse" | "partial" | "build";
 	language?: string | null;
 	decidedBy: string;
 	at: string;
@@ -590,6 +599,47 @@ export function checkpointNow(db: DatabaseSync): CheckpointResult {
 		log: Number(row?.log ?? 0),
 		checkpointed: Number(row?.checkpointed ?? 0),
 	};
+}
+
+/**
+ * Q6d rollback helper: flip one artifact published→draft (envelope + every
+ * non-edge child table, ONE transaction) — the inverse of publishArtifact.
+ * Used by the Phase 4 publish gate when a step AFTER the DB write fails
+ * (YAML export/verify, git commit): the store returns to its pre-publish
+ * draft state so a retry starts clean. Throws when there is no PUBLISHED
+ * artifact for the run/kind (a silent no-op would hide caller bugs).
+ */
+export function revertPublish(
+	db: DatabaseSync,
+	runId: string,
+	kind: ArtifactKind,
+): void {
+	const specs = KIND_TABLES[kind];
+	db.exec("BEGIN IMMEDIATE;");
+	try {
+		const result = db
+			.prepare(
+				"UPDATE artifacts SET status = 'draft' WHERE run_id = ? AND kind = ? AND status = 'published'",
+			)
+			.run(runId, kind);
+		if (Number(result.changes) === 0) {
+			throw new Error(`store: no published artifact to revert (${runId}/${kind})`);
+		}
+		for (const spec of specs) {
+			if (spec.edge) continue; // edge tables carry no status column
+			db.prepare(
+				`UPDATE ${spec.table} SET status = 'draft' WHERE run_id = ? AND kind = ?`,
+			).run(runId, kind);
+		}
+		db.exec("COMMIT;");
+	} catch (err) {
+		try {
+			db.exec("ROLLBACK;");
+		} catch {
+			// Txn already closed — the original error is the one that matters.
+		}
+		throw err;
+	}
 }
 
 /**

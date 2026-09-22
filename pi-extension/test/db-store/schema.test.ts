@@ -1,8 +1,11 @@
-// Unit tests — io/db-schema.ts (Phase 2: core schema DDL v001).
+// Unit tests — io/db-schema.ts (Phase 2: core schema DDL v001; Phase 4 final
+// amendment: per-run composite PKs, composite same-run FKs, links.run_id,
+// dual feasibility vocabulary).
 // Covers: v001 application + table/index inventory, envelope FK integrity +
 // cascade, status CHECK (Q2), STRICT enforcement, links CHECKs (G6),
-// FK chains + step_dep self-edge ban, quick_check (G4), store path helpers,
-// feasibility trio (3.1: decision/spike/reuse_scan).
+// FK chains + step_dep self-edge ban, per-run PK coexistence + same-run
+// duplicate rejection + cross-run FK rejection, quick_check (G4), store path
+// helpers, feasibility trio (3.1; dual vocab per Phase 4 amendment).
 // Assertions follow observed node:sqlite driver behavior (probe-verified).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -178,17 +181,17 @@ describe("db-schema — v001 core schema", () => {
 		}
 	});
 
-	test("links (G6): valid edge accepted, PK dedupes, bad relation/kind rejected", () => {
+	test("links (G6): valid edge accepted, PK dedupes per-run, bad relation/kind rejected", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			db.prepare(
-				"INSERT INTO links VALUES ('fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
+				"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
 			).run();
 			assert.throws(
 				() =>
 					db
 						.prepare(
-							"INSERT INTO links VALUES ('fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
+							"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
 						)
 						.run(),
 				/UNIQUE constraint failed/,
@@ -197,7 +200,7 @@ describe("db-schema — v001 core schema", () => {
 				() =>
 					db
 						.prepare(
-							"INSERT INTO links VALUES ('fr', 'FR-1', 'rtm', 'RTM-1', 'owns')",
+							"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'owns')",
 						)
 						.run(),
 				/CHECK constraint failed/,
@@ -206,7 +209,7 @@ describe("db-schema — v001 core schema", () => {
 				() =>
 					db
 						.prepare(
-							"INSERT INTO links VALUES ('foo', 'FR-1', 'rtm', 'RTM-1', 'traces')",
+							"INSERT INTO links VALUES ('r1', 'foo', 'FR-1', 'rtm', 'RTM-1', 'traces')",
 						)
 						.run(),
 				/CHECK constraint failed/,
@@ -215,6 +218,65 @@ describe("db-schema — v001 core schema", () => {
 				(db.prepare("SELECT COUNT(*) AS n FROM links").get() as { n: number }).n,
 				1,
 			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("per-run PKs (Phase 4 amendment): cross-run same-id coexistence + same-run duplicate rejection", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			insertEnvelope(db, "r1", "prd");
+			insertEnvelope(db, "r2", "prd");
+			// Same natural id in two runs — coexistence is the update-mode invariant.
+			db.prepare(
+				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
+			).run();
+			db.prepare(
+				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r2', 'prd', 'FR-1', 1, 'h2')",
+			).run();
+			assert.equal(
+				(db.prepare("SELECT COUNT(*) AS n FROM fr").get() as { n: number }).n,
+				2,
+			);
+			// Within one run the natural key is still unique.
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h3')",
+						)
+						.run(),
+				/UNIQUE constraint failed|PRIMARY KEY constraint failed/,
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("composite same-run FKs: cross-run references structurally impossible", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			insertEnvelope(db, "r1", "prd");
+			insertEnvelope(db, "r1", "rtm");
+			insertEnvelope(db, "r2", "rtm");
+			db.prepare(
+				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
+			).run();
+			// r2's rtm_row cannot reference r1's FR-1 — the FK is (run_id, fr_ref).
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO rtm_row (run_id, kind, id, fr_ref, phase, target_sha256) VALUES ('r2', 'rtm', 'RTM-1', 'FR-1', 1, 't1')",
+						)
+						.run(),
+				/FOREIGN KEY constraint failed/,
+			);
+			// Same-run reference still works.
+			db.prepare(
+				"INSERT INTO rtm_row (run_id, kind, id, fr_ref, phase, target_sha256) VALUES ('r1', 'rtm', 'RTM-1', 'FR-1', 1, 't1')",
+			).run();
 		} finally {
 			closeStoreDb(db);
 		}
@@ -281,14 +343,15 @@ describe("db-schema — v001 core schema", () => {
 		}
 	});
 
-	test("feasibility tables (3.1): verdict CHECK + natural PKs + envelope cascade", () => {
+	test("feasibility tables (3.1): dual-vocab verdict CHECK + per-run natural PKs + envelope cascade", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			insertEnvelope(db, "r1", "feasibility");
+			insertEnvelope(db, "r2", "feasibility");
 			db.prepare(
 				"INSERT INTO feasibility_decision (run_id, kind, verdict, decided_by, at) VALUES ('r1', 'feasibility', 'go', 'user', '2026-09-22T00:00:00Z')",
 			).run();
-			// verdict CHECK rejects values outside the §5 vocabulary.
+			// verdict CHECK rejects values outside BOTH vocabularies.
 			assert.throws(
 				() =>
 					db
@@ -308,6 +371,16 @@ describe("db-schema — v001 core schema", () => {
 						.run(),
 				/UNIQUE constraint failed|PRIMARY KEY constraint failed/,
 			);
+			// Dual vocabulary (Phase 4 amendment): the verified record's
+			// reuse/partial/build accepted verbatim, cross-run.
+			for (const verdict of ["reuse", "partial", "build"]) {
+				db.prepare(
+					"INSERT INTO feasibility_decision (run_id, kind, verdict, language, decided_by, at) VALUES ('r2', 'feasibility', ?, 'typescript', 'user', 't4')",
+				).run(verdict);
+				db.prepare(
+					"DELETE FROM feasibility_decision WHERE run_id = 'r2'",
+				).run();
+			}
 			// Spike: language natural key + passed CHECK.
 			db.prepare(
 				"INSERT INTO feasibility_spike (run_id, kind, language, passed, result_ref) VALUES ('r1', 'feasibility', 'typescript', 1, 'spike-out')",

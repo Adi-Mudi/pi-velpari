@@ -306,6 +306,39 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-testplan
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact paths. Never paste the test plan content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after BOTH working copies exist and BEFORE
+you present the preview gate or call `velpari_stage_publish`, write the
+stage payload at `<workingCopyDir>/payload/testplan-payload.json` (the
+directory that holds the test-plan working copy, plus `payload/`). The
+publish gate validates it and writes the DB rows; a missing or invalid
+payload BLOCKS the publish (the gate error names the exact path +
+problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "planning-tests",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "pseudocode": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "testCase": [{ "id": "TC-1", "tcKind": "TC", "strategyRef": null }],
+    "tcTrace":  [{ "tcId": "TC-1", "targetKind": "fr", "targetId": "FR-1" }]
+  }
+}
+```
+
+`tcKind` ∈ TC | IT. `targetKind` ∈ fr | nfr | af. One `testplan` payload
+covers BOTH published files (test-plan + test-cases share one store kind).
+Every row must trace to the working copies (zero hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

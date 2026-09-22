@@ -56,6 +56,17 @@ import {
 	resolveDeclaredInputs,
 } from "../core/freshness.js";
 import { runPublishGate } from "../doctor/gate.js";
+import {
+	buildFeasibilityRowsFromSession,
+	kindForWorkingDir,
+	loadStagePayload,
+} from "./stage-payloads.js";
+import {
+	precheckGitForPublish,
+	publishedPrdPath,
+	runDbPublish,
+} from "./db-publish.js";
+import type { ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
 import {
@@ -501,6 +512,36 @@ export async function handleApprove(
 		);
 	}
 
+	// ---- Phase 4 (DB-primary storage): payload + git pre-checks (Q6a) ----
+	// Run BEFORE anything is written: the LLM-written payload must be valid
+	// and git must be usable, or nothing publishes.
+	const storeKind = kindForWorkingDir(mapping.workingDir);
+	if (!storeKind) {
+		ctx.ui.notify(
+			`No store kind for working dir "${mapping.workingDir}" — publish blocked (Phase 4 payload convention).`,
+			"error",
+		);
+		return;
+	}
+	const payloadResult = loadStagePayload(workingDirPath, storeKind);
+	if (!payloadResult.ok || !payloadResult.envelope || !payloadResult.payload) {
+		ctx.ui.notify(
+			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
+				payloadResult.problems.map((p) => `  - ${p}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	const gitPre = precheckGitForPublish(cwd);
+	if (!gitPre.ok) {
+		ctx.ui.notify(
+			`Git pre-check failed — publish blocked (Q6a):\n` +
+				gitPre.problems.map((p) => `  - ${p}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+
 	// Freshness stamps (B4): hash the stage's declared inputs (registry
 	// is the single source of truth — D2) so every published artifact is
 	// self-describing (frontmatter `inputs:` JSON scalar) and the stale
@@ -630,6 +671,55 @@ export async function handleApprove(
 			target.publishedPath
 				? `Published revision of ${target.fileArtifact} to ${target.groupedAbs}`
 				: `Published to ${target.groupedAbs}`,
+			"info",
+		);
+	}
+
+	// ---- Phase 4 (DB-primary storage): the DB publish chain (Q6) ----
+	// Markdown targets are on disk (Q3: read-authoritative). Now: DB write
+	// (draft) → checksum verify → Q2 flip → YAML export beside the DB →
+	// G8 PRD mirror → checkpoint → explicit-path git commit. Any failure
+	// reverts the DB rows to draft, deletes the YAML, and blocks the
+	// stage advance; markdown stays (accepted risk R1).
+	{
+		// Feasibility adapter (4.3): decision + spike rows come from the
+		// settled session (the gate above guaranteed decision + language).
+		// The payload JSON carries envelope + optional reuseScan rows only.
+		let envelope: ArtifactEnvelopeInput = payloadResult.envelope;
+		let rows: ArtifactPayload = payloadResult.payload;
+		if (storeKind === "feasibility" && state.feasibilitySession) {
+			rows = {
+				...rows,
+				...buildFeasibilityRowsFromSession(
+					state.feasibilitySession,
+					publishNow,
+				),
+			} as ArtifactPayload;
+		}
+		const dbOutcome = runDbPublish({
+			cwd,
+			projectName,
+			runId: state.runId!,
+			kind: storeKind,
+			yamlArtifact: mapping.artifact,
+			envelope,
+			payload: rows,
+			publishedPaths: targets.map((t) => t.groupedAbs),
+			...(storeKind === "prd"
+				? { prdPublishedPath: publishedPrdPath(projectName, cwd) ?? undefined }
+				: {}),
+		});
+		for (const w of dbOutcome.warnings) ctx.ui.notify(w, "warning");
+		if (!dbOutcome.ok) {
+			ctx.ui.notify(
+				`DB publish chain failed — stage does NOT advance (Q6d). Fix and re-run the approve:\n` +
+					dbOutcome.problems.map((p) => `  - ${p}`).join("\n"),
+				"error",
+			);
+			return;
+		}
+		ctx.ui.notify(
+			`Store: ${storeKind} rows published (v${envelope.version}) + YAML exported + committed.`,
 			"info",
 		);
 	}
@@ -777,6 +867,13 @@ interface SunsetInfo {
 	supersedes: string | undefined;
 }
 
+/**
+ * Read the v1.3.0 sunset fields (version, sunset, status, supersedes) from
+ * a working copy's frontmatter.
+ * @param {string} content - Working-copy markdown (frontmatter + body).
+ * @returns {SunsetInfo | null} Parsed sunset fields, or null when there is
+ *   no frontmatter block or no version field.
+ */
 function readSunsetInfo(content: string): SunsetInfo | null {
 	const parsed = parseFrontmatterBlock(content);
 	if (!parsed) return null;
@@ -790,10 +887,24 @@ function readSunsetInfo(content: string): SunsetInfo | null {
 	};
 }
 
+/**
+ * Rewrite the `version:` line inside the artifact body (sunset archive
+ * bumps the major version and mirrors it into the stamped body).
+ * @param {string} content - Artifact markdown with a `version:` line.
+ * @param {string} newVersion - Version to write (e.g. "2.0.0").
+ * @returns {string} Content with the version line replaced.
+ */
 function updateVersionInBody(content: string, newVersion: string): string {
 	return content.replace(/^version:\s*.*$/m, `version: ${newVersion}`);
 }
 
+/**
+ * Rewrite the `status:` line inside the artifact body (sunset archive sets
+ * `deprecated` and mirrors it into the stamped body).
+ * @param {string} content - Artifact markdown with a `status:` line.
+ * @param {string} newStatus - Status to write (e.g. "deprecated").
+ * @returns {string} Content with the status line replaced.
+ */
 function updateStatusInBody(content: string, newStatus: string): string {
 	return content.replace(/^status:\s*.*$/m, `status: ${newStatus}`);
 }

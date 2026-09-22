@@ -1,4 +1,5 @@
-// Unit tests — io/store.ts (Phase 3: Store API).
+// Unit tests — io/store.ts (Phase 3 Store API; Phase 4 amendment aligned:
+// per-run composite PKs → cross-run coexistence; revertPublish rollback).
 // Covers: write/read round-trips (simple + complex kind), envelope upsert
 // bump, idempotent rewrite, forced rollback, FK-through-API, publish flip,
 // G5 golden byte-equality + byte-identical re-export, checksum ok/mismatch,
@@ -22,6 +23,7 @@ import {
 	deleteRunDrafts,
 	checkpointNow,
 	publishArtifact,
+	revertPublish,
 	type ArtifactEnvelopeInput,
 } from "../../src/io/store.js";
 
@@ -252,8 +254,6 @@ describe("io/store — Store API", () => {
 	});
 
 	test("10. deleteRunDrafts cascades its run only; published rows survive", () => {
-		// Distinct fr ids per run — fr.id is a GLOBAL natural PK (Risks note 6;
-		// test 14 locks the cross-run conflict behavior itself).
 		writeArtifact(db, "prd", "runA", env(), {
 			fr: [{ id: "FR-A1", phase: 1, textHash: "a1" }],
 		});
@@ -329,21 +329,66 @@ describe("io/store — Store API", () => {
 		]);
 	});
 
-	test("14. cross-run natural-PK conflict is loud (Risks note 6 behavior lock)", () => {
-		// fr.id is a GLOBAL natural PK (approved v001 design). A second run
-		// writing the same id PK-conflicts and the whole txn rolls back —
-		// recorded here as executable proof of the Phase 4 planning
-		// prerequisite (update-mode semantics MUST resolve this later).
+	test("14. cross-run same-id coexistence (Phase 4 composite-PK invariant)", () => {
+		// Per-run composite PKs: two runs may publish the same natural ids —
+		// the update-mode invariant (was the Phase 3 conflict-lock test).
 		writeArtifact(db, "prd", "run1", env(), { fr: FR_SEED });
-		assert.throws(() =>
-			writeArtifact(db, "prd", "run2", env(), { fr: FR_SEED }),
-			/UNIQUE constraint failed: fr\.id/,
-		);
-		// run2's envelope was rolled back with its rows.
-		assert.equal(readArtifact(db, "run2", "prd"), null);
-		// run1 is untouched.
+		writeArtifact(db, "prd", "run2", env({ generatedAt: "2026-09-22T10:00:00Z" }), {
+			fr: FR_SEED,
+		});
+		// Each run reads back its OWN rows exactly (envelopes stay disjoint).
 		const read1 = readArtifact(db, "run1", "prd");
+		const read2 = readArtifact(db, "run2", "prd");
 		assert.ok(read1);
+		assert.ok(read2);
+		assert.equal(read1.envelope.runId, "run1");
+		assert.equal(read2.envelope.runId, "run2");
 		assert.deepEqual(read1.rows.fr, FR_SEED);
+		assert.deepEqual(read2.rows.fr, FR_SEED);
+		// Rewriting run1 is an idempotent replace of run1's rows ONLY.
+		writeArtifact(db, "prd", "run1", env({ version: 2 }), {
+			fr: [{ id: "FR-1", phase: 2, textHash: "revised" }],
+		});
+		const read1b = readArtifact(db, "run1", "prd");
+		assert.ok(read1b);
+		assert.deepEqual(read1b.rows.fr, [{ id: "FR-1", phase: 2, textHash: "revised" }]);
+		const read2b = readArtifact(db, "run2", "prd");
+		assert.ok(read2b);
+		assert.deepEqual(read2b.rows.fr, FR_SEED, "run2 untouched by run1 rewrite");
+		// deleteRunDrafts stays run-scoped.
+		assert.equal(deleteRunDrafts(db, "run2"), 1);
+		assert.equal(readArtifact(db, "run2", "prd"), null);
+		assert.ok(readArtifact(db, "run1", "prd"));
+	});
+
+	test("15. same-run duplicate natural key rejected; whole write rolls back", () => {
+		writeArtifact(db, "prd", "r1", env(), { fr: FR_SEED });
+		// One payload carrying RTM-1 twice violates (run_id, id) mid-txn.
+		assert.throws(() =>
+			writeArtifact(db, "rtm", "r1", env({ stage: "building-rtm" }), {
+				rtmRow: [
+					{ id: "RTM-1", frRef: "FR-1", phase: 1, targetSha256: "t1" },
+					{ id: "RTM-1", frRef: "FR-1", phase: 1, targetSha256: "t2" },
+				],
+			}),
+		);
+		assert.equal(readArtifact(db, "r1", "rtm"), null);
+	});
+
+	test("16. revertPublish flips published→draft (Q6d); inverse-error on draft", () => {
+		writeArtifact(db, "prd", "r1", env(), { fr: FR_SEED });
+		assert.throws(() => revertPublish(db, "r1", "prd"), /no published artifact/);
+		publishArtifact(db, "r1", "prd");
+		revertPublish(db, "r1", "prd");
+		const read = readArtifact(db, "r1", "prd");
+		assert.ok(read);
+		assert.equal(read.envelope.status, "draft");
+		const statuses = (db
+			.prepare("SELECT DISTINCT status FROM fr WHERE run_id = ? AND kind = ?")
+			.all("r1", "prd") as { status: string }[]).map((r) => r.status);
+		assert.deepEqual(statuses, ["draft"]);
+		// After revert, the draft can be published again (retry path).
+		publishArtifact(db, "r1", "prd");
+		assert.equal(readArtifact(db, "r1", "prd")?.envelope.status, "published");
 	});
 });

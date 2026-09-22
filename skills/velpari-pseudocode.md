@@ -235,6 +235,37 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudoco
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the pseudocode content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/pseudocode-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "writing-pseudocode",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "atomic-functions": "<sha256 hex>" },
+    "reviewerVerdict": "<reviewer verdict or null>",
+    "changeLog": []
+  },
+  "rows": {
+    "pseudocodeBlock": [{ "id": "PC-1", "afRef": "AF-1", "contentHash": "<sha256 of the block text>" }]
+  }
+}
+```
+
+`afRef` must reference an atomic function that exists in the store (written
+by the atomic-functions publish). Every row must trace to the working copy
+content (zero hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

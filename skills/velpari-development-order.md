@@ -275,6 +275,40 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-developm
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the development order content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/development-order-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "ordering-development",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "testplan": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "devStep": [{ "id": "S1", "module": "core" }],
+    "stepAf":  [{ "stepId": "S1", "afId": "AF-1" }],
+    "stepDep": [{ "stepId": "S2", "dependsOnId": "S1" }]
+  }
+}
+```
+
+`stepDep` must stay acyclic (D8) and `stepId <> dependsOnId` (self-edge
+rejected). `afId` must reference an atomic function that exists in the
+store. Every row must trace to the working copy content (zero
+hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

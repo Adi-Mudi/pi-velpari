@@ -283,6 +283,37 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-appr
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the RTM content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/rtm-payload.json` (the directory that
+holds the working copy, plus `payload/`). The publish gate validates it and
+writes the DB rows; a missing or invalid payload BLOCKS the publish (the
+gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "building-rtm",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "PRD": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "rtmRow": [{ "id": "RTM-1", "frRef": "FR-1", "afRef": null, "tcRef": null, "phase": 1, "targetSha256": "<sha256>" }]
+  }
+}
+```
+
+The YAML sidecar stays the RTM source of truth (B3) — the payload rows must
+mirror the sidecar exactly. Every row must trace to the sidecar (zero
+hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

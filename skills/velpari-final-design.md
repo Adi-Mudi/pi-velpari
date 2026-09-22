@@ -198,6 +198,36 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-final-de
   the outcome and the artifact path. Never paste the final-design
   content.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/final-design-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "finalizing-design",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "development-order": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "finalSection": [{ "no": 1, "title": "Overview", "sourceArtifact": "design", "sourceIds": "M-1,ADR-1" }]
+  }
+}
+```
+
+`sourceIds` is an optional comma-separated id string. Every row must trace
+to the working copy content (zero hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in

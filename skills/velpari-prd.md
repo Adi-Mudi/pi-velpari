@@ -390,6 +390,41 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-prd-appr
   outcome (working copy written, preview approved) and the artifact path.
   Never paste the PRD content into the message.
 
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/prd-payload.json` (the directory that
+holds the working copy, plus `payload/`). The publish gate validates it and
+writes the DB rows; a missing or invalid payload BLOCKS the publish (the
+gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "drafting-prd",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "brainstorm": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "fr":         [{ "id": "FR-1", "phase": 1, "textHash": "<sha256 of the FR text>" }],
+    "nfr":        [{ "id": "NFR-1", "phase": 1, "textHash": "<sha256 of the NFR text>" }],
+    "prdSection": [{ "no": 1, "title": "Purpose", "bodyRef": null }]
+  }
+}
+```
+
+PRD ONLY (G8 mirror check): `inputs` MUST include
+`"prd-file": "<sha256 hex of the published PRD markdown>"` — the gate
+recomputes that hash at publish time and aborts on mismatch.
+
+Every row must trace to the working copy content (zero hallucination).
+
 ## Known issue: zellij `close-pane` bug
 
 [Issue #19](https://github.com/HazAT/pi-interactive-subagents/issues/19) in
