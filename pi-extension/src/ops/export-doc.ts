@@ -226,18 +226,21 @@ function str(row: RowLikeAlias, field: string): string {
 // 9 kind renderers — one per approve-command artifact kind
 // ---------------------------------------------------------------------------
 
-/** prd — mirrored section rows + FR + NFR rows (user decision 4). */
+/** prd — mirrored section rows + FR + NFR rows (Phase 6 §14.2 DB-rendered).
+ * v002 prose columns (`text`, `body`) flow into the rendered markdown so
+ * the published PRD is a DB-derived human view, not the LLM preview.
+ */
 export function renderPrdMarkdown(rows: Record<string, unknown>): string {
 	const fr = sorted((rows.fr as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const nfr = sorted((rows.nfr as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const sections = sorted((rows.prdSection as RowLikeAlias[] | undefined) ?? [], (r) => Number(r.no));
 	return (
-		table("Functional Requirements", ["ID", "Phase", "Text Hash"],
-			fr.map((r) => [r.id, r.phase, r.textHash])) +
-		table("Non-Functional Requirements", ["ID", "Phase", "Text Hash"],
-			nfr.map((r) => [r.id, r.phase, r.textHash])) +
-		table("Sections", ["No", "Title", "Body Ref"],
-			sections.map((r) => [r.no, r.title, r.bodyRef]))
+		table("Functional Requirements", ["ID", "Phase", "Text Hash", "Text"],
+			fr.map((r) => [r.id, r.phase, r.textHash, r.text])) +
+		table("Non-Functional Requirements", ["ID", "Phase", "Text Hash", "Text"],
+			nfr.map((r) => [r.id, r.phase, r.textHash, r.text])) +
+		table("Sections", ["No", "Title", "Body Ref", "Body"],
+			sections.map((r) => [r.no, r.title, r.bodyRef, r.body]))
 	);
 }
 
