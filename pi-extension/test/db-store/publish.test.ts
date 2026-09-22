@@ -179,7 +179,7 @@ function seedPrd(projectName: string, runId: string, frId: string): void {
 				stage: "drafting-prd",
 				generatedAt: "2026-09-22T00:00:00Z",
 			},
-			{ fr: [{ id: frId, phase: 1, textHash: "a1b2c3" }] } as ArtifactPayload,
+			{ fr: [{ id: frId, phase: 1, textHash: "a1b2c3", text: `Seeded prose for ${frId}.` }] } as ArtifactPayload,
 		);
 	} finally {
 		closeStoreDb(db);
@@ -242,7 +242,7 @@ describe("stage payload validation (4.3)", () => {
 
 	test("G8: prd payload without a 64-hex inputs['prd-file'] is refused", () => {
 		const workingDir = writePayload("prd-bad", "prd", {
-			fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3" }],
+			fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "ok prose for FR-1." }],
 		});
 		const result = loadStagePayload(workingDir, "prd");
 		assert.equal(result.ok, false);
@@ -401,7 +401,7 @@ describe("failure paths", () => {
 		const prdMarkdown = fakeMarkdown("Doc/requirements/PRD_Ok.md");
 		const fileHash = createHash("sha256").update(readFileSync(prdMarkdown)).digest("hex");
 		// --- ok case ---
-		const okDir = writePayload("prd-ok", "prd", { fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3" }] }, {
+		const okDir = writePayload("prd-ok", "prd", { fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "Greeting user flow FR." }] }, {
 			inputs: { "prd-file": fileHash },
 		});
 		const okPayload = loadStagePayload(okDir, "prd");
@@ -424,7 +424,7 @@ describe("failure paths", () => {
 		const tamperDir = writePayload(
 			"prd-tamper",
 			"prd",
-			{ fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3" }] },
+			{ fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "Tamper fixture FR." }] },
 			{ inputs: { "prd-file": "f".repeat(64) } },
 		);
 		const tamperPayload = loadStagePayload(tamperDir, "prd");
