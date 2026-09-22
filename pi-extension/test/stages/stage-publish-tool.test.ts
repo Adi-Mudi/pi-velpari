@@ -41,6 +41,10 @@ let tool: ToolDef;
 /** Notices captured from ctx.ui.notify (handleApprove reports gates via notify). */
 let notices: string[];
 
+/**
+ * Build a minimal ExtensionAPI that captures the registered tool def.
+ * @returns {ExtensionAPI} Stub pi; `tool` receives the registered definition.
+ */
 function makePi(): ExtensionAPI {
 	const pi = {
 		registerTool: (def: ToolDef) => {
@@ -53,6 +57,12 @@ function makePi(): ExtensionAPI {
 	return pi as unknown as ExtensionAPI;
 }
 
+/**
+ * Execute the captured tool's execute() with the given params.
+ * @param {Record<string, unknown>} params - Tool parameters (default {}).
+ * @returns {Promise<{isError: boolean; content: Array<{text: string}>}>}
+ *   The tool result; `notices` captures ui.notify calls during the run.
+ */
 function exec(params: Record<string, unknown> = {}) {
 	// Pi's ExtensionContext always carries ui (ExtensionUIContext) — the
 	// mock mirrors the approve-test ctx shape so handleApprove's notify
@@ -90,12 +100,14 @@ function enterDraftingPrd(): void {
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-stage-publish-"));
 	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
+	process.env.VELPARI_SKIP_DB_PUBLISH = "1";
 	registerStagePublishTool(makePi());
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
+	delete process.env.VELPARI_SKIP_DB_PUBLISH;
 });
 
 describe("velpari_stage_publish tool", () => {
