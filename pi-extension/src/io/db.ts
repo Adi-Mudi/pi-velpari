@@ -20,10 +20,33 @@
 // row-sets + links adjacency (Phase 2).
 // ============================================================================
 
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { SCHEMA_V001_DDL } from "./db-schema.js";
+import type { DatabaseSync } from "node:sqlite";
+
+// Lazy driver load (D9): `node:sqlite` is experimental and prints an
+// ExperimentalWarning to stderr the moment the module is FIRST loaded.
+// Loading it eagerly here would poison every consumer's stderr on import
+// (e.g. RPC bash-channel e2e scripts parse stdout+stderr as JSON). The
+// driver is therefore required on first `openStoreDb` call instead —
+// import-only consumers never trigger the warning.
+const requireDriver = createRequire(import.meta.url);
+let cachedCtor: (new (path: string, options?: object) => DatabaseSync) | undefined;
+/**
+ * Resolve the node:sqlite DatabaseSync constructor on first DB open (lazy).
+ * @returns {new (path: string, options?: object) => DatabaseSync} The driver ctor.
+ */
+function databaseSyncCtor(): new (path: string, options?: object) => DatabaseSync {
+	if (cachedCtor !== undefined) return cachedCtor;
+	const ctor = requireDriver("node:sqlite").DatabaseSync as new (
+		path: string,
+		options?: object,
+	) => DatabaseSync;
+	cachedCtor = ctor;
+	return ctor;
+}
 
 /** A single forward-only migration step. */
 export interface Migration {
@@ -86,7 +109,7 @@ function applyPragmas(db: DatabaseSync): void {
  */
 export function openStoreDb(dbPath: string): DatabaseSync {
 	mkdirSync(dirname(dbPath), { recursive: true });
-	const db = new DatabaseSync(dbPath); // strict: false default; STRICT is per-DDL
+	const db = new (databaseSyncCtor())(dbPath); // strict: false default; STRICT is per-DDL
 	applyPragmas(db);
 
 	const current = db.prepare("PRAGMA user_version").get() as {
