@@ -34,7 +34,10 @@
 
 import type { DatabaseSync } from "node:sqlite"; // type-only: the driver stays behind io/db.ts (D9)
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { toYamlString } from "../core/yaml-data.js";
+import { buildStoreDbPath } from "../core/paths.js";
+import { openStoreDb, closeStoreDb } from "./db.js";
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */
 export type ArtifactKind =
@@ -658,6 +661,38 @@ export function listPublishedVersions(
 		generatedAt: String(r.generated_at),
 		stage: String(r.stage),
 	}));
+}
+
+/**
+ * Read the rows of the newest PUBLISHED version of one kind for one
+ * project (Phase 6 §14.3 — DB-primary readers prefer the store over
+ * the legacy sidecar file). Opens the store, finds the newest
+ * published envelope, returns its `rows` payload (camelCase keys
+ * already mapped by `readRows`).
+ *
+ * @param {string} cwd - Project root (locates the store DB).
+ * @param {string} projectName - Project whose published rows to load.
+ * @param {ArtifactKind} kind - Artifact kind to load.
+ * @returns {{ envelope: ArtifactEnvelope; rows: Record<string, unknown> } | null} Newest published slice, or null when no published version exists for that (project, kind).
+ */
+export function readLatestPublishedRows(
+	cwd: string,
+	projectName: string,
+	kind: ArtifactKind,
+): { envelope: ArtifactEnvelope; rows: Record<string, unknown> } | null {
+	const dbPath = buildStoreDbPath(projectName, cwd);
+	if (!existsSync(dbPath)) return null;
+	const db = openStoreDb(dbPath);
+	try {
+		const versions = listPublishedVersions(db, kind);
+		if (versions.length === 0) return null;
+		const newest = versions[0]!;
+		const result = readArtifact(db, newest.runId, kind);
+		if (!result) return null;
+		return { envelope: result.envelope, rows: result.rows };
+	} finally {
+		closeStoreDb(db);
+	}
 }
 
 // ---------------------------------------------------------------------------

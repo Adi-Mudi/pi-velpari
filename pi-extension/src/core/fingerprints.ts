@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readSectionBody } from "./psrs.js";
 import { resolveDocArtifact } from "./paths.js";
-import { loadRtmSidecarData, type RtmData, type RtmRow } from "./rtm-data.js";
+import { loadRtmDataForEngine, type RtmData, type RtmRow } from "./rtm-data.js";
 
 /** SHA-256 hex of the normalized requirement text. */
 export function hashRequirementText(text: string): string {
@@ -184,14 +184,14 @@ export function stampFingerprints(
  */
 export function countTraceIssues(cwd: string, projectName: string): number | null {
 	if (!projectName) return null;
+	// Phase 6 §14.3: DB-first reader (`loadRtmDataForEngine`) prefers the
+	// project store; falls back to the legacy sidecar ONLY when no
+	// published rows exist for the (project, rtm) pair.
+	const data = loadRtmDataForEngine(cwd, projectName);
+	if (!data) return null;
 	const psrs = resolveDocArtifact("PRD", projectName, cwd);
-	const rtm = resolveDocArtifact("RTM", projectName, cwd);
-	if (!psrs || !rtm) return null;
-	// B3/D4: dual-read — .yaml preferred, legacy .json fallback.
-	const sidecar = loadRtmSidecarData(rtm.path);
-	if (!sidecar) return null;
+	if (!psrs) return null;
 	try {
-		const data = sidecar.data as RtmData;
 		if (!Array.isArray(data.rows)) return null;
 		const fingerprints = extractRequirementFingerprints(readFileSync(psrs.path, "utf8"));
 		return checkRowFingerprints(data.rows, fingerprints).filter(
