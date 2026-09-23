@@ -67,9 +67,7 @@ export function parseFrontmatterBlock(content: string): ParsedFrontmatter | null
 export function renderFrontmatter(fields: Record<string, string>): string {
 	const keys = [
 		...ARTIFACT_FRONTMATTER_FIELDS.filter((k) => k in fields),
-		...Object.keys(fields).filter(
-			(k) => !(ARTIFACT_FRONTMATTER_FIELDS as readonly string[]).includes(k),
-		),
+		...Object.keys(fields).filter((k) => !(ARTIFACT_FRONTMATTER_FIELDS as readonly string[]).includes(k)),
 	];
 	const lines = keys.map((k) => `${k}: ${fields[k]}`);
 	return `---\n${lines.join("\n")}\n---\n\n`;

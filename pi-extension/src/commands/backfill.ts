@@ -14,24 +14,17 @@ import { backfillKind } from "../ops/backfill.js";
  */
 export function registerBackfillCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("velpari-backfill", {
-		description:
-			"Import a legacy published artifact into the project store (DB-primary recovery; 43rd command).",
+		description: "Import a legacy published artifact into the project store (DB-primary recovery; 43rd command).",
 		handler: async (args, ctx) => {
 			const cwd = process.cwd();
 			const raw = (args ?? "").trim().toLowerCase();
 			if (!raw) {
-				ctx.ui.notify(
-					`Usage: /velpari-backfill <kind> — kind is one of: ${KIND_ORDER.join(", ")}`,
-					"error",
-				);
+				ctx.ui.notify(`Usage: /velpari-backfill <kind> — kind is one of: ${KIND_ORDER.join(", ")}`, "error");
 				return;
 			}
 			const kind = KIND_ORDER.find((k) => k === raw);
 			if (!kind) {
-				ctx.ui.notify(
-					`Unknown kind '${raw}' — expected one of: ${KIND_ORDER.join(", ")}`,
-					"error",
-				);
+				ctx.ui.notify(`Unknown kind '${raw}' — expected one of: ${KIND_ORDER.join(", ")}`, "error");
 				return;
 			}
 			const config = loadFilesConfig(cwd);

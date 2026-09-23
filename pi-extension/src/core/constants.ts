@@ -85,16 +85,9 @@ export const STAGE_TRANSITIONS: ReadonlyArray<StageTransition> = [
  * `from` is the stage). Used by hard stage gates and the per-turn
  * status injection to name the correct command in error messages.
  */
-export function nextCommandsFor(
-	stage: Stage,
-	opts?: { feasibilitySkip?: boolean },
-): string[] {
+export function nextCommandsFor(stage: Stage, opts?: { feasibilitySkip?: boolean }): string[] {
 	const commands = STAGE_TRANSITIONS.filter((t) => t.from === stage)
-		.filter(
-			(t) =>
-				opts?.feasibilitySkip ||
-				!(t.from === "built-rtm" && t.to === "designing"),
-		)
+		.filter((t) => opts?.feasibilitySkip || !(t.from === "built-rtm" && t.to === "designing"))
 		.map((t) => t.command);
 	return commands.length > 0 ? commands : ["/velpari-status"];
 }

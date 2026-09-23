@@ -14,10 +14,7 @@ import type { DiagnosticSection } from "../_types.js";
 
 const DESIGN_SPEC = REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "architecture-generator")!;
 
-export function loadDesignReviewerVerdict(
-	cwd: string,
-	profile: AtomicProfile,
-): DiagnosticSection {
+export function loadDesignReviewerVerdict(cwd: string, profile: AtomicProfile): DiagnosticSection {
 	const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
 	return loadReviewerVerdictForStage(cwd, DESIGN_SPEC, tierContext, profile);
 }

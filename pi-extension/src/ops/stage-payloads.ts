@@ -37,11 +37,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type {
-	ArtifactKind,
-	ArtifactEnvelopeInput,
-	ArtifactPayload,
-} from "../io/store.js";
+import type { ArtifactKind, ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
 import type { FeasibilitySession } from "../core/state.js";
 import type { SpikeResult } from "../core/spike.js";
 
@@ -354,9 +350,7 @@ function checkFields(
 				problems.push(`${where}: field "${name}" must be a 64-char sha256 hex`);
 			}
 			if (spec.values && !spec.values.includes(value)) {
-				problems.push(
-					`${where}: field "${name}" value "${value}" outside allowed set [${spec.values.join(", ")}]`,
-				);
+				problems.push(`${where}: field "${name}" value "${value}" outside allowed set [${spec.values.join(", ")}]`);
 			}
 		} else if (spec.type === "int") {
 			if (typeof value !== "number" || !Number.isInteger(value)) {
@@ -380,10 +374,7 @@ function checkFields(
  * strings, ready for writeArtifact) + payload rows, or a problem list.
  * Unknown keys are rejected everywhere (envelope, rows, per-row).
  */
-export function loadStagePayload(
-	workingDirPath: string,
-	kind: ArtifactKind,
-): StagePayloadResult {
+export function loadStagePayload(workingDirPath: string, kind: ArtifactKind): StagePayloadResult {
 	const path = stagePayloadPath(workingDirPath, kind);
 	const problems: string[] = [];
 	if (!existsSync(path)) {
@@ -414,14 +405,7 @@ export function loadStagePayload(
 		problems.push("payload.envelope must be an object");
 	} else {
 		const env = root.envelope as Record<string, unknown>;
-		const allowed = new Set([
-			"version",
-			"stage",
-			"generatedAt",
-			"inputs",
-			"reviewerVerdict",
-			"changeLog",
-		]);
+		const allowed = new Set(["version", "stage", "generatedAt", "inputs", "reviewerVerdict", "changeLog"]);
 		for (const key of Object.keys(env)) {
 			if (!allowed.has(key)) problems.push(`payload.envelope: unknown field "${key}"`);
 		}
@@ -436,10 +420,9 @@ export function loadStagePayload(
 		}
 		// G8 (prd kind): inputs MUST carry the published PRD file hash so the
 		// publish gate can verify the mirror (envelope.inputs["prd-file"]).
-		let inputsIsObject =
-			typeof env.inputs === "object" && env.inputs !== null && !Array.isArray(env.inputs);
+		let inputsIsObject = typeof env.inputs === "object" && env.inputs !== null && !Array.isArray(env.inputs);
 		if (env.inputs !== undefined && !inputsIsObject && typeof env.inputs !== "string") {
-			problems.push('payload.envelope.inputs must be an object (artifact → sha256) or a JSON string');
+			problems.push("payload.envelope.inputs must be an object (artifact → sha256) or a JSON string");
 		}
 		if (kind === "prd") {
 			const inputsObj =
@@ -458,11 +441,7 @@ export function loadStagePayload(
 		if (env.reviewerVerdict !== undefined && env.reviewerVerdict !== null && typeof env.reviewerVerdict !== "string") {
 			problems.push("payload.envelope.reviewerVerdict must be a string or null");
 		}
-		if (
-			env.changeLog !== undefined &&
-			typeof env.changeLog !== "string" &&
-			!Array.isArray(env.changeLog)
-		) {
+		if (env.changeLog !== undefined && typeof env.changeLog !== "string" && !Array.isArray(env.changeLog)) {
 			problems.push("payload.envelope.changeLog must be an array of strings or a JSON string");
 		}
 	}
@@ -497,12 +476,7 @@ export function loadStagePayload(
 						problems.push(`payload.rows.${key}[${i}] must be an object`);
 						return;
 					}
-					checkFields(
-						`payload.rows.${key}[${i}]`,
-						row as Record<string, unknown>,
-						spec.fields,
-						problems,
-					);
+					checkFields(`payload.rows.${key}[${i}]`, row as Record<string, unknown>, spec.fields, problems);
 				});
 			}
 		}
@@ -512,10 +486,8 @@ export function loadStagePayload(
 
 	// --- normalize to writeArtifact inputs ---
 	const env = root.envelope as Record<string, unknown>;
-	const normalizedInputs =
-		typeof env.inputs === "string" ? env.inputs : JSON.stringify(env.inputs ?? {});
-	const normalizedChangeLog =
-		typeof env.changeLog === "string" ? env.changeLog : JSON.stringify(env.changeLog ?? []);
+	const normalizedInputs = typeof env.inputs === "string" ? env.inputs : JSON.stringify(env.inputs ?? {});
+	const normalizedChangeLog = typeof env.changeLog === "string" ? env.changeLog : JSON.stringify(env.changeLog ?? []);
 	const envelope: ArtifactEnvelopeInput = {
 		version: env.version as number,
 		stage: env.stage as string,

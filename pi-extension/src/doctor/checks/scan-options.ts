@@ -17,10 +17,7 @@
  */
 
 import { loadFilesConfig } from "../../core/config.js";
-import {
-	availableScanList,
-	getAvailableScanTypes,
-} from "../../core/scan-options.js";
+import { availableScanList, getAvailableScanTypes } from "../../core/scan-options.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
 export function checkScanOptions(cwd: string = process.cwd()): DiagnosticSection {
@@ -31,24 +28,14 @@ export function checkScanOptions(cwd: string = process.cwd()): DiagnosticSection
 
 	// One info line per scan, with the reason when off
 	for (const scan of ["code", "doc", "community"] as const) {
-		const isOn =
-			scan === "code"
-				? available.code
-				: scan === "doc"
-					? available.doc
-					: available.community;
+		const isOn = scan === "code" ? available.code : scan === "doc" ? available.doc : available.community;
 		if (isOn) {
 			items.push({
 				status: "ok",
 				message: `Scan "${scan}" is available.`,
 			});
 		} else {
-			const reason =
-				scan === "code"
-					? available.reasons.code
-					: scan === "doc"
-						? available.reasons.doc
-						: undefined;
+			const reason = scan === "code" ? available.reasons.code : scan === "doc" ? available.reasons.doc : undefined;
 			items.push({
 				status: "info",
 				message: `Scan "${scan}" is NOT available.${reason ? ` Reason: ${reason}.` : ""}`,

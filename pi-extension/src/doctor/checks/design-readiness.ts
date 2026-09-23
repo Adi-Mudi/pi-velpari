@@ -238,8 +238,7 @@ export function gateDesignReadiness(workingContent: string | null): DesignReadin
 			if (!sectionBlocks.has(req.keyword)) {
 				errors.push({
 					code: "design.missing-c4-block",
-					message:
-						`## 14. Diagrams (C4) is missing the ${req.label} block (keyword: ${req.keyword}).`,
+					message: `## 14. Diagrams (C4) is missing the ${req.label} block (keyword: ${req.keyword}).`,
 				});
 			}
 		}
@@ -341,10 +340,7 @@ export function extractQAScenarioRows(content: string): Record<string, string>[]
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
 
-		const cells = trimmed
-			.replace(/^\|/, "")
-			.replace(/\|$/, "")
-			.split(cellSplit);
+		const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split(cellSplit);
 
 		if (tableColumns === null) {
 			// First pipe-row: must match the header.

@@ -28,16 +28,8 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
-import {
-	computeStaleSet,
-	manifestKey,
-	resolveDeclaredInputs,
-	type StaleItem,
-} from "../core/freshness.js";
-import {
-	computeLegalCommands,
-	type StageLockSpec,
-} from "./transition-lock.js";
+import { computeStaleSet, manifestKey, resolveDeclaredInputs, type StaleItem } from "../core/freshness.js";
+import { computeLegalCommands, type StageLockSpec } from "./transition-lock.js";
 import { loadOverlay } from "../core/standards-overlay.js";
 import { bootstrapOverlayScouts } from "../io/agents-install.js";
 import {
@@ -50,29 +42,14 @@ import {
 	slugify,
 } from "../core/paths.js";
 import { loadState } from "../core/state.js";
-import {
-	loadAgentConfig,
-	resolveAgentName,
-	type VelpariRole,
-} from "../core/agents-config.js";
+import { loadAgentConfig, resolveAgentName, type VelpariRole } from "../core/agents-config.js";
 import type { ScoutSlot } from "../core/prompt.js";
 import { findPackageRoot } from "../core/paths.js";
-import {
-	deriveAtomicProfile,
-	shouldRunReviewer,
-	type AtomicProfile,
-} from "../core/atomic-tier.js";
-import {
-	compactProfileMetadata,
-	loadRequirementsProfile,
-} from "../core/profile.js";
+import { deriveAtomicProfile, shouldRunReviewer, type AtomicProfile } from "../core/atomic-tier.js";
+import { compactProfileMetadata, loadRequirementsProfile } from "../core/profile.js";
 import { runStageWithScouts, type StageRunConfig } from "../core/stage-runner.js";
 import { ensureStageAgents } from "../io/agents-install.js";
-import {
-	docArtifactToKind,
-	resolveStageSlice,
-	SCOUT_SLICE_LINES,
-} from "../ops/db-slices.js";
+import { docArtifactToKind, resolveStageSlice, SCOUT_SLICE_LINES } from "../ops/db-slices.js";
 import { readLatestPublishedRows } from "../io/store.js";
 
 /** Stages that route through the registry. (Brainstorm is bespoke.) */
@@ -198,8 +175,7 @@ export interface StageSpec {
 // test gate stays green and the UX string the user sees is unchanged.
 // ---------------------------------------------------------------------------
 
-const grouped = (cwd: string, category: string, file: string) =>
-	join(cwd, "Doc", category, file);
+const grouped = (cwd: string, category: string, file: string) => join(cwd, "Doc", category, file);
 
 const prdMissingError: MissingInputMessageFormatter = ({ cwd, mission }) => {
 	// Preserve the pre-refactor wording: prd used to fall through to
@@ -238,35 +214,23 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		key: "rtm",
 		stageEnum: "building-rtm",
 		skillName: "rtm",
-		scouts: [
-			"rtm-requirement-tracer",
-			"rtm-test-case-linker",
-			"rtm-coverage-analyzer",
-			"rtm-consolidator",
-		],
+		scouts: ["rtm-requirement-tracer", "rtm-test-case-linker", "rtm-coverage-analyzer", "rtm-consolidator"],
 		workingCopyCategory: "rtm",
 		workingCopyArtifact: "RTM",
 		inputs: [{ kind: "doc", artifact: "PRD", label: "PRD" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("PSRS", "PRD", projectName, cwd, "/velpari-prd"),
+		formatMissingError: ({ cwd, projectName }) => docMissingError("PSRS", "PRD", projectName, cwd, "/velpari-prd"),
 	},
 
 	feasibility: {
 		key: "feasibility",
 		stageEnum: "analyzing-feasibility",
 		skillName: "feasibility",
-		scouts: [
-			"feasibility-tech",
-			"feasibility-schedule",
-			"feasibility-cost",
-			"feasibility-risk",
-		],
+		scouts: ["feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk"],
 		conditionalAgents: ["feasibility-reuse-scout", "feasibility-spike"],
 		workingCopyCategory: "feasibility",
 		workingCopyArtifact: "feasibility-study",
 		inputs: [{ kind: "doc", artifact: "RTM", label: "RTM" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("RTM", "RTM", projectName, cwd, "/velpari-rtm"),
+		formatMissingError: ({ cwd, projectName }) => docMissingError("RTM", "RTM", projectName, cwd, "/velpari-rtm"),
 	},
 
 	"architecture-generator": {
@@ -286,13 +250,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		workingCopyArtifact: "design",
 		inputs: [{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" }],
 		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError(
-				"feasibility-study",
-				"feasibility-study",
-				projectName,
-				cwd,
-				"/velpari-feasibility",
-			),
+			docMissingError("feasibility-study", "feasibility-study", projectName, cwd, "/velpari-feasibility"),
 	},
 
 	"atomic-function": {
@@ -321,8 +279,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" },
 			{ kind: "doc", artifact: "design", label: "design" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			atomicMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => atomicMissingError(projectName, cwd),
 	},
 
 	pseudocode: {
@@ -395,8 +352,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "test-plan", label: "test-plan" },
 			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			devOrderMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => devOrderMissingError(projectName, cwd),
 	},
 
 	"final-design": {
@@ -404,12 +360,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		// Stage 10 — runs after Development Order (Stage 9) is approved; or while own draft is open.
 		stageEnum: "finalizing-design",
 		skillName: "design",
-		scouts: [
-			"design-consistency-checker",
-			"design-coverage-checker",
-			"design-contract-checker",
-			"design-finalizer",
-		],
+		scouts: ["design-consistency-checker", "design-coverage-checker", "design-contract-checker", "design-finalizer"],
 		workingCopyCategory: "final-design",
 		workingCopyArtifact: "final-design",
 		inputs: [
@@ -420,8 +371,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 			{ kind: "doc", artifact: "development-order", label: "development-order" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			finalDesignMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => finalDesignMissingError(projectName, cwd),
 	},
 };
 
@@ -460,12 +410,7 @@ export const STAGE_LOCK_SPECS: readonly StageLockSpec[] = (
 // whichever artifact came first.
 // ---------------------------------------------------------------------------
 
-const AF_REQUIRED_ORDER = [
-	"PRD",
-	"RTM",
-	"feasibility-study",
-	"design",
-] as const;
+const AF_REQUIRED_ORDER = ["PRD", "RTM", "feasibility-study", "design"] as const;
 
 const DO_REQUIRED_ORDER = [
 	"design",
@@ -487,11 +432,7 @@ const FINAL_DESIGN_REQUIRED_ORDER = [
 	"development-order",
 ] as const;
 
-function firstMissingArtifact(
-	projectName: string,
-	cwd: string,
-	order: readonly string[],
-): string {
+function firstMissingArtifact(projectName: string, cwd: string, order: readonly string[]): string {
 	// Phase 6 read flip (Subphase 3.6): pre-conditions check the PROJECT
 	// STORE DB, not Doc/ file existence. All stage inputs are DB-only
 	// (user directive 2026-09-23 — brainstorm is the sole file-based input).
@@ -553,10 +494,7 @@ export type ResolveInputsResult =
  * Required inputs that are missing return `{ ok: false, error }`. Optional
  * inputs that are missing are skipped.
  */
-export function resolveStageInputs(
-	spec: StageSpec,
-	deps: ResolveInputsDeps,
-): ResolveInputsResult {
+export function resolveStageInputs(spec: StageSpec, deps: ResolveInputsDeps): ResolveInputsResult {
 	// Phase 6 read flip (decision record §14.1): every `doc` input resolves
 	// from the project store as a DB slice — stages and scouts NEVER read
 	// Doc/ markdown. Brainstorm notes stay the ONE file-based input
@@ -634,10 +572,7 @@ export function resolveStageInputs(
 	};
 }
 
-function resolveOne(
-	input: StageInputDoc,
-	deps: ResolveInputsDeps,
-): { path: string; label: string } | null {
+function resolveOne(input: StageInputDoc, deps: ResolveInputsDeps): { path: string; label: string } | null {
 	if (input.kind === "brainstorm") {
 		const topicSlug = slugify(deps.mission);
 		const grouped = join(deps.cwd, "Doc", "brainstorm", `brainstorm-${topicSlug}.md`);
@@ -661,11 +596,7 @@ function resolveOne(
  * and the role-keyed report path; `agentName` carries the resolved spawn
  * name from `.pi/velpari/agents.json` (identity when no mapping exists).
  */
-export function buildScoutSlots(
-	spec: StageSpec,
-	scoutsDir: string,
-	cwd: string,
-): ScoutSlot[] {
+export function buildScoutSlots(spec: StageSpec, scoutsDir: string, cwd: string): ScoutSlot[] {
 	const agentConfig = loadAgentConfig(cwd);
 	return spec.scouts.map((role) => ({
 		name: role,
@@ -737,17 +668,9 @@ export function filterReviewerSlot(
  * (avoids a layering dependency on the higher-level catalogue loader).
  * Returns false on any parse error or unknown overlay.
  */
-export function overlayRequiresReviewerFor(
-	_cwd: string,
-	overlayId: string,
-): boolean {
+export function overlayRequiresReviewerFor(_cwd: string, overlayId: string): boolean {
 	try {
-		const path = join(
-			findPackageRoot(fileURLToPath(import.meta.url)),
-			"skills",
-			"standards",
-			"catalogue.json",
-		);
+		const path = join(findPackageRoot(fileURLToPath(import.meta.url)), "skills", "standards", "catalogue.json");
 		const raw = readFileSync(path, "utf8");
 		const parsed = JSON.parse(raw) as {
 			overlays?: Array<{ id: string; requiresReviewer?: boolean }>;
@@ -847,12 +770,7 @@ export async function runStage(
 	const runDir = buildRunDir(state.runId, cwd);
 	const workingCopyDir = join(runDir, spec.workingCopyCategory);
 	const scoutsDir = join(workingCopyDir, "scouts");
-	const workingCopyPath = buildWorkingGroupedPath(
-		cwd,
-		state.runId,
-		spec.workingCopyArtifact,
-		projectName,
-	);
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, spec.workingCopyArtifact, projectName);
 	const additionalWorkingCopies = spec.additionalWorkingCopies?.map((a) =>
 		buildWorkingGroupedPath(cwd, state.runId, a, projectName),
 	);
@@ -923,12 +841,7 @@ export async function runStage(
 	// scout slot list. For atomic-function only, remove the `reviewer` slot
 	// when shouldRunReviewer returns false. Other stages pass through.
 	const allScouts = buildScoutSlots(spec, scoutsDir, cwd);
-	const gatedScouts = filterReviewerSlot(
-		allScouts,
-		stageKey,
-		atomicProfile,
-		overlayRequiresReviewer,
-	);
+	const gatedScouts = filterReviewerSlot(allScouts, stageKey, atomicProfile, overlayRequiresReviewer);
 
 	// 5. Compose StageRunConfig and hand off.
 	const stageConfig: StageRunConfig = {

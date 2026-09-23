@@ -45,26 +45,11 @@ import { comparePsrs, readSectionBody } from "../core/psrs.js";
 import { withArtifactFrontmatter, type ArtifactFrontmatterInput } from "../core/frontmatter.js";
 import type { RtmData } from "../core/rtm-data.js";
 import { writeFeasibilityRecord } from "../core/feasibility-record.js";
-import {
-	hashFileContent,
-	hashFileContentNormalized,
-} from "../core/fingerprints.js";
-import {
-	computeInputHashes,
-	recordPublish,
-	resolveDeclaredInputs,
-} from "../core/freshness.js";
+import { hashFileContent, hashFileContentNormalized } from "../core/fingerprints.js";
+import { computeInputHashes, recordPublish, resolveDeclaredInputs } from "../core/freshness.js";
 import { runPublishGate } from "../doctor/gate.js";
-import {
-	buildFeasibilityRowsFromSession,
-	kindForWorkingDir,
-	loadStagePayload,
-} from "./stage-payloads.js";
-import {
-	precheckGitForPublish,
-	publishedPrdPath,
-	runDbPublish,
-} from "./db-publish.js";
+import { buildFeasibilityRowsFromSession, kindForWorkingDir, loadStagePayload } from "./stage-payloads.js";
+import { precheckGitForPublish, publishedPrdPath, runDbPublish } from "./db-publish.js";
 import type { ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { buildStoreDbPath } from "../core/paths.js";
@@ -77,10 +62,7 @@ import {
 } from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
-import {
-	generationHintForPhase,
-	phaseBoundaryCrossed,
-} from "../core/agent-freshness.js";
+import { generationHintForPhase, phaseBoundaryCrossed } from "../core/agent-freshness.js";
 import { STAGE_REGISTRY, STAGE_LOCK_SPECS, type StageSpec } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
 
@@ -113,19 +95,55 @@ interface StageApproveSpec {
 const STAGE_APPROVE_MAP: readonly StageApproveSpec[] = [
 	{ command: "/velpari-prd-approve", workingDir: "prd", artifact: "PRD", stages: ["drafting-prd", "drafted-prd"] },
 	{ command: "/velpari-rtm-approve", workingDir: "rtm", artifact: "RTM", stages: ["building-rtm", "built-rtm"] },
-	{ command: "/velpari-feasibility-approve", workingDir: "feasibility", artifact: "feasibility-study", stages: ["analyzing-feasibility", "analyzed-feasibility"] },
-	{ command: "/velpari-architecture-generator-approve", workingDir: "design", artifact: "design", stages: ["designing", "designed"] },
+	{
+		command: "/velpari-feasibility-approve",
+		workingDir: "feasibility",
+		artifact: "feasibility-study",
+		stages: ["analyzing-feasibility", "analyzed-feasibility"],
+	},
+	{
+		command: "/velpari-architecture-generator-approve",
+		workingDir: "design",
+		artifact: "design",
+		stages: ["designing", "designed"],
+	},
 	// Stage 6 — atomic function working copy lives under
 	// <runDir>/atomic-functions/atomic-functions_<project>.md
 	// (per buildWorkingGroupedPath's GROUPED_CATEGORIES map).
 	// The publish gate (doctor/gate.ts:runPublishGate) routes
 	// atomic-functions artifacts through the reviewer verdict (the
 	// reviewer verdict is the source of truth for tier checks).
-	{ command: "/velpari-atomic-function-approve", workingDir: "atomic-functions", artifact: "atomic-functions", stages: ["analyzing-atomic-functions", "analyzed-atomic-functions"] },
-	{ command: "/velpari-pseudocode-approve", workingDir: "pseudocode", artifact: "pseudocode", stages: ["writing-pseudocode", "wrote-pseudocode"] },
-	{ command: "/velpari-testplan-approve", workingDir: "tests", artifact: "test-plan", extras: ["test-cases"], stages: ["planning-tests", "planned-tests"] },
-	{ command: "/velpari-development-order-approve", workingDir: "development-order", artifact: "development-order", stages: ["ordering-development", "ordered-development"] },
-	{ command: "/velpari-final-design-approve", workingDir: "final-design", artifact: "final-design", stages: ["finalizing-design", "finalized-design"] },
+	{
+		command: "/velpari-atomic-function-approve",
+		workingDir: "atomic-functions",
+		artifact: "atomic-functions",
+		stages: ["analyzing-atomic-functions", "analyzed-atomic-functions"],
+	},
+	{
+		command: "/velpari-pseudocode-approve",
+		workingDir: "pseudocode",
+		artifact: "pseudocode",
+		stages: ["writing-pseudocode", "wrote-pseudocode"],
+	},
+	{
+		command: "/velpari-testplan-approve",
+		workingDir: "tests",
+		artifact: "test-plan",
+		extras: ["test-cases"],
+		stages: ["planning-tests", "planned-tests"],
+	},
+	{
+		command: "/velpari-development-order-approve",
+		workingDir: "development-order",
+		artifact: "development-order",
+		stages: ["ordering-development", "ordered-development"],
+	},
+	{
+		command: "/velpari-final-design-approve",
+		workingDir: "final-design",
+		artifact: "final-design",
+		stages: ["finalizing-design", "finalized-design"],
+	},
 ];
 
 /**
@@ -157,10 +175,7 @@ export function stageToArtifact(stage: Stage): {
  * (`stages[0]`) only, so rest-state lookups keep the legacy default.
  */
 function perStageApproveCommand(stage: Stage): string {
-	return (
-		STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ??
-		"/velpari-brainstorm-approve"
-	);
+	return STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ?? "/velpari-brainstorm-approve";
 }
 
 /**
@@ -175,9 +190,7 @@ function specForStage(stage: Stage): StageSpec | null {
 	return (
 		Object.values(STAGE_REGISTRY).find((s) => {
 			if (s.stageEnum === stage) return true;
-			return STAGE_TRANSITIONS.some(
-				(t) => t.from === s.stageEnum && t.to === stage && t.command.endsWith("-approve"),
-			);
+			return STAGE_TRANSITIONS.some((t) => t.from === s.stageEnum && t.to === stage && t.command.endsWith("-approve"));
 		}) ?? null
 	);
 }
@@ -242,8 +255,7 @@ export async function handleApprove(
 		const lock = computeLegalCommands(cwd, STAGE_LOCK_SPECS);
 		ctx.ui.notify(
 			lock.reasonFor("/velpari-prd") ??
-				`Use /velpari-approve-brainstorm for the brainstorm stage. ` +
-					`Current stage: "${state.currentStage}".`,
+				`Use /velpari-approve-brainstorm for the brainstorm stage. ` + `Current stage: "${state.currentStage}".`,
 			"error",
 		);
 		return;
@@ -300,10 +312,7 @@ export async function handleApprove(
 	// velpari_feasibility_session tool during the stage). A pending
 	// decision or missing language blocks the publish — nothing is
 	// written, the stage does not advance.
-	if (
-		state.currentStage === "analyzing-feasibility" ||
-		state.currentStage === "analyzed-feasibility"
-	) {
+	if (state.currentStage === "analyzing-feasibility" || state.currentStage === "analyzed-feasibility") {
 		const session = state.feasibilitySession;
 		const sessionProblems: string[] = [];
 		if (!session?.decision) {
@@ -320,8 +329,7 @@ export async function handleApprove(
 		}
 		if (sessionProblems.length > 0) {
 			ctx.ui.notify(
-				`Feasibility stage is not settled. Publish blocked:\n` +
-					sessionProblems.map((p) => `  - ${p}`).join("\n"),
+				`Feasibility stage is not settled. Publish blocked:\n` + sessionProblems.map((p) => `  - ${p}`).join("\n"),
 				"error",
 			);
 			return;
@@ -391,8 +399,7 @@ export async function handleApprove(
 	// and git must be usable, or nothing publishes. `skipDbPublish` is the
 	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
 	// `skipAutoDoctor`); production never sets it.
-	const skipDbPublish =
-		opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
+	const skipDbPublish = opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
 	const storeKind = kindForWorkingDir(mapping.workingDir);
 	if (!skipDbPublish && !storeKind) {
 		ctx.ui.notify(
@@ -420,8 +427,7 @@ export async function handleApprove(
 		const gitPre = precheckGitForPublish(cwd);
 		if (!gitPre.ok) {
 			ctx.ui.notify(
-				`Git pre-check failed — publish blocked (Q6a):\n` +
-					gitPre.problems.map((p) => `  - ${p}`).join("\n"),
+				`Git pre-check failed — publish blocked (Q6a):\n` + gitPre.problems.map((p) => `  - ${p}`).join("\n"),
 				"error",
 			);
 			return;
@@ -438,21 +444,15 @@ export async function handleApprove(
 	// feasibility-study / final-design) keep the LLM-authored working
 	// copy — decision 7. Sidecar files in the working copy are IGNORED
 	// (§14.3); the sidecar loop is RETIRED here.
-	const DB_RENDERED_KIND_TO_RENDERER: Readonly<
-		Record<string, (rows: Record<string, unknown>) => string>
-	> = {
+	const DB_RENDERED_KIND_TO_RENDERER: Readonly<Record<string, (rows: Record<string, unknown>) => string>> = {
 		PRD: renderPrdMarkdown,
 		RTM: renderRtmMarkdown,
 		"atomic-functions": renderAtomicFunctionsMarkdown,
 		"test-cases": renderTestCasesMarkdown,
 		"development-order": renderDevelopmentOrderMarkdown,
 	};
-	const DB_RENDERED_FILE_ARTIFACTS: ReadonlySet<string> = new Set(
-		Object.keys(DB_RENDERED_KIND_TO_RENDERER),
-	);
-	const dbRenderedTargets = targets.filter((t) =>
-		DB_RENDERED_FILE_ARTIFACTS.has(t.fileArtifact),
-	);
+	const DB_RENDERED_FILE_ARTIFACTS: ReadonlySet<string> = new Set(Object.keys(DB_RENDERED_KIND_TO_RENDERER));
+	const dbRenderedTargets = targets.filter((t) => DB_RENDERED_FILE_ARTIFACTS.has(t.fileArtifact));
 	if (
 		dbRenderedTargets.length > 0 &&
 		storeKind &&
@@ -470,17 +470,11 @@ export async function handleApprove(
 		// here (their target.content stays as the LLM-authored copy).
 		// Feasibility adapter (4.3): decision + spike rows come from
 		// the settled session.
-		let renderRows: Record<string, unknown> = payloadResult.payload as Record<
-			string,
-			unknown
-		>;
+		let renderRows: Record<string, unknown> = payloadResult.payload as Record<string, unknown>;
 		if (storeKind === "feasibility" && state.feasibilitySession) {
 			renderRows = {
 				...renderRows,
-				...buildFeasibilityRowsFromSession(
-					state.feasibilitySession,
-					payloadResult.envelope.generatedAt,
-				),
+				...buildFeasibilityRowsFromSession(state.feasibilitySession, payloadResult.envelope.generatedAt),
 			} as Record<string, unknown>;
 		}
 		for (const target of dbRenderedTargets) {
@@ -505,22 +499,19 @@ export async function handleApprove(
 	// strict source; the sidecar shape fields
 	// (title/design/implementation/tests/status/coverage) are
 	// repointed in Subphase 2.4 when the engines flip to DB reads.
-	if (
-		storeKind === "rtm" &&
-		payloadResult &&
-		payloadResult.ok &&
-		payloadResult.payload &&
-		payloadResult.envelope
-	) {
+	if (storeKind === "rtm" && payloadResult && payloadResult.ok && payloadResult.payload && payloadResult.envelope) {
 		const rtmDb = openStoreDb(buildStoreDbPath(projectName, cwd));
 		try {
 			// Build the RtmData from the payload rows directly — do
 			// NOT writeArtifact yet, so the gate can validate before
 			// the DB FK chain fires (the gate's "unknown id" message
 			// must surface, not a raw FOREIGN KEY constraint failure).
-			const rtmRowsIn = (payloadResult.payload as {
-				rtmRow?: Array<{ id: string; phase: number }>;
-			}).rtmRow ?? [];
+			const rtmRowsIn =
+				(
+					payloadResult.payload as {
+						rtmRow?: Array<{ id: string; phase: number }>;
+					}
+				).rtmRow ?? [];
 			const rtmRows = rtmRowsIn;
 			if (rtmRows.length > 0) {
 				// Minimal RtmData — the gate only reads id + phase from
@@ -608,8 +599,7 @@ export async function handleApprove(
 	}
 	if (gateWarnings.length > 0) {
 		ctx.ui.notify(
-			`Publish gate warnings (publish allowed):\n` +
-				gateWarnings.map((w) => `  - ${w}`).join("\n"),
+			`Publish gate warnings (publish allowed):\n` + gateWarnings.map((w) => `  - ${w}`).join("\n"),
 			"warning",
 		);
 	}
@@ -648,9 +638,7 @@ export async function handleApprove(
 		// traceability upgrade, Phase 1). Existing fields (e.g. the PSRS
 		// schema on the PRD) are preserved; `created` carries over from
 		// the previously published copy on revisions.
-		const publishedContent = target.publishedPath
-			? readFileSync(target.publishedPath, "utf8")
-			: null;
+		const publishedContent = target.publishedPath ? readFileSync(target.publishedPath, "utf8") : null;
 		// v1.3.0 sunset auto-archive: if the working-copy carries a
 		// past `sunset:` and the published status is still `published`
 		// (i.e., not already archived), bump the major version, set
@@ -659,9 +647,7 @@ export async function handleApprove(
 		const sunsetInfo = readSunsetInfo(target.content);
 		const todayIso = new Date().toISOString().slice(0, 10);
 		const sunsetPast =
-			sunsetInfo !== null &&
-			sunsetInfo.sunset !== null &&
-			isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
+			sunsetInfo !== null && sunsetInfo.sunset !== null && isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
 		const alreadyArchived = sunsetInfo?.status === "deprecated";
 		const input: ArtifactFrontmatterInput = {
 			artifact: target.fileArtifact,
@@ -762,10 +748,7 @@ export async function handleApprove(
 		if (storeKind === "feasibility" && state.feasibilitySession) {
 			rows = {
 				...rows,
-				...buildFeasibilityRowsFromSession(
-					state.feasibilitySession,
-					publishNow,
-				),
+				...buildFeasibilityRowsFromSession(state.feasibilitySession, publishNow),
 			} as ArtifactPayload;
 		}
 		const dbOutcome = runDbPublish({
@@ -777,9 +760,7 @@ export async function handleApprove(
 			envelope,
 			payload: rows,
 			publishedPaths: targets.map((t) => t.groupedAbs),
-			...(storeKind === "prd"
-				? { prdPublishedPath: publishedPrdPath(projectName, cwd) ?? undefined }
-				: {}),
+			...(storeKind === "prd" ? { prdPublishedPath: publishedPrdPath(projectName, cwd) ?? undefined } : {}),
 		});
 		for (const w of dbOutcome.warnings) ctx.ui.notify(w, "warning");
 		if (!dbOutcome.ok) {
@@ -790,10 +771,7 @@ export async function handleApprove(
 			);
 			return;
 		}
-		ctx.ui.notify(
-			`Store: ${storeKind} rows published (v${envelope.version}) + YAML exported + committed.`,
-			"info",
-		);
+		ctx.ui.notify(`Store: ${storeKind} rows published (v${envelope.version}) + YAML exported + committed.`, "info");
 	}
 
 	// Post-publish doctor audit (v1.2.1). The publish gate above already
@@ -812,8 +790,7 @@ export async function handleApprove(
 	// Both are intended for the test suite. Production callers never
 	// opt out; the standalone `/velpari-doctor` command is the
 	// ad-hoc audit path.
-	const skipAutoDoctor =
-		opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
+	const skipAutoDoctor = opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
 	if (!skipAutoDoctor) {
 		const doctorReport = runDoctor(cwd);
 		writeDoctorReport(doctorReport, cwd);
@@ -876,10 +853,7 @@ export async function handleApprove(
 			);
 			return; // state does NOT advance; user must fix the file and re-approve
 		}
-		ctx.ui.notify(
-			`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.`,
-			"info",
-		);
+		ctx.ui.notify(`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.`, "info");
 	}
 
 	// Transition state via handleApprove (v1.6.0+).
@@ -905,8 +879,7 @@ export async function handleApprove(
 	// boundary is a manual confirm-then-write step. Special case for
 	// post-RTM (`built-rtm`): the feasibility-skip shortcut is offered
 	// alongside the default `/velpari-feasibility` next command.
-	const feasibilitySkip =
-		next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
+	const feasibilitySkip = next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
 	const nextCommands = nextCommandsFor(next.currentStage, { feasibilitySkip });
 	// Generator v2 (D5): an approve that crosses into a new phase prepends
 	// the generation step to the next-hint when the target phase lacks
@@ -919,9 +892,7 @@ export async function handleApprove(
 		: `Next: ${nextCommands.join(" or ")}`;
 	if (next.currentStage === "built-rtm") {
 		ctx.ui.notify(
-			feasibilitySkip
-				? `${nextHint} — feasibility already published; you may skip ahead to architecture.`
-				: nextHint,
+			feasibilitySkip ? `${nextHint} — feasibility already published; you may skip ahead to architecture.` : nextHint,
 			"info",
 		);
 	} else {

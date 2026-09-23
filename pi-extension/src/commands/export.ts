@@ -15,17 +15,9 @@ import { existsSync } from "node:fs";
 import { loadState } from "../core/state.js";
 import { loadFilesConfig } from "../core/config.js";
 import { buildStoreDbPath } from "../core/paths.js";
-import {
-	listExportableKinds,
-	listPublishedVersions,
-	type ArtifactKind,
-} from "../io/store.js";
+import { listExportableKinds, listPublishedVersions, type ArtifactKind } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
-import {
-	buildExportDefaultPath,
-	runExport,
-	type ExportFormat,
-} from "../ops/export-doc.js";
+import { buildExportDefaultPath, runExport, type ExportFormat } from "../ops/export-doc.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
 
 /** Export format menu (user decision 1). */
@@ -43,10 +35,7 @@ const FORMAT_ITEMS: ReadonlyArray<{ id: ExportFormat; label: string; hint: strin
  * @param {string} cwd - Working directory root.
  * @returns {Promise<string | undefined>} projectName, or undefined on cancel.
  */
-async function resolveProjectName(
-	ctx: ExtensionContext,
-	cwd: string,
-): Promise<string | undefined> {
+async function resolveProjectName(ctx: ExtensionContext, cwd: string): Promise<string | undefined> {
 	const state = loadState(cwd);
 	const config = loadFilesConfig(cwd);
 	const configured = config.projectNames ?? (config.projectName ? [config.projectName] : []);
@@ -100,10 +89,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 	try {
 		const kinds = listExportableKinds(db);
 		if (kinds.length === 0) {
-			ctx.ui.notify(
-				"No published artifacts in the store yet — drafts are never exported.",
-				"info",
-			);
+			ctx.ui.notify("No published artifacts in the store yet — drafts are never exported.", "info");
 			return;
 		}
 		const pickedKind = await runSimplePicker(ctx, {
@@ -154,11 +140,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 
 	let overwrite = false;
 	if (existsSync(outputPath)) {
-		overwrite = await runSimpleConfirm(
-			ctx,
-			"Overwrite existing file?",
-			`${outputPath} already exists. Overwrite it?`,
-		);
+		overwrite = await runSimpleConfirm(ctx, "Overwrite existing file?", `${outputPath} already exists. Overwrite it?`);
 		if (!overwrite) {
 			ctx.ui.notify("Export cancelled — existing file left untouched.", "info");
 			return;
@@ -174,8 +156,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 		.map(([key, n]) => `${key}=${n}`)
 		.join(", ");
 	ctx.ui.notify(
-		`Exported ${kind} v${version} (run ${runId}) → ${result.path}` +
-			(counts ? `\nRows: ${counts}` : ""),
+		`Exported ${kind} v${version} (run ${runId}) → ${result.path}` + (counts ? `\nRows: ${counts}` : ""),
 		"info",
 	);
 }

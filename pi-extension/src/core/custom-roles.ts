@@ -164,9 +164,7 @@ export function getBundledCustomRoles(): CustomRolesConfig {
 		}
 	}
 	if (raw === null) {
-		throw new Error(
-			`Bundled custom-roles starter not found. Searched: ${candidates.join(", ")}`,
-		);
+		throw new Error(`Bundled custom-roles starter not found. Searched: ${candidates.join(", ")}`);
 	}
 	const parsed = JSON.parse(raw) as CustomRolesConfig;
 	delete (parsed as unknown as Record<string, unknown>)._comment;

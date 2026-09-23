@@ -46,11 +46,7 @@ export function checkFeasibilityV2Section(cwd: string, projectName: string): Dia
 	// 2. Open session progress.
 	const state = loadState(cwd);
 	const session = state.feasibilitySession;
-	if (
-		(state.currentStage === "analyzing-feasibility" ||
-			state.currentStage === "analyzed-feasibility") &&
-		session
-	) {
+	if ((state.currentStage === "analyzing-feasibility" || state.currentStage === "analyzed-feasibility") && session) {
 		const spikes = session.spikeResults?.length ?? 0;
 		const details = [
 			`Reuse consent: ${session.reuseConsent === undefined ? "(not asked)" : session.reuseConsent}`,

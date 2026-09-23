@@ -157,12 +157,7 @@ export const WORKING_GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
  * Example: buildWorkingGroupedPath(cwd, runId, "PRD", "TodoApp")
  *   === "<cwd>/.IDE_Plans/velpari/runs/<runId>/prd/PRD_TodoApp.md"
  */
-export function buildWorkingGroupedPath(
-	cwd: string,
-	runId: string,
-	artifact: string,
-	projectName: string,
-): string {
+export function buildWorkingGroupedPath(cwd: string, runId: string, artifact: string, projectName: string): string {
 	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
 	const safeRunId = runId.replace(/[^A-Za-z0-9_-]+/g, "-");
@@ -316,11 +311,7 @@ export function buildStoreDbPath(projectName: string, cwd: string = process.cwd(
  * Example: buildStoreYamlPath("TodoApp", "PRD", cwd)
  *   === "<cwd>/Doc/store/TodoApp/PRD_TodoApp.yaml".
  */
-export function buildStoreYamlPath(
-	projectName: string,
-	artifact: string,
-	cwd: string = process.cwd(),
-): string {
+export function buildStoreYamlPath(projectName: string, artifact: string, cwd: string = process.cwd()): string {
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
 	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
 	return join(cwd, STORE_DB_DIR, safeProject, `${safeArtifact}_${safeProject}.yaml`);

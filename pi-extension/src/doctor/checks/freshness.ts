@@ -44,15 +44,11 @@ export function checkFreshnessSection(cwd: string): DiagnosticSection {
 		} else {
 			items.push({
 				status: "error",
-				message:
-					`${item.key}: stale (${item.reason}) — changed inputs: ` +
-					`${item.changedInputs.join(", ")}.`,
+				message: `${item.key}: stale (${item.reason}) — changed inputs: ` + `${item.changedInputs.join(", ")}.`,
 				// D4: input-missing is republish-only; only input-changed may
 				// also be re-confirmed (A5).
 				suggestion:
-					item.reason === "input-missing"
-						? suggestionFor("stale-input-missing")
-						: suggestionFor("stale-input"),
+					item.reason === "input-missing" ? suggestionFor("stale-input-missing") : suggestionFor("stale-input"),
 			});
 		}
 	}
@@ -62,8 +58,7 @@ export function checkFreshnessSection(cwd: string): DiagnosticSection {
 	if (resolveDocArtifactAll(cwd, "logging-plan").length > 0) {
 		items.push({
 			status: "info",
-			message:
-				"logging-plan is not freshness-tracked in v1 (D5 known gap — it publishes outside the publish tool).",
+			message: "logging-plan is not freshness-tracked in v1 (D5 known gap — it publishes outside the publish tool).",
 		});
 	}
 

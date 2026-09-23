@@ -12,15 +12,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
-} from "../../../core/fingerprints.js";
-import {
-	renderRtmMarkdown,
-	resolveRtmSidecar,
-	type RtmData,
-} from "../../../core/rtm-data.js";
+import { extractRequirementFingerprints, stampFingerprints } from "../../../core/fingerprints.js";
+import { renderRtmMarkdown, resolveRtmSidecar, type RtmData } from "../../../core/rtm-data.js";
 import { readYamlFile, writeYamlFile } from "../../../core/yaml-data.js";
 import { atomicWriteFile } from "../../../io/atomic-write.js";
 import type { RemediateFn, RemediateOutcome } from "./index.js";

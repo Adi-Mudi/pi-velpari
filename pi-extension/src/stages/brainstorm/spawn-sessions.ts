@@ -26,15 +26,8 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-	loadState,
-	setActiveSubagents,
-	type RunState,
-} from "../../core/state.js";
-import {
-	ensurePersistentAgents,
-	formatPersistentAgentsInstalledMessage,
-} from "../../io/agents-install.js";
+import { loadState, setActiveSubagents, type RunState } from "../../core/state.js";
+import { ensurePersistentAgents, formatPersistentAgentsInstalledMessage } from "../../io/agents-install.js";
 
 /**
  * v3 — Logical session handles for the 2 persistent sub-agent panes.
@@ -171,9 +164,7 @@ export function spawnPersistentSessions(opts: {
 	// Build the 2 spawn calls. The agent name and session handle are
 	// pinned by BRAINSTORM_PERSISTENT_AGENTS + BRAINSTORM_SESSION_HANDLES;
 	// the prompt carries the mission so the child Pi session has context.
-	const projectHint = opts.projectName
-		? ` for project "${opts.projectName}"`
-		: "";
+	const projectHint = opts.projectName ? ` for project "${opts.projectName}"` : "";
 	const basePrompt = (role: "web" | "docCode") =>
 		[
 			`You are the ${role === "web" ? "web-research" : "doc-code-analyst"} sub-agent${projectHint}.`,

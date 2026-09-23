@@ -30,12 +30,7 @@ import { atomicWriteJson } from "../io/atomic-write.js";
 import { loadFilesConfig } from "./config.js";
 import { PATHS } from "./constants.js";
 import { hashFileContent, hashFileContentNormalized } from "./fingerprints.js";
-import {
-	GROUPED_CATEGORIES,
-	resolveBrainstormArtifact,
-	resolveDocArtifact,
-	resolveDocArtifactAll,
-} from "./paths.js";
+import { GROUPED_CATEGORIES, resolveBrainstormArtifact, resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,10 +159,7 @@ function parseInputId(inputId: string): { kind: string; id: string } | null {
  * entry exists (legacy publishes before the manifest, or a stamped
  * publish whose manifest write failed).
  */
-function resolveBrainstormInput(
-	cwd: string,
-	topicSlug: string,
-): { path: string; layout: "grouped" | "legacy" } | null {
+function resolveBrainstormInput(cwd: string, topicSlug: string): { path: string; layout: "grouped" | "legacy" } | null {
 	const entry = loadFreshnessManifest(cwd).artifacts[manifestKey("brainstorm", topicSlug)];
 	if (entry) {
 		const abs = join(cwd, entry.path);
@@ -244,9 +236,7 @@ export function resolveDeclaredInputs(
 	const out: ResolvedInput[] = [];
 	for (const input of inputs) {
 		if (input.kind === "brainstorm") {
-			const resolved = deps.topicSlug
-				? resolveBrainstormInput(cwd, deps.topicSlug)
-				: null;
+			const resolved = deps.topicSlug ? resolveBrainstormInput(cwd, deps.topicSlug) : null;
 			out.push({
 				id: manifestKey("brainstorm", deps.topicSlug),
 				label: input.label,
@@ -271,9 +261,7 @@ export function resolveDeclaredInputs(
 }
 
 /** Result of hashing a stage's declared inputs. */
-type InputHashResult =
-	| { ok: true; hashes: Record<FreshnessInputId, string> }
-	| { ok: false; missing: string[] };
+type InputHashResult = { ok: true; hashes: Record<FreshnessInputId, string> } | { ok: false; missing: string[] };
 
 /**
  * Hash every found input. Optional inputs that are missing are skipped

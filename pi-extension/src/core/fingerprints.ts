@@ -92,7 +92,10 @@ export function extractRequirementFingerprints(psrsMarkdown: string): Map<string
 		for (const line of body.split("\n")) {
 			const trimmed = line.trim();
 			if (!/^\|\s*(?:FR|NFR)-\d+\s*\|/.test(trimmed)) continue;
-			const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+			const cells = trimmed
+				.split("|")
+				.slice(1, -1)
+				.map((c) => c.trim());
 			if (cells.length < 3) continue;
 			const id = cells[0]!;
 			// Drop the ID cell and the trailing Status cell.
@@ -166,10 +169,7 @@ export function checkRowFingerprints(
  * Stamp fingerprints into RTM rows (mutates a copy). Rows whose id is not
  * in the PSRS keep no fingerprint — the doctor reports them as unknown-id.
  */
-export function stampFingerprints(
-	rows: readonly RtmRow[],
-	fingerprints: ReadonlyMap<string, string>,
-): RtmRow[] {
+export function stampFingerprints(rows: readonly RtmRow[], fingerprints: ReadonlyMap<string, string>): RtmRow[] {
 	return rows.map((row) => {
 		const fp = fingerprints.get(row.id);
 		return fp ? { ...row, fingerprint: fp } : { ...row };
@@ -194,9 +194,7 @@ export function countTraceIssues(cwd: string, projectName: string): number | nul
 	try {
 		if (!Array.isArray(data.rows)) return null;
 		const fingerprints = extractRequirementFingerprints(readFileSync(psrs.path, "utf8"));
-		return checkRowFingerprints(data.rows, fingerprints).filter(
-			(i) => i.problem !== "untracked",
-		).length;
+		return checkRowFingerprints(data.rows, fingerprints).filter((i) => i.problem !== "untracked").length;
 	} catch {
 		return null;
 	}

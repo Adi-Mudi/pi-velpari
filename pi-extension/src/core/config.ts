@@ -94,9 +94,7 @@ function migrateV3(v3: FilesConfigV3): FilesConfig {
 		testPaths: [],
 		outputPaths: v3.outputPaths ?? {},
 		excludedPaths:
-			Array.isArray(v3.excludedPaths) && v3.excludedPaths.length > 0
-				? v3.excludedPaths
-				: [...DEFAULT_EXCLUDED_PATHS],
+			Array.isArray(v3.excludedPaths) && v3.excludedPaths.length > 0 ? v3.excludedPaths : [...DEFAULT_EXCLUDED_PATHS],
 	};
 }
 

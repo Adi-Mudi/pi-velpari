@@ -12,20 +12,10 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadFilesConfig, saveFilesConfig, type FilesConfig } from "../core/config.js";
 import { discoverProjectFiles, type FileDiscoveryResult } from "../core/files-discovery.js";
-import {
-	ask,
-	buildFilesConfig,
-	buildPathCategoryItems,
-} from "../ops/configure-inputs.js";
+import { ask, buildFilesConfig, buildPathCategoryItems } from "../ops/configure-inputs.js";
 import { runSimplePicker } from "../ui/simple-picker.js";
 import { runListEditor } from "../ui/list-editor.js";
-import {
-	SUGGESTION_PAGE_SIZE,
-	browsePath,
-	isPathConflict,
-	normalizePath,
-	type PickerMode,
-} from "../ui/browse-path.js";
+import { SUGGESTION_PAGE_SIZE, browsePath, isPathConflict, normalizePath, type PickerMode } from "../ui/browse-path.js";
 import {
 	DEFAULT_REVIEWER_MODE,
 	deriveAtomicProfile,
@@ -49,10 +39,7 @@ export function registerConfigureInputsCommand(pi: ExtensionAPI): void {
 
 async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void> {
 	if (ctx.hasUI === false) {
-		ctx.ui.notify(
-			"This command needs an interactive terminal (TUI). It does nothing in headless mode.",
-			"warning",
-		);
+		ctx.ui.notify("This command needs an interactive terminal (TUI). It does nothing in headless mode.", "warning");
 		return;
 	}
 	const cwd = ctx.cwd;
@@ -83,7 +70,10 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 		false,
 	);
 	const libraries = librariesRaw
-		? librariesRaw.split(",").map((s) => s.trim()).filter((s) => s.length > 0)
+		? librariesRaw
+				.split(",")
+				.map((s) => s.trim())
+				.filter((s) => s.length > 0)
 		: (existing.framework?.libraries ?? []);
 
 	// Runtime (optional)
@@ -131,10 +121,7 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 		],
 		initialSelectedId: "keep",
 	});
-	const tier =
-		tierId === undefined || tierId === "keep" || !isAtomicTier(tierId)
-			? priorAtomic.tier
-			: tierId;
+	const tier = tierId === undefined || tierId === "keep" || !isAtomicTier(tierId) ? priorAtomic.tier : tierId;
 
 	const safetyClassId = await runSimplePicker(ctx, {
 		title: "Safety class (IEC 62304)",
@@ -169,8 +156,7 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 		],
 		initialSelectedId: "keep",
 	});
-	const sil =
-		silId === undefined || silId === "keep" || !isSil(silId) ? priorAtomic.sil : silId;
+	const sil = silId === undefined || silId === "keep" || !isSil(silId) ? priorAtomic.sil : silId;
 
 	config.atomic = {
 		tier,
@@ -207,9 +193,7 @@ async function handleConfigureInputs(ctx: ExtensionCommandContext): Promise<void
 		initialSelectedId: "keep",
 	});
 	const reviewerMode =
-		reviewerModeId === undefined ||
-		reviewerModeId === "keep" ||
-		!isReviewerMode(reviewerModeId)
+		reviewerModeId === undefined || reviewerModeId === "keep" || !isReviewerMode(reviewerModeId)
 			? (priorAtomic.reviewerMode ?? DEFAULT_REVIEWER_MODE)
 			: reviewerModeId;
 	config.atomic.reviewerMode = reviewerMode;
@@ -311,11 +295,7 @@ async function editCategory(
 	}
 }
 
-async function editExcludedPaths(
-	ctx: ExtensionCommandContext,
-	cwd: string,
-	config: FilesConfig,
-): Promise<void> {
+async function editExcludedPaths(ctx: ExtensionCommandContext, cwd: string, config: FilesConfig): Promise<void> {
 	let editing = true;
 	while (editing) {
 		const action = await runListEditor(ctx, {

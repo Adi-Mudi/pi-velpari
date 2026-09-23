@@ -26,11 +26,7 @@ import { readFileSync } from "node:fs";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteJson } from "../io/atomic-write.js";
 import { advanceStage, type RunState } from "../core/state.js";
-import {
-	buildGroupedPath,
-	buildOutputPath,
-	resolveDocArtifact,
-} from "../core/paths.js";
+import { buildGroupedPath, buildOutputPath, resolveDocArtifact } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
 import { computeStaleSet } from "../core/freshness.js";
@@ -125,10 +121,7 @@ const OPTIONAL_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = 
  * Each artifact path prefers the grouped layout and falls back to the
  * legacy flat layout (Phase 7 backwards compatibility).
  */
-export function readApprovedArtifacts(
-	projectName: string,
-	cwd: string = process.cwd(),
-): ArchitectDocument[] {
+export function readApprovedArtifacts(projectName: string, cwd: string = process.cwd()): ArchitectDocument[] {
 	const docs: ArchitectDocument[] = [];
 	const missing: string[] = [];
 
@@ -139,7 +132,9 @@ export function readApprovedArtifacts(
 			// tooling can read it without re-deriving the layout.
 			docs.push({ type, path: resolved.path });
 		} else {
-			missing.push(`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))})`);
+			missing.push(
+				`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))})`,
+			);
 		}
 	}
 
@@ -151,9 +146,7 @@ export function readApprovedArtifacts(
 	}
 
 	if (missing.length > 0) {
-		throw new Error(
-			`Missing required Doc/ artifacts:\n${missing.map((p) => `  - ${p}`).join("\n")}`,
-		);
+		throw new Error(`Missing required Doc/ artifacts:\n${missing.map((p) => `  - ${p}`).join("\n")}`);
 	}
 
 	return docs;
@@ -247,8 +240,7 @@ export async function runHandoff(
 		}
 		if (mvp.issues.length > 0) {
 			ctx.ui.notify(
-				`MVP coverage ${mvp.covered}/${mvp.total} — warnings:\n` +
-					mvp.issues.map((i) => `  - ${i.message}`).join("\n"),
+				`MVP coverage ${mvp.covered}/${mvp.total} — warnings:\n` + mvp.issues.map((i) => `  - ${i.message}`).join("\n"),
 				"warning",
 			);
 		}
@@ -279,9 +271,7 @@ export async function runHandoff(
 	if (unstamped.length > 0) {
 		ctx.ui.notify(
 			`Freshness warnings (handoff allowed):\n` +
-				unstamped
-					.map((s) => `  - ${s.key}: no freshness stamp — republish to stamp.`)
-					.join("\n"),
+				unstamped.map((s) => `  - ${s.key}: no freshness stamp — republish to stamp.`).join("\n"),
 			"warning",
 		);
 	}
@@ -296,9 +286,7 @@ export async function runHandoff(
 			`Handoff blocked — ID coverage gaps:\n` +
 				coverageBlocking
 					.map(
-						(r) =>
-							`  - ${r.rule.id} (${r.rule.downstream}, ${r.projectName}): ` +
-							`missing ${r.missingIds.join(", ")}`,
+						(r) => `  - ${r.rule.id} (${r.rule.downstream}, ${r.projectName}): ` + `missing ${r.missingIds.join(", ")}`,
 					)
 					.join("\n") +
 				`\nRevise the listed downstream stages to cover the missing ids, then republish.`,
@@ -306,9 +294,7 @@ export async function runHandoff(
 		);
 		return;
 	}
-	const coverageWarnings = coverage.results.filter(
-		(r) => r.status === "not-checkable" || r.duplicateIds.length > 0,
-	);
+	const coverageWarnings = coverage.results.filter((r) => r.status === "not-checkable" || r.duplicateIds.length > 0);
 	if (coverageWarnings.length > 0) {
 		const lines: string[] = [];
 		for (const r of coverageWarnings) {
@@ -390,9 +376,12 @@ interface AdrSummary {
  * observability-relevant fields. Best-effort: returns a partial
  * payload when the frontmatter is missing a field.
  */
-function readLoggingPlanFrontmatter(
-	content: string,
-): { version: string; status: "draft" | "approved" | "deprecated"; generatedAt: string; overlay?: string } {
+function readLoggingPlanFrontmatter(content: string): {
+	version: string;
+	status: "draft" | "approved" | "deprecated";
+	generatedAt: string;
+	overlay?: string;
+} {
 	const match = content.match(/^---\n([\s\S]*?)\n---\n/);
 	if (!match) {
 		return { version: "0.0.0", status: "draft", generatedAt: new Date().toISOString() };
@@ -464,11 +453,7 @@ export function buildObservabilitySection(
  * payload. Returns an empty array when the design doc is missing or the
  * section is absent (consistent with gateADR's lenient mode).
  */
-function collectADRDecisions(
-	_state: RunState,
-	projectName: string,
-	cwd: string,
-): AdrSummary[] {
+function collectADRDecisions(_state: RunState, projectName: string, cwd: string): AdrSummary[] {
 	const designPath = resolveDocArtifact("design", projectName, cwd);
 	if (!designPath) return [];
 	let content: string;

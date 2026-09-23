@@ -247,9 +247,7 @@ export function loadReviewerVerdictForStage(
 		else if (issue.severity === "warning") warnings++;
 		else infos++;
 		const loc = issue.location ? ` [${issue.location}]` : "";
-		const sugg = issue.suggestion
-			? `\n    Fix: ${issue.suggestion}`
-			: "";
+		const sugg = issue.suggestion ? `\n    Fix: ${issue.suggestion}` : "";
 		items.push({
 			status: issue.severity,
 			message: `${issue.rule}${loc}: ${issue.message}${sugg}`,
@@ -385,12 +383,7 @@ export function checkVerifierVerdictsSection(cwd: string): DiagnosticSection {
 		const warnings = verdict.issues.filter((i) => i.severity === "warning").length;
 		const infos = verdict.issues.length - errors - warnings;
 		items.push({
-			status:
-				verdict.verdict === "block"
-					? "error"
-					: verdict.verdict === "needs-fix"
-						? "warning"
-						: "ok",
+			status: verdict.verdict === "block" ? "error" : verdict.verdict === "needs-fix" ? "warning" : "ok",
 			message:
 				`${spec.stageKey}: verdict ${verdict.verdict} (${verdict.timestamp}); ` +
 				`${errors} error(s), ${warnings} warning(s), ${infos} info. ` +

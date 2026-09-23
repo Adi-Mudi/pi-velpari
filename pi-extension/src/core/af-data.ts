@@ -20,24 +20,12 @@
  */
 
 import { existsSync } from "node:fs";
-import {
-	BASE_CORE_FIELDS,
-	isAtomicTier,
-	requiredFieldsFor,
-	type AtomicTier,
-} from "./atomic-tier.js";
+import { BASE_CORE_FIELDS, isAtomicTier, requiredFieldsFor, type AtomicTier } from "./atomic-tier.js";
 import { compareVersions, readYamlFile } from "./yaml-data.js";
 import { resolveDocArtifact } from "./paths.js";
 import { readLatestPublishedRows } from "../io/store.js";
 
-const AF_STATUSES = [
-	"proposed",
-	"approved",
-	"implemented",
-	"verified",
-	"deferred",
-	"deprecated",
-] as const;
+const AF_STATUSES = ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"] as const;
 type AfStatus = (typeof AF_STATUSES)[number];
 
 interface AfRecord {
@@ -133,8 +121,7 @@ export function loadAfDataForEngine(cwd: string, projectName: string): AfData | 
 				signature: String(r.signature ?? ""),
 				source: r.source !== undefined && r.source !== null ? String(r.source) : "",
 				cohesion: r.cohesion !== undefined && r.cohesion !== null ? String(r.cohesion) : "",
-				verification:
-					r.verification !== undefined && r.verification !== null ? String(r.verification) : "",
+				verification: r.verification !== undefined && r.verification !== null ? String(r.verification) : "",
 				testable: r.testable !== undefined && r.testable !== null ? String(r.testable) : "",
 				tier: String(r.tier ?? "basic"),
 				criticality: String(r.criticality ?? "A"),
@@ -196,9 +183,7 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 		return { ok: false, issues };
 	}
 
-	const required: readonly string[] = opts?.tier
-		? requiredFieldsFor(opts.tier)
-		: BASE_CORE_FIELDS;
+	const required: readonly string[] = opts?.tier ? requiredFieldsFor(opts.tier) : BASE_CORE_FIELDS;
 	const seen = new Set<string>();
 	for (let i = 0; i < data.functions.length; i++) {
 		const fn = data.functions[i] as Record<string, unknown>;
@@ -224,7 +209,10 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 			issues.push(`${at}.filePath: missing or empty.`);
 		}
 		for (const field of ARRAY_FIELDS) {
-			if (fn[field] !== undefined && (!Array.isArray(fn[field]) || (fn[field] as unknown[]).some((v) => typeof v !== "string"))) {
+			if (
+				fn[field] !== undefined &&
+				(!Array.isArray(fn[field]) || (fn[field] as unknown[]).some((v) => typeof v !== "string"))
+			) {
 				issues.push(`${at}.${field}: must be an array of strings when present.`);
 			}
 		}
@@ -240,7 +228,10 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 			issues.push(`${at}.reason: deprecated functions must record a reason.`);
 		}
 	}
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -406,10 +397,7 @@ export function renderAfMarkdown(data: AfData): string {
 		`|${cols.map(() => "---").join("|")}|`,
 		...data.functions.map((fn) => {
 			const row = cols.map((c) => cellValue(fn[c]));
-			const status =
-				fn.status === "deprecated" && typeof fn.reason === "string"
-					? ` (deprecated: ${fn.reason})`
-					: "";
+			const status = fn.status === "deprecated" && typeof fn.reason === "string" ? ` (deprecated: ${fn.reason})` : "";
 			return `| ${row.join(" | ")}${status} |`;
 		}),
 		"",

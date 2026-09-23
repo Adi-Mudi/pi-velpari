@@ -82,25 +82,10 @@ export const RFC_2119_KEYWORDS: ReadonlyArray<Rfc2119Keyword> = Object.freeze([
 // ---------------------------------------------------------------------------
 
 /** RFC 5424 severity level. Numeric value is implied by order in SYSLOG_SEVERITIES. */
-export type Severity =
-	| "emergency"
-	| "alert"
-	| "critical"
-	| "error"
-	| "warning"
-	| "notice"
-	| "informational"
-	| "debug";
+export type Severity = "emergency" | "alert" | "critical" | "error" | "warning" | "notice" | "informational" | "debug";
 
 /** RFC 2119 requirement keyword. */
-type Rfc2119Keyword =
-	| "shall"
-	| "should"
-	| "may"
-	| "must"
-	| "required"
-	| "recommended"
-	| "optional";
+type Rfc2119Keyword = "shall" | "should" | "may" | "must" | "required" | "recommended" | "optional";
 
 /** One compliance regime that applies to the project (e.g. PCI DSS Req 10). */
 interface ComplianceRegime {
@@ -243,7 +228,11 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 
 	// Compliance regimes
 	if (plan.complianceRegimes.length === 0) {
-		errors.push({ field: "complianceRegimes", message: "must list at least one regime (even 'none')", severity: "warning" });
+		errors.push({
+			field: "complianceRegimes",
+			message: "must list at least one regime (even 'none')",
+			severity: "warning",
+		});
 	}
 	for (const regime of plan.complianceRegimes) {
 		if (!regime.framework) {
@@ -253,7 +242,11 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 			errors.push({ field: "complianceRegimes[].version", message: "framework version required", severity: "error" });
 		}
 		if (regime.clauses.length === 0) {
-			errors.push({ field: `complianceRegimes[${regime.framework}].clauses`, message: "must name at least one clause", severity: "error" });
+			errors.push({
+				field: `complianceRegimes[${regime.framework}].clauses`,
+				message: "must name at least one clause",
+				severity: "error",
+			});
 		}
 	}
 
@@ -273,7 +266,11 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 			errors.push({ field: `eventCatalog[${ec.name}].retentionMonths`, message: "must be ≥ 0", severity: "error" });
 		}
 		if (ec.examples.length === 0) {
-			errors.push({ field: `eventCatalog[${ec.name}].examples`, message: "should list at least one example event", severity: "warning" });
+			errors.push({
+				field: `eventCatalog[${ec.name}].examples`,
+				message: "should list at least one example event",
+				severity: "warning",
+			});
 		}
 	}
 
@@ -290,14 +287,22 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 			errors.push({ field: "logShape[].name", message: "name must be non-empty", severity: "error" });
 		}
 		if (!field.description) {
-			errors.push({ field: `logShape[${field.name}].description`, message: "description must be non-empty", severity: "error" });
+			errors.push({
+				field: `logShape[${field.name}].description`,
+				message: "description must be non-empty",
+				severity: "error",
+			});
 		}
 	}
 
 	// Log levels: every RFC 5424 severity must have a non-empty description
 	for (const sev of SYSLOG_SEVERITIES) {
 		if (!plan.logLevels[sev]) {
-			errors.push({ field: `logLevels[${sev}]`, message: `RFC 5424 severity '${sev}' must have a description`, severity: "warning" });
+			errors.push({
+				field: `logLevels[${sev}]`,
+				message: `RFC 5424 severity '${sev}' must have a description`,
+				severity: "warning",
+			});
 		}
 	}
 
@@ -336,7 +341,11 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 	}
 	for (const alert of plan.alerting) {
 		if (!alert.name || !alert.trigger || !alert.destination) {
-			errors.push({ field: `alerting[${alert.name}]`, message: "name, trigger, and destination required", severity: "error" });
+			errors.push({
+				field: `alerting[${alert.name}]`,
+				message: "name, trigger, and destination required",
+				severity: "error",
+			});
 		}
 	}
 
@@ -347,20 +356,40 @@ export function validateLoggingPlan(plan: LoggingPlan): LoggingPlanValidationErr
 
 	// Correlation
 	if (!plan.correlation.headerName) {
-		errors.push({ field: "correlation.headerName", message: "header name required (e.g. traceparent)", severity: "error" });
+		errors.push({
+			field: "correlation.headerName",
+			message: "header name required (e.g. traceparent)",
+			severity: "error",
+		});
 	}
-	if (plan.correlation.traceContext !== "none" && plan.correlation.traceContext !== "W3C" && plan.correlation.traceContext !== "OTel") {
-		errors.push({ field: "correlation.traceContext", message: `must be 'W3C', 'OTel', or 'none' (got '${plan.correlation.traceContext}')`, severity: "error" });
+	if (
+		plan.correlation.traceContext !== "none" &&
+		plan.correlation.traceContext !== "W3C" &&
+		plan.correlation.traceContext !== "OTel"
+	) {
+		errors.push({
+			field: "correlation.traceContext",
+			message: `must be 'W3C', 'OTel', or 'none' (got '${plan.correlation.traceContext}')`,
+			severity: "error",
+		});
 	}
 
 	// Mapping
 	if (!plan.mapping.designCrosscutsSection) {
-		errors.push({ field: "mapping.designCrosscutsSection", message: "must reference the design §11 crosscuts section", severity: "warning" });
+		errors.push({
+			field: "mapping.designCrosscutsSection",
+			message: "must reference the design §11 crosscuts section",
+			severity: "warning",
+		});
 	}
 
 	// Change log
 	if (plan.changeLog.length === 0) {
-		errors.push({ field: "changeLog", message: "should record at least the initial creation entry", severity: "warning" });
+		errors.push({
+			field: "changeLog",
+			message: "should record at least the initial creation entry",
+			severity: "warning",
+		});
 	}
 
 	return errors;
@@ -492,7 +521,9 @@ export function renderLoggingPlanMarkdown(plan: LoggingPlan): string {
 	lines.push("| Tier | Retention (months) | Backend | Encryption at rest |");
 	lines.push("|---|---|---|---|");
 	for (const tier of plan.storage.tiers) {
-		lines.push(`| ${tier.tier} | ${tier.retentionMonths} | ${tier.storageBackend} | ${tier.encryptionAtRest ? "yes" : "no"} |`);
+		lines.push(
+			`| ${tier.tier} | ${tier.retentionMonths} | ${tier.storageBackend} | ${tier.encryptionAtRest ? "yes" : "no"} |`,
+		);
 	}
 	lines.push("");
 

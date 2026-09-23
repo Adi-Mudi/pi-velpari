@@ -88,10 +88,7 @@ export async function handleAtomicFunction(
 			baselinePath: baseline.path,
 			baselineContent: readFileSync(baseline.path, "utf8"),
 		};
-		ctx.ui.notify(
-			`Update mode: published atomic-functions found at ${baseline.path}. This run revises it.`,
-			"info",
-		);
+		ctx.ui.notify(`Update mode: published atomic-functions found at ${baseline.path}. This run revises it.`, "info");
 	}
 
 	// PHASE 3 — scout dispatch (paths + bootstrap + slot build + reviewer filter)

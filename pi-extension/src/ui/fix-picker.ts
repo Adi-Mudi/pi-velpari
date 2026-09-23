@@ -38,10 +38,7 @@ const PICK_OPEN = "open-report";
 const PICK_SKIP = "skip";
 const PICK_FIX = "fix-an-item";
 
-export async function runFixPicker(
-	ctx: ExtensionContext,
-	options: FixPickerOptions,
-): Promise<FixChoice> {
+export async function runFixPicker(ctx: ExtensionContext, options: FixPickerOptions): Promise<FixChoice> {
 	const hasItems = options.items.length > 0;
 	const topOptions: SimplePickerItem[] = [];
 

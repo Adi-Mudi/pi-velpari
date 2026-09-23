@@ -30,17 +30,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { loadState } from "../core/state.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { loadRequirementsProfile, compactProfileMetadata } from "../core/profile.js";
-import {
-	loadAgentConfig,
-	LOGGING_SCOUT_ROLES,
-	resolveAgentName,
-	type VelpariRole,
-} from "../core/agents-config.js";
-import {
-	buildRunDir,
-	buildWorkingGroupedPath,
-	resolveDocArtifact,
-} from "../core/paths.js";
+import { loadAgentConfig, LOGGING_SCOUT_ROLES, resolveAgentName, type VelpariRole } from "../core/agents-config.js";
+import { buildRunDir, buildWorkingGroupedPath, resolveDocArtifact } from "../core/paths.js";
 import { detectMultiplexer } from "../core/multiplexer.js";
 import { resolveSkillPath } from "../core/prompt.js";
 import { ensureStageAgents } from "../io/agents-install.js";
@@ -71,19 +62,13 @@ export async function handleDesignLogging(
 	// 1. State + config.
 	const state = loadState(cwd);
 	if (!state.runId || state.currentStage === "none") {
-		ctx.ui.notify(
-			"No active run. Run /velpari-brainstorm first.",
-			"error",
-		);
+		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
 		return;
 	}
 
 	const config = loadFilesConfig(cwd);
 	if (!validateFilesConfig(config)) {
-		ctx.ui.notify(
-			"Project name not set. Run /velpari-configure-inputs first.",
-			"error",
-		);
+		ctx.ui.notify("Project name not set. Run /velpari-configure-inputs first.", "error");
 		return;
 	}
 	const projectName = config.projectName;
@@ -131,12 +116,7 @@ export async function handleDesignLogging(
 	const runDir = buildRunDir(state.runId, cwd);
 	const workingCopyDir = join(runDir, "observability");
 	const scoutsDir = join(workingCopyDir, "scouts");
-	const workingCopyPath = buildWorkingGroupedPath(
-		cwd,
-		state.runId,
-		"logging-plan",
-		projectName,
-	);
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, "logging-plan", projectName);
 	const publishedPath = join(cwd, "Doc", "observability", `logging-plan_${projectName}.md`);
 	mkdirSync(workingCopyDir, { recursive: true });
 	mkdirSync(scoutsDir, { recursive: true });
@@ -188,37 +168,35 @@ export async function handleDesignLogging(
 	const profileMetadata = compactProfileMetadata(profile);
 	const profileBlock = profileMetadata
 		? [
-			"## Profile (compact)",
-			"",
-			`- ID: \`${profileMetadata.profileId}\``,
-			`- Version: \`${profileMetadata.profileVersion}\``,
-			`- Application type: ${profileMetadata.applicationType}`,
-			`- Domain: ${profileMetadata.domain}`,
-			`- Development method: ${profileMetadata.developmentMethod}`,
-			`- Regulated: ${profileMetadata.regulated ? "yes" : "no"}`,
-			`- Output variant: ${profileMetadata.outputVariant}`,
-			"",
-		].join("\n")
+				"## Profile (compact)",
+				"",
+				`- ID: \`${profileMetadata.profileId}\``,
+				`- Version: \`${profileMetadata.profileVersion}\``,
+				`- Application type: ${profileMetadata.applicationType}`,
+				`- Domain: ${profileMetadata.domain}`,
+				`- Development method: ${profileMetadata.developmentMethod}`,
+				`- Regulated: ${profileMetadata.regulated ? "yes" : "no"}`,
+				`- Output variant: ${profileMetadata.outputVariant}`,
+				"",
+			].join("\n")
 		: "";
 
 	// 10. Standards overlay block.
 	const standardsBlock = state.standardsProfile
 		? [
-			"## Active standards overlay",
-			"",
-			`- ID: \`${state.standardsProfile.id}\``,
-			`- Version: \`${state.standardsProfile.version}\``,
-			`- Selected at: ${state.standardsProfile.selectedAt}`,
-			state.standardsProfile.researchConsent
-				? "- Research consent: granted"
-				: "- Research consent: not granted",
-			state.standardsProfile.researchSources && state.standardsProfile.researchSources.length > 0
-				? `- Research sources: ${state.standardsProfile.researchSources.join(", ")}`
-				: "",
-			"",
-			"If the overlay id is one of `medical-device-b`, `industrial-ot`, `financial-payments`, or `cloud-saas`, read its `loggingRequirements` block from `skills/standards/overlays/<id>/profile.json` and bake the requirements into §3 (event catalog), §7 (storage), §8 (protection), and §11 (review cadence).",
-			"",
-		].join("\n")
+				"## Active standards overlay",
+				"",
+				`- ID: \`${state.standardsProfile.id}\``,
+				`- Version: \`${state.standardsProfile.version}\``,
+				`- Selected at: ${state.standardsProfile.selectedAt}`,
+				state.standardsProfile.researchConsent ? "- Research consent: granted" : "- Research consent: not granted",
+				state.standardsProfile.researchSources && state.standardsProfile.researchSources.length > 0
+					? `- Research sources: ${state.standardsProfile.researchSources.join(", ")}`
+					: "",
+				"",
+				"If the overlay id is one of `medical-device-b`, `industrial-ot`, `financial-payments`, or `cloud-saas`, read its `loggingRequirements` block from `skills/standards/overlays/<id>/profile.json` and bake the requirements into §3 (event catalog), §7 (storage), §8 (protection), and §11 (review cadence).",
+				"",
+			].join("\n")
 		: "";
 
 	// 11. Load the skill markdown.
@@ -227,10 +205,7 @@ export async function handleDesignLogging(
 	try {
 		skillContent = readFileSync(skillPath, "utf8");
 	} catch {
-		ctx.ui.notify(
-			`Skill markdown not found at ${skillPath}. Did the package build correctly?`,
-			"error",
-		);
+		ctx.ui.notify(`Skill markdown not found at ${skillPath}. Did the package build correctly?`, "error");
 		return;
 	}
 	// Strip YAML frontmatter.

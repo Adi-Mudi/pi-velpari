@@ -124,12 +124,7 @@ export type AtomicFieldName =
 
 /** Cumulative tier fields — higher tiers inherit lower-tier fields.
  *  Entry ⊂ Basic ⊂ Intermediate ⊂ Advanced. */
-const TIER_ORDER: readonly AtomicTier[] = [
-	"entry",
-	"basic",
-	"intermediate",
-	"advanced",
-];
+const TIER_ORDER: readonly AtomicTier[] = ["entry", "basic", "intermediate", "advanced"];
 
 /** Is the field required for the given profile?
  *  Higher tiers inherit lower-tier fields (e.g. intermediate requires
@@ -170,8 +165,7 @@ export function deriveAtomicProfile(config: Partial<FilesConfig>): AtomicProfile
 export function validateAtomicProfile(profile: AtomicProfile): string[] {
 	const errors: string[] = [];
 	if (!isAtomicTier(profile.tier)) errors.push(`Invalid tier: ${String(profile.tier)}`);
-	if (!isSafetyClass(profile.safetyClass))
-		errors.push(`Invalid safetyClass: ${String(profile.safetyClass)}`);
+	if (!isSafetyClass(profile.safetyClass)) errors.push(`Invalid safetyClass: ${String(profile.safetyClass)}`);
 	if (!isSil(profile.sil)) errors.push(`Invalid sil: ${String(profile.sil)}`);
 	if (profile.overlayId !== null && typeof profile.overlayId !== "string")
 		errors.push(`overlayId must be string or null, got ${typeof profile.overlayId}`);
@@ -198,10 +192,7 @@ export function isSil(x: unknown): x is Sil {
 // User override (per-project) is captured by reviewerMode below.
 
 /** Tiers where the reviewer is gated on by default. */
-export const REVIEWER_GATE_RULES: ReadonlySet<AtomicTier> = new Set([
-	"intermediate",
-	"advanced",
-]);
+export const REVIEWER_GATE_RULES: ReadonlySet<AtomicTier> = new Set(["intermediate", "advanced"]);
 
 /** Per-project reviewer mode (persisted in files.json:atomic.reviewerMode). */
 export type ReviewerMode = "tier-default" | "always" | "never";

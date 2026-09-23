@@ -40,16 +40,11 @@ export interface AvailableScans {
  * Community is always available (no filesystem dependency) but the
  * SCAN-gate picker still asks for explicit consent (FR-52).
  */
-export function getAvailableScanTypes(
-	config: FilesConfig,
-	cwd: string = process.cwd(),
-): AvailableScans {
+export function getAvailableScanTypes(config: FilesConfig, cwd: string = process.cwd()): AvailableScans {
 	const codePaths = config.codePaths ?? [];
 	const docPaths = config.inputDocuments ?? [];
-	const code =
-		codePaths.length > 0 && codePaths.some((p) => existsPath(join(cwd, p)));
-	const doc =
-		docPaths.length > 0 && docPaths.some((p) => existsPath(join(cwd, p)));
+	const code = codePaths.length > 0 && codePaths.some((p) => existsPath(join(cwd, p)));
+	const doc = docPaths.length > 0 && docPaths.some((p) => existsPath(join(cwd, p)));
 	return {
 		code,
 		doc,
@@ -86,10 +81,7 @@ export function availableScanList(available: AvailableScans): ScanType[] {
  * Convenience wrapper used by callers that already have a ScanType in
  * hand (e.g. the dispatcher validating a scout request).
  */
-export function isScanAvailable(
-	scan: ScanType,
-	available: AvailableScans,
-): boolean {
+export function isScanAvailable(scan: ScanType, available: AvailableScans): boolean {
 	if (scan === "code") return available.code;
 	if (scan === "doc") return available.doc;
 	if (scan === "community") return available.community;

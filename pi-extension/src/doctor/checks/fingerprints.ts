@@ -11,10 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
-import {
-	checkRowFingerprints,
-	extractRequirementFingerprints,
-} from "../../core/fingerprints.js";
+import { checkRowFingerprints, extractRequirementFingerprints } from "../../core/fingerprints.js";
 import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
 import { readYamlFile } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
@@ -66,9 +63,7 @@ export function checkFingerprintsSection(cwd: string, projectName: string): Diag
 		items.push({
 			status: issue.problem === "untracked" ? "warning" : "error",
 			message: issue.message,
-			suggestion: suggestionFor(
-				issue.problem === "untracked" ? "fingerprint-untracked" : "fingerprint-suspect",
-			),
+			suggestion: suggestionFor(issue.problem === "untracked" ? "fingerprint-untracked" : "fingerprint-suspect"),
 		});
 	}
 	if (items.length === 0) {

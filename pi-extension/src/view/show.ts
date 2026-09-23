@@ -105,10 +105,7 @@ function readAndPrint(
 	}
 }
 
-export async function showBrainstorm(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showBrainstorm(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const state = loadState(cwd);
 	if (!state.runId || state.currentStage === "none") {
 		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
@@ -121,10 +118,7 @@ export async function showBrainstorm(
 	readAndPrint(ctx, resolved, `Brainstorm (${topicSlug})`);
 }
 
-export async function showPrd(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showPrd(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	if (printFromStore(ctx, projectName, cwd, "prd", `PRD (${projectName})`, renderPrdMarkdown)) {
@@ -134,10 +128,7 @@ export async function showPrd(
 	readAndPrint(ctx, resolved, `PRD (${projectName})`);
 }
 
-export async function showRtm(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showRtm(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	if (printFromStore(ctx, projectName, cwd, "rtm", `RTM (${projectName})`, renderRtmMarkdown)) {
@@ -147,13 +138,19 @@ export async function showRtm(
 	readAndPrint(ctx, resolved, `RTM (${projectName})`);
 }
 
-export async function showFeasibility(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showFeasibility(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
-	if (printFromStore(ctx, projectName, cwd, "feasibility", `Feasibility study (${projectName})`, renderFeasibilityMarkdown)) {
+	if (
+		printFromStore(
+			ctx,
+			projectName,
+			cwd,
+			"feasibility",
+			`Feasibility study (${projectName})`,
+			renderFeasibilityMarkdown,
+		)
+	) {
 		// B3/D9 — surface the code-generated decision record next to the study.
 		const record = loadFeasibilityRecord(cwd, projectName);
 		if (record) {
@@ -178,10 +175,7 @@ export async function showFeasibility(
 	}
 }
 
-export async function showDesign(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showDesign(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	if (printFromStore(ctx, projectName, cwd, "design", `Design (${projectName})`, renderDesignMarkdown)) {
@@ -195,10 +189,7 @@ export async function showDesign(
  * v1.4.0 — show the published logging plan. Reads the same grouped +
  * legacy fallback paths as the doctor check + handoff payload builder.
  */
-export async function showLoggingPlan(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showLoggingPlan(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	const resolved = loadPublishedLoggingPlanMarkdown(cwd, projectName);
@@ -209,10 +200,7 @@ export async function showLoggingPlan(
 	);
 }
 
-export async function showPseudocode(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showPseudocode(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	if (printFromStore(ctx, projectName, cwd, "pseudocode", `Pseudocode (${projectName})`, renderPseudocodeMarkdown)) {
@@ -222,10 +210,7 @@ export async function showPseudocode(
 	readAndPrint(ctx, resolved, `Pseudocode (${projectName})`);
 }
 
-export async function showTestplan(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showTestplan(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 
@@ -252,8 +237,7 @@ export async function showTestplan(
 
 	if (!planPath && !casesPath) {
 		ctx.ui.notify(
-			`Neither test-plan nor test-cases found for ${projectName}. ` +
-				`Run /velpari-testplan first.`,
+			`Neither test-plan nor test-cases found for ${projectName}. ` + `Run /velpari-testplan first.`,
 			"error",
 		);
 		return;

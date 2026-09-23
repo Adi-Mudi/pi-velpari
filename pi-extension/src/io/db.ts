@@ -43,10 +43,7 @@ let cachedCtor: (new (path: string, options?: object) => DatabaseSync) | undefin
  */
 function databaseSyncCtor(): new (path: string, options?: object) => DatabaseSync {
 	if (cachedCtor !== undefined) return cachedCtor;
-	const ctor = requireDriver("node:sqlite").DatabaseSync as new (
-		path: string,
-		options?: object,
-	) => DatabaseSync;
+	const ctor = requireDriver("node:sqlite").DatabaseSync as new (path: string, options?: object) => DatabaseSync;
 	cachedCtor = ctor;
 	return ctor;
 }
@@ -75,9 +72,7 @@ export const MIGRATIONS: readonly Migration[] = [
 				journal_mode: string;
 			};
 			if (mode.journal_mode !== "wal") {
-				throw new Error(
-					`io/db: expected WAL journal mode, got '${mode.journal_mode}'`,
-				);
+				throw new Error(`io/db: expected WAL journal mode, got '${mode.journal_mode}'`);
 			}
 		},
 	},

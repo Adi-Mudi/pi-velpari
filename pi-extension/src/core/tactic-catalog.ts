@@ -47,7 +47,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["performance"],
 		appliesToContext: ["saturated resource", "predictable load"],
 		rationaleHint: "More CPU / RAM / instances yields more throughput; cheapest first.",
-		},
+	},
 	{
 		id: "reduce-computation",
 		label: "Reduce computation",
@@ -55,7 +55,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["performance"],
 		appliesToContext: ["hot loop", "expensive query"],
 		rationaleHint: "Replace O(n²) with O(n) or move work off the critical path.",
-		},
+	},
 	{
 		id: "cache",
 		label: "Cache results",
@@ -63,7 +63,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["performance"],
 		appliesToContext: ["repeat reads", "expensive computation", "external call"],
 		rationaleHint: "Read-mostly data, hot keys; pick TTL and invalidation carefully.",
-		},
+	},
 	{
 		id: "parallel-computation",
 		label: "Parallelize",
@@ -71,7 +71,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["performance"],
 		appliesToContext: ["independent work units", "batch jobs"],
 		rationaleHint: "Fan out; ensure idempotency + ordering invariants.",
-		},
+	},
 	{
 		id: "prioritize-events",
 		label: "Prioritize events",
@@ -79,7 +79,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["performance"],
 		appliesToContext: ["mixed traffic", "VIPs"],
 		rationaleHint: "Drain high-priority work first; tail latency improves for everyone.",
-		},
+	},
 
 	// Availability tactics
 	{
@@ -89,7 +89,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability"],
 		appliesToContext: ["network calls", "transient errors"],
 		rationaleHint: "Limit attempts + jitter; never retry non-idempotent operations blindly.",
-		},
+	},
 	{
 		id: "replicate",
 		label: "Replicate state",
@@ -97,7 +97,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability", "performance"],
 		appliesToContext: ["hot data", "single-region fragility"],
 		rationaleHint: "Multi-AZ or multi-region; quorum reads/writes.",
-		},
+	},
 	{
 		id: "failover",
 		label: "Active/Standby failover",
@@ -105,7 +105,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability"],
 		appliesToContext: ["single master", "regulated SLOs"],
 		rationaleHint: "Detect + promote; keep RTO tight.",
-		},
+	},
 	{
 		id: "ping-echo",
 		label: "Health probe (ping/echo)",
@@ -113,7 +113,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability"],
 		appliesToContext: ["load-balanced services"],
 		rationaleHint: "Monitor each instance; fail fast on no-response.",
-		},
+	},
 	{
 		id: "transaction",
 		label: "Bound work in transactions",
@@ -121,7 +121,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability", "usability"],
 		appliesToContext: ["long-lived workflows"],
 		rationaleHint: "Keep units small; combine with compensating actions for cross-aggregate flows.",
-		},
+	},
 	{
 		id: "queue-load-level",
 		label: "Queue-based load leveling",
@@ -129,7 +129,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["availability", "performance"],
 		appliesToContext: ["bursty traffic", "rate-mismatched producer/consumer"],
 		rationaleHint: "Buffer absorbs spikes; consumer controls its own pace.",
-		},
+	},
 
 	// Security tactics
 	{
@@ -139,7 +139,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["security"],
 		appliesToContext: ["any trust boundary"],
 		rationaleHint: "Identify before you authorise; never trust the network.",
-		},
+	},
 	{
 		id: "authorize",
 		label: "Authorize action",
@@ -147,7 +147,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["security"],
 		appliesToContext: ["any privileged operation"],
 		rationaleHint: "Default-deny; RBAC or policy-as-code.",
-		},
+	},
 	{
 		id: "encrypt",
 		label: "Encrypt data",
@@ -155,7 +155,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["security"],
 		appliesToContext: ["PII / PHI / secrets", "data at rest or in flight"],
 		rationaleHint: "At rest + in flight; key management is the harder half.",
-		},
+	},
 	{
 		id: "audit",
 		label: "Audit log every privileged action",
@@ -163,7 +163,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["security", "compliance"],
 		appliesToContext: ["PII / regulated data"],
 		rationaleHint: "Immutable, timestamped, queryable.",
-		},
+	},
 	{
 		id: "validate-input",
 		label: "Validate input",
@@ -171,7 +171,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["security", "modifiability"],
 		appliesToContext: ["every external surface"],
 		rationaleHint: "Strict schema at the boundary; reject malformed input early.",
-		},
+	},
 
 	// Modifiability tactics
 	{
@@ -181,7 +181,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["modifiability"],
 		appliesToContext: ["modules with multiple drivers"],
 		rationaleHint: "Stable interface + swappable implementation.",
-		},
+	},
 	{
 		id: "inject",
 		label: "Dependency injection",
@@ -189,7 +189,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["modifiability", "testability"],
 		appliesToContext: ["modules with plug-in collaborators"],
 		rationaleHint: "Loose coupling; trivially testable.",
-		},
+	},
 	{
 		id: "bind-late",
 		label: "Bind late (config-time)",
@@ -197,7 +197,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["modifiability"],
 		appliesToContext: ["variant deployments"],
 		rationaleHint: "Defer choice until the latest reasonable moment.",
-		},
+	},
 	{
 		id: "use-interfaces",
 		label: "Depend on interfaces, not concretes",
@@ -205,7 +205,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["modifiability", "testability"],
 		appliesToContext: ["any code that talks to another module"],
 		rationaleHint: "Ports and adapters; inversion-of-control.",
-		},
+	},
 
 	// Testability tactics
 	{
@@ -215,7 +215,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["testability"],
 		appliesToContext: ["modules with hard-to-reproduce states"],
 		rationaleHint: "Test-only API at a stable seam.",
-		},
+	},
 	{
 		id: "record-playback",
 		label: "Record / playback",
@@ -223,7 +223,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["testability"],
 		appliesToContext: ["concurrent / async systems"],
 		rationaleHint: "Deterministic replay of captured events.",
-		},
+	},
 	{
 		id: "simulate",
 		label: "Simulate scarce resources",
@@ -231,7 +231,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["testability"],
 		appliesToContext: ["network faults", "disk failures"],
 		rationaleHint: "Chaos testing; fault injection.",
-		},
+	},
 	{
 		id: "mock-dependencies",
 		label: "Mock third-party dependencies",
@@ -239,7 +239,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["testability"],
 		appliesToContext: ["any external service"],
 		rationaleHint: "Avoid real-network tests; pre-scripted mocks.",
-		},
+	},
 
 	// Usability tactics
 	{
@@ -249,7 +249,7 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["usability"],
 		appliesToContext: ["long-running user actions"],
 		rationaleHint: "User-confidence; tail latency protection.",
-		},
+	},
 	{
 		id: "progress-indicator",
 		label: "Show progress",
@@ -257,13 +257,11 @@ export const TACTIC_CATALOG: ReadonlyArray<Tactic> = [
 		targetsQA: ["usability"],
 		appliesToContext: ["operations > 1s"],
 		rationaleHint: "Spinner or real progress bar; never block the UI thread.",
-		},
+	},
 ] as const;
 
 /** Map tactic id → Tactic for direct lookup. */
-export const TACTIC_BY_ID: ReadonlyMap<string, Tactic> = new Map(
-	TACTIC_CATALOG.map((t) => [t.id, t]),
-);
+export const TACTIC_BY_ID: ReadonlyMap<string, Tactic> = new Map(TACTIC_CATALOG.map((t) => [t.id, t]));
 
 /** All tactic ids (lowercase). Useful for quick validation. */
 export const TACTIC_IDS: ReadonlyArray<string> = TACTIC_CATALOG.map((t) => t.id);

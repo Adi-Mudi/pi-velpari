@@ -176,11 +176,7 @@ function releaseLockDir(file: string, dir: string): void {
 	}
 }
 
-function tryAcquire(
-	dir: string,
-	file: string,
-	meta: RunLockMeta,
-): { acquired: boolean; holder: RunLockMeta | null } {
+function tryAcquire(dir: string, file: string, meta: RunLockMeta): { acquired: boolean; holder: RunLockMeta | null } {
 	// Atomic mkdir: success means we are the holder. EEXIST means someone
 	// else holds it (or held it a moment ago — the race window is µs).
 	try {

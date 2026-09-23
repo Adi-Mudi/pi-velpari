@@ -76,11 +76,7 @@ export function parseMarkdownTables(markdown: string): ParsedTable[] {
 			i += 1;
 			continue;
 		}
-		if (
-			line.trimStart().startsWith("|") &&
-			i + 1 < lines.length &&
-			isSeparator(lines[i + 1]!)
-		) {
+		if (line.trimStart().startsWith("|") && i + 1 < lines.length && isSeparator(lines[i + 1]!)) {
 			const headers = splitRow(line);
 			i += 2;
 			const rows: string[][] = [];
@@ -122,11 +118,7 @@ function val(headers: string[], row: string[], ...aliases: string[]): string | n
  * First table whose headers cover EVERY alias-group (each group needs one
  * matching column), optionally constrained by a caption regex.
  */
-function findTable(
-	tables: ParsedTable[],
-	captionRe: RegExp | null,
-	groups: string[][],
-): ParsedTable | null {
+function findTable(tables: ParsedTable[], captionRe: RegExp | null, groups: string[][]): ParsedTable | null {
 	for (const t of tables) {
 		if (captionRe && !captionRe.test(t.caption)) continue;
 		const ok = groups.every((aliases) => col(t.headers, ...aliases) >= 0);
@@ -176,9 +168,7 @@ function payloadRowCount(payload: ArtifactPayload): number {
 	return count;
 }
 
-const LEGAL_VERDICTS = new Set([
-	"go", "no-go", "go-with-conditions", "reuse", "partial", "build",
-]);
+const LEGAL_VERDICTS = new Set(["go", "no-go", "go-with-conditions", "reuse", "partial", "build"]);
 const LEGAL_ADR_STATUS = new Set(["proposed", "accepted", "superseded", "rejected"]);
 const LEGAL_TIERS = new Set(["entry", "basic", "intermediate", "advanced"]);
 const LEGAL_CRITICALITY = new Set(["A", "B", "C"]);
@@ -221,7 +211,11 @@ function loadPrd(projectName: string, cwd: string): LegacyLoad | null {
 
 	if (fr.length === 0 && nfr.length === 0 && prdSection.length === 0) return null;
 	return {
-		payload: { ...(fr.length ? { fr } : {}), ...(nfr.length ? { nfr } : {}), ...(prdSection.length ? { prdSection } : {}) },
+		payload: {
+			...(fr.length ? { fr } : {}),
+			...(nfr.length ? { nfr } : {}),
+			...(prdSection.length ? { prdSection } : {}),
+		},
 		source: src.path,
 	};
 }
@@ -253,14 +247,16 @@ function loadRtm(projectName: string, cwd: string): LegacyLoad | null {
 		const frRef = val(t.headers, row, "fr", "fr id", "requirement", "id");
 		if (!frRef || /^nfr/i.test(frRef)) return [];
 		const phaseRaw = Number(val(t.headers, row, "phase") ?? "1");
-		return [{
-			id: frRef,
-			frRef,
-			afRef: val(t.headers, row, "af", "design", "design element"),
-			tcRef: val(t.headers, row, "tc", "tests", "test cases", "test"),
-			phase: Number.isFinite(phaseRaw) && phaseRaw > 0 ? phaseRaw : 1,
-			targetSha256: val(t.headers, row, "target sha-256", "fingerprint", "sha-256") ?? sha256Hex(`${i}|${frRef}`),
-		}];
+		return [
+			{
+				id: frRef,
+				frRef,
+				afRef: val(t.headers, row, "af", "design", "design element"),
+				tcRef: val(t.headers, row, "tc", "tests", "test cases", "test"),
+				phase: Number.isFinite(phaseRaw) && phaseRaw > 0 ? phaseRaw : 1,
+				targetSha256: val(t.headers, row, "target sha-256", "fingerprint", "sha-256") ?? sha256Hex(`${i}|${frRef}`),
+			},
+		];
 	});
 	if (rtmRow.length === 0) return null;
 	return { payload: { rtmRow }, source: src.path };
@@ -311,12 +307,14 @@ function loadFeasibility(projectName: string, cwd: string): LegacyLoad | null {
 		const candidate = val(reuseT!.headers, row, "candidate");
 		const verdict = val(reuseT!.headers, row, "verdict");
 		if (!candidate || !verdict) return [];
-		return [{
-			candidate,
-			license: val(reuseT!.headers, row, "license"),
-			repoFreshness: val(reuseT!.headers, row, "freshness", "repo freshness"),
-			verdict,
-		}];
+		return [
+			{
+				candidate,
+				license: val(reuseT!.headers, row, "license"),
+				repoFreshness: val(reuseT!.headers, row, "freshness", "repo freshness"),
+				verdict,
+			},
+		];
 	});
 
 	const payload: Record<string, unknown> = {
@@ -356,13 +354,15 @@ function loadDesign(projectName: string, cwd: string): LegacyLoad | null {
 		const id = val(adrT!.headers, row, "id");
 		const status = (val(adrT!.headers, row, "status") ?? "").toLowerCase();
 		if (!id || !LEGAL_ADR_STATUS.has(status)) return [];
-		return [{
-			id,
-			adrStatus: status as "proposed" | "accepted" | "superseded" | "rejected",
-			options: val(adrT!.headers, row, "options") ?? "",
-			chosen: val(adrT!.headers, row, "chosen"),
-			rationale: val(adrT!.headers, row, "rationale"),
-		}];
+		return [
+			{
+				id,
+				adrStatus: status as "proposed" | "accepted" | "superseded" | "rejected",
+				options: val(adrT!.headers, row, "options") ?? "",
+				chosen: val(adrT!.headers, row, "chosen"),
+				rationale: val(adrT!.headers, row, "rationale"),
+			},
+		];
 	});
 
 	// Diagrams: `### <id> (<kind>)` headings followed by ```mermaid fences.
@@ -434,20 +434,22 @@ function loadAtomicFunctions(projectName: string, cwd: string): LegacyLoad | nul
 		const tierRaw = (val(t.headers, row, "tier") ?? "basic").toLowerCase();
 		const criticality = (val(t.headers, row, "criticality") ?? "A").toUpperCase();
 		const silRaw = (val(t.headers, row, "sil") ?? "none").toLowerCase();
-		return [{
-			id,
-			name: val(t.headers, row, "name") ?? id,
-			signature: val(t.headers, row, "signature") ?? "",
-			tier: (LEGAL_TIERS.has(tierRaw) ? tierRaw : "basic") as "entry" | "basic" | "intermediate" | "advanced",
-			criticality: (LEGAL_CRITICALITY.has(criticality) ? criticality : "A") as "A" | "B" | "C",
-			sil: (LEGAL_SIL.has(silRaw) ? silRaw : "none") as "none" | "sil-1" | "sil-2" | "sil-3" | "sil-4",
-			isLeaf: (/^y/i.test(val(t.headers, row, "leaf", "is leaf") ?? "") ? 1 : 0) as 0 | 1,
-			purpose: prose(val(t.headers, row, "purpose")),
-			source: prose(val(t.headers, row, "source")),
-			cohesion: prose(val(t.headers, row, "cohesion")),
-			verification: prose(val(t.headers, row, "verification")),
-			testable: prose(val(t.headers, row, "testable")),
-		}];
+		return [
+			{
+				id,
+				name: val(t.headers, row, "name") ?? id,
+				signature: val(t.headers, row, "signature") ?? "",
+				tier: (LEGAL_TIERS.has(tierRaw) ? tierRaw : "basic") as "entry" | "basic" | "intermediate" | "advanced",
+				criticality: (LEGAL_CRITICALITY.has(criticality) ? criticality : "A") as "A" | "B" | "C",
+				sil: (LEGAL_SIL.has(silRaw) ? silRaw : "none") as "none" | "sil-1" | "sil-2" | "sil-3" | "sil-4",
+				isLeaf: (/^y/i.test(val(t.headers, row, "leaf", "is leaf") ?? "") ? 1 : 0) as 0 | 1,
+				purpose: prose(val(t.headers, row, "purpose")),
+				source: prose(val(t.headers, row, "source")),
+				cohesion: prose(val(t.headers, row, "cohesion")),
+				verification: prose(val(t.headers, row, "verification")),
+				testable: prose(val(t.headers, row, "testable")),
+			},
+		];
 	});
 	if (atomicFunction.length === 0) return null;
 	return { payload: { atomicFunction }, source: src.path };
@@ -495,17 +497,26 @@ function loadPseudocode(projectName: string, cwd: string): LegacyLoad | null {
 function loadTestplan(projectName: string, cwd: string): LegacyLoad | null {
 	// Row tables live in the test-cases doc; the test-plan doc is the
 	// strategy prose view (no rows of its own).
-	const cases = readLegacyMarkdown(projectName, cwd, "test-cases")
-		?? readLegacyMarkdown(projectName, cwd, "test-plan");
+	const cases = readLegacyMarkdown(projectName, cwd, "test-cases") ?? readLegacyMarkdown(projectName, cwd, "test-plan");
 	if (!cases) return null;
 	const tables = parseMarkdownTables(cases.markdown);
 
-	const baseT = findTable(tables, /test case/i, [["id", "tc id"], ["kind", "type"]])
-		?? findTable(tables, null, [["id", "tc id"], ["kind", "type"]]);
+	const baseT =
+		findTable(tables, /test case/i, [
+			["id", "tc id"],
+			["kind", "type"],
+		]) ??
+		findTable(tables, null, [
+			["id", "tc id"],
+			["kind", "type"],
+		]);
 	if (!baseT) return null;
 
 	// Steps/objective/expected: same table when present, else the "Test Steps" table.
-	const stepsT = findTable(tables, /step/i, [["tc", "id"], ["steps", "expected"]]);
+	const stepsT = findTable(tables, /step/i, [
+		["tc", "id"],
+		["steps", "expected"],
+	]);
 	const stepByTc = new Map<string, { steps: string | null; expected: string | null; objective: string | null }>();
 	const collect = (t: ParsedTable | null): void => {
 		if (!t) return;
@@ -527,14 +538,16 @@ function loadTestplan(projectName: string, cwd: string): LegacyLoad | null {
 		if (!id) return [];
 		const kindRaw = (val(baseT.headers, row, "kind", "type") ?? "TC").toUpperCase();
 		const extra = stepByTc.get(id);
-		return [{
-			id,
-			tcKind: (kindRaw === "IT" ? "IT" : "TC") as "TC" | "IT",
-			strategyRef: val(baseT.headers, row, "strategy", "strategy ref"),
-			steps: extra?.steps ?? prose(val(baseT.headers, row, "steps")),
-			objective: extra?.objective ?? prose(val(baseT.headers, row, "objective")),
-			expected: extra?.expected ?? prose(val(baseT.headers, row, "expected")),
-		}];
+		return [
+			{
+				id,
+				tcKind: (kindRaw === "IT" ? "IT" : "TC") as "TC" | "IT",
+				strategyRef: val(baseT.headers, row, "strategy", "strategy ref"),
+				steps: extra?.steps ?? prose(val(baseT.headers, row, "steps")),
+				objective: extra?.objective ?? prose(val(baseT.headers, row, "objective")),
+				expected: extra?.expected ?? prose(val(baseT.headers, row, "expected")),
+			},
+		];
 	});
 	if (testCase.length === 0) return null;
 
@@ -580,9 +593,7 @@ function loadDevelopmentOrder(projectName: string, cwd: string): LegacyLoad | nu
 		const stepId = val(depT!.headers, row, "step");
 		// Only real edges: the renderer prints "—" for "no dependency".
 		const dependsOnId = val(depT!.headers, row, "depends on", "depends");
-		return stepId && dependsOnId && stepIds.has(stepId) && stepIds.has(dependsOnId)
-			? [{ stepId, dependsOnId }]
-			: [];
+		return stepId && dependsOnId && stepIds.has(stepId) && stepIds.has(dependsOnId) ? [{ stepId, dependsOnId }] : [];
 	});
 
 	return {
@@ -604,12 +615,14 @@ function loadFinalDesign(projectName: string, cwd: string): LegacyLoad | null {
 		const no = Number(val(t!.headers, row, "no", "#") ?? "NaN");
 		const title = val(t!.headers, row, "title");
 		if (!Number.isFinite(no) || !title) return [];
-		return [{
-			no,
-			title,
-			sourceArtifact: val(t!.headers, row, "source artifact", "source") ?? "design",
-			sourceIds: val(t!.headers, row, "source ids") ?? "[]",
-		}];
+		return [
+			{
+				no,
+				title,
+				sourceArtifact: val(t!.headers, row, "source artifact", "source") ?? "design",
+				sourceIds: val(t!.headers, row, "source ids") ?? "[]",
+			},
+		];
 	});
 	if (fromTable.length > 0) {
 		return { payload: { finalSection: fromTable }, source: src.path };
@@ -688,12 +701,7 @@ export interface BackfillResult {
  * @param kind - Store kind (KIND_ORDER member).
  * @param runId - Import run id (command generates a timestamped one).
  */
-export function backfillKind(
-	cwd: string,
-	projectName: string,
-	kind: ArtifactKind,
-	runId: string,
-): BackfillResult {
+export function backfillKind(cwd: string, projectName: string, kind: ArtifactKind, runId: string): BackfillResult {
 	if (!KIND_ORDER.includes(kind)) {
 		return {
 			ok: false,
@@ -785,4 +793,3 @@ export function backfillKind(
 		closeStoreDb(db);
 	}
 }
-

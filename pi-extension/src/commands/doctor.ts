@@ -39,10 +39,7 @@ export function registerDoctorCommand(pi: ExtensionAPI): void {
 
 			const items = listActionableItems(result.report);
 			if (items.length === 0) {
-				ctx.ui.notify(
-					"Doctor fix: no actionable items — your report is clean. Nothing to fix.",
-					"info",
-				);
+				ctx.ui.notify("Doctor fix: no actionable items — your report is clean. Nothing to fix.", "info");
 				return;
 			}
 

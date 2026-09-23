@@ -106,9 +106,7 @@ export function checkAgentFreshnessSection(cwd: string): DiagnosticSection {
  *  info item when the policy skips it. */
 function reviewerPresenceItems(cwd: string): DiagnosticItem[] {
 	const profile = deriveAtomicProfile(loadFilesConfig(cwd));
-	const overlayRequiresReviewer = profile.overlayId
-		? overlayRequiresReviewerFor(cwd, profile.overlayId)
-		: false;
+	const overlayRequiresReviewer = profile.overlayId ? overlayRequiresReviewerFor(cwd, profile.overlayId) : false;
 	const reviewerExpected = shouldRunReviewer({
 		profile,
 		overlayRequiresReviewer,
@@ -147,8 +145,7 @@ function reviewerPresenceItems(cwd: string): DiagnosticItem[] {
 			items.push({
 				status: "error",
 				message:
-					`${resolved}.md (reviewer role ${role}) MISSING — tier policy requires ` +
-					`the reviewer (${policyNote}).`,
+					`${resolved}.md (reviewer role ${role}) MISSING — tier policy requires ` + `the reviewer (${policyNote}).`,
 				suggestion:
 					`Run /velpari-generate-sub-agents --phase 3, or re-run a reviewer-gated ` +
 					`stage command to auto-bootstrap the bundled reviewer.`,

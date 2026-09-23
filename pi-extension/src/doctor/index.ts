@@ -24,12 +24,7 @@ import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { loadState } from "../core/state.js";
 import { loadHistory } from "../core/history.js";
 import { buildWorkingGroupedPath } from "../core/paths.js";
-import {
-	type DiagnosticItem,
-	type DiagnosticReport,
-	type DiagnosticSection,
-	summarize,
-} from "./_types.js";
+import { type DiagnosticItem, type DiagnosticReport, type DiagnosticSection, summarize } from "./_types.js";
 import { writeDoctorReport } from "./report.js";
 import { checkGroupedLegacyPathsSection } from "./checks/paths.js";
 import { checkWorkingPublishedSeparationSection } from "./checks/working-published.js";
@@ -65,10 +60,7 @@ import { checkAgentFreshnessSection } from "./checks/agent-freshness.js";
 import { checkVerifierVerdictsSection } from "./checks/reviewer-verdict.js";
 import { checkDesignReadiness } from "./checks/design-readiness.js";
 import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
-import {
-	checkGateWiringSection,
-	checkStaleDownstreamSection,
-} from "./checks/stale-downstream.js";
+import { checkGateWiringSection, checkStaleDownstreamSection } from "./checks/stale-downstream.js";
 import { checkFreshnessSection } from "./checks/freshness.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
@@ -248,10 +240,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 		status: mux.mux === "unknown" ? "warning" : "ok",
 		message: `Multiplexer detected: ${mux.mux} (env: ${mux.source})`,
 		details: ["Required for /velpari-brainstorm v2.0 visible subagents."],
-		suggestion:
-			mux.mux === "unknown"
-				? suggestionFor("unknown-multiplexer")
-				: undefined,
+		suggestion: mux.mux === "unknown" ? suggestionFor("unknown-multiplexer") : undefined,
 	});
 
 	const subagentsVersion = detectInteractiveSubagentsVersion(cwd);
@@ -277,11 +266,9 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 	if (mux.mux === "zellij") {
 		items.push({
 			status: "warning",
-			message: "zellij known bug [pi-interactive-subagents Issue #19]: `zellij action close-pane` closes the FOCUSED pane, not the target.",
-			details: [
-				suggestionFor("zellij-close-pane"),
-				"cmux/tmux/wezterm are not affected.",
-			],
+			message:
+				"zellij known bug [pi-interactive-subagents Issue #19]: `zellij action close-pane` closes the FOCUSED pane, not the target.",
+			details: [suggestionFor("zellij-close-pane"), "cmux/tmux/wezterm are not affected."],
 		});
 	}
 

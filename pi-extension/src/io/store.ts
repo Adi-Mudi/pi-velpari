@@ -300,9 +300,7 @@ const KIND_TABLES: Record<ArtifactKind, readonly TableSpec[]> = {
 		{ table: "diagram", key: "diagram", orderBy: "id" },
 		{ table: "approach", key: "approach", edge: true, orderBy: "module_id, tactic_id" },
 	],
-	"atomic-functions": [
-		{ table: "atomic_function", key: "atomicFunction", orderBy: "id" },
-	],
+	"atomic-functions": [{ table: "atomic_function", key: "atomicFunction", orderBy: "id" }],
 	pseudocode: [{ table: "pseudocode_block", key: "pseudocodeBlock", orderBy: "id" }],
 	testplan: [
 		{ table: "test_case", key: "testCase", orderBy: "id" },
@@ -321,9 +319,7 @@ const KIND_TABLES: Record<ArtifactKind, readonly TableSpec[]> = {
  * subphase 1.1). Derived from KIND_TABLES keys so it can never drift from
  * the dispatch table itself.
  */
-export const KIND_ORDER: readonly ArtifactKind[] = Object.keys(
-	KIND_TABLES,
-) as ArtifactKind[];
+export const KIND_ORDER: readonly ArtifactKind[] = Object.keys(KIND_TABLES) as ArtifactKind[];
 
 /** Values this store ever binds (STRICT tables reject anything else). */
 type SqlValue = string | number | null;
@@ -358,14 +354,10 @@ function sha256(text: string): string {
  * @param {ArtifactKind} kind - Artifact kind (envelope PK part 2).
  * @returns {ArtifactEnvelope | null} Mapped envelope, or null when absent.
  */
-function readEnvelope(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): ArtifactEnvelope | null {
-	const row = db
-		.prepare("SELECT * FROM artifacts WHERE run_id = ? AND kind = ?")
-		.get(runId, kind) as Record<string, SqlValue> | undefined;
+function readEnvelope(db: DatabaseSync, runId: string, kind: ArtifactKind): ArtifactEnvelope | null {
+	const row = db.prepare("SELECT * FROM artifacts WHERE run_id = ? AND kind = ?").get(runId, kind) as
+		| Record<string, SqlValue>
+		| undefined;
 	if (!row) return null;
 	return {
 		runId: String(row.run_id),
@@ -382,17 +374,11 @@ function readEnvelope(
 }
 
 /** Read child rows, payload-keyed, camelCase, run_id/kind/status stripped. */
-function readRows(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): Record<string, unknown> {
+function readRows(db: DatabaseSync, runId: string, kind: ArtifactKind): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const spec of KIND_TABLES[kind]) {
 		const raw = db
-			.prepare(
-				`SELECT * FROM ${spec.table} WHERE run_id = ? AND kind = ? ORDER BY ${spec.orderBy}`,
-			)
+			.prepare(`SELECT * FROM ${spec.table} WHERE run_id = ? AND kind = ? ORDER BY ${spec.orderBy}`)
 			.all(runId, kind) as Record<string, SqlValue>[];
 		if (raw.length === 0) continue;
 		const mapped = raw.map((row) => {
@@ -413,10 +399,7 @@ function readRows(
  * and status excluded — see header) + non-empty row sets in KIND_TABLES order.
  * `inputs`/`changeLog` stay raw JSON strings — their shape is Phase 4's call.
  */
-function buildExportObject(
-	envelope: ArtifactEnvelope,
-	rows: Record<string, unknown>,
-): Record<string, unknown> {
+function buildExportObject(envelope: ArtifactEnvelope, rows: Record<string, unknown>): Record<string, unknown> {
 	const rowSets: Record<string, unknown> = {};
 	for (const spec of KIND_TABLES[envelope.kind]) {
 		const value = rows[spec.key];
@@ -486,18 +469,13 @@ export function writeArtifact(
 		// Idempotent rewrite: delete this run's existing child rows for the
 		// kind, referencing tables first (reverse of insert order).
 		for (const spec of [...specs].reverse()) {
-			db.prepare(`DELETE FROM ${spec.table} WHERE run_id = ? AND kind = ?`).run(
-				runId,
-				kind,
-			);
+			db.prepare(`DELETE FROM ${spec.table} WHERE run_id = ? AND kind = ?`).run(runId, kind);
 		}
 
 		// Insert payload rows (FK parents first).
 		for (const spec of specs) {
 			const raw = (payload as Record<string, unknown>)[spec.key];
-			const rows: unknown[] = spec.single
-				? [raw]
-				: ((raw as unknown[] | undefined) ?? []);
+			const rows: unknown[] = spec.single ? [raw] : ((raw as unknown[] | undefined) ?? []);
 			for (const row of rows) {
 				if (row === undefined || row === null) continue;
 				insertRow(db, spec, runId, kind, row as Record<string, unknown>);
@@ -512,9 +490,11 @@ export function writeArtifact(
 			throw new Error(`store: envelope vanished mid-txn (${runId}/${kind})`);
 		}
 		const yamlBytes = toYamlString(buildExportObject(read.envelope, read.rows));
-		db.prepare(
-			"UPDATE artifacts SET sha256_fingerprint = ? WHERE run_id = ? AND kind = ?",
-		).run(sha256(yamlBytes), runId, kind);
+		db.prepare("UPDATE artifacts SET sha256_fingerprint = ? WHERE run_id = ? AND kind = ?").run(
+			sha256(yamlBytes),
+			runId,
+			kind,
+		);
 
 		db.exec("COMMIT;");
 	} catch (err) {
@@ -548,9 +528,7 @@ function insertRow(
 		values.push("draft");
 	}
 	const placeholders = cols.map(() => "?").join(", ");
-	db.prepare(
-		`INSERT INTO ${spec.table} (${cols.join(", ")}) VALUES (${placeholders})`,
-	).run(...values);
+	db.prepare(`INSERT INTO ${spec.table} (${cols.join(", ")}) VALUES (${placeholders})`).run(...values);
 }
 
 // ---------------------------------------------------------------------------
@@ -562,11 +540,7 @@ function insertRow(
  * key (camelCase fields, run_id/kind/status stripped) — or null when the
  * run has no artifact of that kind.
  */
-export function readArtifact(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): ReadArtifactResult | null {
+export function readArtifact(db: DatabaseSync, runId: string, kind: ArtifactKind): ReadArtifactResult | null {
 	const envelope = readEnvelope(db, runId, kind);
 	if (!envelope) return null;
 	return { envelope, rows: readRows(db, runId, kind) };
@@ -577,11 +551,7 @@ export function readArtifact(
  * covers. Same rows + envelope in → same bytes out, every time. Returns
  * null when the artifact is absent.
  */
-export function exportArtifactYaml(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): string | null {
+export function exportArtifactYaml(db: DatabaseSync, runId: string, kind: ArtifactKind): string | null {
 	const read = readArtifact(db, runId, kind);
 	if (!read) return null;
 	return toYamlString(buildExportObject(read.envelope, read.rows));
@@ -592,11 +562,7 @@ export function exportArtifactYaml(
  * at write time (RES-1 tamper detection). Throws when the artifact is
  * absent — verifying a nonexistent artifact is a caller bug, not a mismatch.
  */
-export function verifyExportChecksum(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): ChecksumResult {
+export function verifyExportChecksum(db: DatabaseSync, runId: string, kind: ArtifactKind): ChecksumResult {
 	const read = readArtifact(db, runId, kind);
 	if (!read) {
 		throw new Error(`store: cannot verify — no artifact (${runId}/${kind})`);
@@ -629,11 +595,10 @@ export interface PublishedVersionRef {
  * @returns {ArtifactKind[]} Kinds, ordered by KIND_ORDER (never SQL order).
  */
 export function listExportableKinds(db: DatabaseSync): ArtifactKind[] {
-	const rows = db
-		.prepare(
-			"SELECT DISTINCT kind FROM artifacts WHERE status = 'published'",
-		)
-		.all() as Record<string, SqlValue>[];
+	const rows = db.prepare("SELECT DISTINCT kind FROM artifacts WHERE status = 'published'").all() as Record<
+		string,
+		SqlValue
+	>[];
 	const present = new Set(rows.map((r) => String(r.kind)));
 	return KIND_ORDER.filter((kind) => present.has(kind));
 }
@@ -645,10 +610,7 @@ export function listExportableKinds(db: DatabaseSync): ArtifactKind[] {
  * @param {ArtifactKind} kind - Artifact kind to list.
  * @returns {PublishedVersionRef[]} Newest first (generated_at DESC).
  */
-export function listPublishedVersions(
-	db: DatabaseSync,
-	kind: ArtifactKind,
-): PublishedVersionRef[] {
+export function listPublishedVersions(db: DatabaseSync, kind: ArtifactKind): PublishedVersionRef[] {
 	const rows = db
 		.prepare(
 			`SELECT run_id, version, generated_at, stage FROM artifacts
@@ -703,16 +665,11 @@ export function readLatestPublishedRows(
  * @param {string} projectName - Project whose AF ids to list.
  * @returns {string[] | null} Unique sorted AF ids, or null when no published rows exist.
  */
-export function extractAfIdsFromStore(
-	cwd: string,
-	projectName: string,
-): string[] | null {
+export function extractAfIdsFromStore(cwd: string, projectName: string): string[] | null {
 	const fromDb = readLatestPublishedRows(cwd, projectName, "atomic-functions");
 	if (!fromDb) return null;
 	const rows = (fromDb.rows.atomicFunction as Array<{ id: unknown }> | undefined) ?? [];
-	const ids = rows
-		.map((r) => String(r.id))
-		.filter((id) => /^AF-\d+$/.test(id));
+	const ids = rows.map((r) => String(r.id)).filter((id) => /^AF-\d+$/.test(id));
 	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
 }
 
@@ -726,9 +683,7 @@ export function extractAfIdsFromStore(
  * number of draft envelopes deleted.
  */
 export function deleteRunDrafts(db: DatabaseSync, runId: string): number {
-	const result = db
-		.prepare("DELETE FROM artifacts WHERE run_id = ? AND status = 'draft'")
-		.run(runId);
+	const result = db.prepare("DELETE FROM artifacts WHERE run_id = ? AND status = 'draft'").run(runId);
 	return Number(result.changes);
 }
 
@@ -756,27 +711,19 @@ export function checkpointNow(db: DatabaseSync): CheckpointResult {
  * draft state so a retry starts clean. Throws when there is no PUBLISHED
  * artifact for the run/kind (a silent no-op would hide caller bugs).
  */
-export function revertPublish(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): void {
+export function revertPublish(db: DatabaseSync, runId: string, kind: ArtifactKind): void {
 	const specs = KIND_TABLES[kind];
 	db.exec("BEGIN IMMEDIATE;");
 	try {
 		const result = db
-			.prepare(
-				"UPDATE artifacts SET status = 'draft' WHERE run_id = ? AND kind = ? AND status = 'published'",
-			)
+			.prepare("UPDATE artifacts SET status = 'draft' WHERE run_id = ? AND kind = ? AND status = 'published'")
 			.run(runId, kind);
 		if (Number(result.changes) === 0) {
 			throw new Error(`store: no published artifact to revert (${runId}/${kind})`);
 		}
 		for (const spec of specs) {
 			if (spec.edge) continue; // edge tables carry no status column
-			db.prepare(
-				`UPDATE ${spec.table} SET status = 'draft' WHERE run_id = ? AND kind = ?`,
-			).run(runId, kind);
+			db.prepare(`UPDATE ${spec.table} SET status = 'draft' WHERE run_id = ? AND kind = ?`).run(runId, kind);
 		}
 		db.exec("COMMIT;");
 	} catch (err) {
@@ -795,27 +742,19 @@ export function revertPublish(
  * envelope for the run/kind — a silent no-op would hide caller bugs. YAML
  * export + git are NOT here: they are Phase 4's publish-gate steps (RES-1).
  */
-export function publishArtifact(
-	db: DatabaseSync,
-	runId: string,
-	kind: ArtifactKind,
-): void {
+export function publishArtifact(db: DatabaseSync, runId: string, kind: ArtifactKind): void {
 	const specs = KIND_TABLES[kind];
 	db.exec("BEGIN IMMEDIATE;");
 	try {
 		const result = db
-			.prepare(
-				"UPDATE artifacts SET status = 'published' WHERE run_id = ? AND kind = ? AND status = 'draft'",
-			)
+			.prepare("UPDATE artifacts SET status = 'published' WHERE run_id = ? AND kind = ? AND status = 'draft'")
 			.run(runId, kind);
 		if (Number(result.changes) === 0) {
 			throw new Error(`store: no draft artifact to publish (${runId}/${kind})`);
 		}
 		for (const spec of specs) {
 			if (spec.edge) continue; // edge tables carry no status column
-			db.prepare(
-				`UPDATE ${spec.table} SET status = 'published' WHERE run_id = ? AND kind = ?`,
-			).run(runId, kind);
+			db.prepare(`UPDATE ${spec.table} SET status = 'published' WHERE run_id = ? AND kind = ?`).run(runId, kind);
 		}
 		db.exec("COMMIT;");
 	} catch (err) {

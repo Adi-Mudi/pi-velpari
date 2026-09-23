@@ -64,15 +64,9 @@ export function registerVelpariStatusRenderer(pi: ExtensionAPI): void {
 	pi.registerEntryRenderer("velpari-status", (entry, options: { expanded: boolean }, theme: Theme) => {
 		const data = (entry.data ?? {}) as VelpariStatusEntryData;
 		const head = theme.bold(`Velpari status — ${data.stage ?? "(unknown stage)"}`);
-		const sub = theme.fg(
-			"muted",
-			`runId=${data.runId ?? "?"}  mission=${truncate(data.mission ?? "?", 40)}`,
-		);
+		const sub = theme.fg("muted", `runId=${data.runId ?? "?"}  mission=${truncate(data.mission ?? "?", 40)}`);
 		const profileLine = data.profileId
-			? theme.fg(
-					"accent",
-					`profile: ${data.profileId}@${data.profileVersion ?? "?"} (${data.profileKind ?? "?"})`,
-				)
+			? theme.fg("accent", `profile: ${data.profileId}@${data.profileVersion ?? "?"} (${data.profileKind ?? "?"})`)
 			: theme.fg("muted", "profile: (none — run /velpari-configure-requirements)");
 
 		// 1px horizontal padding, no vertical, no background tint.

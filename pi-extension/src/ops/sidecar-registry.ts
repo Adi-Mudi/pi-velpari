@@ -43,20 +43,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveDocArtifact } from "../core/paths.js";
-import {
-	diffRtmData,
-	renderRtmMarkdown,
-	resolveRtmSidecar,
-	validateRtmData,
-	type RtmData,
-} from "../core/rtm-data.js";
-import {
-	diffAfData,
-	renderAfMarkdown,
-	resolveAfSidecar,
-	validateAfData,
-	type AfData,
-} from "../core/af-data.js";
+import { diffRtmData, renderRtmMarkdown, resolveRtmSidecar, validateRtmData, type RtmData } from "../core/rtm-data.js";
+import { diffAfData, renderAfMarkdown, resolveAfSidecar, validateAfData, type AfData } from "../core/af-data.js";
 import {
 	diffTestCasesData,
 	renderTestCasesMarkdown,
@@ -73,10 +61,7 @@ import {
 } from "../core/dev-order-data.js";
 import { deriveAtomicProfile } from "../core/atomic-tier.js";
 import { loadFilesConfig } from "../core/config.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
-} from "../core/fingerprints.js";
+import { extractRequirementFingerprints, stampFingerprints } from "../core/fingerprints.js";
 import { parseYaml, readYamlFile, toYamlString } from "../core/yaml-data.js";
 
 interface SidecarParseResult {
@@ -111,10 +96,7 @@ interface SidecarEntry {
 	 *    (the publish branch reports it as a revision-gate issue);
 	 *  - { path, data } otherwise.
 	 */
-	loadPublishedBaseline(
-		cwd: string,
-		projectName: string,
-	): { path: string; data: unknown | null } | null;
+	loadPublishedBaseline(cwd: string, projectName: string): { path: string; data: unknown | null } | null;
 	/** Post-validation hook (RTM: stamp PSRS fingerprints into the rows). */
 	postValidate?(data: unknown, ctx: { cwd: string; projectName: string }): unknown;
 	/**
@@ -224,10 +206,7 @@ const rtmEntry: SidecarEntry = {
 		const rtmData = data as RtmData;
 		const psrs = resolveDocArtifact("PRD", projectName, cwd);
 		if (psrs) {
-			rtmData.rows = stampFingerprints(
-				rtmData.rows,
-				extractRequirementFingerprints(readFileSync(psrs.path, "utf8")),
-			);
+			rtmData.rows = stampFingerprints(rtmData.rows, extractRequirementFingerprints(readFileSync(psrs.path, "utf8")));
 		}
 		return rtmData;
 	},
@@ -242,10 +221,7 @@ const afEntry: SidecarEntry = {
 	 * @returns {string | null} The matching file name, or null when absent.
 	 */
 	detectWorkingSidecar(workingFiles) {
-		return (
-			workingFiles.find((f) => f.startsWith("atomic-functions_") && f.endsWith(".yaml")) ??
-			null
-		);
+		return workingFiles.find((f) => f.startsWith("atomic-functions_") && f.endsWith(".yaml")) ?? null;
 	},
 	/**
 	 * Parse + validate the working sidecar text. Base validation only;
@@ -346,10 +322,7 @@ const testCasesEntry: SidecarEntry = {
 	 * @returns {string | null} The matching file name, or null when absent.
 	 */
 	detectWorkingSidecar(workingFiles) {
-		return (
-			workingFiles.find((f) => f.startsWith("test-cases_") && f.endsWith(".yaml")) ??
-			null
-		);
+		return workingFiles.find((f) => f.startsWith("test-cases_") && f.endsWith(".yaml")) ?? null;
 	},
 	/**
 	 * Parse + validate the working sidecar text. Returns either a typed
@@ -432,10 +405,7 @@ const devOrderEntry: SidecarEntry = {
 	 * @returns {string | null} The matching file name, or null when absent.
 	 */
 	detectWorkingSidecar(workingFiles) {
-		return (
-			workingFiles.find((f) => f.startsWith("development-order_") && f.endsWith(".yaml")) ??
-			null
-		);
+		return workingFiles.find((f) => f.startsWith("development-order_") && f.endsWith(".yaml")) ?? null;
 	},
 	/**
 	 * Parse + validate the working sidecar text. Returns either a typed

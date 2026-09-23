@@ -30,10 +30,7 @@ function overlayCheckPath(cwd: string, overlayId: string): string {
  * The function never throws — failures degrade gracefully to an empty
  * check list so the doctor still renders a usable report.
  */
-export function loadOverlayChecks(
-	cwd: string,
-	overlayId: string | undefined,
-): string[] {
+export function loadOverlayChecks(cwd: string, overlayId: string | undefined): string[] {
 	if (!overlayId) return [];
 
 	const catalogue = loadCatalogue(cwd);

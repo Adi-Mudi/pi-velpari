@@ -5,12 +5,7 @@ import { atomicWriteFile, atomicWriteJson } from "../io/atomic-write.js";
 import { withRunLock } from "../io/run-lock.js";
 import type { Stage } from "./constants.js";
 import { PATHS, STAGE_TRANSITIONS } from "./constants.js";
-import {
-	appendHistory,
-	historyFilePath,
-	loadHistory,
-	migrateInlineHistory,
-} from "./history.js";
+import { appendHistory, historyFilePath, loadHistory, migrateInlineHistory } from "./history.js";
 import type { SpikeResult } from "./spike.js";
 
 /**
@@ -183,13 +178,7 @@ export type ScanType = (typeof SCAN_TYPES)[number];
 
 /** Per-question lifecycle in the DISCUSS loop. "draft" and "discussing" are
  *  open (block approve); the other three are terminal. */
-export const BRAINSTORM_QUESTION_STATES = [
-	"draft",
-	"discussing",
-	"agreed",
-	"not-wanted",
-	"replaced",
-] as const;
+export const BRAINSTORM_QUESTION_STATES = ["draft", "discussing", "agreed", "not-wanted", "replaced"] as const;
 type BrainstormQuestionState = (typeof BRAINSTORM_QUESTION_STATES)[number];
 
 export interface BrainstormQuestion {
@@ -295,7 +284,10 @@ export function createRun(mission: string, cwd: string = process.cwd()): RunStat
 	return withRunLock(cwd, "createRun", () => {
 		const now = new Date();
 		const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 16);
-		const slug = mission.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32);
+		const slug = mission
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.slice(0, 32);
 		const seed: HistoryEntry = {
 			stage: "brainstorming",
 			command: "/velpari-brainstorm",
@@ -335,17 +327,14 @@ export function advanceStage(
 ): RunState {
 	return withRunLock(cwd, `advanceStage:${command}`, () => {
 		const stageOverride = pi?.getFlag?.("velpari-stage");
-		const transition = STAGE_TRANSITIONS.find(
-			(t) => t.from === state.currentStage && t.command === command,
-		);
+		const transition = STAGE_TRANSITIONS.find((t) => t.from === state.currentStage && t.command === command);
 		if (!stageOverride && !transition) {
 			throw new Error(
 				`Cannot transition from "${state.currentStage}" via "${command}". ` +
 					`No matching transition in STAGE_TRANSITIONS.`,
 			);
 		}
-		const targetStage: Stage =
-			(stageOverride as Stage | undefined) ?? transition!.to;
+		const targetStage: Stage = (stageOverride as Stage | undefined) ?? transition!.to;
 		const now = new Date().toISOString();
 		const entry: HistoryEntry = { stage: targetStage, command, timestamp: now };
 		const next: RunState = {
@@ -411,11 +400,7 @@ function readRunId(filePath: string): string | undefined {
  * Callers: ops/approve.ts and stages/brainstorm-approve.ts immediately
  * after a successful `advanceStage`.
  */
-export function appendStageEntry(
-	pi: ExtensionAPI,
-	state: RunState,
-	cwd: string = process.cwd(),
-): void {
+export function appendStageEntry(pi: ExtensionAPI, state: RunState, cwd: string = process.cwd()): void {
 	pi.appendEntry("velpari-state", {
 		runId: state.runId,
 		mission: state.mission,
@@ -451,17 +436,11 @@ export function confirmUnderstanding(state: RunState, cwd: string = process.cwd(
 }
 
 /** Persist the scan kinds selected at the scan-plan gate. */
-export function setScansSelected(
-	state: RunState,
-	scans: ScanType[],
-	cwd: string = process.cwd(),
-): RunState {
+export function setScansSelected(state: RunState, scans: ScanType[], cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "setScansSelected", () => {
 		const invalid = scans.filter((s) => !(SCAN_TYPES as readonly string[]).includes(s));
 		if (invalid.length > 0) {
-			throw new Error(
-				`Unknown scan type(s): ${invalid.join(", ")}. Allowed: ${SCAN_TYPES.join(", ")}.`,
-			);
+			throw new Error(`Unknown scan type(s): ${invalid.join(", ")}. Allowed: ${SCAN_TYPES.join(", ")}.`);
 		}
 		const next: RunState = {
 			...state,
@@ -494,9 +473,7 @@ export function setActiveSubagents(
 		const KNOWN = ["web", "docCode", "spawnedAt"] as const;
 		for (const key of Object.keys(handles)) {
 			if (!(KNOWN as readonly string[]).includes(key)) {
-				throw new Error(
-					`Unknown activeSubagents key "${key}". Allowed: ${KNOWN.join(", ")}.`,
-				);
+				throw new Error(`Unknown activeSubagents key "${key}". Allowed: ${KNOWN.join(", ")}.`);
 			}
 		}
 		const next: RunState = {
@@ -528,9 +505,7 @@ export function upsertBrainstormQuestion(
 		throw new Error("upsertBrainstormQuestion needs question: { id, text, state }.");
 	}
 	if (!(BRAINSTORM_QUESTION_STATES as readonly string[]).includes(question.state)) {
-		throw new Error(
-			`Unknown question state "${question.state}". Allowed: ${BRAINSTORM_QUESTION_STATES.join(", ")}.`,
-		);
+		throw new Error(`Unknown question state "${question.state}". Allowed: ${BRAINSTORM_QUESTION_STATES.join(", ")}.`);
 	}
 	if (
 		(question.state === "not-wanted" || question.state === "replaced") &&
@@ -540,10 +515,7 @@ export function upsertBrainstormQuestion(
 	}
 	const questions = state.brainstormQuestions ?? [];
 	const index = questions.findIndex((q) => q.id === question.id);
-	const nextQuestions =
-		index >= 0
-			? questions.map((q, i) => (i === index ? question : q))
-			: [...questions, question];
+	const nextQuestions = index >= 0 ? questions.map((q, i) => (i === index ? question : q)) : [...questions, question];
 	return withRunLock(cwd, "upsertBrainstormQuestion", () => {
 		const next: RunState = {
 			...state,
@@ -560,10 +532,7 @@ export function upsertBrainstormQuestion(
  * Callers should validate against the dispatch cap BEFORE invoking this —
  * this helper assumes the caller has already checked.
  */
-export function incrementBrainstormDispatchCount(
-	state: RunState,
-	cwd: string = process.cwd(),
-): RunState {
+export function incrementBrainstormDispatchCount(state: RunState, cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "incrementBrainstormDispatchCount", () => {
 		const next: RunState = {
 			...state,
@@ -581,19 +550,13 @@ export function incrementBrainstormDispatchCount(
  * the same topic in the same minute does not duplicate). Caps are NOT
  * enforced — the developer decides when to stop (v1.x brainstorm upgrade).
  */
-export function appendWebDispatchConsent(
-	state: RunState,
-	topic: string,
-	cwd: string = process.cwd(),
-): RunState {
+export function appendWebDispatchConsent(state: RunState, topic: string, cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "appendWebDispatchConsent", () => {
 		const now = new Date().toISOString();
 		const trimmed = (topic ?? "").trim();
 		if (!trimmed) return state;
 		const existing = state.webDispatchConfirmations ?? [];
-		const dup = existing.find(
-			(e) => e.topic === trimmed && now.slice(0, 16) === e.confirmedAt.slice(0, 16),
-		);
+		const dup = existing.find((e) => e.topic === trimmed && now.slice(0, 16) === e.confirmedAt.slice(0, 16));
 		if (dup) return state;
 		const next: RunState = {
 			...state,
@@ -613,10 +576,7 @@ export function appendWebDispatchConsent(
  * lifts and a later re-run starts with a clean ledger.
  * Never touches `currentStage` — call this on the already-advanced state.
  */
-export function clearBrainstormSession(
-	state: RunState,
-	cwd: string = process.cwd(),
-): RunState {
+export function clearBrainstormSession(state: RunState, cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "clearBrainstormSession", () => {
 		const next: RunState = {
 			...state,
@@ -656,9 +616,7 @@ export function openBrainstormSession(cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "openBrainstormSession", () => {
 		const state = loadState(cwd);
 		if (state.currentStage === "brainstorming") {
-			throw new Error(
-				"A brainstorm session is already open — approve or discard it first.",
-			);
+			throw new Error("A brainstorm session is already open — approve or discard it first.");
 		}
 		const now = new Date().toISOString();
 		const paused = state.currentStage === "none" ? undefined : state.currentStage;
@@ -783,10 +741,7 @@ export function setFeasibilitySession(
  * Clear the feasibility v2 session after approve finalizes the stage.
  * Never touches `currentStage` — call this on the already-advanced state.
  */
-export function clearFeasibilitySession(
-	state: RunState,
-	cwd: string = process.cwd(),
-): RunState {
+export function clearFeasibilitySession(state: RunState, cwd: string = process.cwd()): RunState {
 	return withRunLock(cwd, "clearFeasibilitySession", () => {
 		const next: RunState = {
 			...state,

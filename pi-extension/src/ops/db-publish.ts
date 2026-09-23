@@ -195,7 +195,9 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 		if (problems.length === 0 && db) {
 			const cp = checkpointNow(db);
 			if (cp.busy !== 0) {
-				warnings.push(`wal_checkpoint reported busy=${cp.busy} — committed index.db may lag; retry the publish if the commit looks stale.`);
+				warnings.push(
+					`wal_checkpoint reported busy=${cp.busy} — committed index.db may lag; retry the publish if the commit looks stale.`,
+				);
 			}
 		}
 
@@ -212,8 +214,7 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 			if (add.error || add.status !== 0) {
 				problems.push(`git add failed: ${(add.stderr ?? add.error?.message ?? "unknown").trim()}`);
 			} else {
-				const message =
-					`velpari(${input.yamlArtifact}): ${input.projectName} v${input.envelope.version} (run ${input.runId})`;
+				const message = `velpari(${input.yamlArtifact}): ${input.projectName} v${input.envelope.version} (run ${input.runId})`;
 				const commit = spawnSync("git", ["commit", "-m", message, "--", ...addPaths], {
 					cwd: input.cwd,
 					encoding: "utf-8",
@@ -273,19 +274,12 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
  * @param {ArtifactKind} kind - Artifact kind to clean.
  * @returns {boolean} true when a draft envelope was found + deleted.
  */
-function deleteDraftIfDraft(
-	db: ReturnType<typeof openStoreDb>,
-	runId: string,
-	kind: ArtifactKind,
-): boolean {
-	const row = db
-		.prepare("SELECT status FROM artifacts WHERE run_id = ? AND kind = ?")
-		.get(runId, kind) as { status: string } | undefined;
+function deleteDraftIfDraft(db: ReturnType<typeof openStoreDb>, runId: string, kind: ArtifactKind): boolean {
+	const row = db.prepare("SELECT status FROM artifacts WHERE run_id = ? AND kind = ?").get(runId, kind) as
+		| { status: string }
+		| undefined;
 	if (row?.status !== "draft") return false;
-	db.prepare("DELETE FROM artifacts WHERE run_id = ? AND kind = ? AND status = 'draft'").run(
-		runId,
-		kind,
-	);
+	db.prepare("DELETE FROM artifacts WHERE run_id = ? AND kind = ? AND status = 'draft'").run(runId, kind);
 	return true;
 }
 

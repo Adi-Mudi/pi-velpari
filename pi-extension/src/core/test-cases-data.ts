@@ -83,10 +83,7 @@ export function resolveTestCasesSidecar(mdPath: string): string | null {
  * @param {string} projectName - Project whose test-cases to load.
  * @returns {TestCasesData | null} The legacy TestCasesData shape, or null when neither DB nor sidecar has published rows.
  */
-export function loadTestCasesDataForEngine(
-	cwd: string,
-	projectName: string,
-): TestCasesData | null {
+export function loadTestCasesDataForEngine(cwd: string, projectName: string): TestCasesData | null {
 	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
 	if (fromDb) {
 		const cases = (fromDb.rows.testCase as Array<Record<string, unknown>> | undefined) ?? [];
@@ -99,12 +96,12 @@ export function loadTestCasesDataForEngine(
 			list.push(targetId);
 			traceMap.set(tcId, list);
 		}
-/**
- * Map one DB test_case row to the legacy TestCasesData per-record shape.
- * Joins `tc_trace` rows into the per-record `traces` list.
- * @param {Record<string, unknown>} r - The raw DB row.
- * @returns The legacy per-test-case record shape.
- */
+		/**
+		 * Map one DB test_case row to the legacy TestCasesData per-record shape.
+		 * Joins `tc_trace` rows into the per-record `traces` list.
+		 * @param {Record<string, unknown>} r - The raw DB row.
+		 * @returns The legacy per-test-case record shape.
+		 */
 		const toRecord = (r: Record<string, unknown>) => ({
 			id: String(r.id),
 			name: String(r.id),
@@ -118,12 +115,8 @@ export function loadTestCasesDataForEngine(
 		return {
 			project: projectName,
 			version: String(fromDb.envelope.version),
-			unitTests: cases
-				.filter((r) => r.tcKind === "TC")
-				.map(toRecord),
-			integrationTests: cases
-				.filter((r) => r.tcKind === "IT")
-				.map(toRecord),
+			unitTests: cases.filter((r) => r.tcKind === "TC").map(toRecord),
+			integrationTests: cases.filter((r) => r.tcKind === "IT").map(toRecord),
 		};
 	}
 	const md = resolveDocArtifact("test-cases", projectName, cwd);
@@ -206,8 +199,11 @@ function validateRecord(
 	if (kind === "unit" && r.edgeCases !== undefined && typeof r.edgeCases !== "string") {
 		issues.push(`${at}.edgeCases: must be a string when present.`);
 	}
-	if (kind === "integration" && r.modules !== undefined
-		&& (!Array.isArray(r.modules) || r.modules.some((m) => typeof m !== "string"))) {
+	if (
+		kind === "integration" &&
+		r.modules !== undefined &&
+		(!Array.isArray(r.modules) || r.modules.some((m) => typeof m !== "string"))
+	) {
 		issues.push(`${at}.modules: must be an array of strings when present.`);
 	}
 	if (!Array.isArray(r.traces) || r.traces.length === 0) {
@@ -245,7 +241,10 @@ export function validateTestCasesData(value: unknown): TestCasesValidation {
 	(data.integrationTests as unknown[]).forEach((r, i) => {
 		validateRecord(r, `integrationTests[${i}]`, IT_ID_PATTERN, "integration", seen, issues);
 	});
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -262,10 +261,7 @@ export function validateTestCasesData(value: unknown): TestCasesValidation {
  */
 export function diffTestCasesData(baseline: TestCasesData, updated: TestCasesData): TestCasesValidation {
 	const issues: string[] = [];
-	const updatedIds = new Set([
-		...updated.unitTests.map((r) => r.id),
-		...updated.integrationTests.map((r) => r.id),
-	]);
+	const updatedIds = new Set([...updated.unitTests.map((r) => r.id), ...updated.integrationTests.map((r) => r.id)]);
 	for (const id of [...baseline.unitTests.map((r) => r.id), ...baseline.integrationTests.map((r) => r.id)]) {
 		if (!updatedIds.has(id)) {
 			issues.push(
@@ -275,9 +271,7 @@ export function diffTestCasesData(baseline: TestCasesData, updated: TestCasesDat
 		}
 	}
 	if (compareVersions(updated.version, baseline.version) <= 0) {
-		issues.push(
-			`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`,
-		);
+		issues.push(`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`);
 	}
 	return { ok: issues.length === 0, issues };
 }
@@ -317,15 +311,19 @@ export function renderTestCasesMarkdown(data: TestCasesData): string {
 		"",
 		"| TC ID | Name | Target | Steps | Expected | Edge Cases | Traces |",
 		"|---|---|---|---|---|---|---|",
-		...data.unitTests.map((r) =>
-			`| ${r.id} | ${r.name} | ${r.target} | ${r.steps} | ${r.expected} | ${cell(r.edgeCases)} | ${r.traces.join(", ")} |`),
+		...data.unitTests.map(
+			(r) =>
+				`| ${r.id} | ${r.name} | ${r.target} | ${r.steps} | ${r.expected} | ${cell(r.edgeCases)} | ${r.traces.join(", ")} |`,
+		),
 		"",
 		"## Integration Tests",
 		"",
 		"| TC ID | Name | Target | Modules | Steps | Expected | Traces |",
 		"|---|---|---|---|---|---|---|",
-		...data.integrationTests.map((r) =>
-			`| ${r.id} | ${r.name} | ${r.target} | ${(r.modules ?? []).join(", ") || "(none)"} | ${r.steps} | ${r.expected} | ${r.traces.join(", ")} |`),
+		...data.integrationTests.map(
+			(r) =>
+				`| ${r.id} | ${r.name} | ${r.target} | ${(r.modules ?? []).join(", ") || "(none)"} | ${r.steps} | ${r.expected} | ${r.traces.join(", ")} |`,
+		),
 		"",
 	];
 

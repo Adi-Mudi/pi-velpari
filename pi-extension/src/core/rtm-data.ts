@@ -26,14 +26,7 @@ import { readYamlFile } from "./yaml-data.js";
 import { resolveDocArtifact } from "./paths.js";
 import { readLatestPublishedRows } from "../io/store.js";
 
-const RTM_ROW_STATUSES = [
-	"proposed",
-	"approved",
-	"implemented",
-	"verified",
-	"deferred",
-	"deprecated",
-] as const;
+const RTM_ROW_STATUSES = ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"] as const;
 type RtmRowStatus = (typeof RTM_ROW_STATUSES)[number];
 
 const RTM_COVERAGES = ["covered", "partial", "missing"] as const;
@@ -119,9 +112,7 @@ export function resolveRtmSidecar(mdPath: string): RtmSidecarRef | null {
  * Validation/diagnostics paths read the file + `parseYaml` themselves so
  * malformed input produces line-numbered errors for the user.
  */
-export function loadRtmSidecarData(
-	mdPath: string,
-): (RtmSidecarRef & { data: unknown }) | null {
+export function loadRtmSidecarData(mdPath: string): (RtmSidecarRef & { data: unknown }) | null {
 	const resolved = resolveRtmSidecar(mdPath);
 	if (!resolved) return null;
 	const data = readYamlFile(resolved.path);
@@ -227,7 +218,10 @@ export function validateRtmData(value: unknown): RtmValidation {
 			issues.push(`${at}.fingerprint: must be a string when present.`);
 		}
 	}
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -315,9 +309,7 @@ export function renderRtmMarkdown(data: RtmData): string {
 			const tests = r.tests.length > 0 ? r.tests.join(", ") : "(none)";
 			const impl = r.implementation || "(none)";
 			const design = r.design || "(none)";
-			const status = r.status === "deprecated" && r.reason
-				? `deprecated (${r.reason})`
-				: `${r.status} / ${r.coverage}`;
+			const status = r.status === "deprecated" && r.reason ? `deprecated (${r.reason})` : `${r.status} / ${r.coverage}`;
 			return `| ${r.id} | ${r.title} | ${r.phase} | ${design} | ${impl} | ${tests} | ${status} |`;
 		}),
 		"",

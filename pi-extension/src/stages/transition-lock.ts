@@ -106,15 +106,11 @@ interface LegalCommandsFromInput {
  * `specs` must be in pipeline execution order (the registry's STAGE_KEYS
  * order is NOT execution order — build via STAGE_LOCK_SPECS).
  */
-export function computeLegalCommands(
-	cwd: string,
-	specs: readonly StageLockSpec[],
-): LegalCommands {
+export function computeLegalCommands(cwd: string, specs: readonly StageLockSpec[]): LegalCommands {
 	const state = loadState(cwd);
 	const config = loadFilesConfig(cwd);
 	const projectName = config.projectName ?? "";
-	const feasibilitySkip =
-		projectName !== "" && hasPublishedFeasibility(cwd, projectName);
+	const feasibilitySkip = projectName !== "" && hasPublishedFeasibility(cwd, projectName);
 	const staleSet = state.runId ? computeStaleSet(cwd) : [];
 	return computeLegalCommandsFrom({
 		state,
@@ -127,9 +123,7 @@ export function computeLegalCommands(
 }
 
 /** Pure core — no I/O beyond what the caller already performed. */
-export function computeLegalCommandsFrom(
-	input: LegalCommandsFromInput,
-): LegalCommands {
+export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCommands {
 	const { state, specs } = input;
 	const staleSet = input.staleSet ?? [];
 	const cwd = input.cwd;
@@ -148,9 +142,7 @@ export function computeLegalCommandsFrom(
 			staleStages.push({ stage: "brainstorm", command: BRAINSTORM_COMMAND, item });
 			continue;
 		}
-		const spec = specs.find(
-			(s) => s.workingCopyArtifact.toLowerCase() === item.artifact,
-		);
+		const spec = specs.find((s) => s.workingCopyArtifact.toLowerCase() === item.artifact);
 		if (spec) staleStages.push({ stage: spec.key, command: spec.command, item });
 	}
 	const orderOf = (e: EarliestStale): number =>
@@ -163,22 +155,16 @@ export function computeLegalCommandsFrom(
 	/** Base gate + the conditional built-rtm → designing feasibility skip. */
 	const gateAllows = (spec: StageLockSpec): boolean => {
 		if ((spec.gate as readonly Stage[]).includes(state.currentStage)) return true;
-		return (
-			spec.key === "architecture-generator" &&
-			state.currentStage === "built-rtm" &&
-			feasibilitySkip
-		);
+		return spec.key === "architecture-generator" && state.currentStage === "built-rtm" && feasibilitySkip;
 	};
 
 	/** Update-mode self-loop: a stage whose own published artifact is stale
 	 *  may always re-run — that run IS the republish remedy. */
 	const ownOutputStale = (spec: StageLockSpec): boolean =>
-		projectName !== "" &&
-		staleByKey.has(manifestKey(spec.workingCopyArtifact, projectName));
+		projectName !== "" && staleByKey.has(manifestKey(spec.workingCopyArtifact, projectName));
 
 	/** The stage's in-progress value (its redraft self-loop stage). */
-	const inProgressStageOf = (spec: StageLockSpec): Stage =>
-		spec.gate[spec.gate.length - 1]!;
+	const inProgressStageOf = (spec: StageLockSpec): Stage => spec.gate[spec.gate.length - 1]!;
 
 	/** Declared inputs of `spec` that are stale (hard-block inputs only). */
 	const staleInputsFor = (spec: StageLockSpec): StaleItem[] => {
@@ -202,12 +188,8 @@ export function computeLegalCommandsFrom(
 			if (item.artifact === "brainstorm") {
 				return `${BRAINSTORM_COMMAND}, then ${APPROVE_BRAINSTORM_COMMAND}`;
 			}
-			const spec = specs.find(
-				(s) => s.workingCopyArtifact.toLowerCase() === item.artifact,
-			);
-			return spec
-				? `${spec.command}, then ${spec.command}-approve`
-				: `republish ${item.key}`;
+			const spec = specs.find((s) => s.workingCopyArtifact.toLowerCase() === item.artifact);
+			return spec ? `${spec.command}, then ${spec.command}-approve` : `republish ${item.key}`;
 		})();
 		return item.reason === "input-changed"
 			? `${republish}, or /velpari-reconfirm if the change has no impact on this artifact`
@@ -233,9 +215,7 @@ export function computeLegalCommandsFrom(
 
 	const reasonFor = (cmd: string): string | null => {
 		if (cmd === BRAINSTORM_COMMAND) {
-			return brainstormOpen
-				? "A brainstorm is already open — approve or discard it before starting a new one."
-				: null;
+			return brainstormOpen ? "A brainstorm is already open — approve or discard it before starting a new one." : null;
 		}
 		if (cmd === APPROVE_BRAINSTORM_COMMAND) {
 			return brainstormOpen ? null : "No open brainstorm session to approve.";
@@ -250,27 +230,19 @@ export function computeLegalCommandsFrom(
 
 		if (approveSpec) {
 			if (state.currentStage === inProgressStageOf(approveSpec)) return null;
-			return (
-				`Cannot run ${cmd} at stage "${state.currentStage}". ` +
-				`Run ${routingText()} first.`
-			);
+			return `Cannot run ${cmd} at stage "${state.currentStage}". ` + `Run ${routingText()} first.`;
 		}
 
 		if (stageSpec) {
 			if (!gateAllows(stageSpec) && !ownOutputStale(stageSpec)) {
-				return (
-					`Cannot run ${cmd} at stage "${state.currentStage}". ` +
-					`Run ${routingText()} first.`
-				);
+				return `Cannot run ${cmd} at stage "${state.currentStage}". ` + `Run ${routingText()} first.`;
 			}
 			const staleInputs = staleInputsFor(stageSpec);
 			if (staleInputs.length > 0) {
 				const lines = staleInputs.map(
 					(item) =>
 						`  - ${item.key} is stale (${item.reason}: ${item.changedInputs.join(", ")}) — ` +
-						(item.reason === "input-changed"
-							? remedyFor(item) + "."
-							: `republish via ${remedyFor(item)}.`),
+						(item.reason === "input-changed" ? remedyFor(item) + "." : `republish via ${remedyFor(item)}.`),
 				);
 				return (
 					`Cannot run ${cmd}: declared inputs are stale per ${PATHS.FRESHNESS_FILE}.\n` +
@@ -295,16 +267,11 @@ export function computeLegalCommandsFrom(
 	} else {
 		allowed.push(BRAINSTORM_COMMAND); // brainstorm-anytime: opens a paused session
 		for (const spec of specs) {
-			if (
-				(gateAllows(spec) || ownOutputStale(spec)) &&
-				staleInputsFor(spec).length === 0
-			) {
+			if ((gateAllows(spec) || ownOutputStale(spec)) && staleInputsFor(spec).length === 0) {
 				allowed.push(spec.command);
 			}
 		}
-		const inProgress = specs.find(
-			(s) => inProgressStageOf(s) === state.currentStage,
-		);
+		const inProgress = specs.find((s) => inProgressStageOf(s) === state.currentStage);
 		if (inProgress) allowed.push(`${inProgress.command}-approve`);
 	}
 

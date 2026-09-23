@@ -33,16 +33,7 @@ export const REQUIREMENTS_PROFILE_VERSION = "1.1.0" as const;
 // ---------------------------------------------------------------------------
 
 /** Supported application types. */
-export const APPLICATION_TYPES = [
-	"web",
-	"mobile",
-	"desktop",
-	"api",
-	"ai",
-	"iot",
-	"cloud-platform",
-	"other",
-] as const;
+export const APPLICATION_TYPES = ["web", "mobile", "desktop", "api", "ai", "iot", "cloud-platform", "other"] as const;
 export type ApplicationType = (typeof APPLICATION_TYPES)[number];
 
 /** Supported domain areas. */
@@ -60,13 +51,7 @@ export const DOMAINS = [
 export type Domain = (typeof DOMAINS)[number];
 
 /** Supported development methods. */
-export const DEVELOPMENT_METHODS = [
-	"agile",
-	"waterfall",
-	"hybrid",
-	"safety-critical",
-	"regulated",
-] as const;
+export const DEVELOPMENT_METHODS = ["agile", "waterfall", "hybrid", "safety-critical", "regulated"] as const;
 export type DevelopmentMethod = (typeof DEVELOPMENT_METHODS)[number];
 
 /** Required sections a profile can demand. */

@@ -48,9 +48,7 @@ interface RunRemediateResult {
  *
  * The function returns a structured result; it never throws.
  */
-export async function runRemediate(
-	opts: RunRemediateOptions,
-): Promise<RunRemediateResult> {
+export async function runRemediate(opts: RunRemediateOptions): Promise<RunRemediateResult> {
 	if (!SAFE_WHITELIST.has(opts.fingerprint)) {
 		throw new Error(
 			`runRemediate: fingerprint "${opts.fingerprint}" is not in SAFE_WHITELIST. Refusing to auto-remediate.`,

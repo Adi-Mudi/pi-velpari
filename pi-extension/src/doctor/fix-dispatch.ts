@@ -122,28 +122,20 @@ interface DispatchFixChoiceOptions {
  * Never throws. Every branch returns a `Promise<void>` so the caller
  * can `await` it cleanly from `handleDoctor`.
  */
-export async function dispatchFixChoice(
-	opts: DispatchFixChoiceOptions,
-): Promise<void> {
+export async function dispatchFixChoice(opts: DispatchFixChoiceOptions): Promise<void> {
 	switch (opts.choice.kind) {
 		case "skip":
 			return;
 
 		case "open-report":
-			opts.ctx.ui.notify(
-				`Doctor report at ${opts.reportPath}. Open it for full context.`,
-				"info",
-			);
+			opts.ctx.ui.notify(`Doctor report at ${opts.reportPath}. Open it for full context.`, "info");
 			return;
 
 		case "all-safe": {
 			// Phase 2 (Level B). Run every RemediateFn in SAFE_WHITELIST
 			// order. Each fn returns a result; we collect them, then
 			// re-run runDoctor to confirm clean.
-			opts.ctx.ui.notify(
-				"Doctor fix: running all safe remediates (Phase 2 / Level B)...",
-				"info",
-			);
+			opts.ctx.ui.notify("Doctor fix: running all safe remediates (Phase 2 / Level B)...", "info");
 			const results = await runAllSafeRemediates({
 				cwd: opts.cwd,
 				projectName: opts.projectName,

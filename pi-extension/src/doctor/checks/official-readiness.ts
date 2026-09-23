@@ -30,11 +30,7 @@ const SCOPED_PACKAGE_NAME = "@adi-mudi/pi-velpari";
 const REQUIRED_KEYWORD = "pi-package";
 const SUBAGENTS_NAME = "pi-interactive-subagents";
 const SUBAGENTS_MIN_VERSION = "3.7.2";
-const CORE_PEER_DEPS = [
-	"@earendil-works/pi-coding-agent",
-	"@earendil-works/pi-tui",
-	"typebox",
-] as const;
+const CORE_PEER_DEPS = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"] as const;
 
 interface PackageJsonShape {
 	keywords?: unknown;
@@ -102,7 +98,7 @@ function checkPiExtensions(pkg: PackageJsonShape, items: DiagnosticItem[]): void
 function checkSubagentsBundledDep(pkg: PackageJsonShape, items: DiagnosticItem[]): void {
 	const deps = pkg.dependencies ?? {};
 	const bundled = Array.isArray(pkg.bundledDependencies)
-		? (pkg.bundledDependencies.filter((v): v is string => typeof v === "string"))
+		? pkg.bundledDependencies.filter((v): v is string => typeof v === "string")
 		: [];
 	const range = deps[SUBAGENTS_NAME];
 	const inBundled = bundled.includes(SUBAGENTS_NAME);
@@ -146,7 +142,8 @@ function checkRepositoryUrl(pkg: PackageJsonShape, items: DiagnosticItem[]): voi
 	} else {
 		items.push({
 			status: "info",
-			message: 'repository.url not set. npmjs.com will render the package without a source link. Add "repository": { "type": "git", "url": "..." } to package.json.',
+			message:
+				'repository.url not set. npmjs.com will render the package without a source link. Add "repository": { "type": "git", "url": "..." } to package.json.',
 		});
 	}
 }

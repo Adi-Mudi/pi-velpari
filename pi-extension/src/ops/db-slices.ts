@@ -21,10 +21,7 @@
 import { existsSync } from "node:fs";
 import type { StageKey } from "../stages/registry.js";
 import { buildStoreDbPath } from "../core/paths.js";
-import {
-	readLatestPublishedRows,
-	type ArtifactKind,
-} from "../io/store.js";
+import { readLatestPublishedRows, type ArtifactKind } from "../io/store.js";
 
 // ---------------------------------------------------------------------------
 // Doc-artifact name → store kind ("test-plan" and "test-cases" both live in
@@ -64,22 +61,8 @@ export const STAGE_SLICE_KINDS: Record<StageKey, readonly ArtifactKind[]> = {
 	"atomic-function": ["prd", "rtm", "feasibility", "design"],
 	pseudocode: ["design", "atomic-functions"],
 	testplan: ["pseudocode", "atomic-functions"],
-	"development-order": [
-		"design",
-		"prd",
-		"rtm",
-		"feasibility",
-		"atomic-functions",
-		"pseudocode",
-		"testplan",
-	],
-	"final-design": [
-		"design",
-		"atomic-functions",
-		"pseudocode",
-		"testplan",
-		"development-order",
-	],
+	"development-order": ["design", "prd", "rtm", "feasibility", "atomic-functions", "pseudocode", "testplan"],
+	"final-design": ["design", "atomic-functions", "pseudocode", "testplan", "development-order"],
 };
 
 /**
@@ -89,9 +72,7 @@ export const STAGE_SLICE_KINDS: Record<StageKey, readonly ArtifactKind[]> = {
  * (decision 3). Optional prose columns (design description, AF purpose,
  * dev-step description, PRD section body) never refuse here.
  */
-const REQUIRED_PROSE: Partial<
-	Record<ArtifactKind, { rowSet: string; field: string }[]>
-> = {
+const REQUIRED_PROSE: Partial<Record<ArtifactKind, { rowSet: string; field: string }[]>> = {
 	prd: [
 		{ rowSet: "fr", field: "text" },
 		{ rowSet: "nfr", field: "text" },
@@ -104,10 +85,7 @@ const REQUIRED_PROSE: Partial<
 // Slice result types — ok:false carries a LOUD message (decision 3).
 // ---------------------------------------------------------------------------
 
-export type SliceRefuseReason =
-	| "no-store-db"
-	| "kind-unpublished"
-	| "rows-lack-prose";
+export type SliceRefuseReason = "no-store-db" | "kind-unpublished" | "rows-lack-prose";
 
 export interface SliceRefusal {
 	ok: false;
@@ -143,12 +121,7 @@ function cell(value: unknown): string {
 }
 
 function table(title: string, headers: string[], rows: unknown[][]): string {
-	const lines = [
-		`#### ${title}`,
-		"",
-		`| ${headers.join(" | ")} |`,
-		`| ${headers.map(() => "---").join(" | ")} |`,
-	];
+	const lines = [`#### ${title}`, "", `| ${headers.join(" | ")} |`, `| ${headers.map(() => "---").join(" | ")} |`];
 	for (const row of rows) {
 		lines.push(`| ${row.map(cell).join(" | ")} |`);
 	}
@@ -173,102 +146,180 @@ function sortedBy(rows: RowLike[], key: string, numeric = false): RowLike[] {
  * Render one kind's slice from its published rows — compact per-kind
  * template, deterministic order (natural-key sorts, G5).
  */
-export function renderStageSlice(
-	kind: ArtifactKind,
-	rows: Record<string, unknown>,
-): string {
+export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknown>): string {
 	switch (kind) {
 		case "prd": {
 			const fr = sortedBy(rowsOf(rows, "fr"), "id");
 			const nfr = sortedBy(rowsOf(rows, "nfr"), "id");
 			const sections = sortedBy(rowsOf(rows, "prdSection"), "no", true);
 			return (
-				table("FR", ["ID", "Phase", "Requirement"], fr.map((r) => [r.id, r.phase, r.text])) +
-				table("NFR", ["ID", "Phase", "Requirement"], nfr.map((r) => [r.id, r.phase, r.text])) +
-				table("PRD Sections", ["No", "Title", "Body"], sections.map((r) => [r.no, r.title, r.body]))
+				table(
+					"FR",
+					["ID", "Phase", "Requirement"],
+					fr.map((r) => [r.id, r.phase, r.text]),
+				) +
+				table(
+					"NFR",
+					["ID", "Phase", "Requirement"],
+					nfr.map((r) => [r.id, r.phase, r.text]),
+				) +
+				table(
+					"PRD Sections",
+					["No", "Title", "Body"],
+					sections.map((r) => [r.no, r.title, r.body]),
+				)
 			);
 		}
 		case "rtm": {
 			const list = sortedBy(rowsOf(rows, "rtmRow"), "id");
-			return table("Traceability Rows", ["ID", "FR", "AF", "TC", "Phase"],
-				list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase]));
+			return table(
+				"Traceability Rows",
+				["ID", "FR", "AF", "TC", "Phase"],
+				list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase]),
+			);
 		}
 		case "feasibility": {
 			const decision = rows.feasibilityDecision as RowLike | undefined;
 			const decisionRows = decision
-				? [[decision.verdict, decision.language, decision.decidedBy, decision.at,
-					decision.webSearchConsent === 1 ? "yes" : decision.webSearchConsent === 0 ? "no" : "—"]]
+				? [
+						[
+							decision.verdict,
+							decision.language,
+							decision.decidedBy,
+							decision.at,
+							decision.webSearchConsent === 1 ? "yes" : decision.webSearchConsent === 0 ? "no" : "—",
+						],
+					]
 				: [];
 			const spikes = sortedBy(rowsOf(rows, "feasibilitySpike"), "language");
 			const scan = sortedBy(rowsOf(rows, "reuseScan"), "candidate");
 			return (
 				table("Decision", ["Verdict", "Language", "Decided By", "At", "Web Consent"], decisionRows) +
-				table("Spikes", ["Language", "Passed", "Result Ref"],
-					spikes.map((r) => [r.language, r.passed === 1 ? "yes" : "no", r.resultRef])) +
-				table("Reuse Scan", ["Candidate", "License", "Freshness", "Verdict"],
-					scan.map((r) => [r.candidate, r.license, r.repoFreshness, r.verdict]))
+				table(
+					"Spikes",
+					["Language", "Passed", "Result Ref"],
+					spikes.map((r) => [r.language, r.passed === 1 ? "yes" : "no", r.resultRef]),
+				) +
+				table(
+					"Reuse Scan",
+					["Candidate", "License", "Freshness", "Verdict"],
+					scan.map((r) => [r.candidate, r.license, r.repoFreshness, r.verdict]),
+				)
 			);
 		}
 		case "design": {
 			const modules = sortedBy(rowsOf(rows, "designModule"), "id");
-			const sourceFr = sortedBy(rowsOf(rows, "moduleSourceFr"), "moduleId")
-				.sort((a, b) => String(a.frId ?? "").localeCompare(String(b.frId ?? "")));
+			const sourceFr = sortedBy(rowsOf(rows, "moduleSourceFr"), "moduleId").sort((a, b) =>
+				String(a.frId ?? "").localeCompare(String(b.frId ?? "")),
+			);
 			const adr = sortedBy(rowsOf(rows, "adr"), "id");
-			const approaches = sortedBy(rowsOf(rows, "approach"), "moduleId")
-				.sort((a, b) => String(a.tacticId ?? "").localeCompare(String(b.tacticId ?? "")));
+			const approaches = sortedBy(rowsOf(rows, "approach"), "moduleId").sort((a, b) =>
+				String(a.tacticId ?? "").localeCompare(String(b.tacticId ?? "")),
+			);
 			const diagrams = sortedBy(rowsOf(rows, "diagram"), "id");
 			let diagramBlocks = "";
 			for (const d of diagrams) {
 				diagramBlocks += `#### Diagram ${cell(d.id)} (${cell(d.diagramKind)})\n\n\`\`\`mermaid\n${String(d.mermaidText ?? "")}\n\`\`\`\n\n`;
 			}
 			return (
-				table("Modules", ["ID", "Name", "Description"], modules.map((r) => [r.id, r.name, r.description])) +
-				table("Module Source FRs", ["Module", "FR"], sourceFr.map((r) => [r.moduleId, r.frId])) +
-				table("ADRs", ["ID", "Status", "Options", "Chosen"], adr.map((r) => [r.id, r.adrStatus, r.options, r.chosen])) +
+				table(
+					"Modules",
+					["ID", "Name", "Description"],
+					modules.map((r) => [r.id, r.name, r.description]),
+				) +
+				table(
+					"Module Source FRs",
+					["Module", "FR"],
+					sourceFr.map((r) => [r.moduleId, r.frId]),
+				) +
+				table(
+					"ADRs",
+					["ID", "Status", "Options", "Chosen"],
+					adr.map((r) => [r.id, r.adrStatus, r.options, r.chosen]),
+				) +
 				diagramBlocks +
-				table("Approaches", ["Module", "Tactic"], approaches.map((r) => [r.moduleId, r.tacticId]))
+				table(
+					"Approaches",
+					["Module", "Tactic"],
+					approaches.map((r) => [r.moduleId, r.tacticId]),
+				)
 			);
 		}
 		case "atomic-functions": {
 			const list = sortedBy(rowsOf(rows, "atomicFunction"), "id");
-			return table("Atomic Functions",
+			return table(
+				"Atomic Functions",
 				["ID", "Name", "Signature", "Tier", "Criticality", "SIL", "Leaf", "Purpose", "Source"],
-				list.map((r) => [r.id, r.name, r.signature, r.tier, r.criticality, r.sil,
-					r.isLeaf === 1 ? "yes" : "no", r.purpose, r.source]));
+				list.map((r) => [
+					r.id,
+					r.name,
+					r.signature,
+					r.tier,
+					r.criticality,
+					r.sil,
+					r.isLeaf === 1 ? "yes" : "no",
+					r.purpose,
+					r.source,
+				]),
+			);
 		}
 		case "pseudocode": {
 			const list = sortedBy(rowsOf(rows, "pseudocodeBlock"), "id");
-			return table("Pseudocode Blocks", ["ID", "AF", "Content"],
-				list.map((r) => [r.id, r.afRef, r.content]));
+			return table(
+				"Pseudocode Blocks",
+				["ID", "AF", "Content"],
+				list.map((r) => [r.id, r.afRef, r.content]),
+			);
 		}
 		case "testplan": {
 			const cases = sortedBy(rowsOf(rows, "testCase"), "id");
-			const traces = rowsOf(rows, "tcTrace")
-				.sort((a, b) =>
-					`${a.tcId} ${a.targetKind} ${a.targetId}`.localeCompare(`${b.tcId} ${b.targetKind} ${b.targetId}`));
+			const traces = rowsOf(rows, "tcTrace").sort((a, b) =>
+				`${a.tcId} ${a.targetKind} ${a.targetId}`.localeCompare(`${b.tcId} ${b.targetKind} ${b.targetId}`),
+			);
 			return (
-				table("Test Cases", ["ID", "Kind", "Strategy", "Objective", "Steps", "Expected"],
-					cases.map((r) => [r.id, r.tcKind, r.strategyRef, r.objective, r.steps, r.expected])) +
-				table("Traces", ["TC", "Target Kind", "Target ID"],
-					traces.map((r) => [r.tcId, r.targetKind, r.targetId]))
+				table(
+					"Test Cases",
+					["ID", "Kind", "Strategy", "Objective", "Steps", "Expected"],
+					cases.map((r) => [r.id, r.tcKind, r.strategyRef, r.objective, r.steps, r.expected]),
+				) +
+				table(
+					"Traces",
+					["TC", "Target Kind", "Target ID"],
+					traces.map((r) => [r.tcId, r.targetKind, r.targetId]),
+				)
 			);
 		}
 		case "development-order": {
 			const steps = sortedBy(rowsOf(rows, "devStep"), "id");
-			const afs = rowsOf(rows, "stepAf")
-				.sort((a, b) => `${a.stepId} ${a.afId}`.localeCompare(`${b.stepId} ${b.afId}`));
-			const deps = rowsOf(rows, "stepDep")
-				.sort((a, b) => `${a.stepId} ${a.dependsOnId}`.localeCompare(`${b.stepId} ${b.dependsOnId}`));
+			const afs = rowsOf(rows, "stepAf").sort((a, b) => `${a.stepId} ${a.afId}`.localeCompare(`${b.stepId} ${b.afId}`));
+			const deps = rowsOf(rows, "stepDep").sort((a, b) =>
+				`${a.stepId} ${a.dependsOnId}`.localeCompare(`${b.stepId} ${b.dependsOnId}`),
+			);
 			return (
-				table("Development Steps", ["ID", "Module", "Description"], steps.map((r) => [r.id, r.module, r.description])) +
-				table("Step Atomic Functions", ["Step", "AF"], afs.map((r) => [r.stepId, r.afId])) +
-				table("Step Dependencies", ["Step", "Depends On"], deps.map((r) => [r.stepId, r.dependsOnId]))
+				table(
+					"Development Steps",
+					["ID", "Module", "Description"],
+					steps.map((r) => [r.id, r.module, r.description]),
+				) +
+				table(
+					"Step Atomic Functions",
+					["Step", "AF"],
+					afs.map((r) => [r.stepId, r.afId]),
+				) +
+				table(
+					"Step Dependencies",
+					["Step", "Depends On"],
+					deps.map((r) => [r.stepId, r.dependsOnId]),
+				)
 			);
 		}
 		case "final-design": {
 			const list = sortedBy(rowsOf(rows, "finalSection"), "no", true);
-			return table("Final Sections", ["No", "Title", "Source Artifact", "Source IDs"],
-				list.map((r) => [r.no, r.title, r.sourceArtifact, r.sourceIds]));
+			return table(
+				"Final Sections",
+				["No", "Title", "Source Artifact", "Source IDs"],
+				list.map((r) => [r.no, r.title, r.sourceArtifact, r.sourceIds]),
+			);
 		}
 	}
 }
@@ -277,10 +328,7 @@ export function renderStageSlice(
  * Check the REQUIRED-prose row-sets (v002). Returns the first failing
  * description, or null when prose is present (or the row-set is absent).
  */
-export function findMissingProse(
-	kind: ArtifactKind,
-	rows: Record<string, unknown>,
-): string | null {
+export function findMissingProse(kind: ArtifactKind, rows: Record<string, unknown>): string | null {
 	for (const spec of REQUIRED_PROSE[kind] ?? []) {
 		const list = rowsOf(rows, spec.rowSet);
 		if (list.length === 0) continue;
@@ -304,11 +352,7 @@ export function findMissingProse(
  * @param projectName - Project whose store to read.
  * @param stageKey - Registry stage key (slice spec lookup).
  */
-export function resolveStageSlice(
-	cwd: string,
-	projectName: string,
-	stageKey: StageKey,
-): StageSlice {
+export function resolveStageSlice(cwd: string, projectName: string, stageKey: StageKey): StageSlice {
 	const kinds = STAGE_SLICE_KINDS[stageKey] ?? [];
 	if (kinds.length === 0) {
 		// prd — brainstorm notes are the sole (file) input; no DB slice.
@@ -351,7 +395,9 @@ export function resolveStageSlice(
 					`/velpari-backfill ${kind}.`,
 			};
 		}
-		sections.push(`### ${kind} (run ${read.envelope.runId} v${read.envelope.version})\n\n${renderStageSlice(kind, read.rows)}`);
+		sections.push(
+			`### ${kind} (run ${read.envelope.runId} v${read.envelope.version})\n\n${renderStageSlice(kind, read.rows)}`,
+		);
 	}
 	return { ok: true, block: sections.join("\n---\n\n"), kinds };
 }

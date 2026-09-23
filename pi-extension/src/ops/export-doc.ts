@@ -26,12 +26,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
-import {
-	readArtifact,
-	exportArtifactYaml,
-	type ArtifactEnvelope,
-	type ArtifactKind,
-} from "../io/store.js";
+import { readArtifact, exportArtifactYaml, type ArtifactEnvelope, type ArtifactKind } from "../io/store.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 
 /** The three export formats (user decision 1). */
@@ -108,13 +103,7 @@ export function buildExportDefaultPath(
 	cwd: string,
 ): string {
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
-	return join(
-		cwd,
-		"Doc",
-		"export",
-		safeProject,
-		`${KIND_LABELS[kind]}_${safeProject}.${format}`,
-	);
+	return join(cwd, "Doc", "export", safeProject, `${KIND_LABELS[kind]}_${safeProject}.${format}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -161,9 +150,7 @@ export function renderEnvelopeHeader(envelope: ArtifactEnvelope): string {
 	}
 	if (Array.isArray(entries) && entries.length > 0) {
 		for (const entry of entries) {
-			lines.push(
-				`- ${typeof entry === "string" ? entry : JSON.stringify(entry)}`,
-			);
+			lines.push(`- ${typeof entry === "string" ? entry : JSON.stringify(entry)}`);
 		}
 	} else {
 		lines.push("_no changes recorded_");
@@ -235,60 +222,76 @@ export function renderPrdMarkdown(rows: Record<string, unknown>): string {
 	const nfr = sorted((rows.nfr as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const sections = sorted((rows.prdSection as RowLikeAlias[] | undefined) ?? [], (r) => Number(r.no));
 	return (
-		table("Functional Requirements", ["ID", "Phase", "Text Hash", "Text"],
-			fr.map((r) => [r.id, r.phase, r.textHash, r.text])) +
-		table("Non-Functional Requirements", ["ID", "Phase", "Text Hash", "Text"],
-			nfr.map((r) => [r.id, r.phase, r.textHash, r.text])) +
-		table("Sections", ["No", "Title", "Body Ref", "Body"],
-			sections.map((r) => [r.no, r.title, r.bodyRef, r.body]))
+		table(
+			"Functional Requirements",
+			["ID", "Phase", "Text Hash", "Text"],
+			fr.map((r) => [r.id, r.phase, r.textHash, r.text]),
+		) +
+		table(
+			"Non-Functional Requirements",
+			["ID", "Phase", "Text Hash", "Text"],
+			nfr.map((r) => [r.id, r.phase, r.textHash, r.text]),
+		) +
+		table(
+			"Sections",
+			["No", "Title", "Body Ref", "Body"],
+			sections.map((r) => [r.no, r.title, r.bodyRef, r.body]),
+		)
 	);
 }
 
 /** rtm — traceability rows with fingerprint columns. */
 export function renderRtmMarkdown(rows: Record<string, unknown>): string {
 	const list = sorted((rows.rtmRow as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	return table("Traceability Rows", ["ID", "FR", "AF", "TC", "Phase", "Target SHA-256"],
-		list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase, r.targetSha256]));
+	return table(
+		"Traceability Rows",
+		["ID", "FR", "AF", "TC", "Phase", "Target SHA-256"],
+		list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase, r.targetSha256]),
+	);
 }
 
 /** feasibility — decision + spikes + reuse scan. */
 export function renderFeasibilityMarkdown(rows: Record<string, unknown>): string {
 	const decision = rows.feasibilityDecision as RowLikeAlias | undefined;
 	const decisionTable = decision
-		? table("Decision", ["Verdict", "Language", "Decided By", "At", "Web Search Consent"], [
-			[
-				decision.verdict,
-				decision.language,
-				decision.decidedBy,
-				decision.at,
-				decision.webSearchConsent === 1 ? "yes" : decision.webSearchConsent === 0 ? "no" : "",
-			],
-		])
+		? table(
+				"Decision",
+				["Verdict", "Language", "Decided By", "At", "Web Search Consent"],
+				[
+					[
+						decision.verdict,
+						decision.language,
+						decision.decidedBy,
+						decision.at,
+						decision.webSearchConsent === 1 ? "yes" : decision.webSearchConsent === 0 ? "no" : "",
+					],
+				],
+			)
 		: table("Decision", ["Verdict"], []);
 	const spikes = sorted((rows.feasibilitySpike as RowLikeAlias[] | undefined) ?? [], (r) => String(r.language));
 	const scan = sorted((rows.reuseScan as RowLikeAlias[] | undefined) ?? [], (r) => String(r.candidate));
 	return (
 		decisionTable +
-		table("Spikes", ["Language", "Passed", "Result Ref"],
-			spikes.map((r) => [r.language, r.passed === 1 ? "yes" : "no", r.resultRef])) +
-		table("Reuse Scan", ["Candidate", "License", "Repo Freshness", "Verdict"],
-			scan.map((r) => [r.candidate, r.license, r.repoFreshness, r.verdict]))
+		table(
+			"Spikes",
+			["Language", "Passed", "Result Ref"],
+			spikes.map((r) => [r.language, r.passed === 1 ? "yes" : "no", r.resultRef]),
+		) +
+		table(
+			"Reuse Scan",
+			["Candidate", "License", "Repo Freshness", "Verdict"],
+			scan.map((r) => [r.candidate, r.license, r.repoFreshness, r.verdict]),
+		)
 	);
 }
 
 /** design — modules, source FRs, ADRs, diagrams (mermaid), approaches. */
 export function renderDesignMarkdown(rows: Record<string, unknown>): string {
 	const modules = sorted((rows.designModule as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	const sourceFr = sorted(
-		(rows.moduleSourceFr as RowLikeAlias[] | undefined) ?? [],
-		(r) => `${r.moduleId} ${r.frId}`,
-	);
+	const sourceFr = sorted((rows.moduleSourceFr as RowLikeAlias[] | undefined) ?? [], (r) => `${r.moduleId} ${r.frId}`);
 	const adr = sorted((rows.adr as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const diagrams = sorted((rows.diagram as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	const approach = sorted(
-		(rows.approach as RowLikeAlias[] | undefined) ?? [],
-		(r) => `${r.moduleId} ${r.tacticId}`,
-	);
+	const approach = sorted((rows.approach as RowLikeAlias[] | undefined) ?? [], (r) => `${r.moduleId} ${r.tacticId}`);
 	let diagramBlocks = "";
 	if (diagrams.length > 0) {
 		diagramBlocks = "## Diagrams\n\n";
@@ -297,30 +300,48 @@ export function renderDesignMarkdown(rows: Record<string, unknown>): string {
 		}
 	}
 	return (
-		table("Modules", ["ID", "Name"], modules.map((r) => [r.id, r.name])) +
-		table("Module Source FRs", ["Module", "FR"],
-			sourceFr.map((r) => [r.moduleId, r.frId])) +
-		table("ADRs", ["ID", "Status", "Options", "Chosen", "Rationale"],
-			adr.map((r) => [r.id, r.adrStatus, r.options, r.chosen, r.rationale])) +
+		table(
+			"Modules",
+			["ID", "Name"],
+			modules.map((r) => [r.id, r.name]),
+		) +
+		table(
+			"Module Source FRs",
+			["Module", "FR"],
+			sourceFr.map((r) => [r.moduleId, r.frId]),
+		) +
+		table(
+			"ADRs",
+			["ID", "Status", "Options", "Chosen", "Rationale"],
+			adr.map((r) => [r.id, r.adrStatus, r.options, r.chosen, r.rationale]),
+		) +
 		diagramBlocks +
-		table("Approaches", ["Module", "Tactic"],
-			approach.map((r) => [r.moduleId, r.tacticId]))
+		table(
+			"Approaches",
+			["Module", "Tactic"],
+			approach.map((r) => [r.moduleId, r.tacticId]),
+		)
 	);
 }
 
 /** atomic-functions — the AF catalog with tier/criticality/SIL columns. */
 export function renderAtomicFunctionsMarkdown(rows: Record<string, unknown>): string {
 	const list = sorted((rows.atomicFunction as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	return table("Atomic Functions",
+	return table(
+		"Atomic Functions",
 		["ID", "Name", "Signature", "Tier", "Criticality", "SIL", "Leaf"],
-		list.map((r) => [r.id, r.name, r.signature, r.tier, r.criticality, r.sil, r.isLeaf === 1 ? "yes" : "no"]));
+		list.map((r) => [r.id, r.name, r.signature, r.tier, r.criticality, r.sil, r.isLeaf === 1 ? "yes" : "no"]),
+	);
 }
 
 /** pseudocode — blocks keyed by AF reference. */
 export function renderPseudocodeMarkdown(rows: Record<string, unknown>): string {
 	const list = sorted((rows.pseudocodeBlock as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	return table("Pseudocode Blocks", ["ID", "AF", "Content Hash"],
-		list.map((r) => [r.id, r.afRef, r.contentHash]));
+	return table(
+		"Pseudocode Blocks",
+		["ID", "AF", "Content Hash"],
+		list.map((r) => [r.id, r.afRef, r.contentHash]),
+	);
 }
 
 /** testplan — test cases + their traces. */
@@ -331,10 +352,16 @@ export function renderTestplanMarkdown(rows: Record<string, unknown>): string {
 		(r) => `${r.tcId} ${r.targetKind} ${r.targetId}`,
 	);
 	return (
-		table("Test Cases", ["ID", "Kind", "Strategy"],
-			cases.map((r) => [r.id, r.tcKind, r.strategyRef])) +
-		table("Traces", ["TC", "Target Kind", "Target ID"],
-			traces.map((r) => [r.tcId, r.targetKind, r.targetId]))
+		table(
+			"Test Cases",
+			["ID", "Kind", "Strategy"],
+			cases.map((r) => [r.id, r.tcKind, r.strategyRef]),
+		) +
+		table(
+			"Traces",
+			["TC", "Target Kind", "Target ID"],
+			traces.map((r) => [r.tcId, r.targetKind, r.targetId]),
+		)
 	);
 }
 
@@ -352,41 +379,56 @@ export function renderTestCasesMarkdown(rows: Record<string, unknown>): string {
 		(r) => `${r.tcId} ${r.targetKind} ${r.targetId}`,
 	);
 	return (
-		table("Test Cases", ["ID", "Kind", "Strategy", "Objective"],
-			cases.map((r) => [r.id, r.tcKind, r.strategyRef, r.objective])) +
-		table("Test Steps", ["TC", "Steps", "Expected"],
-			cases.map((r) => [r.id, r.steps, r.expected])) +
-		table("Traces", ["TC", "Target Kind", "Target ID"],
-			traces.map((r) => [r.tcId, r.targetKind, r.targetId]))
+		table(
+			"Test Cases",
+			["ID", "Kind", "Strategy", "Objective"],
+			cases.map((r) => [r.id, r.tcKind, r.strategyRef, r.objective]),
+		) +
+		table(
+			"Test Steps",
+			["TC", "Steps", "Expected"],
+			cases.map((r) => [r.id, r.steps, r.expected]),
+		) +
+		table(
+			"Traces",
+			["TC", "Target Kind", "Target ID"],
+			traces.map((r) => [r.tcId, r.targetKind, r.targetId]),
+		)
 	);
 }
 
 /** development-order — steps with AF membership + dependency edges. */
 export function renderDevelopmentOrderMarkdown(rows: Record<string, unknown>): string {
 	const steps = sorted((rows.devStep as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
-	const afs = sorted(
-		(rows.stepAf as RowLikeAlias[] | undefined) ?? [],
-		(r) => `${r.stepId} ${r.afId}`,
-	);
-	const deps = sorted(
-		(rows.stepDep as RowLikeAlias[] | undefined) ?? [],
-		(r) => `${r.stepId} ${r.dependsOnId}`,
-	);
+	const afs = sorted((rows.stepAf as RowLikeAlias[] | undefined) ?? [], (r) => `${r.stepId} ${r.afId}`);
+	const deps = sorted((rows.stepDep as RowLikeAlias[] | undefined) ?? [], (r) => `${r.stepId} ${r.dependsOnId}`);
 	return (
-		table("Development Steps", ["ID", "Module"],
-			steps.map((r) => [r.id, r.module])) +
-		table("Step Atomic Functions", ["Step", "AF"],
-			afs.map((r) => [r.stepId, r.afId])) +
-		table("Step Dependencies", ["Step", "Depends On"],
-			deps.map((r) => [r.stepId, r.dependsOnId]))
+		table(
+			"Development Steps",
+			["ID", "Module"],
+			steps.map((r) => [r.id, r.module]),
+		) +
+		table(
+			"Step Atomic Functions",
+			["Step", "AF"],
+			afs.map((r) => [r.stepId, r.afId]),
+		) +
+		table(
+			"Step Dependencies",
+			["Step", "Depends On"],
+			deps.map((r) => [r.stepId, r.dependsOnId]),
+		)
 	);
 }
 
 /** final-design — consolidated sections with their sources. */
 export function renderFinalDesignMarkdown(rows: Record<string, unknown>): string {
 	const list = sorted((rows.finalSection as RowLikeAlias[] | undefined) ?? [], (r) => Number(r.no));
-	return table("Final Sections", ["No", "Title", "Source Artifact", "Source IDs"],
-		list.map((r) => [r.no, r.title, r.sourceArtifact, r.sourceIds]));
+	return table(
+		"Final Sections",
+		["No", "Title", "Source Artifact", "Source IDs"],
+		list.map((r) => [r.no, r.title, r.sourceArtifact, r.sourceIds]),
+	);
 }
 
 /** Per-kind renderer dispatch (KIND_ORDER's twin — one entry per kind). */
@@ -408,11 +450,7 @@ const RENDERERS: Record<ArtifactKind, (rows: Record<string, unknown>) => string>
 
 /** Escape HTML special characters (first pass — content is never trusted). */
 function escapeHtml(text: string): string {
-	return text
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
+	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 /** Inline spans: code first (protects its content), then bold, then italic. */
@@ -468,7 +506,10 @@ export function mdToHtml(markdown: string): string {
 			 * @returns {string[]} The row's trimmed cell values.
 			 */
 			const parseCells = (row: string): string[] =>
-				row.slice(1, -1).split("|").map((c) => c.trim());
+				row
+					.slice(1, -1)
+					.split("|")
+					.map((c) => c.trim());
 			const headers = parseCells(line);
 			i += 2;
 			const rows: string[][] = [];
@@ -530,18 +571,20 @@ export function mdToHtml(markdown: string): string {
 		}
 		body.push(`<p>${para.map((l) => inline(escapeHtml(l))).join("<br>\n")}</p>`);
 	}
-	return [
-		"<!DOCTYPE html>",
-		'<html lang="en">',
-		"<head>",
-		'<meta charset="utf-8">',
-		"<title>Exported Document</title>",
-		"</head>",
-		"<body>",
-		...body,
-		"</body>",
-		"</html>",
-	].join("\n") + "\n";
+	return (
+		[
+			"<!DOCTYPE html>",
+			'<html lang="en">',
+			"<head>",
+			'<meta charset="utf-8">',
+			"<title>Exported Document</title>",
+			"</head>",
+			"<body>",
+			...body,
+			"</body>",
+			"</html>",
+		].join("\n") + "\n"
+	);
 }
 
 // ---------------------------------------------------------------------------

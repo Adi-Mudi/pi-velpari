@@ -48,10 +48,7 @@ export function registerAgentCommands(pi: ExtensionAPI): void {
 
 async function handleConfigureAgents(ctx: ExtensionCommandContext): Promise<void> {
 	if (ctx.hasUI === false) {
-		ctx.ui.notify(
-			"This command needs an interactive terminal (TUI). It does nothing in headless mode.",
-			"warning",
-		);
+		ctx.ui.notify("This command needs an interactive terminal (TUI). It does nothing in headless mode.", "warning");
 		return;
 	}
 	const cwd = ctx.cwd;
@@ -60,16 +57,12 @@ async function handleConfigureAgents(ctx: ExtensionCommandContext): Promise<void
 	try {
 		existing = loadAgentConfig(cwd);
 	} catch (err) {
-		ctx.ui.notify(
-			`${(err as Error).message} Fix or delete the file, then re-run /velpari-configure-agents.`,
-			"error",
-		);
+		ctx.ui.notify(`${(err as Error).message} Fix or delete the file, then re-run /velpari-configure-agents.`, "error");
 		return;
 	}
 	const mapping: Partial<Record<VelpariRole, string>> = {};
 
-	const effectiveAgent = (role: VelpariRole): string =>
-		mapping[role] ?? resolveAgentName(existing, role);
+	const effectiveAgent = (role: VelpariRole): string => mapping[role] ?? resolveAgentName(existing, role);
 
 	let lastSelectedId: string | undefined;
 	let editing = true;

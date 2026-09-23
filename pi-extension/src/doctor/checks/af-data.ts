@@ -13,12 +13,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import {
-	renderAfMarkdown,
-	resolveAfSidecar,
-	validateAfData,
-	type AfData,
-} from "../../core/af-data.js";
+import { renderAfMarkdown, resolveAfSidecar, validateAfData, type AfData } from "../../core/af-data.js";
 import { deriveAtomicProfile } from "../../core/atomic-tier.js";
 import { loadFilesConfig } from "../../core/config.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";

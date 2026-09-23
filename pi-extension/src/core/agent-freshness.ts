@@ -17,11 +17,7 @@
 
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import {
-	GENERATION_PHASES,
-	phaseForStage,
-	type GenerationPhase,
-} from "./agents-config.js";
+import { GENERATION_PHASES, phaseForStage, type GenerationPhase } from "./agents-config.js";
 import { STAGE_TRANSITIONS, type Stage } from "./constants.js";
 import { loadFilesConfig } from "./config.js";
 import { loadFreshnessManifest, manifestKey } from "./freshness.js";

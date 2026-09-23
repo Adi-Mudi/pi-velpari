@@ -25,21 +25,13 @@
  * v1.4.0 — cross-cutting discipline command /velpari-design-logging.
  */
 
-import {
-	LOGGING_PLAN_REQUIRED_SECTIONS,
-	loadPublishedLoggingPlanMarkdown,
-} from "../../core/logging-plan.js";
+import { LOGGING_PLAN_REQUIRED_SECTIONS, loadPublishedLoggingPlanMarkdown } from "../../core/logging-plan.js";
 import { loadOverlay } from "../../core/standards-overlay.js";
 import { loadState } from "../../core/state.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
-const OVERLAYS_REQUIRING_LOGGING = new Set([
-	"medical-device-b",
-	"industrial-ot",
-	"financial-payments",
-	"cloud-saas",
-]);
+const OVERLAYS_REQUIRING_LOGGING = new Set(["medical-device-b", "industrial-ot", "financial-payments", "cloud-saas"]);
 
 /**
  * Compute the maximum retention months declared in §7 by summing
@@ -64,9 +56,7 @@ function maxRetentionMonthsFromMarkdown(content: string): number {
  * `core/frontmatter.ts` for the published-artifact format; we don't
  * need that here.
  */
-function readFrontmatter(
-	content: string,
-): Record<string, string> {
+function readFrontmatter(content: string): Record<string, string> {
 	const match = content.match(/^---\n([\s\S]*?)\n---\n/);
 	if (!match) return {};
 	const block = match[1]!;
@@ -80,10 +70,7 @@ function readFrontmatter(
 	return out;
 }
 
-export function checkLoggingPlanSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkLoggingPlanSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const title = "Logging plan (Doc/observability/logging-plan_<project>.md)";
 
@@ -115,9 +102,7 @@ export function checkLoggingPlanSection(
 			message: overlayRequires
 				? `Logging plan MISSING — the active standards overlay requires it (retention ≥ ${requiredRetentionMonths} months${requiresTamperEvident ? ", tamper-evident" : ""}${requiresPiiRedaction ? ", PII redaction" : ""}).`
 				: "Logging plan: MISSING (optional — no compliance overlay active).",
-			suggestion: suggestionFor(
-				overlayRequires ? "logging-plan-overlay-required" : "logging-plan-missing",
-			),
+			suggestion: suggestionFor(overlayRequires ? "logging-plan-overlay-required" : "logging-plan-missing"),
 		});
 		return { title, items };
 	}
@@ -150,12 +135,7 @@ export function checkLoggingPlanSection(
 
 	// 3. Frontmatter.
 	const fm = readFrontmatter(published.content);
-	const requiredFmFields: Array<keyof typeof fm | string> = [
-		"artifact",
-		"project",
-		"version",
-		"created",
-	];
+	const requiredFmFields: Array<keyof typeof fm | string> = ["artifact", "project", "version", "created"];
 	const missingFm = requiredFmFields.filter((k) => !fm[k as string]);
 	if (missingFm.length > 0) {
 		items.push({
@@ -182,8 +162,7 @@ export function checkLoggingPlanSection(
 		if (maxMonths === 0) {
 			items.push({
 				status: "warning",
-				message:
-					"Could not parse retention tiers from §7. Ensure the table has rows like `| hot | 12 | ...`.",
+				message: "Could not parse retention tiers from §7. Ensure the table has rows like `| hot | 12 | ...`.",
 			});
 		} else if (maxMonths < requiredRetentionMonths) {
 			items.push({
@@ -202,14 +181,11 @@ export function checkLoggingPlanSection(
 	// 5. Tamper-evidence compliance.
 	if (overlayRequires && requiresTamperEvident) {
 		const section8 = extractSection(published.content, "## 8. Protection");
-		const mentionsTamperEvident = /tamper[- ]evident|append[- ]only|worm|write[- ]once/i.test(
-			section8,
-		);
+		const mentionsTamperEvident = /tamper[- ]evident|append[- ]only|worm|write[- ]once/i.test(section8);
 		if (!mentionsTamperEvident) {
 			items.push({
 				status: "error",
-				message:
-					"Tamper-evident storage is required by the active overlay but §8 does not mention it.",
+				message: "Tamper-evident storage is required by the active overlay but §8 does not mention it.",
 				suggestion: suggestionFor("logging-plan-tamper-evident-missing"),
 			});
 		}
@@ -222,8 +198,7 @@ export function checkLoggingPlanSection(
 		if (!mentionsRedaction) {
 			items.push({
 				status: "warning",
-				message:
-					"PII redaction is recommended by the active overlay but §13 does not mention it explicitly.",
+				message: "PII redaction is recommended by the active overlay but §13 does not mention it explicitly.",
 			});
 		}
 	}

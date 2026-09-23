@@ -23,10 +23,7 @@
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
-import {
-	resolveTestCasesSidecar,
-	type TestCasesData,
-} from "../../core/test-cases-data.js";
+import { resolveTestCasesSidecar, type TestCasesData } from "../../core/test-cases-data.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -69,10 +66,7 @@ function testCaseLinks(data: TestCasesData): TraceLink[] {
 }
 
 /** Doctor section "RTM↔test-cases link consistency". */
-export function checkTraceLinkConsistencySection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkTraceLinkConsistencySection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -91,10 +85,7 @@ export function checkTraceLinkConsistencySection(
 	const tcMd = resolveDocArtifact("test-cases", projectName, cwd);
 	const tcSidecar = tcMd ? resolveTestCasesSidecar(tcMd.path) : null;
 	if (!rtmSidecar || !tcSidecar) {
-		const missing = [
-			!rtmSidecar ? "RTM" : null,
-			!tcSidecar ? "test-cases" : null,
-		].filter(Boolean);
+		const missing = [!rtmSidecar ? "RTM" : null, !tcSidecar ? "test-cases" : null].filter(Boolean);
 		items.push({
 			status: "info",
 			message: `RTM↔test-cases link check skipped — ${missing.join(" + ")} sidecar absent (legacy project); the cross-check needs both.`,

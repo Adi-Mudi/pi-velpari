@@ -73,12 +73,7 @@ export function isReviewerVerdict(x: unknown): x is ReviewerVerdict {
  */
 export function verdictToDoctorIssues(v: ReviewerVerdict): DiagnosticItem[] {
 	return v.issues.map((issue) => ({
-		status:
-			issue.severity === "error"
-				? "error"
-				: issue.severity === "warning"
-					? "warning"
-					: "info",
+		status: issue.severity === "error" ? "error" : issue.severity === "warning" ? "warning" : "info",
 		message: `[${issue.rule}]${issue.location ? ` ${issue.location}:` : ""} ${issue.message}`,
 		suggestion: issue.suggestion,
 	}));

@@ -26,12 +26,7 @@ import { readFileSync } from "node:fs";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
 import { resolveDocArtifact } from "../../core/paths.js";
-import {
-	computeShapeVerdict,
-	computeShapeVerdictsAll,
-	countTopLevelSections,
-	isSunsetPast,
-} from "../../core/shape.js";
+import { computeShapeVerdict, computeShapeVerdictsAll, countTopLevelSections, isSunsetPast } from "../../core/shape.js";
 import { resolveDocArtifactAll } from "../../core/paths.js";
 
 // Re-exported for callers that already import these from the doctor
@@ -44,10 +39,7 @@ export type { ShapeVerdict, ShapePath } from "../../core/shape.js";
  * function: reads the published design (if any), computes the verdict,
  * and emits a section.
  */
-export function checkShapeCompatibility(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkShapeCompatibility(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -80,10 +72,8 @@ export function checkShapeCompatibility(
 	}
 
 	const parsed = parseFrontmatterBlock(markdown);
-	const publishedVersion =
-		typeof parsed?.fields.version === "string" ? parsed.fields.version : undefined;
-	const sunsetDate =
-		typeof parsed?.fields.sunset === "string" ? parsed.fields.sunset : undefined;
+	const publishedVersion = typeof parsed?.fields.version === "string" ? parsed.fields.version : undefined;
+	const sunsetDate = typeof parsed?.fields.sunset === "string" ? parsed.fields.sunset : undefined;
 	const sectionCount = countTopLevelSections(markdown);
 
 	const verdict = computeShapeVerdict({ publishedVersion, sectionCountPublished: sectionCount, sunsetDate });
@@ -131,10 +121,7 @@ export function checkShapeCompatibility(
 	// is downgraded to `info` so the auto-doctor does not block
 	// every approve after the archive.
 	if (sunsetDate) {
-		const statusField =
-			typeof parsed?.fields.status === "string"
-				? parsed.fields.status
-				: undefined;
+		const statusField = typeof parsed?.fields.status === "string" ? parsed.fields.status : undefined;
 		const alreadyArchived = statusField === "deprecated";
 		if (isSunsetPast(sunsetDate)) {
 			items.push({
@@ -143,12 +130,8 @@ export function checkShapeCompatibility(
 					? `Sunset date ${sunsetDate} has passed; design was auto-archived (status: deprecated) on a prior publish. No action needed.`
 					: `Sunset date ${sunsetDate} has passed — published design is formally deprecated (RFC 8594).`,
 				details: alreadyArchived
-					? [
-							`deprecatedAt: ${parsed?.fields.deprecatedAt ?? "(unknown)"}`,
-						]
-					: [
-							"Re-run /velpari-architecture-generator to refresh the design under the current shape.",
-						],
+					? [`deprecatedAt: ${parsed?.fields.deprecatedAt ?? "(unknown)"}`]
+					: ["Re-run /velpari-architecture-generator to refresh the design under the current shape."],
 			});
 		} else {
 			items.push({
@@ -192,11 +175,7 @@ export function checkShapeCompatibilityAll(cwd: string): DiagnosticSection {
 
 	for (const v of verdicts) {
 		const headline =
-			v.path === "upgrade"
-				? "Path: upgrade."
-				: v.path === "fresh"
-					? "Path: fresh."
-					: "Path: migration recommended.";
+			v.path === "upgrade" ? "Path: upgrade." : v.path === "fresh" ? "Path: fresh." : "Path: migration recommended.";
 		if (v.path === "upgrade") {
 			items.push({
 				status: "ok",

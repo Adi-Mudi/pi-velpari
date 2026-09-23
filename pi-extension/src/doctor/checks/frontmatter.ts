@@ -70,9 +70,10 @@ export function checkFrontmatterSection(cwd: string, projectName: string): Diagn
 	if (items.length === 0) {
 		items.push({
 			status: "ok",
-			message: checked > 0
-				? `All ${checked} published artifact(s) carry the full frontmatter block.`
-				: "No published artifacts yet — nothing to check.",
+			message:
+				checked > 0
+					? `All ${checked} published artifact(s) carry the full frontmatter block.`
+					: "No published artifacts yet — nothing to check.",
 		});
 	}
 	return { title: "Artifact frontmatter", items };

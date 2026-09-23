@@ -12,11 +12,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { FileDiscoveryResult } from "../core/files-discovery.js";
 import type { FilesConfig } from "../core/config.js";
 
-export async function ask(
-	ctx: ExtensionCommandContext,
-	prompt: string,
-	required: boolean,
-): Promise<string> {
+export async function ask(ctx: ExtensionCommandContext, prompt: string, required: boolean): Promise<string> {
 	const MAX_ATTEMPTS = 3;
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 		const answer = await ctx.ui.input(prompt);
@@ -28,10 +24,7 @@ export async function ask(
 		ctx.ui.notify("This field is required. Please provide a value.", "error");
 	}
 	// Exceeded MAX_ATTEMPTS — abort gracefully
-	ctx.ui.notify(
-		`Aborted after ${MAX_ATTEMPTS} empty attempts. Please run the command again with a value.`,
-		"error",
-	);
+	ctx.ui.notify(`Aborted after ${MAX_ATTEMPTS} empty attempts. Please run the command again with a value.`, "error");
 	return "";
 }
 
@@ -128,11 +121,7 @@ function suggestionsFor(category: PathCategory, discovery: FileDiscoveryResult):
  * prefix overlap in either direction, or equality with a path already
  * claimed by another category.
  */
-function hasPathConflict(
-	candidate: string,
-	current: readonly string[],
-	other: readonly string[],
-): boolean {
+function hasPathConflict(candidate: string, current: readonly string[], other: readonly string[]): boolean {
 	for (const existing of current) {
 		if (existing === candidate) return true;
 		if (existing.endsWith("/") && candidate.startsWith(existing)) return true;

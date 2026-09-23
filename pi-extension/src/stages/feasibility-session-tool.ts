@@ -21,16 +21,8 @@
 
 import { join } from "node:path";
 import { Type } from "typebox";
-import {
-	withFileMutationQueue,
-	type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
-import {
-	loadState,
-	setFeasibilitySession,
-	type FeasibilitySession,
-	type RunState,
-} from "../core/state.js";
+import { withFileMutationQueue, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { loadState, setFeasibilitySession, type FeasibilitySession, type RunState } from "../core/state.js";
 import { validateSpikeResult, type SpikeResult } from "../core/spike.js";
 import { PATHS } from "../core/constants.js";
 
@@ -64,9 +56,7 @@ export function registerFeasibilitySessionTool(pi: ExtensionAPI): void {
 				Type.Literal("add-spike-result"),
 				Type.Literal("select-language"),
 			]),
-			consent: Type.Optional(
-				Type.Boolean({ description: "Required for set-consent." }),
-			),
+			consent: Type.Optional(Type.Boolean({ description: "Required for set-consent." })),
 			decision: Type.Optional(
 				Type.Union([Type.Literal("reuse"), Type.Literal("partial"), Type.Literal("build")], {
 					description: "Required for set-decision.",
@@ -77,36 +67,36 @@ export function registerFeasibilitySessionTool(pi: ExtensionAPI): void {
 					description: "Optional for set-decision: short chat-summary rows.",
 				}),
 			),
-			languageCandidates: Type.Optional(
-				Type.Array(Type.String(), { description: "Required for set-candidates." }),
-			),
+			languageCandidates: Type.Optional(Type.Array(Type.String(), { description: "Required for set-candidates." })),
 			spike: Type.Optional(
-				Type.Object({
-					language: Type.String(),
-					coreFunction: Type.String(),
-					buildOk: Type.Boolean(),
-					runOk: Type.Boolean(),
-					notes: Type.String(),
-					evidencePath: Type.String(),
-					timestamp: Type.Optional(Type.String()),
-				}, { description: "Required for add-spike-result." }),
+				Type.Object(
+					{
+						language: Type.String(),
+						coreFunction: Type.String(),
+						buildOk: Type.Boolean(),
+						runOk: Type.Boolean(),
+						notes: Type.String(),
+						evidencePath: Type.String(),
+						timestamp: Type.Optional(Type.String()),
+					},
+					{ description: "Required for add-spike-result." },
+				),
 			),
-			selectedLanguage: Type.Optional(
-				Type.String({ description: "Required for select-language." }),
-			),
+			selectedLanguage: Type.Optional(Type.String({ description: "Required for select-language." })),
 			selectedBy: Type.Optional(
-				Type.Union(SELECTED_BY.map((s) => Type.Literal(s)), {
-					description: "Required for select-language.",
-				}),
+				Type.Union(
+					SELECTED_BY.map((s) => Type.Literal(s)),
+					{
+						description: "Required for select-language.",
+					},
+				),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			return withFileMutationQueue(join(ctx.cwd, PATHS.STATE_FILE), async () => {
 				const state = loadState(ctx.cwd);
 				if (!state.runId || state.currentStage !== "analyzing-feasibility") {
-					return errorResult(
-						"No active feasibility stage. Run /velpari-feasibility first.",
-					);
+					return errorResult("No active feasibility stage. Run /velpari-feasibility first.");
 				}
 
 				let patch: Partial<FeasibilitySession>;
@@ -146,18 +136,13 @@ export function registerFeasibilitySessionTool(pi: ExtensionAPI): void {
 						const spike = params.spike as SpikeResult;
 						const existing = state.feasibilitySession?.spikeResults ?? [];
 						patch = {
-							spikeResults: [
-								...existing.filter((s) => s.language !== spike.language),
-								spike,
-							],
+							spikeResults: [...existing.filter((s) => s.language !== spike.language), spike],
 						};
 						break;
 					}
 					case "select-language": {
 						if (!params.selectedLanguage?.trim() || !params.selectedBy) {
-							return errorResult(
-								"select-language needs selectedLanguage and selectedBy (clone|config|auto|user).",
-							);
+							return errorResult("select-language needs selectedLanguage and selectedBy (clone|config|auto|user).");
 						}
 						patch = {
 							selectedLanguage: params.selectedLanguage.trim(),

@@ -27,11 +27,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { FilesConfig } from "../../core/config.js";
-import {
-	availableScanList,
-	getAvailableScanTypes,
-	type AvailableScans,
-} from "../../core/scan-options.js";
+import { availableScanList, getAvailableScanTypes, type AvailableScans } from "../../core/scan-options.js";
 import type { ScanType } from "../../core/state.js";
 
 interface ScanGateOptions {
@@ -90,10 +86,7 @@ export async function runScanGatePicker(
 	}
 
 	const labels = buildMainLabels(available);
-	const choice = await ctx.ui.select(
-		"Which scans should run for this brainstorm?",
-		labels,
-	);
+	const choice = await ctx.ui.select("Which scans should run for this brainstorm?", labels);
 	if (!choice) return { scans: [], cancelled: true, freeform: false };
 
 	// The freeform "Type something..." row is always last. AskUserQuestion
@@ -147,10 +140,7 @@ export async function runScanGatePicker(
  * Adjust path — one ctx.ui.confirm per available scan. Returns the
  * subset the user opted into.
  */
-async function runAdjust(
-	ctx: ExtensionCommandContext,
-	available: AvailableScans,
-): Promise<ScanGateResult> {
+async function runAdjust(ctx: ExtensionCommandContext, available: AvailableScans): Promise<ScanGateResult> {
 	const out: ScanType[] = [];
 
 	if (typeof ctx.ui.confirm !== "function") {
@@ -158,26 +148,17 @@ async function runAdjust(
 	}
 
 	if (available.code) {
-		const yes = await ctx.ui.confirm(
-			"Run CODE scan?",
-			"Read local source files for extraction.",
-		);
+		const yes = await ctx.ui.confirm("Run CODE scan?", "Read local source files for extraction.");
 		if (yes) out.push("code");
 	}
 
 	if (available.doc) {
-		const yes = await ctx.ui.confirm(
-			"Run DOC scan?",
-			"Read existing project docs for prior decisions.",
-		);
+		const yes = await ctx.ui.confirm("Run DOC scan?", "Read existing project docs for prior decisions.");
 		if (yes) out.push("doc");
 	}
 
 	if (available.community) {
-		const yes = await ctx.ui.confirm(
-			"Run COMMUNITY scan? (FR-52 consent)",
-			"This will search the public web.",
-		);
+		const yes = await ctx.ui.confirm("Run COMMUNITY scan? (FR-52 consent)", "This will search the public web.");
 		if (yes) out.push("community");
 	}
 
@@ -190,25 +171,18 @@ async function runAdjust(
  * The user types comma-separated scan names. We parse + filter to the
  * available set, ignoring unknown names. Empty input → cancelled.
  */
-async function runFreeform(
-	ctx: ExtensionCommandContext,
-	available: ScanType[],
-): Promise<ScanGateResult> {
+async function runFreeform(ctx: ExtensionCommandContext, available: ScanType[]): Promise<ScanGateResult> {
 	if (typeof ctx.ui.input !== "function") {
 		return { scans: [], cancelled: true, freeform: false };
 	}
-	const raw = await ctx.ui.input(
-		`Type scans (comma-separated): ${available.join(", ")}`,
-	);
+	const raw = await ctx.ui.input(`Type scans (comma-separated): ${available.join(", ")}`);
 	if (!raw || !raw.trim()) {
 		return { scans: [], cancelled: true, freeform: false };
 	}
 	const parsed = raw
 		.split(",")
 		.map((s) => s.trim().toLowerCase())
-		.filter((s): s is ScanType =>
-			(available as readonly string[]).includes(s),
-		);
+		.filter((s): s is ScanType => (available as readonly string[]).includes(s));
 	return { scans: parsed, cancelled: false, freeform: true };
 }
 
@@ -231,12 +205,7 @@ function buildMainLabels(available: AvailableScans): string[] {
 
 	// Code + doc subset only available when at least one is available
 	if (available.code || available.doc) {
-		const which = [
-			available.code ? "code" : null,
-			available.doc ? "doc" : null,
-		]
-			.filter(Boolean)
-			.join(" + ");
+		const which = [available.code ? "code" : null, available.doc ? "doc" : null].filter(Boolean).join(" + ");
 		const why = !available.code || !available.doc ? " (one unavailable)" : "";
 		labels.push(`Run ${which} only${why}`);
 	}
@@ -275,9 +244,7 @@ export async function runExtraScanPicker(
 	}
 	const available = getAvailableScanTypes(options.config, options.cwd);
 	const allScans = availableScanList(available);
-	const missing = allScans.filter(
-		(s) => !(options.alreadySelected as readonly ScanType[]).includes(s),
-	);
+	const missing = allScans.filter((s) => !(options.alreadySelected as readonly ScanType[]).includes(s));
 	if (missing.length === 0) {
 		// Nothing to add — return ok so the caller can skip the picker.
 		return { scans: [], cancelled: false, freeform: false };
@@ -287,10 +254,7 @@ export async function runExtraScanPicker(
 		labels.push(`Add ${s} only`);
 	}
 	labels.push("Skip — inline research only");
-	const choice = await ctx.ui.select(
-		"Which additional scans do you want for this brainstorm?",
-		labels,
-	);
+	const choice = await ctx.ui.select("Which additional scans do you want for this brainstorm?", labels);
 	if (!choice) return { scans: [], cancelled: true, freeform: false };
 	if (choice === labels[labels.length - 1]) {
 		return { scans: [], cancelled: false, freeform: false };
@@ -330,15 +294,9 @@ export async function runExtraScanPicker(
  * `confirm-web-dispatch` and `subagent()`; the dispatcher itself does not
  * re-check the ledger (kept simple — parent discipline is the gate).
  */
-export async function runWebDispatchConsent(
-	ctx: ExtensionCommandContext,
-	topic: string,
-): Promise<boolean> {
+export async function runWebDispatchConsent(ctx: ExtensionCommandContext, topic: string): Promise<boolean> {
 	if (!ctx || !ctx.ui || typeof ctx.ui.confirm !== "function") return false;
 	return Boolean(
-		await ctx.ui.confirm(
-			"Web search dispatch",
-			`This scout will search the public web for: ${topic}\nConfirm?`,
-		),
+		await ctx.ui.confirm("Web search dispatch", `This scout will search the public web for: ${topic}\nConfirm?`),
 	);
 }

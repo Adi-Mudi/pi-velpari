@@ -100,9 +100,7 @@ export function runPreCondition(deps: PreConditionDeps): PreConditionResult {
 	}
 	if (gated) {
 		const gateConfig = loadFilesConfig(cwd);
-		const skip = gateConfig.projectName
-			? hasPublishedFeasibility(cwd, gateConfig.projectName)
-			: false;
+		const skip = gateConfig.projectName ? hasPublishedFeasibility(cwd, gateConfig.projectName) : false;
 		const next = nextCommandsFor(state.currentStage, { feasibilitySkip: skip }).join(" or ");
 		return {
 			kind: "error",

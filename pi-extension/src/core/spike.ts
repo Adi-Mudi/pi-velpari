@@ -34,13 +34,11 @@ export function validateSpikeResult(result: unknown): string[] {
 	if (typeof result !== "object" || result === null) return ["spike result is not an object"];
 	const r = result as Partial<SpikeResult>;
 	if (typeof r.language !== "string" || !r.language.trim()) problems.push("language missing");
-	if (typeof r.coreFunction !== "string" || !r.coreFunction.trim())
-		problems.push("coreFunction missing");
+	if (typeof r.coreFunction !== "string" || !r.coreFunction.trim()) problems.push("coreFunction missing");
 	if (typeof r.buildOk !== "boolean") problems.push("buildOk must be boolean");
 	if (typeof r.runOk !== "boolean") problems.push("runOk must be boolean");
 	if (typeof r.notes !== "string") problems.push("notes missing");
-	if (typeof r.evidencePath !== "string" || !r.evidencePath.trim())
-		problems.push("evidencePath missing");
+	if (typeof r.evidencePath !== "string" || !r.evidencePath.trim()) problems.push("evidencePath missing");
 	return problems;
 }
 
@@ -50,9 +48,7 @@ export function validateSpikeResult(result: unknown): string[] {
  */
 export function compareSpikes(results: readonly SpikeResult[]): SpikeResult[] {
 	const tier = (r: SpikeResult): number => (r.buildOk && r.runOk ? 0 : r.buildOk ? 1 : 2);
-	return [...results].sort(
-		(a, b) => tier(a) - tier(b) || a.language.localeCompare(b.language),
-	);
+	return [...results].sort((a, b) => tier(a) - tier(b) || a.language.localeCompare(b.language));
 }
 
 /** Spikes needed? Only on the build-from-scratch path with no configured framework. */

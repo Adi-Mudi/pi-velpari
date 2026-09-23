@@ -65,12 +65,7 @@ import {
 } from "../core/state.js";
 import { nextCommandsFor } from "../core/constants.js";
 import { generationHintForPhase } from "../core/agent-freshness.js";
-import {
-	buildBrainstormPath,
-	buildGroupedBrainstormPath,
-	buildRunDir,
-	slugify,
-} from "../core/paths.js";
+import { buildBrainstormPath, buildGroupedBrainstormPath, buildRunDir, slugify } from "../core/paths.js";
 import { computeBrainstormInputHashes, recordPublish } from "../core/freshness.js";
 import { hashFileContentNormalized } from "../core/fingerprints.js";
 import { guardApproveReadiness, guardNotesContent } from "./brainstorm/guard.js";
@@ -85,12 +80,7 @@ function withGenerationHint(cwd: string, hint: string): string {
 	const rest = hint.startsWith("Next: ") ? hint.slice("Next: ".length) : hint;
 	return `Next: ${genHint}, then ${rest}`;
 }
-import {
-	buildSummary,
-	countNotesSections,
-	createAuditSession,
-	writeAuditLog,
-} from "./brainstorm/audit.js";
+import { buildSummary, countNotesSections, createAuditSession, writeAuditLog } from "./brainstorm/audit.js";
 
 /**
  * v3 — Send a brief prompt to the parent LLM asking it to fire
@@ -100,10 +90,7 @@ import {
  * later in the flow by clearBrainstormSession, which is the source of
  * truth for the dispatcher.
  */
-function gracefulClosePrompt(
-	handles: { web?: string; docCode?: string },
-	mission: string,
-): string {
+function gracefulClosePrompt(handles: { web?: string; docCode?: string }, mission: string): string {
 	const webHandle = handles.web ?? "web";
 	const docCodeHandle = handles.docCode ?? "doc-code";
 	return [
@@ -134,8 +121,7 @@ export async function handleApproveBrainstorm(
 	}
 	if (state.currentStage !== "brainstorming") {
 		ctx.ui.notify(
-			`Cannot approve brainstorm: current stage is "${state.currentStage}". ` +
-				`Expected "brainstorming".`,
+			`Cannot approve brainstorm: current stage is "${state.currentStage}". ` + `Expected "brainstorming".`,
 			"error",
 		);
 		return;
@@ -145,9 +131,7 @@ export async function handleApproveBrainstorm(
 	const runDir = buildRunDir(state.runId, cwd);
 	const groupedWorkingPath = join(runDir, "brainstorm", "brainstorm-notes.md");
 	const legacyWorkingPath = join(runDir, "brainstorm-notes.md");
-	const workingPath = existsSync(groupedWorkingPath)
-		? groupedWorkingPath
-		: legacyWorkingPath;
+	const workingPath = existsSync(groupedWorkingPath) ? groupedWorkingPath : legacyWorkingPath;
 	if (!existsSync(workingPath)) {
 		ctx.ui.notify(`Brainstorm working copy not found at ${workingPath}.`, "error");
 		return;
@@ -172,12 +156,13 @@ export async function handleApproveBrainstorm(
 
 	// 5. v3 — GRACEFUL CLOSE. Snapshot the handles before we proceed
 	// (the session clear at step 9 will remove them from state).
-	const subagentsToClose = state.activeSubagents?.web && state.activeSubagents?.docCode
-		? {
-				web: state.activeSubagents.web,
-				docCode: state.activeSubagents.docCode,
-			}
-		: null;
+	const subagentsToClose =
+		state.activeSubagents?.web && state.activeSubagents?.docCode
+			? {
+					web: state.activeSubagents.web,
+					docCode: state.activeSubagents.docCode,
+				}
+			: null;
 
 	// 6. Compute target path (grouped layout). Append timestamp suffix
 	//    on re-runs so existing files are preserved (FR-69).
@@ -286,9 +271,8 @@ export async function handleApproveBrainstorm(
 			nextHint = withGenerationHint(cwd, "Next: run /velpari-prd to restart the PRD stage.");
 		} else {
 			const nextCommands = nextCommandsFor(cleared.currentStage);
-			nextHint = nextCommands.length === 1
-				? `Next: run ${nextCommands[0]}.`
-				: `Next: run one of: ${nextCommands.join(", ")}.`;
+			nextHint =
+				nextCommands.length === 1 ? `Next: run ${nextCommands[0]}.` : `Next: run one of: ${nextCommands.join(", ")}.`;
 		}
 	} else {
 		const next = advanceStage(state, "/velpari-approve-brainstorm", cwd, pi);

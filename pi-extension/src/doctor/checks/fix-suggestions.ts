@@ -16,24 +16,19 @@ export const SUGGESTIONS = {
 	"config-missing": "Run `/velpari-configure-inputs`.",
 	"config-invalid": "Edit `.pi/velpari/files.json` to fix the schema.",
 	"profile-missing": "Run `/velpari-configure-requirements` to capture the requirements profile.",
-	"doc-dir-missing":
-		"It will be created when you publish the first artifact via `/velpari-prd-approve`.",
+	"doc-dir-missing": "It will be created when you publish the first artifact via `/velpari-prd-approve`.",
 	"project-name-missing": "Run `/velpari-configure-inputs` to set the project name.",
 
 	// Grouped / legacy paths
-	"artifact-missing":
-		"Run the matching stage command to generate this artifact (e.g. `/velpari-prd`).",
-	"artifact-legacy-only":
-		"Rerun the corresponding stage command to regenerate in the grouped layout.",
+	"artifact-missing": "Run the matching stage command to generate this artifact (e.g. `/velpari-prd`).",
+	"artifact-legacy-only": "Rerun the corresponding stage command to regenerate in the grouped layout.",
 
 	// PSRS / RTM
-	"psrs-missing":
-		"Run `/velpari-brainstorm <mission>` first, then `/velpari-prd`.",
+	"psrs-missing": "Run `/velpari-brainstorm <mission>` first, then `/velpari-prd`.",
 	"psrs-invalid": "Fix the listed issues in the PSRS.",
 	"fr-wording":
 		"Rewrite the flagged FR rows in EARS shape with an RFC 2119 keyword, e.g. \"When a user submits X, the system SHALL save X\" — see skills/velpari-prd.md 'Requirement Wording'.",
-	"psrs-legacy-only":
-		"Rerun `/velpari-prd` to regenerate the grouped PSRS with current schema.",
+	"psrs-legacy-only": "Rerun `/velpari-prd` to regenerate the grouped PSRS with current schema.",
 	"trace-link-asymmetric":
 		"RTM sidecar `tests[]` is the requirement↔test link authority (D3) — reconcile the asymmetric link at the next `/velpari-rtm` or `/velpari-testplan` revise and republish.",
 	"rtm-missing": "Run `/velpari-rtm` after the PRD stage.",
@@ -57,7 +52,7 @@ export const SUGGESTIONS = {
 	// identically from the picker and the SUGGESTIONS table is
 	// complete for `SuggestionKey` typing.
 	"working-published-drift":
-		"The working copy in `.IDE_Plans/velpari/runs/<runId>/` diverged from the published copy under `Doc/`. Run `/velpari-doctor --velpari-fix` and pick \"Fix all safe items\" to sync.",
+		'The working copy in `.IDE_Plans/velpari/runs/<runId>/` diverged from the published copy under `Doc/`. Run `/velpari-doctor --velpari-fix` and pick "Fix all safe items" to sync.',
 	"phase-mismatch":
 		"The RTM row phase differs from the PRD Phase column for the same id. Re-run `/velpari-rtm` in update mode and copy the phase from the PRD (1 = MVP), then `/velpari-testplan-approve`.",
 	"mvp-incomplete":
@@ -92,8 +87,7 @@ export const SUGGESTIONS = {
 		"The lock holder is gone. It is auto-stolen on the next state mutation; if it persists, delete `.pi/velpari/.lock/`.",
 
 	// Multiplexer / subagent provider
-	"unknown-multiplexer":
-		"Start pi inside tmux, zellij, wezterm, or cmux.",
+	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, or cmux.",
 	"subagent-ext-missing":
 		"Reinstall pi-velpari (`pi install npm:@adi-mudi/pi-velpari@1.0.2-bundled`); pi-interactive-subagents is now bundled and should appear under pi-velpari's node_modules/.",
 	"zellij-close-pane":
@@ -106,20 +100,16 @@ export const SUGGESTIONS = {
 		"Add the missing frontmatter fields. Required: name, description, tools, thinking, session-mode, auto-exit, spawning.",
 
 	// Agent mapping (agents.json)
-	"agent-config-invalid":
-		"Fix or delete `.pi/velpari/agents.json`, then run `/velpari-configure-agents`.",
+	"agent-config-invalid": "Fix or delete `.pi/velpari/agents.json`, then run `/velpari-configure-agents`.",
 	"agent-mapping-missing":
 		"Run `/velpari-configure-agents` to remap the role, or place the agent file at the expected path.",
 
 	// Stage skill markdowns
-	"skill-missing":
-		"Restore the skill markdown from the bundled `skills/` directory or git history.",
-	"skill-bad-contract":
-		"Fix the listed contract checks in the skill markdown.",
+	"skill-missing": "Restore the skill markdown from the bundled `skills/` directory or git history.",
+	"skill-bad-contract": "Fix the listed contract checks in the skill markdown.",
 
 	// Secret scan
-	"secret-detected":
-		"Move secrets to environment variables. Never commit them.",
+	"secret-detected": "Move secrets to environment variables. Never commit them.",
 
 	// Setup progress
 	"setup-files": "Run `/velpari-configure-inputs`.",
@@ -130,14 +120,12 @@ export const SUGGESTIONS = {
 	"setup-approve": "Run `/velpari-prd-approve-brainstorm` after brainstorm.",
 
 	// Official-extension readiness (Phase 5 of official-extension plan)
-	"official.missing-pi-package-keyword":
-		'Add "pi-package" to package.json:keywords for gallery discovery.',
+	"official.missing-pi-package-keyword": 'Add "pi-package" to package.json:keywords for gallery discovery.',
 	"official.missing-pi-extensions":
 		'Add pi.extensions array to package.json pointing at "./pi-extension/src/index.ts".',
 	"official.missing-bundled-subagents-dep":
 		'Add "pi-interactive-subagents": ">=3.7.2" to dependencies and bundledDependencies (per official Pi docs § Dependencies).',
-	"official.missing-npmignore":
-		"Create .npmignore excluding .IDE_Plans/, Doc/, tests, and .github/.",
+	"official.missing-npmignore": "Create .npmignore excluding .IDE_Plans/, Doc/, tests, and .github/.",
 	"official.wrong-install-name":
 		'Update README.md install line from "pi install npm:pi-velpari" to "pi install npm:@adi-mudi/pi-velpari".',
 	"official.missing-package-json":
@@ -154,8 +142,7 @@ export const SUGGESTIONS = {
 		"Re-run /velpari-design-logging so the frontmatter (artifact, project, version, created) is stamped by the renderer.",
 	"logging-plan-retention-short":
 		"Increase the retention tier with the longest duration in §7 to meet the overlay's minimum (see overlay profile.json:loggingRequirements.retentionMonths).",
-	"logging-plan-tamper-evident-missing":
-		"Edit §8 to declare tamper-evident storage (append-only, WORM, or signed).",
+	"logging-plan-tamper-evident-missing": "Edit §8 to declare tamper-evident storage (append-only, WORM, or signed).",
 
 	// v1.x — atomic-tier doctor (ISO/IEC 29110 + IEC 61508/IEC 62304)
 	"atomic-rows-missing":
@@ -174,8 +161,7 @@ export const SUGGESTIONS = {
 		"Reduce complexity to ≤ 10 (ISO 25010 modifiability threshold). Refactor: split into smaller pure functions.",
 	"atomic-ears-invalid":
 		"Set earsPattern to one of {Ubiquitous, Event-driven, State-driven, Unwanted, Optional} per Mavin EARS 2009.",
-	"atomic-arg-count-high":
-		"Reduce argCount to 0-2 (Clean Code rule). Wrap related arguments in a parameter object.",
+	"atomic-arg-count-high": "Reduce argCount to 0-2 (Clean Code rule). Wrap related arguments in a parameter object.",
 	"atomic-coupling-high":
 		"Reduce coupling=high — refactor dependencies into separate atomic functions or introduce an interface boundary.",
 	"atomic-risk-missing":

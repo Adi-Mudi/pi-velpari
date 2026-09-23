@@ -24,10 +24,7 @@
 import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ScoutSlot } from "../../core/prompt.js";
-import {
-	buildRunDir,
-	buildWorkingGroupedPath,
-} from "../../core/paths.js";
+import { buildRunDir, buildWorkingGroupedPath } from "../../core/paths.js";
 import { STAGE_REGISTRY, buildScoutSlots, filterReviewerSlot } from "../registry.js";
 import { ensureStageAgents } from "../../io/agents-install.js";
 import { loadAgentConfig } from "../../core/agents-config.js";
@@ -73,12 +70,7 @@ export function dispatchScouts(deps: DispatchDeps): DispatchResult {
 	const runDir = buildRunDir(pre.state.runId, cwd);
 	const workingCopyDir = join(runDir, spec.workingCopyCategory);
 	const scoutsDir = join(workingCopyDir, "scouts");
-	const workingCopyPath = buildWorkingGroupedPath(
-		cwd,
-		pre.state.runId,
-		spec.workingCopyArtifact,
-		pre.projectName,
-	);
+	const workingCopyPath = buildWorkingGroupedPath(cwd, pre.state.runId, spec.workingCopyArtifact, pre.projectName);
 
 	// 2. Agent bootstrap (4 source scouts + reviewer when gated on).
 	const agentConfig = loadAgentConfig(cwd);
@@ -89,10 +81,7 @@ export function dispatchScouts(deps: DispatchDeps): DispatchResult {
 	const bootstrap = ensureStageAgents(allScoutIds, cwd, agentConfig);
 
 	if (bootstrap.installed.length > 0) {
-		ctx.ui.notify(
-			`Installed ${bootstrap.installed.length} agent(s): ${bootstrap.installed.join(", ")}.`,
-			"info",
-		);
+		ctx.ui.notify(`Installed ${bootstrap.installed.length} agent(s): ${bootstrap.installed.join(", ")}.`, "info");
 	}
 	if (bootstrap.missing.length > 0) {
 		ctx.ui.notify(
@@ -107,12 +96,7 @@ export function dispatchScouts(deps: DispatchDeps): DispatchResult {
 	const allSlots = buildScoutSlots(spec, scoutsDir, cwd);
 
 	// 4. Reviewer gate.
-	const filtered = filterReviewerSlot(
-		allSlots,
-		stageKey,
-		pre.atomicProfile,
-		pre.overlayRequiresReviewer,
-	);
+	const filtered = filterReviewerSlot(allSlots, stageKey, pre.atomicProfile, pre.overlayRequiresReviewer);
 
 	// 5. Notify the final scout list + paths.
 	const scoutList = filtered.map((s) => s.name).join(", ");

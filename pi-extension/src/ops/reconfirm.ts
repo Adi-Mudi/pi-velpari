@@ -92,14 +92,7 @@ export function appendToChangeLog(content: string, lines: readonly string[]): st
 	const section = all.slice(start + 1, end);
 	while (section.length > 0 && section[section.length - 1]!.trim() === "") section.pop();
 	while (section.length > 0 && section[0]!.trim() === "") section.shift();
-	const next = [
-		...all.slice(0, start + 1),
-		"",
-		...section,
-		...lines,
-		"",
-		...all.slice(end),
-	];
+	const next = [...all.slice(0, start + 1), "", ...section, ...lines, "", ...all.slice(end)];
 	return next.join("\n");
 }
 
@@ -137,11 +130,7 @@ interface ReconfirmOptions {
  * active. Throws when the item is not `input-changed` (D4) or the
  * published artifact is unreadable.
  */
-export function reconfirmArtifact(
-	cwd: string,
-	item: StaleItem,
-	opts?: ReconfirmOptions,
-): ReconfirmResult {
+export function reconfirmArtifact(cwd: string, item: StaleItem, opts?: ReconfirmOptions): ReconfirmResult {
 	if (item.reason !== "input-changed") {
 		throw new Error(
 			`${item.key} is ${item.reason} — re-confirm is only valid for input-changed items; republish instead.`,
@@ -153,9 +142,7 @@ export function reconfirmArtifact(
 
 	// (a) Mandated Change Log line per changed input. extraPaths entries
 	// (root-relative paths, e.g. the RTM JSON sidecar) are named as-is.
-	const lines = item.changedInputs.map((inputId) =>
-		reconfirmChangeLogLine(inputId, upstreamVersion(cwd, inputId)),
-	);
+	const lines = item.changedInputs.map((inputId) => reconfirmChangeLogLine(inputId, upstreamVersion(cwd, inputId)));
 	atomicWriteFile(artifactAbs, appendToChangeLog(content, lines), "utf8");
 
 	// (b) Re-stamp the manifest entry with current normalized hashes (D3/D6).

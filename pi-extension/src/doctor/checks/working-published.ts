@@ -12,10 +12,7 @@ import { join } from "node:path";
 import { GROUPED_CATEGORIES } from "../../core/paths.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-export function checkWorkingPublishedSeparationSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkWorkingPublishedSeparationSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const docsDir = join(cwd, "Doc");
 	const workingRoot = join(cwd, ".IDE_Plans", "velpari", "runs");

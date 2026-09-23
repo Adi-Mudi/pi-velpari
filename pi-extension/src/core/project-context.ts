@@ -123,11 +123,7 @@ function frameworkHints(cwd: string): string[] {
 	try {
 		const config = loadFilesConfig(cwd);
 		const hints: string[] = [];
-		mergeUnique(hints, [
-			config.framework?.language,
-			config.framework?.runtime,
-			...(config.framework?.libraries ?? []),
-		]);
+		mergeUnique(hints, [config.framework?.language, config.framework?.runtime, ...(config.framework?.libraries ?? [])]);
 		return hints;
 	} catch {
 		return [];

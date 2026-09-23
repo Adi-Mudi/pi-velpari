@@ -75,10 +75,7 @@ export function resolveDevOrderSidecar(mdPath: string): string | null {
  * @param {string} projectName - Project whose dev-order to load.
  * @returns {DevOrderData | null} The legacy DevOrderData shape, or null when neither DB nor sidecar has published rows.
  */
-export function loadDevOrderDataForEngine(
-	cwd: string,
-	projectName: string,
-): DevOrderData | null {
+export function loadDevOrderDataForEngine(cwd: string, projectName: string): DevOrderData | null {
 	const fromDb = readLatestPublishedRows(cwd, projectName, "development-order");
 	if (fromDb) {
 		const steps = (fromDb.rows.devStep as Array<Record<string, unknown>> | undefined) ?? [];
@@ -155,7 +152,9 @@ export function extractDevOrderAfRefsFromSidecar(mdPath: string): string[] | nul
  */
 export function findDependencyCycle(steps: readonly DevOrderStep[]): string[] | null {
 	const deps = new Map(steps.map((s) => [s.id, s.dependsOn]));
-	const WHITE = 0, GRAY = 1, BLACK = 2;
+	const WHITE = 0,
+		GRAY = 1,
+		BLACK = 2;
 	const color = new Map<string, number>(steps.map((s) => [s.id, WHITE]));
 	const stack: string[] = [];
 
@@ -233,7 +232,9 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 			issues.push(`${at}.module: missing or empty.`);
 		}
 		if (!Array.isArray(step.afs) || step.afs.some((a) => typeof a !== "string" || !AF_ID_PATTERN.test(a))) {
-			issues.push(`${at}.afs: must be an array of AF-<n> ids (use [] when none — every AF must appear in exactly one step overall).`);
+			issues.push(
+				`${at}.afs: must be an array of AF-<n> ids (use [] when none — every AF must appear in exactly one step overall).`,
+			);
 		}
 		if (!Array.isArray(step.dependsOn) || step.dependsOn.some((d) => typeof d !== "string")) {
 			issues.push(`${at}.dependsOn: must be an array of step ids (use [] for a foundation step).`);
@@ -241,8 +242,12 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 		if (step.rationale !== undefined && typeof step.rationale !== "string") {
 			issues.push(`${at}.rationale: must be a string when present.`);
 		}
-		if (typeof step.id === "string" && STEP_ID_PATTERN.test(step.id)
-			&& Array.isArray(step.dependsOn) && step.dependsOn.every((d) => typeof d === "string")) {
+		if (
+			typeof step.id === "string" &&
+			STEP_ID_PATTERN.test(step.id) &&
+			Array.isArray(step.dependsOn) &&
+			step.dependsOn.every((d) => typeof d === "string")
+		) {
 			steps.push({
 				id: step.id,
 				module: typeof step.module === "string" ? step.module : "",
@@ -258,7 +263,9 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 	for (const step of steps) {
 		for (const dep of step.dependsOn) {
 			if (!ids.has(dep)) {
-				issues.push(`steps.${step.id}.dependsOn: unknown step "${dep}" — dependsOn references step ids declared in this file.`);
+				issues.push(
+					`steps.${step.id}.dependsOn: unknown step "${dep}" — dependsOn references step ids declared in this file.`,
+				);
 			}
 		}
 	}
@@ -275,12 +282,17 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 	for (const step of steps) {
 		for (const dep of step.dependsOn) {
 			if (ids.has(dep) && position.get(dep)! >= position.get(step.id)!) {
-				issues.push(`order violation: step "${step.id}" is listed before "${dep}" which it depends on — list dependencies first.`);
+				issues.push(
+					`order violation: step "${step.id}" is listed before "${dep}" which it depends on — list dependencies first.`,
+				);
 			}
 		}
 	}
 
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -307,9 +319,7 @@ export function diffDevOrderData(baseline: DevOrderData, updated: DevOrderData):
 		}
 	}
 	if (compareVersions(updated.version, baseline.version) <= 0) {
-		issues.push(
-			`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`,
-		);
+		issues.push(`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`);
 	}
 	return { ok: issues.length === 0, issues };
 }
@@ -338,8 +348,10 @@ export function renderDevOrderMarkdown(data: DevOrderData): string {
 		"",
 		"| Rank | Module | Depends on | Rationale |",
 		"|---|---|---|---|",
-		...data.steps.map((s, i) =>
-			`| ${i + 1} | ${s.module} | ${s.dependsOn.length > 0 ? s.dependsOn.join(", ") : "—"} | ${s.rationale ?? "—"} |`),
+		...data.steps.map(
+			(s, i) =>
+				`| ${i + 1} | ${s.module} | ${s.dependsOn.length > 0 ? s.dependsOn.join(", ") : "—"} | ${s.rationale ?? "—"} |`,
+		),
 		"",
 		"## Recommended Execution Plan",
 		"",

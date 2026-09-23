@@ -28,10 +28,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot, slugify } from "./paths.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
-import {
-	addToGeneratedManifest,
-	loadGeneratedManifest,
-} from "./generated-manifest.js";
+import { addToGeneratedManifest, loadGeneratedManifest } from "./generated-manifest.js";
 import {
 	DEFAULT_AGENTS,
 	ROLE_LABELS,
@@ -129,7 +126,11 @@ export function getProjectTechnologiesDir(cwd: string): string {
  *  (`a, b`). Anything else returns []. Surrounding single/double quotes
  *  on individual items are stripped (YAML lists commonly quote values). */
 export function parseKeywords(raw: unknown): string[] {
-	const strip = (s: string) => s.trim().toLowerCase().replace(/^["']|["']$/g, "");
+	const strip = (s: string) =>
+		s
+			.trim()
+			.toLowerCase()
+			.replace(/^["']|["']$/g, "");
 	if (Array.isArray(raw)) {
 		return raw.map((k) => strip(String(k))).filter(Boolean);
 	}
@@ -208,19 +209,13 @@ export function discoverTechnologyResources(cwd: string): TechnologyResource[] {
  *  resources ordered by score (high to low). Falls back to the `generic`
  *  resource when nothing matches so generation never dead-ends. Returns
  *  [] if nothing matches AND `generic` is absent. */
-export function matchTechnologies(
-	stackHints: string[],
-	resources: TechnologyResource[],
-): TechnologyResource[] {
+export function matchTechnologies(stackHints: string[], resources: TechnologyResource[]): TechnologyResource[] {
 	const haystack = stackHints.join(" ").toLowerCase();
 	const scored = resources
 		.filter((r) => r.id !== "generic" && r.id !== "_template")
 		.map((r) => ({
 			resource: r,
-			score: r.keywords.reduce(
-				(acc, keyword) => (keyword && haystack.includes(keyword) ? acc + 1 : acc),
-				0,
-			),
+			score: r.keywords.reduce((acc, keyword) => (keyword && haystack.includes(keyword) ? acc + 1 : acc), 0),
 		}))
 		.filter((s) => s.score > 0)
 		.sort((a, b) => b.score - a.score);
@@ -264,11 +259,7 @@ export function hashFile(filePath: string): string | null {
 
 function buildProjectContextBlock(report: ArchitectReport | null): string {
 	if (!report) return "";
-	if (
-		report.techStack.length === 0 &&
-		report.atomicFunctions.length === 0 &&
-		report.constraints.length === 0
-	) {
+	if (report.techStack.length === 0 && report.atomicFunctions.length === 0 && report.constraints.length === 0) {
 		return "";
 	}
 	const lines: string[] = ["## Project context", ""];
@@ -589,10 +580,7 @@ export function writeGeneratedAgents(
  *   - `unknown`      — file exists but is NOT in the manifest; will
  *                      NOT be touched (preserves hand-made agents)
  */
-export function previewRegeneration(
-	cwd: string,
-	agentNames: readonly string[],
-): RegenerationPreview {
+export function previewRegeneration(cwd: string, agentNames: readonly string[]): RegenerationPreview {
 	const manifest = loadGeneratedManifest(cwd);
 	const preview: RegenerationPreview = { recreate: [], overwrite: [], keptDrifted: [], unknown: [] };
 	for (const agentName of agentNames) {

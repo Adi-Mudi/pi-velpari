@@ -24,15 +24,9 @@
  */
 
 import { SCOUT_AGENT_IDS, type ScoutAgentId } from "../../io/agents-install.js";
-import {
-	loadAgentConfig,
-	resolveAgentName,
-} from "../../core/agents-config.js";
+import { loadAgentConfig, resolveAgentName } from "../../core/agents-config.js";
 import { loadState, type ScanType } from "../../core/state.js";
-import {
-	guardArtifactPath,
-	guardDispatchCount,
-} from "./guard.js";
+import { guardArtifactPath, guardDispatchCount } from "./guard.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Constants
@@ -167,9 +161,7 @@ export interface PreparedDispatch {
 }
 
 /** Result of dispatch preparation. */
-type DispatchPrepResult =
-	| { ok: true; prepared: PreparedDispatch }
-	| { ok: false; reason: string; details?: string[] };
+type DispatchPrepResult = { ok: true; prepared: PreparedDispatch } | { ok: false; reason: string; details?: string[] };
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public API
@@ -183,14 +175,9 @@ type DispatchPrepResult =
  *    enforceReadOnlyTools(["write", "edit"], "doc")               → []
  *    enforceReadOnlyTools(["read", "websearch"], "community")     → ["read", "websearch"]
  *    enforceReadOnlyTools(["read", "websearch"], "code")          → ["read"] */
-export function enforceReadOnlyTools(
-	tools: readonly string[],
-	scanType?: ScanType,
-): string[] {
+export function enforceReadOnlyTools(tools: readonly string[], scanType?: ScanType): string[] {
 	const allowed = new Set(
-		scanType === "community"
-			? [...READ_ONLY_ALLOWED_TOOLS, ...COMMUNITY_EXTRA_TOOLS]
-			: READ_ONLY_ALLOWED_TOOLS,
+		scanType === "community" ? [...READ_ONLY_ALLOWED_TOOLS, ...COMMUNITY_EXTRA_TOOLS] : READ_ONLY_ALLOWED_TOOLS,
 	);
 	return tools.filter((t) => allowed.has(t));
 }
@@ -226,9 +213,7 @@ export function prepareDispatch(
 	if (!(SCOUT_AGENT_IDS as readonly string[]).includes(request.agent)) {
 		return {
 			ok: false,
-			reason:
-				`Agent "${request.agent}" is not a velpari scout.\n` +
-				`Allowed scouts: ${SCOUT_AGENT_IDS.join(", ")}.`,
+			reason: `Agent "${request.agent}" is not a velpari scout.\n` + `Allowed scouts: ${SCOUT_AGENT_IDS.join(", ")}.`,
 		};
 	}
 
@@ -278,8 +263,7 @@ export function prepareDispatch(
 	}
 
 	// 5. Tools allowlist — strip forbidden tools.
-	const requestedTools =
-		request.tools && request.tools.length > 0 ? request.tools : DEFAULT_DISPATCH_TOOLS;
+	const requestedTools = request.tools && request.tools.length > 0 ? request.tools : DEFAULT_DISPATCH_TOOLS;
 	const cleanedTools = enforceReadOnlyTools(requestedTools, request.scanType);
 	if (cleanedTools.length === 0) {
 		return {
@@ -288,17 +272,13 @@ export function prepareDispatch(
 				`Agent "${request.agent}" has no read-only tools after stripping forbidden ones.\n` +
 				`Requested: [${requestedTools.join(", ")}]\n` +
 				`Allowed: ${READ_ONLY_ALLOWED_TOOLS.join(", ")}` +
-				(request.scanType === "community"
-					? `, ${COMMUNITY_EXTRA_TOOLS.join(", ")}`
-					: "") +
+				(request.scanType === "community" ? `, ${COMMUNITY_EXTRA_TOOLS.join(", ")}` : "") +
 				`.`,
 		};
 	}
 
 	const timeoutMs =
-		request.scanType === "community"
-			? BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS
-			: BRAINSTORM_DISPATCH_TIMEOUT_MS;
+		request.scanType === "community" ? BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS : BRAINSTORM_DISPATCH_TIMEOUT_MS;
 
 	// Resolve the spawn agent name. The scout-id check above guarantees
 	// request.agent is one of the 4 brainstorm roles, so the cast is safe.
@@ -335,7 +315,11 @@ export function prepareDispatch(
 				ok: false,
 				reason:
 					`No session handle for key "${request.sessionHandleKey}" in state.activeSubagents.\n` +
-					`Available keys: ${Object.keys(state.activeSubagents).filter((k) => state.activeSubagents?.[k as keyof typeof state.activeSubagents]).join(", ") || "(none)"}.`,
+					`Available keys: ${
+						Object.keys(state.activeSubagents)
+							.filter((k) => state.activeSubagents?.[k as keyof typeof state.activeSubagents])
+							.join(", ") || "(none)"
+					}.`,
 			};
 		}
 		sessionHandle = handle;
@@ -378,16 +362,11 @@ export function formatScanPlanLines(scans: readonly ScanType[], cwd?: string): s
 	return scans.map((scan) => {
 		const roles = SCAN_TYPE_ROLES[scan]
 			.map((role) => {
-				const agentName = agentConfig
-					? resolveAgentName(agentConfig, role as ScoutAgentId)
-					: role;
+				const agentName = agentConfig ? resolveAgentName(agentConfig, role as ScoutAgentId) : role;
 				return agentName === role ? role : `${role} → ${agentName}`;
 			})
 			.join(", ");
-		const timeout =
-			scan === "community"
-				? BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS
-				: BRAINSTORM_DISPATCH_TIMEOUT_MS;
+		const timeout = scan === "community" ? BRAINSTORM_COMMUNITY_DISPATCH_TIMEOUT_MS : BRAINSTORM_DISPATCH_TIMEOUT_MS;
 		return `- ${scan} — scouts: ${roles} (timeout ${timeout / 1000}s)`;
 	});
 }
@@ -421,9 +400,7 @@ export function formatPreparedDispatch(prepared: PreparedDispatch): string {
 		"```",
 		`subagent({`,
 		`  agent: "${prepared.subagentArgs.agent}",`,
-		prepared.subagentArgs.session
-			? `  session: ${JSON.stringify(prepared.subagentArgs.session)},`
-			: "",
+		prepared.subagentArgs.session ? `  session: ${JSON.stringify(prepared.subagentArgs.session)},` : "",
 		`  cwd: ${JSON.stringify(prepared.subagentArgs.cwd)},`,
 		`  task: ${JSON.stringify(prepared.subagentArgs.task)},`,
 		`})`,

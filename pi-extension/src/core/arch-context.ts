@@ -55,14 +55,7 @@ interface AgentsConfigSnapshot {
 }
 
 export interface MissingInput {
-	kind:
-		| "PRD"
-		| "RTM"
-		| "feasibility"
-		| "filesConfig"
-		| "requirementsProfile"
-		| "standardsProfile"
-		| "agentsConfig";
+	kind: "PRD" | "RTM" | "feasibility" | "filesConfig" | "requirementsProfile" | "standardsProfile" | "agentsConfig";
 	path: string;
 	reason: "file-missing" | "parse-error";
 }
@@ -82,18 +75,12 @@ export function loadArchContext(runId: string, mission: string, cwd: string = pr
 	const standardsProfile = loadStandardsProfile(cwd);
 	const prd = loadDoc(resolveDocArtifact("PRD", projectName, cwd)?.path, "PRD", cwd);
 	const rtm = loadDoc(resolveDocArtifact("RTM", projectName, cwd)?.path, "RTM", cwd);
-	const feasibility = loadDoc(
-		resolveDocArtifact("feasibility-study", projectName, cwd)?.path,
-		"feasibility",
-		cwd,
-	);
+	const feasibility = loadDoc(resolveDocArtifact("feasibility-study", projectName, cwd)?.path, "feasibility", cwd);
 	const agentsConfig = loadAgentsConfig(cwd);
 
 	// v1.3.0+ multi-design: projectNames from the config, if set.
 	// Falls back to [] for the legacy single-design path.
-	const projectNames = filesConfig
-		? ((filesConfig as unknown as { projectNames?: string[] }).projectNames ?? [])
-		: [];
+	const projectNames = filesConfig ? ((filesConfig as unknown as { projectNames?: string[] }).projectNames ?? []) : [];
 
 	return {
 		runId,
@@ -133,9 +120,7 @@ export function summarizeArchContext(ctx: ArchContext): string {
 	lines.push(
 		`Standards overlay: ${ctx.standardsProfile ? `${ctx.standardsProfile.id}@${ctx.standardsProfile.version}` : "(none)"}`,
 	);
-	lines.push(
-		`Requirements profile: ${ctx.requirementsProfile ? ctx.requirementsProfile.profileId : "(none)"}`,
-	);
+	lines.push(`Requirements profile: ${ctx.requirementsProfile ? ctx.requirementsProfile.profileId : "(none)"}`);
 	lines.push(`Upstream artifacts:`);
 	lines.push(`  - PRD: ${ctx.prd ? `${ctx.prd.path}` : "missing"}`);
 	lines.push(`  - RTM: ${ctx.rtm ? `${ctx.rtm.path}` : "missing"}`);
@@ -262,8 +247,7 @@ function collectMissingInputs(args: {
 	}
 	if (!args.prd) out.push({ kind: "PRD", path: "(published PRD)", reason: "file-missing" });
 	if (!args.rtm) out.push({ kind: "RTM", path: "(published RTM)", reason: "file-missing" });
-	if (!args.feasibility)
-		out.push({ kind: "feasibility", path: "(published feasibility)", reason: "file-missing" });
+	if (!args.feasibility) out.push({ kind: "feasibility", path: "(published feasibility)", reason: "file-missing" });
 	if (!args.agentsConfig) {
 		out.push({
 			kind: "agentsConfig",

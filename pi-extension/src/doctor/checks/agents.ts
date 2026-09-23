@@ -38,23 +38,44 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const REQUIRED_AGENT_FIELDS = ["name", "description", "tools", "thinking", "session-mode", "auto-exit", "spawning"];
+export const REQUIRED_AGENT_FIELDS = [
+	"name",
+	"description",
+	"tools",
+	"thinking",
+	"session-mode",
+	"auto-exit",
+	"spawning",
+];
 
 /**
  * Known pi tool names. Mirrors Senai's `_types.ts`. Anything outside
  * this set in an agent's `tools:` is a typo that blocks scout startup.
  */
 export const KNOWN_TOOL_NAMES: Set<string> = new Set([
-	"read", "write", "edit", "bash", "grep", "find", "ls",
-	"askuserquestion", "intercom", "subagent",
-	"taskcreate", "taskexecute", "taskget", "tasklist", "taskoutput", "taskstop", "taskupdate",
-	"websearch", "fetchurl",
+	"read",
+	"write",
+	"edit",
+	"bash",
+	"grep",
+	"find",
+	"ls",
+	"askuserquestion",
+	"intercom",
+	"subagent",
+	"taskcreate",
+	"taskexecute",
+	"taskget",
+	"tasklist",
+	"taskoutput",
+	"taskstop",
+	"taskupdate",
+	"websearch",
+	"fetchurl",
 ]);
 
 /** Valid pi thinking levels. */
-export const VALID_THINKING_LEVELS: Set<string> = new Set([
-	"off", "minimal", "low", "medium", "high", "xhigh", "max",
-]);
+export const VALID_THINKING_LEVELS: Set<string> = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 /** Valid `session-mode:` values per pi's agent frontmatter spec. */
 export const VALID_SESSION_MODES: Set<string> = new Set(["standalone", "lineage-only"]);
@@ -74,9 +95,7 @@ export const VALID_SPAWNING: Set<string> = new Set(["true", "false"]);
  */
 export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
 	brainstorm: [...BRAINSTORM_ROLES],
-	...Object.fromEntries(
-		Object.values(STAGE_REGISTRY).map((spec) => [spec.key, [...spec.scouts]]),
-	),
+	...Object.fromEntries(Object.values(STAGE_REGISTRY).map((spec) => [spec.key, [...spec.scouts]])),
 	// v1.4.0 — cross-cutting discipline command. The 3 logging scouts
 	// live in LOGGING_SCOUT_ROLES (agents-config.ts) and are bundled
 	// under skills/agents/. Listed here so the stage-skills doctor check
@@ -396,9 +415,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				items.push({
 					status: "error",
 					message: `${filename}: unknown tool(s) in \`tools:\`: ${unknown.join(", ")}`,
-					details: [
-						`Known tools: ${Array.from(KNOWN_TOOL_NAMES).sort().join(", ")}`,
-					],
+					details: [`Known tools: ${Array.from(KNOWN_TOOL_NAMES).sort().join(", ")}`],
 					suggestion: "Fix the typo or remove the unknown tool.",
 				});
 			}
@@ -422,7 +439,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				status: "error",
 				message: `${filename}: invalid \`session-mode:\` value "${fm["session-mode"]}".`,
 				details: [`Valid values: ${Array.from(VALID_SESSION_MODES).join(", ")}`],
-				suggestion: `Set \`session-mode:\` to "${Array.from(VALID_SESSION_MODES).join("\" or \"")}".`,
+				suggestion: `Set \`session-mode:\` to "${Array.from(VALID_SESSION_MODES).join('" or "')}".`,
 			});
 		}
 
@@ -432,7 +449,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 			items.push({
 				status: "warning",
 				message: `${filename}: \`auto-exit:\` value "${fm["auto-exit"]}" is not a boolean.`,
-				suggestion: 'Set `auto-exit: true` or `auto-exit: false`.',
+				suggestion: "Set `auto-exit: true` or `auto-exit: false`.",
 			});
 		}
 
@@ -442,7 +459,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 			items.push({
 				status: "warning",
 				message: `${filename}: \`spawning:\` value "${fm.spawning}" is not a boolean.`,
-				suggestion: 'Set `spawning: true` or `spawning: false`.',
+				suggestion: "Set `spawning: true` or `spawning: false`.",
 			});
 		}
 

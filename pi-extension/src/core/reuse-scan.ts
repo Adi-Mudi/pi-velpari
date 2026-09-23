@@ -74,10 +74,7 @@ function monthsBetween(a: Date, b: Date): number {
 }
 
 /** Health gate: usable license + fresh repo. Reasons explain each failure. */
-export function checkHealth(
-	candidate: ReuseCandidate,
-	now: Date = new Date(),
-): { ok: boolean; reasons: string[] } {
+export function checkHealth(candidate: ReuseCandidate, now: Date = new Date()): { ok: boolean; reasons: string[] } {
 	const reasons: string[] = [];
 	const license = candidate.license.trim().toLowerCase();
 	if (!license || license === "unknown") {
@@ -117,9 +114,7 @@ export function verdictFor(
 	coreFunctions: readonly CoreFunction[],
 	now: Date = new Date(),
 ): { verdict: ReuseVerdict; scored: ScoredCandidate[] } {
-	const scored = candidates
-		.map((c) => scoreCandidate(c, coreFunctions, now))
-		.sort((a, b) => b.matchPct - a.matchPct);
+	const scored = candidates.map((c) => scoreCandidate(c, coreFunctions, now)).sort((a, b) => b.matchPct - a.matchPct);
 	const verdict: ReuseVerdict = scored.some((s) => s.status === "reuse-candidate")
 		? "reuse"
 		: scored.some((s) => s.status === "partial" || s.status === "health-blocked")
@@ -132,16 +127,12 @@ export function verdictFor(
  * Structural validation of a scout-written candidate checklist.
  * Returns a list of problems; empty = valid.
  */
-export function validateReuseCandidate(
-	candidate: unknown,
-	coreFunctions: readonly CoreFunction[],
-): string[] {
+export function validateReuseCandidate(candidate: unknown, coreFunctions: readonly CoreFunction[]): string[] {
 	const problems: string[] = [];
 	if (typeof candidate !== "object" || candidate === null) return ["candidate is not an object"];
 	const c = candidate as Partial<ReuseCandidate>;
 	if (typeof c.name !== "string" || !c.name.trim()) problems.push("name missing");
-	if (typeof c.repoUrl !== "string" || !/^https?:\/\//.test(c.repoUrl))
-		problems.push("repoUrl missing or not http(s)");
+	if (typeof c.repoUrl !== "string" || !/^https?:\/\//.test(c.repoUrl)) problems.push("repoUrl missing or not http(s)");
 	if (typeof c.license !== "string") problems.push("license missing");
 	if (typeof c.lastCommit !== "string" || Number.isNaN(new Date(c.lastCommit).getTime()))
 		problems.push("lastCommit missing or invalid");
@@ -155,8 +146,7 @@ export function validateReuseCandidate(
 			problems.push(`coverage[${fn.id}] must be 0, 0.5, or 1 (got ${JSON.stringify(v)})`);
 	}
 	for (const key of Object.keys(c.coverage)) {
-		if (!coreFunctions.some((fn) => fn.id === key))
-			problems.push(`coverage has unknown core-function id "${key}"`);
+		if (!coreFunctions.some((fn) => fn.id === key)) problems.push(`coverage has unknown core-function id "${key}"`);
 	}
 	return problems;
 }

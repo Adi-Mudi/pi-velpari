@@ -69,12 +69,7 @@ import { loadHistory } from "../../core/history.js";
 import { buildStagePrompt, type BrainstormExistingContext } from "../../core/prompt.js";
 import { buildRunDir, resolveDocArtifact, slugify } from "../../core/paths.js";
 import { loadRequirementsProfile } from "../../core/profile.js";
-import {
-	createRun,
-	loadState,
-	openBrainstormSession,
-	type RunState,
-} from "../../core/state.js";
+import { createRun, loadState, openBrainstormSession, type RunState } from "../../core/state.js";
 import { formatScanPlanLines } from "./dispatcher.js";
 import { spawnPersistentSessions } from "./spawn-sessions.js";
 import { guardSeedInput, guardStageForBrainstorm } from "./guard.js";
@@ -102,11 +97,7 @@ const PUBLISHED_ARTIFACT_KEYS = [
  * Returns null on a truly fresh project (no published artifacts, no
  * config, no profile, no previous runs) so the prompt stays unchanged.
  */
-function collectExistingContext(
-	cwd: string,
-	state: RunState,
-	config: FilesConfig,
-): BrainstormExistingContext | null {
+function collectExistingContext(cwd: string, state: RunState, config: FilesConfig): BrainstormExistingContext | null {
 	const publishedArtifacts: string[] = [];
 	if (config.projectName) {
 		for (const artifact of PUBLISHED_ARTIFACT_KEYS) {
@@ -137,10 +128,7 @@ function collectExistingContext(
 	}
 
 	const hasSignals =
-		publishedArtifacts.length > 0 ||
-		Boolean(config.projectName) ||
-		Boolean(profile) ||
-		previousRunIds.length > 0;
+		publishedArtifacts.length > 0 || Boolean(config.projectName) || Boolean(profile) || previousRunIds.length > 0;
 	if (!hasSignals) return null;
 
 	return {
@@ -276,14 +264,10 @@ export async function handleBrainstorm(
 			communityAgentName: resolveAgentName(loadAgentConfig(cwd), "web-search-agent"),
 			scansSelected: state.scansSelected,
 			understandingConfirmed: state.understandingConfirmed ?? false,
-			scanPlanLines: state.scansSelected
-				? formatScanPlanLines(state.scansSelected, cwd)
-				: undefined,
+			scanPlanLines: state.scansSelected ? formatScanPlanLines(state.scansSelected, cwd) : undefined,
 			existingContext: collectExistingContext(cwd, state, config),
 			activeSubagents:
-				spawn.alreadySpawned && postSpawnState.activeSubagents
-					? postSpawnState.activeSubagents
-					: undefined,
+				spawn.alreadySpawned && postSpawnState.activeSubagents ? postSpawnState.activeSubagents : undefined,
 			paths: {
 				extractorReport,
 				prdCheckerReport,
@@ -294,10 +278,7 @@ export async function handleBrainstorm(
 			},
 		});
 	} catch (err) {
-		ctx.ui.notify(
-			`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`,
-			"error",
-		);
+		ctx.ui.notify(`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`, "error");
 		return;
 	}
 

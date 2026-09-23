@@ -26,10 +26,7 @@ const ARTIFACTS: ReadonlyArray<string> = [
 	"development-order",
 ];
 
-export function checkGroupedLegacyPathsSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkGroupedLegacyPathsSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -71,4 +68,3 @@ export function checkGroupedLegacyPathsSection(
 
 	return { title: "Grouped / legacy paths", items };
 }
-

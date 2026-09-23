@@ -8,10 +8,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { clearRun, loadState } from "../core/state.js";
 
-export async function handleReset(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function handleReset(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const state = loadState(cwd);
 	if (state.currentStage === "none") {
 		ctx.ui.notify("No active run to reset.", "info");

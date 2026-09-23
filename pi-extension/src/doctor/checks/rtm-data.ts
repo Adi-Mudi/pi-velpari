@@ -12,12 +12,7 @@
 import { readFileSync } from "node:fs";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
 import { resolveDocArtifact } from "../../core/paths.js";
-import {
-	renderRtmMarkdown,
-	resolveRtmSidecar,
-	validateRtmData,
-	type RtmData,
-} from "../../core/rtm-data.js";
+import { renderRtmMarkdown, resolveRtmSidecar, validateRtmData, type RtmData } from "../../core/rtm-data.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -79,8 +74,7 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 
 	const data = parsed.data as RtmData;
 	const renderedBody = parseFrontmatterBlock(renderRtmMarkdown(data))?.body ?? "";
-	const publishedBody = parseFrontmatterBlock(readFileSync(md.path, "utf8"))?.body
-		?? readFileSync(md.path, "utf8");
+	const publishedBody = parseFrontmatterBlock(readFileSync(md.path, "utf8"))?.body ?? readFileSync(md.path, "utf8");
 	if (renderedBody.trim() !== publishedBody.trim()) {
 		items.push({
 			status: "error",

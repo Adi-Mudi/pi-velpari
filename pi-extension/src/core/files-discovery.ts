@@ -34,37 +34,105 @@ export function looksLikeTestPath(p: string): boolean {
 }
 
 const CODE_EXTENSIONS = new Set([
-	".ts", ".js", ".tsx", ".jsx", ".py", ".java", ".go", ".rs", ".c", ".cpp", ".h",
-	".cs", ".rb", ".php", ".swift", ".kt", ".scala", ".mjs", ".vue", ".svelte",
-	".sh", ".bash", ".ps1",
+	".ts",
+	".js",
+	".tsx",
+	".jsx",
+	".py",
+	".java",
+	".go",
+	".rs",
+	".c",
+	".cpp",
+	".h",
+	".cs",
+	".rb",
+	".php",
+	".swift",
+	".kt",
+	".scala",
+	".mjs",
+	".vue",
+	".svelte",
+	".sh",
+	".bash",
+	".ps1",
 ]);
 
-const DOCUMENT_EXTENSIONS = new Set([
-	".md", ".txt", ".rst", ".adoc",
-]);
+const DOCUMENT_EXTENSIONS = new Set([".md", ".txt", ".rst", ".adoc"]);
 
 const CODE_FOLDER_NAMES = new Set([
-	"src", "source", "lib", "libs", "app", "apps", "api", "apis",
-	"packages", "pkg", "backend", "frontend", "client", "server",
-	"core", "modules", "services", "components", "ui", "cli",
-	"workers", "functions", "scripts", "bin", "cmd", "internal",
+	"src",
+	"source",
+	"lib",
+	"libs",
+	"app",
+	"apps",
+	"api",
+	"apis",
+	"packages",
+	"pkg",
+	"backend",
+	"frontend",
+	"client",
+	"server",
+	"core",
+	"modules",
+	"services",
+	"components",
+	"ui",
+	"cli",
+	"workers",
+	"functions",
+	"scripts",
+	"bin",
+	"cmd",
+	"internal",
 ]);
 
 const DOCUMENT_FOLDER_NAMES = new Set([
-	"docs", "doc", "documentation", "specs", "specifications",
-	"requirements", "design", "planning", "prd", "proposals",
-	"notes", "wiki", "references", "guidelines", "rfcs",
+	"docs",
+	"doc",
+	"documentation",
+	"specs",
+	"specifications",
+	"requirements",
+	"design",
+	"planning",
+	"prd",
+	"proposals",
+	"notes",
+	"wiki",
+	"references",
+	"guidelines",
+	"rfcs",
 ]);
 
 const TEST_FOLDER_NAMES = new Set([
-	"tests", "test", "__tests__", "e2e", "integration", "spec",
-	"specs", "unit", "functional", "regression", "coverage",
+	"tests",
+	"test",
+	"__tests__",
+	"e2e",
+	"integration",
+	"spec",
+	"specs",
+	"unit",
+	"functional",
+	"regression",
+	"coverage",
 ]);
 
 const PROJECT_ROOT_MARKERS = new Set([
-	"package.json", "pyproject.toml", "cargo.toml", "go.mod",
-	"tsconfig.json", "jsconfig.json", "requirements.txt",
-	"pnpm-workspace.yaml", "lerna.json", "nx.json",
+	"package.json",
+	"pyproject.toml",
+	"cargo.toml",
+	"go.mod",
+	"tsconfig.json",
+	"jsconfig.json",
+	"requirements.txt",
+	"pnpm-workspace.yaml",
+	"lerna.json",
+	"nx.json",
 ]);
 
 /**
@@ -74,10 +142,7 @@ const PROJECT_ROOT_MARKERS = new Set([
  * sorted alphabetically; folder paths carry a trailing `/`; paths are
  * relative to cwd.
  */
-export function discoverProjectFiles(
-	cwd: string,
-	excludedPaths: string[],
-): FileDiscoveryResult {
+export function discoverProjectFiles(cwd: string, excludedPaths: string[]): FileDiscoveryResult {
 	const result: FileDiscoveryResult = {
 		codeFolders: [],
 		codeFiles: [],
@@ -196,12 +261,7 @@ function classifyFile(relative: string, result: FileDiscoveryResult): void {
 }
 
 /** Recursively collect .md/.txt/.rst/.adoc files under a document folder. */
-function collectDocumentFiles(
-	cwd: string,
-	folder: string,
-	excludedPaths: string[],
-	result: FileDiscoveryResult,
-): void {
+function collectDocumentFiles(cwd: string, folder: string, excludedPaths: string[], result: FileDiscoveryResult): void {
 	const full = path.join(cwd, folder);
 	const walk = (dir: string, prefix: string) => {
 		const entries = safeReadDir(dir);

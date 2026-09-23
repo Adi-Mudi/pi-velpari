@@ -156,11 +156,7 @@ function isSeparatorRow(cells: string[]): boolean {
  * Extract ids from the named columns of the FIRST markdown table in a
  * section body. Column match is case-insensitive on the header row.
  */
-function extractColumnIds(
-	body: string,
-	columnNames: string[],
-	prefixes: string[],
-): string[] {
+function extractColumnIds(body: string, columnNames: string[], prefixes: string[]): string[] {
 	const tableLines = body
 		.split("\n")
 		.map((l) => l.trim())
@@ -264,9 +260,7 @@ function evaluateRule(
 		const markdown = upstreamMarkdown.get(source.artifact);
 		if (markdown !== undefined) upstreamIds.push(...extractUpstreamIds(source, markdown));
 	}
-	const refs = downstreamRefsOverride
-		? [...downstreamRefsOverride]
-		: extractDownstreamRefs(rule, downstreamMarkdown);
+	const refs = downstreamRefsOverride ? [...downstreamRefsOverride] : extractDownstreamRefs(rule, downstreamMarkdown);
 	// D1 — zero parseable references → pre-A4-format doc, not machine-checkable.
 	if (refs.length === 0) {
 		return { rule, projectName, status: "not-checkable", missingIds: [], duplicateIds: [] };
@@ -330,7 +324,16 @@ export function checkDownstreamCoverage(
 			}
 		}
 		if (skipped) continue;
-		out.push(evaluateRule(rule, upstreamMarkdown, downstreamMarkdown, projectName, upstreamIdOverrides, downstreamRefsOverride));
+		out.push(
+			evaluateRule(
+				rule,
+				upstreamMarkdown,
+				downstreamMarkdown,
+				projectName,
+				upstreamIdOverrides,
+				downstreamRefsOverride,
+			),
+		);
 	}
 	return out;
 }

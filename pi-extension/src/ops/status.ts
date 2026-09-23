@@ -28,20 +28,14 @@ import {
 	resolveDocArtifact,
 	slugify,
 } from "../core/paths.js";
-import {
-	compactProfileMetadata,
-	loadRequirementsProfile,
-} from "../core/profile.js";
+import { compactProfileMetadata, loadRequirementsProfile } from "../core/profile.js";
 import { resolveDocArtifactAll } from "../core/paths.js";
 import { computeShapeVerdictsAll } from "../core/shape.js";
 import { readFileSync } from "node:fs";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 import { STAGE_LOCK_SPECS } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
-import {
-	generationHintForPhase,
-	phaseEntryPhase,
-} from "../core/agent-freshness.js";
+import { generationHintForPhase, phaseEntryPhase } from "../core/agent-freshness.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -132,7 +126,11 @@ export async function handleStatus(
 		lines.push("Profile: (none — run /velpari-configure-requirements)");
 	}
 
-	lines.push(``, `## History`, ...loadHistory(cwd, state.runId).map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`));
+	lines.push(
+		``,
+		`## History`,
+		...loadHistory(cwd, state.runId).map((h) => `- ${h.timestamp} — ${h.command} → ${h.stage}`),
+	);
 	lines.push(``, `## Published artifacts (Doc/)`);
 
 	if (projectName) {
@@ -164,9 +162,7 @@ export async function handleStatus(
 	if (projectName) {
 		const loggingPlan = loadPublishedLoggingPlanMarkdown(cwd, projectName);
 		if (loggingPlan) {
-			lines.push(
-				`${projectName}: ${loggingPlan.path} (${loggingPlan.layout} layout)`,
-			);
+			lines.push(`${projectName}: ${loggingPlan.path} (${loggingPlan.layout} layout)`);
 		} else {
 			lines.push(`${projectName}: (not published — run /velpari-design-logging)`);
 		}

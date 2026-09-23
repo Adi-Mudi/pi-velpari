@@ -76,7 +76,9 @@ export async function runFallbackActions(
 	ctx: ExtensionCommandContext,
 	_cwd: string = process.cwd(),
 ): Promise<FallbackChoice | undefined> {
-	const picked = await askSelect<string>(ctx, "No exact profile match — choose a fallback action", [...FALLBACK_OPTIONS]);
+	const picked = await askSelect<string>(ctx, "No exact profile match — choose a fallback action", [
+		...FALLBACK_OPTIONS,
+	]);
 	if (picked === undefined) return undefined;
 	if (picked === FALLBACK_OPTIONS[0]) return "core";
 	if (picked === FALLBACK_OPTIONS[1]) return "closest";

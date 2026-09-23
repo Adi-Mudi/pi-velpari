@@ -51,10 +51,7 @@ function deprecatedPrdIds(prsContent: string): string[] {
 	return out.sort();
 }
 
-export function checkStaleDownstreamSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkStaleDownstreamSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -75,11 +72,7 @@ export function checkStaleDownstreamSection(
 			(candidate) => candidate.workingCopyArtifact.toLowerCase() === item.artifact,
 		);
 		const command =
-			item.artifact === "brainstorm"
-				? "/velpari-brainstorm"
-				: upstreamSpec
-					? `/velpari-${upstreamSpec.key}`
-					: null;
+			item.artifact === "brainstorm" ? "/velpari-brainstorm" : upstreamSpec ? `/velpari-${upstreamSpec.key}` : null;
 		items.push({
 			status: "error",
 			message:
@@ -102,10 +95,7 @@ export function checkStaleDownstreamSection(
 		deprecatedChecked = deprecated.length;
 		for (const id of deprecated) {
 			const liveRow = rtmLines.find(
-				(line) =>
-					line.trim().startsWith("|") &&
-					line.includes(id) &&
-					!line.toLowerCase().includes("deprecated"),
+				(line) => line.trim().startsWith("|") && line.includes(id) && !line.toLowerCase().includes("deprecated"),
 			);
 			if (liveRow) {
 				items.push({

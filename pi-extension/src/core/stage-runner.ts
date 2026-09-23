@@ -188,9 +188,7 @@ export async function runStageWithScouts(
 	let prompt: string;
 	try {
 		const additionalLines = (config.additionalWorkingCopies ?? []).map((p) => `    additional: ${p}`).join("\n");
-		const workingCopyField = additionalLines
-			? `${config.workingCopyPath}\n${additionalLines}`
-			: config.workingCopyPath;
+		const workingCopyField = additionalLines ? `${config.workingCopyPath}\n${additionalLines}` : config.workingCopyPath;
 		prompt = buildStagePrompt({
 			stage: config.stage,
 			mission: config.mission,
@@ -214,10 +212,7 @@ export async function runStageWithScouts(
 			},
 		});
 	} catch (err) {
-		ctx.ui.notify(
-			`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`,
-			"error",
-		);
+		ctx.ui.notify(`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`, "error");
 		return;
 	}
 
@@ -226,9 +221,7 @@ export async function runStageWithScouts(
 
 	// 6. Notify user.
 	const scoutList = config.scouts.map((s) => s.name).join(", ");
-	const modeLine = config.updateMode
-		? `Mode: UPDATE (baseline: ${config.updateMode.baselinePath})\n`
-		: "";
+	const modeLine = config.updateMode ? `Mode: UPDATE (baseline: ${config.updateMode.baselinePath})\n` : "";
 	ctx.ui.notify(
 		`Stage "${config.stage}" started for: ${config.mission}\n` +
 			modeLine +

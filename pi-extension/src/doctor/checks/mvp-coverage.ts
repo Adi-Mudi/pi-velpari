@@ -28,11 +28,7 @@ export function checkMvpCoverageSection(cwd: string, projectName: string): Diagn
 	}
 
 	items.push({
-		status: report.issues.some((i) => i.severity === "error")
-			? "error"
-			: report.issues.length > 0
-				? "warning"
-				: "ok",
+		status: report.issues.some((i) => i.severity === "error") ? "error" : report.issues.length > 0 ? "warning" : "ok",
 		message: `MVP coverage: ${report.covered}/${report.total} Phase-1 requirement(s) fully covered.`,
 	});
 	for (const issue of report.issues) {

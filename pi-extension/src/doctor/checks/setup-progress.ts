@@ -31,9 +31,7 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	}
 	items.push({
 		status: filesDone ? "ok" : "info",
-		message: filesDone
-			? "1. Project files configured — done"
-			: "1. Project files configured — pending",
+		message: filesDone ? "1. Project files configured — done" : "1. Project files configured — pending",
 		suggestion: filesDone ? undefined : suggestionFor("setup-files"),
 	});
 
@@ -58,19 +56,13 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 			return [];
 		}
 	})();
-	const brainstormEverApproved = history.some(
-		(e) => e.command === "/velpari-approve-brainstorm",
-	);
+	const brainstormEverApproved = history.some((e) => e.command === "/velpari-approve-brainstorm");
 	const anyApproveEver = history.some((e) => /approve/.test(e.command));
 
-	const brainstormDone =
-		(effectiveStage !== "none" && effectiveStage !== "brainstorming") ||
-		brainstormEverApproved;
+	const brainstormDone = (effectiveStage !== "none" && effectiveStage !== "brainstorming") || brainstormEverApproved;
 	items.push({
 		status: brainstormDone ? "ok" : "info",
-		message: brainstormDone
-			? "2. Brainstorm completed — done"
-			: "2. Brainstorm completed — pending",
+		message: brainstormDone ? "2. Brainstorm completed — done" : "2. Brainstorm completed — pending",
 		suggestion: brainstormDone ? undefined : suggestionFor("setup-brainstorm"),
 	});
 
@@ -130,15 +122,11 @@ export function checkSetupProgress(cwd: string): DiagnosticSection {
 	// covers the "approved earlier in this run, now back at an early stage"
 	// case (e.g. a paused/restarted brainstorm).
 	const approved =
-		(effectiveStage !== "none" &&
-			effectiveStage !== "brainstorming" &&
-			effectiveStage !== "brainstormed") ||
+		(effectiveStage !== "none" && effectiveStage !== "brainstorming" && effectiveStage !== "brainstormed") ||
 		anyApproveEver;
 	items.push({
 		status: approved ? "ok" : "info",
-		message: approved
-			? "6. First approve done — ready for the pipeline"
-			: "6. First approve — pending",
+		message: approved ? "6. First approve done — ready for the pipeline" : "6. First approve — pending",
 		suggestion: approved ? undefined : suggestionFor("setup-approve"),
 	});
 

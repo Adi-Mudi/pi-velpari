@@ -74,12 +74,7 @@ function readAgentConfig(cwd: string): AgentConfig | null {
 }
 
 /** Per-role completeness check. */
-function checkRoleAgent(
-	cwd: string,
-	slug: string,
-	config: AgentConfig | null,
-	role: string,
-): DiagnosticItem[] {
+function checkRoleAgent(cwd: string, slug: string, config: AgentConfig | null, role: string): DiagnosticItem[] {
 	const items: DiagnosticItem[] = [];
 	const resolved = resolveAgentName(config, role as VelpariRole);
 	const expectedGenerated = generatedName(slug, role);

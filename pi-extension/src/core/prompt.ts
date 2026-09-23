@@ -270,11 +270,8 @@ export interface BuildStagePromptInput {
 export function buildStagePrompt(input: BuildStagePromptInput): string {
 	const skill = loadStageSkill(input.stage);
 	const fwLine = input.framework ? `Framework: ${input.framework}\n` : "";
-	const answersBlock = input.answers.length === 0
-		? "(no answers collected)"
-		: input.answers
-				.map((a, i) => `${i + 1}. ${a}`)
-				.join("\n");
+	const answersBlock =
+		input.answers.length === 0 ? "(no answers collected)" : input.answers.map((a, i) => `${i + 1}. ${a}`).join("\n");
 
 	const communityAgent = input.communityAgentName ?? "web-search-agent";
 	const webSearchLine = input.webSearchAllowed
@@ -306,8 +303,7 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 		for (const s of input.paths.scouts) {
 			// Report paths stay role-keyed; the spawn note names the resolved
 			// agent only when agents.json remaps the role to a custom name.
-			const spawnNote =
-				s.agentName && s.agentName !== s.name ? ` (spawn agent: ${s.agentName})` : "";
+			const spawnNote = s.agentName && s.agentName !== s.name ? ` (spawn agent: ${s.agentName})` : "";
 			scoutLines.push(`    ${s.name}-report.json: ${s.reportPath}${spawnNote}`);
 		}
 	} else {
@@ -354,19 +350,9 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 		``,
 	].join("\n");
 
-	const answersSection = [
-		`## Interview Answers (collected by handler)`,
-		``,
-		answersBlock,
-		``,
-	].join("\n");
+	const answersSection = [`## Interview Answers (collected by handler)`, ``, answersBlock, ``].join("\n");
 
-	const flagsSection = [
-		`## Flags`,
-		``,
-		webSearchLine.trimEnd(),
-		``,
-	].join("\n");
+	const flagsSection = [`## Flags`, ``, webSearchLine.trimEnd(), ``].join("\n");
 
 	// Lifecycle v2 (Phase 3): when the scan gate ran (scansSelected present,
 	// possibly empty), the `## Scan Plan` block carries the user's gate
@@ -379,8 +365,7 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 					``,
 					`Understanding confirmed: ${input.understandingConfirmed === true ? "yes" : "no"}`,
 					`Approved scans:`,
-					...(input.scanPlanLines ??
-						input.scansSelected.map((s) => `- ${s}`)),
+					...(input.scanPlanLines ?? input.scansSelected.map((s) => `- ${s}`)),
 					``,
 				].join("\n")
 			: "";
@@ -444,9 +429,7 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 					`## Conditional Agents (spawn ONLY when the skill's conditions are met)`,
 					``,
 					...input.conditionalAgents.map((a) =>
-						a.agentName !== a.role
-							? `- role ${a.role} (spawn agent: ${a.agentName})`
-							: `- role ${a.role}`,
+						a.agentName !== a.role ? `- role ${a.role} (spawn agent: ${a.agentName})` : `- role ${a.role}`,
 					),
 					``,
 				].join("\n")
@@ -460,7 +443,21 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 	// handles for routing during the DISCUSS loop.
 	const activeSubagentsSection = renderActiveSubagents(input.activeSubagents ?? null);
 
-	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, activeSubagentsSection, updateModeSection, conditionalSection, dbSliceSection, scoutSliceSection, inputContentSection, skill]
+	return [
+		metadata,
+		profileSection,
+		atomicProfileSection,
+		existingContextSection,
+		answersSection,
+		scanPlanSection || flagsSection,
+		activeSubagentsSection,
+		updateModeSection,
+		conditionalSection,
+		dbSliceSection,
+		scoutSliceSection,
+		inputContentSection,
+		skill,
+	]
 		.filter((s) => s.length > 0)
 		.join("\n");
 }
@@ -476,8 +473,10 @@ function renderAtomicProfile(profile: AtomicProfile | null): string {
 	const fieldsByTier: Record<AtomicProfile["tier"], string> = {
 		entry: "Base-core only (8 fields): afId, name, purpose, signature, source, cohesion, verification, testable.",
 		basic: "Base-core + basic-tier refs: calledByFrIds, designRef, extractedFrom, satisfactionFrId, feasibilityRef.",
-		intermediate: "Base-core + basic + EARS pattern, inputs, outputs, errors, dependencies, dbOrIo, complexity, coupling, argCount, oneLevelAbstr, nameIntent.",
-		advanced: "Base-core + basic + intermediate + owner, priority, securityClass, risk, reusability, modifiabilityNote, storyPoints, acceptanceRef, testRef, rationale, changeLog.",
+		intermediate:
+			"Base-core + basic + EARS pattern, inputs, outputs, errors, dependencies, dbOrIo, complexity, coupling, argCount, oneLevelAbstr, nameIntent.",
+		advanced:
+			"Base-core + basic + intermediate + owner, priority, securityClass, risk, reusability, modifiabilityNote, storyPoints, acceptanceRef, testRef, rationale, changeLog.",
 	};
 	return [
 		`## Atomic Profile (ISO/IEC 29110 + IEC 61508/IEC 62304)`,
@@ -501,9 +500,7 @@ function renderAtomicProfile(profile: AtomicProfile | null): string {
  * and the full published baseline fenced as a read-only reference.
  * Returns "" when no baseline exists (fresh draft — unchanged behavior).
  */
-function renderUpdateMode(
-	updateMode: { baselinePath: string; baselineContent: string } | null,
-): string {
+function renderUpdateMode(updateMode: { baselinePath: string; baselineContent: string } | null): string {
 	if (!updateMode) return "";
 	return [
 		`## Update Mode`,
@@ -585,9 +582,7 @@ function renderExistingContext(context: BrainstormExistingContext | null): strin
  * is being used (legacy callers pass undefined). Callers who want the
  * block always rendered (e.g. fresh rehydrate) pass an empty object.
  */
-function renderActiveSubagents(
-	handles: { web?: string; docCode?: string; spawnedAt?: string } | null,
-): string {
+function renderActiveSubagents(handles: { web?: string; docCode?: string; spawnedAt?: string } | null): string {
 	if (handles === null) return "";
 	const lines: string[] = [
 		`## Active sub-agents (persistent sessions)`,

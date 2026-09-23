@@ -35,9 +35,7 @@ import type { DiagnosticSection } from "../_types.js";
 /** Re-exported so existing callers keep one import site for the contract. */
 export type { ReviewerIssue, ReviewerVerdict };
 
-const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find(
-	(s) => s.stageKey === "atomic-function",
-)!;
+const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!;
 
 /**
  * Load the reviewer verdict JSON for the latest atomic-function run and
@@ -51,10 +49,7 @@ const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find(
  * must never silently pass through a stage that never ran the reviewer
  * (spec policy `missingVerdict: "always-error"`).
  */
-export function loadReviewerVerdict(
-	cwd: string,
-	profile: AtomicProfile,
-): DiagnosticSection {
+export function loadReviewerVerdict(cwd: string, profile: AtomicProfile): DiagnosticSection {
 	const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
 	return loadReviewerVerdictForStage(cwd, ATOMIC_FUNCTION_SPEC, tierContext, profile);
 }

@@ -70,10 +70,7 @@ export function saveGeneratedManifest(cwd: string, manifest: GeneratedManifest):
 /** Hash each path in `fileAbsPaths` and merge into the manifest under its
  *  project-relative key. Existing entries are preserved (merge, not wipe).
  *  Returns the merged manifest. Unreadable files are skipped. */
-export function addToGeneratedManifest(
-	cwd: string,
-	fileAbsPaths: readonly string[],
-): GeneratedManifest {
+export function addToGeneratedManifest(cwd: string, fileAbsPaths: readonly string[]): GeneratedManifest {
 	const manifest = loadGeneratedManifest(cwd);
 	for (const abs of fileAbsPaths) {
 		const rel = relative(cwd, abs);

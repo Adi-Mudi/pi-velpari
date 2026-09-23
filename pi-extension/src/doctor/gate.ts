@@ -30,15 +30,8 @@ import { readFileSync } from "node:fs";
 import { resolveDocArtifact, slugify } from "../core/paths.js";
 import { extractRequirementPhases, validatePsrs } from "../core/psrs.js";
 import { validateFeasibilityDoc } from "../core/feasibility-doc.js";
-import {
-	checkRowFingerprints,
-	extractRequirementFingerprints,
-} from "../core/fingerprints.js";
-import {
-	loadFreshnessManifest,
-	manifestKey,
-	resolveDeclaredInputs,
-} from "../core/freshness.js";
+import { checkRowFingerprints, extractRequirementFingerprints } from "../core/fingerprints.js";
+import { loadFreshnessManifest, manifestKey, resolveDeclaredInputs } from "../core/freshness.js";
 import { checkDownstreamCoverage } from "../core/id-coverage.js";
 import { loadState } from "../core/state.js";
 import { STAGE_REGISTRY } from "../stages/registry.js";
@@ -46,10 +39,7 @@ import { gateArchSubCycle } from "./checks/arch-sub-cycle.js";
 import { gateStandardsProfile } from "./checks/standards-profile.js";
 import { gateADR } from "./checks/adr.js";
 import { gateDesignReadiness } from "./checks/design-readiness.js";
-import {
-	loadReviewerVerdictForStage,
-	verifierSpecForArtifact,
-} from "./checks/reviewer-verdict.js";
+import { loadReviewerVerdictForStage, verifierSpecForArtifact } from "./checks/reviewer-verdict.js";
 import { deriveAtomicProfile } from "../core/atomic-tier.js";
 import { loadFilesConfig } from "../core/config.js";
 import type { RtmData } from "../core/rtm-data.js";
@@ -178,9 +168,7 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 	//     so the user sees the cascade immediately after publish.
 	{
 		const spec = Object.values(STAGE_REGISTRY).find(
-			(s) =>
-				s.workingCopyArtifact === input.artifact ||
-				s.additionalWorkingCopies?.includes(input.artifact),
+			(s) => s.workingCopyArtifact === input.artifact || s.additionalWorkingCopies?.includes(input.artifact),
 		);
 		if (spec) {
 			const state = loadState(input.cwd);
@@ -215,12 +203,7 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 	// published upstreams. missing → error (blocks, D1); not-checkable →
 	// warning (legacy pre-A4 doc, publish continues); duplicates → warning
 	// (D2). A rule whose upstream artifact is absent is skipped.
-	for (const result of checkDownstreamCoverage(
-		input.cwd,
-		input.artifact,
-		input.workingContent,
-		input.projectName,
-	)) {
+	for (const result of checkDownstreamCoverage(input.cwd, input.artifact, input.workingContent, input.projectName)) {
 		if (result.status === "missing") {
 			errors.push(
 				`id-coverage:${result.rule.id}: missing ${result.missingIds.join(", ")} — ` +

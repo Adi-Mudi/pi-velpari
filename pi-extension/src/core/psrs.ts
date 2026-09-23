@@ -10,17 +10,7 @@
  * structural definition used by every check that follows.
  */
 
-const PLACEHOLDER_HINTS = [
-	"todo",
-	"tbd",
-	"tba",
-	"fill in",
-	"placeholder",
-	"<placeholder>",
-	"xxx",
-	"lorem ipsum",
-	"??",
-];
+const PLACEHOLDER_HINTS = ["todo", "tbd", "tba", "fill in", "placeholder", "<placeholder>", "xxx", "lorem ipsum", "??"];
 
 interface PsrsMetadata {
 	documentType: string;
@@ -97,14 +87,7 @@ const REQUIRED_SECTIONS = [
 ] as const;
 
 /** Requirement status lifecycle (Jama/Wiegers; ISO/IEC/IEEE 29148 §6.5). */
-const REQUIREMENT_STATUSES = [
-	"proposed",
-	"approved",
-	"implemented",
-	"verified",
-	"deferred",
-	"deprecated",
-] as const;
+const REQUIREMENT_STATUSES = ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"] as const;
 
 /**
  * Parse a markdown section by its `## Heading` marker and return
@@ -182,7 +165,10 @@ export function extractIdsFromTable(
 	for (const line of lines) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const cells = trimmed.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+		const cells = trimmed
+			.split("|")
+			.map((c) => c.trim())
+			.filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		const matched = idPrefixes.find((p) => first.startsWith(p));
@@ -206,7 +192,10 @@ export function extractIdRows(
 	for (const line of lines) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const cells = trimmed.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+		const cells = trimmed
+			.split("|")
+			.map((c) => c.trim())
+			.filter((c) => c.length > 0);
 		if (cells.length < 1) continue;
 		const first = cells[0]!;
 		const matched = idPrefixes.find((p) => first.startsWith(p));
@@ -314,7 +303,10 @@ function checkStatusColumn(
 		return;
 	}
 	for (const line of lines.slice(2)) {
-		const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+		const cells = line
+			.split("|")
+			.map((c) => c.trim())
+			.filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		if (!first.startsWith(idPrefix)) continue;
@@ -366,7 +358,10 @@ function checkPhaseColumn(
 		return;
 	}
 	for (const line of lines.slice(2)) {
-		const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+		const cells = line
+			.split("|")
+			.map((c) => c.trim())
+			.filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		if (!first.startsWith(idPrefix)) continue;
@@ -410,7 +405,10 @@ export function extractRequirementPhases(markdown: string): Map<string, number> 
 		const phaseIdx = headerCells.indexOf("phase");
 		if (phaseIdx === -1) continue;
 		for (const line of lines.slice(2)) {
-			const cells = line.split("|").map((c) => c.trim()).filter((c) => c.length > 0);
+			const cells = line
+				.split("|")
+				.map((c) => c.trim())
+				.filter((c) => c.length > 0);
 			if (cells.length < 2) continue;
 			const first = cells[0]!;
 			if (!first.startsWith(idPrefix)) continue;
@@ -602,7 +600,10 @@ export function validatePsrs(markdown: string): PsrsValidationResult {
 	};
 
 	// 6b. User Stories + Success Metrics: ids + duplicates.
-	for (const [heading, prefix] of [["User Stories", "US-"], ["Success Metrics", "SM-"]] as const) {
+	for (const [heading, prefix] of [
+		["User Stories", "US-"],
+		["Success Metrics", "SM-"],
+	] as const) {
 		const body = readSectionBody(markdown, heading);
 		const rows = extractIdsFromTable(body, [prefix]);
 		const ids = rows.map((r) => r.id);
@@ -744,7 +745,10 @@ function collectTableIds(markdown: string): Set<string> {
 	for (const line of markdown.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const first = trimmed.split("|").map((c) => c.trim()).filter((c) => c.length > 0)[0];
+		const first = trimmed
+			.split("|")
+			.map((c) => c.trim())
+			.filter((c) => c.length > 0)[0];
 		if (first && COMPARE_ID_PREFIXES.some((p) => first.startsWith(p))) {
 			ids.add(first);
 		}
@@ -787,7 +791,9 @@ export function comparePsrs(baseline: string, updated: string): PsrsCompareResul
 
 	const baselineIds = collectTableIds(baseline);
 	const updatedIds = collectTableIds(updated);
-	const removedIds = Array.from(baselineIds).filter((id) => !updatedIds.has(id)).sort();
+	const removedIds = Array.from(baselineIds)
+		.filter((id) => !updatedIds.has(id))
+		.sort();
 	for (const id of removedIds) {
 		issues.push({
 			severity: "error",
@@ -807,9 +813,15 @@ export function comparePsrs(baseline: string, updated: string): PsrsCompareResul
 	}
 
 	const baselineLog = new Set(
-		readSectionBody(baseline, "Change Log").split("\n").map((l) => l.trim()).filter((l) => l.length > 0),
+		readSectionBody(baseline, "Change Log")
+			.split("\n")
+			.map((l) => l.trim())
+			.filter((l) => l.length > 0),
 	);
-	const updatedLogLines = readSectionBody(updated, "Change Log").split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+	const updatedLogLines = readSectionBody(updated, "Change Log")
+		.split("\n")
+		.map((l) => l.trim())
+		.filter((l) => l.length > 0);
 	const hasNewEntry = updatedLogLines.some((l) => !baselineLog.has(l));
 	if (!hasNewEntry) {
 		issues.push({
