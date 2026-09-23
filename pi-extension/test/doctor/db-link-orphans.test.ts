@@ -45,17 +45,16 @@ function seedStore(projectName: string, links: Array<[string, string, string, st
 			"INSERT INTO artifacts (run_id, kind, version, stage, generated_at, sha256_fingerprint, inputs, reviewer_verdict, change_log, status) " +
 				"VALUES ('r1', 'prd', 1, 'drafting-prd', '2026-09-22T00:00:00Z', 'f', '{}', NULL, '[]', 'published')",
 		).run();
-		db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'FR-1', 1, 'h', 'published')").run();
-		db.prepare("INSERT INTO nfr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'NFR-1', 1, 'h', 'published')").run();
+		db.prepare(
+			"INSERT INTO fr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'FR-1', 1, 'h', 'published')",
+		).run();
+		db.prepare(
+			"INSERT INTO nfr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'NFR-1', 1, 'h', 'published')",
+		).run();
 		for (const [fk, fid, tk, tid, rel] of links) {
-			db.prepare("INSERT INTO links (run_id, from_kind, from_id, to_kind, to_id, relation) VALUES (?, ?, ?, ?, ?, ?)").run(
-				"r1",
-				fk,
-				fid,
-				tk,
-				tid,
-				rel,
-			);
+			db.prepare(
+				"INSERT INTO links (run_id, from_kind, from_id, to_kind, to_id, relation) VALUES (?, ?, ?, ?, ?, ?)",
+			).run("r1", fk, fid, tk, tid, rel);
 		}
 	} finally {
 		closeStoreDb(db);
@@ -132,8 +131,12 @@ describe("checkDbLinkOrphansSection", () => {
 		seedStore("TodoApp", []);
 		const db = openStoreDb(buildStoreDbPath("TodoApp", cwd));
 		try {
-			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'FR-DRAFT', 1, 'h', 'draft')").run();
-			db.prepare("INSERT INTO links (run_id, from_kind, from_id, to_kind, to_id, relation) VALUES ('r1', 'fr', 'FR-DRAFT', 'nfr', 'NFR-1', 'covers')").run();
+			db.prepare(
+				"INSERT INTO fr (run_id, kind, id, phase, text_hash, status) VALUES ('r1', 'prd', 'FR-DRAFT', 1, 'h', 'draft')",
+			).run();
+			db.prepare(
+				"INSERT INTO links (run_id, from_kind, from_id, to_kind, to_id, relation) VALUES ('r1', 'fr', 'FR-DRAFT', 'nfr', 'NFR-1', 'covers')",
+			).run();
 		} finally {
 			closeStoreDb(db);
 		}

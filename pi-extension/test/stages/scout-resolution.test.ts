@@ -102,11 +102,7 @@ describe("runStage with a remapped role (end-to-end)", () => {
 		// The prd stage input: published brainstorm notes.
 		const notesDir = path.join(tmpDir, "Doc", "brainstorm");
 		fs.mkdirSync(notesDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(notesDir, `brainstorm-${slugify("Test mission")}.md`),
-			"# Brainstorm Notes\n",
-			"utf8",
-		);
+		fs.writeFileSync(path.join(notesDir, `brainstorm-${slugify("Test mission")}.md`), "# Brainstorm Notes\n", "utf8");
 	}
 
 	it("renders role-keyed report paths + spawn note, and skips bootstrap for the remapped role", async () => {

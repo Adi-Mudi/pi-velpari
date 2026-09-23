@@ -10,14 +10,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -31,10 +24,7 @@ import {
 	type GeneratedRoleDef,
 } from "../../src/core/agents-generator.js";
 import { VELPARI_BRAINSTORM_GENERATED_ROLES } from "../../src/core/agents-config.js";
-import {
-	addToGeneratedManifest,
-	loadGeneratedManifest,
-} from "../../src/core/generated-manifest.js";
+import { addToGeneratedManifest, loadGeneratedManifest } from "../../src/core/generated-manifest.js";
 
 function freshTmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-write-"));
@@ -147,13 +137,7 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
 
 				// Generate the content that the generator will write.
-				const md = buildGeneratedAgentMarkdown(
-					SAMPLE_DEF,
-					`${slug}-extractor`,
-					slug,
-					[],
-					null,
-				);
+				const md = buildGeneratedAgentMarkdown(SAMPLE_DEF, `${slug}-extractor`, slug, [], null);
 				writeFileSync(filePath, md, "utf8");
 
 				// Pre-populate manifest with the matching sha256
@@ -185,13 +169,7 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
 
 				// Initial file + manifest hash (simulating a previous generation round)
-				const priorMd = buildGeneratedAgentMarkdown(
-					SAMPLE_DEF,
-					`${slug}-extractor`,
-					slug,
-					[],
-					null,
-				);
+				const priorMd = buildGeneratedAgentMarkdown(SAMPLE_DEF, `${slug}-extractor`, slug, [], null);
 				writeFileSync(filePath, priorMd, "utf8");
 				addToGeneratedManifest(cwd, [filePath]);
 
@@ -255,10 +233,7 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				writeGeneratedAgents(cwd, plans);
 
 				const manifest = loadGeneratedManifest(cwd);
-				assert.ok(
-					manifest.files[".pi/agents/unrelated.md"],
-					"unrelated entry must survive the merge",
-				);
+				assert.ok(manifest.files[".pi/agents/unrelated.md"], "unrelated entry must survive the merge");
 			} finally {
 				rmSync(cwd, { recursive: true, force: true });
 			}
@@ -312,10 +287,7 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				// Drift the second one
 				writeFileSync(fileDrifted, "content v1 (user edit)", "utf8");
 
-				const preview = previewRegeneration(cwd, [
-					`${slug}-extractor`,
-					`${slug}-prd-checker`,
-				]);
+				const preview = previewRegeneration(cwd, [`${slug}-extractor`, `${slug}-prd-checker`]);
 				assert.deepEqual(preview.overwrite, [relMatched]);
 				assert.deepEqual(preview.keptDrifted, [relDrifted]);
 				assert.equal(preview.recreate.length, 0);
@@ -385,14 +357,10 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				const added = updateAgentsJson(cwd, plans);
 				assert.equal(added, plans.length - 1, "extractor's mapping was custom → skipped");
 
-				const content = JSON.parse(
-					readFileSync(join(agentConfigDir, "agents.json"), "utf8"),
-				) as { agents: Record<string, string> };
-				assert.equal(
-					content.agents.extractor,
-					"my-custom-extractor-agent",
-					"custom mapping MUST be preserved",
-				);
+				const content = JSON.parse(readFileSync(join(agentConfigDir, "agents.json"), "utf8")) as {
+					agents: Record<string, string>;
+				};
+				assert.equal(content.agents.extractor, "my-custom-extractor-agent", "custom mapping MUST be preserved");
 			} finally {
 				rmSync(cwd, { recursive: true, force: true });
 			}
@@ -417,18 +385,13 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 					"utf8",
 				);
 
-				const plans = planAgentGeneration(
-					cwd,
-					[...VELPARI_BRAINSTORM_GENERATED_ROLES],
-					[],
-					null,
-				);
+				const plans = planAgentGeneration(cwd, [...VELPARI_BRAINSTORM_GENERATED_ROLES], [], null);
 				const added = updateAgentsJson(cwd, plans);
 				assert.equal(added, 0);
 
-				const content = JSON.parse(
-					readFileSync(join(agentConfigDir, "agents.json"), "utf8"),
-				) as { agents: Record<string, string> };
+				const content = JSON.parse(readFileSync(join(agentConfigDir, "agents.json"), "utf8")) as {
+					agents: Record<string, string>;
+				};
 				assert.deepEqual(content.agents, {
 					extractor: "my-custom-1",
 					"prd-checker": "my-custom-2",
@@ -467,10 +430,7 @@ describe("agents-generator-write (Phase 4 — write-with-safety contract)", () =
 				assert.equal(added, 0);
 
 				const configPath = join(cwd, ".pi", "velpari", "agents.json");
-				assert.ok(
-					!existsSync(configPath),
-					"no agents.json should be written when nothing changed",
-				);
+				assert.ok(!existsSync(configPath), "no agents.json should be written when nothing changed");
 			} finally {
 				rmSync(cwd, { recursive: true, force: true });
 			}

@@ -152,25 +152,15 @@ export function setupFullCwd(cwd: string): void {
 	const vpDir = join(cwd, ".pi", "velpari");
 	mkdirSync(vpDir, { recursive: true });
 	writeFileSync(join(vpDir, "files.json"), JSON.stringify(FILES_JSON, null, 2));
-	writeFileSync(
-		join(vpDir, "requirements-profile.json"),
-		JSON.stringify(REQUIREMENTS_PROFILE, null, 2),
-	);
-	writeFileSync(
-		join(vpDir, "standards-profile.json"),
-		JSON.stringify(STANDARDS_PROFILE, null, 2),
-	);
+	writeFileSync(join(vpDir, "requirements-profile.json"), JSON.stringify(REQUIREMENTS_PROFILE, null, 2));
+	writeFileSync(join(vpDir, "standards-profile.json"), JSON.stringify(STANDARDS_PROFILE, null, 2));
 	writeFileSync(join(vpDir, "agents.json"), JSON.stringify({ version: 1, agents: {} }));
 
 	const docReqDir = join(cwd, "Doc", "requirements");
 	mkdirSync(docReqDir, { recursive: true });
 	writeFileSync(join(docReqDir, `PRD_${TEST_PROJECT}.md`), PSRS_FM, "utf8");
 	writeFileSync(join(docReqDir, `RTM_${TEST_PROJECT}.md`), "# RTM\n", "utf8");
-	writeFileSync(
-		join(docReqDir, `RTM_${TEST_PROJECT}.json`),
-		JSON.stringify(RTM_JSON, null, 2) + "\n",
-		"utf8",
-	);
+	writeFileSync(join(docReqDir, `RTM_${TEST_PROJECT}.json`), JSON.stringify(RTM_JSON, null, 2) + "\n", "utf8");
 }
 
 /** Removes the cwd if it was created with mkdtempSync — convenience helper. */

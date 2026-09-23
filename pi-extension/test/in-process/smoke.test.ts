@@ -42,9 +42,7 @@ describe("L3 in-process harness — compatibility smoke", () => {
 		// Compatibility probe. If this fails with ERR_MODULE_NOT_FOUND
 		// referencing pi-coding-agent internals, mark L3 as deferred.
 		const t = makeTest("smoke-load-extension", {
-			conversation: [
-				{ blocks: [text("Velpari extension loaded successfully.")] },
-			],
+			conversation: [{ blocks: [text("Velpari extension loaded successfully.")] }],
 		});
 
 		const result = await t.run("Confirm the extension is loaded");

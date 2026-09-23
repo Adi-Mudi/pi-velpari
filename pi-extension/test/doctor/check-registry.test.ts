@@ -59,9 +59,7 @@ describe("runDoctor includes ShapeCompatibility section", () => {
 			"utf8",
 		);
 		fs.mkdirSync(path.join(tmpDir, "Doc", "design"), { recursive: true });
-		const md =
-			"---\nversion: 1.0.2\n---\n\n" +
-			Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
+		const md = "---\nversion: 1.0.2\n---\n\n" + Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
 		fs.writeFileSync(path.join(tmpDir, "Doc", "design", "design_TodoApp.md"), md, "utf8");
 		const report = runDoctor(tmpDir);
 		const shape = report.sections.find((s) => s.title === "Shape compatibility");
@@ -78,9 +76,7 @@ describe("runDoctor includes ShapeCompatibility section", () => {
 			"utf8",
 		);
 		fs.mkdirSync(path.join(tmpDir, "Doc", "design"), { recursive: true });
-		const md =
-			"---\nversion: 1.1.0\n---\n\n" +
-			Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
+		const md = "---\nversion: 1.1.0\n---\n\n" + Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
 		fs.writeFileSync(path.join(tmpDir, "Doc", "design", "design_TodoApp.md"), md, "utf8");
 		const report = runDoctor(tmpDir);
 		const shape = report.sections.find((s) => s.title === "Shape compatibility");

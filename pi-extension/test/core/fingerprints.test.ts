@@ -93,15 +93,16 @@ describe("checkRowFingerprints", () => {
 	const fps = extractRequirementFingerprints(PSRS);
 
 	it("reports nothing when every row matches", () => {
-		const rows = stampFingerprints(
-			[rtmRow("FR-01"), rtmRow("FR-02"), rtmRow("NFR-01")],
-			fps,
-		);
+		const rows = stampFingerprints([rtmRow("FR-01"), rtmRow("FR-02"), rtmRow("NFR-01")], fps);
 		assert.deepEqual(checkRowFingerprints(rows, fps), []);
 	});
 
 	it("flags a suspect row when the requirement text changed", () => {
-		const rows = [rtmRow("FR-01", "0".repeat(64)), rtmRow("FR-02", fps.get("FR-02")!), rtmRow("NFR-01", fps.get("NFR-01")!)];
+		const rows = [
+			rtmRow("FR-01", "0".repeat(64)),
+			rtmRow("FR-02", fps.get("FR-02")!),
+			rtmRow("NFR-01", fps.get("NFR-01")!),
+		];
 		const issues = checkRowFingerprints(rows, fps);
 		assert.equal(issues.length, 1);
 		assert.equal(issues[0]!.problem, "suspect");
@@ -121,7 +122,10 @@ describe("checkRowFingerprints", () => {
 	it("flags orphan PSRS requirements with no RTM row", () => {
 		const rows = stampFingerprints([rtmRow("FR-01")], fps);
 		const issues = checkRowFingerprints(rows, fps);
-		const orphans = issues.filter((i) => i.problem === "orphan").map((i) => i.id).sort();
+		const orphans = issues
+			.filter((i) => i.problem === "orphan")
+			.map((i) => i.id)
+			.sort();
 		assert.deepEqual(orphans, ["FR-02", "NFR-01"]);
 	});
 });

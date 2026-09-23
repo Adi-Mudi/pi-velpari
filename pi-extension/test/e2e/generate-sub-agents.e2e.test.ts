@@ -29,11 +29,7 @@ import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 import { runDoctor } from "../../src/doctor/index.js";
@@ -60,22 +56,20 @@ describe("e2e/generate-sub-agents", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		assert.ok(
 			names.includes("velpari-generate-sub-agents"),
 			`/velpari-generate-sub-agents missing from registered commands: ${names.join(", ")}`,
 		);
 	});
 
-	it("get_commands keeps the new command sorted alongside existing discipline commands", { timeout: 60_000 }, async (t) => {
+	it("get_commands keeps the new command sorted alongside existing discipline commands", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		// The new command should appear in the discipline section
 		// alongside velpari-doctor and velpari-configure-agents.
 		assert.ok(names.includes("velpari-doctor"));
@@ -107,10 +101,7 @@ describe("e2e/generate-sub-agents — doctor section", () => {
 			"Generated agent freshness",
 			"Verifier verdicts (Layer 3)",
 		]) {
-			assert.ok(
-				titles.includes(expected),
-				`doctor sections missing '${expected}'. Found: ${titles.join(", ")}`,
-			);
+			assert.ok(titles.includes(expected), `doctor sections missing '${expected}'. Found: ${titles.join(", ")}`);
 		}
 	});
 
@@ -138,7 +129,10 @@ describe("e2e/generate-sub-agents — doctor section", () => {
 			assert.equal(
 				s!.items.filter((i) => i.status === "error").length,
 				0,
-				`unexpected errors in '${title}': ${s!.items.filter((i) => i.status === "error").map((i) => i.message).join(" | ")}`,
+				`unexpected errors in '${title}': ${s!.items
+					.filter((i) => i.status === "error")
+					.map((i) => i.message)
+					.join(" | ")}`,
 			);
 		}
 	});

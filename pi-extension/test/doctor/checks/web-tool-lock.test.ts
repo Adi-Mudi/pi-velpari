@@ -78,10 +78,7 @@ describe("checkWebToolLock — agents without web tools", () => {
 			});
 			const section = checkWebToolLock(cwd);
 			assert.ok(section.items.some((i) => i.status === "ok"));
-			assert.equal(
-				section.items.filter((i) => i.status === "error").length,
-				0,
-			);
+			assert.equal(section.items.filter((i) => i.status === "error").length, 0);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -239,9 +236,7 @@ describe("checkWebToolLock — mixed scenarios", () => {
 				tools: "bash, read",
 			});
 			const section = checkWebToolLock(cwd);
-			const summary = section.items.find(
-				(i) => /violation\(s\) across/i.test(i.message),
-			);
+			const summary = section.items.find((i) => /violation\(s\) across/i.test(i.message));
 			assert.ok(summary);
 			assert.equal(summary!.status, "error");
 			assert.match(summary!.message, /1 violation/);

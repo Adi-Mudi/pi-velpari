@@ -108,10 +108,7 @@ function seed(rows: RtmRow[]): void {
 		fs.writeFileSync(p, artifact === "PRD" ? PSRS : `# ${artifact}\n`);
 	}
 	const rtmJson = path.join(tmpDir, buildGroupedPath("RTM", "TestApp")).replace(/\.md$/, ".json");
-	fs.writeFileSync(
-		rtmJson,
-		JSON.stringify({ project: "TestApp", version: "1.0.0", rows }),
-	);
+	fs.writeFileSync(rtmJson, JSON.stringify({ project: "TestApp", version: "1.0.0", rows }));
 }
 
 function enterFinalizedDesign(): void {

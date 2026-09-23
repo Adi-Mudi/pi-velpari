@@ -63,18 +63,12 @@ function seedProjectName(name = "Demo"): void {
 
 function seedPublishedPRD(name = "Demo"): void {
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });
-	writeFileSync(
-		join(cwd, "Doc", "requirements", `PRD_${name}.md`),
-		"# PRD\n\n## Functional Requirements",
-	);
+	writeFileSync(join(cwd, "Doc", "requirements", `PRD_${name}.md`), "# PRD\n\n## Functional Requirements");
 }
 
 function seedPublishedDesign(name = "Demo"): void {
 	mkdirSync(join(cwd, "Doc", "design"), { recursive: true });
-	writeFileSync(
-		join(cwd, "Doc", "design", `design_${name}.md`),
-		"# Design\n",
-	);
+	writeFileSync(join(cwd, "Doc", "design", `design_${name}.md`), "# Design\n");
 }
 
 function makeCtx(): { ctx: Ctx; pi: Api } {

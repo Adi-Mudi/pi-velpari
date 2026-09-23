@@ -370,13 +370,15 @@ export function checkIdCoverage(cwd: string): IdCoverageReport {
 			// whole-doc scan stays the final fallback.
 			let downstreamRefsOverride: readonly string[] | undefined;
 			if (rule.downstream === "test-cases") {
-				downstreamRefsOverride = extractTestCaseTracesFromStore(cwd, downstream.projectName)
-					?? extractTestCaseTracesFromSidecar(downstream.path)
-					?? undefined;
+				downstreamRefsOverride =
+					extractTestCaseTracesFromStore(cwd, downstream.projectName) ??
+					extractTestCaseTracesFromSidecar(downstream.path) ??
+					undefined;
 			} else if (rule.downstream === "development-order") {
-				downstreamRefsOverride = extractDevOrderAfRefsFromStore(cwd, downstream.projectName)
-					?? extractDevOrderAfRefsFromSidecar(downstream.path)
-					?? undefined;
+				downstreamRefsOverride =
+					extractDevOrderAfRefsFromStore(cwd, downstream.projectName) ??
+					extractDevOrderAfRefsFromSidecar(downstream.path) ??
+					undefined;
 			}
 			results.push(
 				...checkDownstreamCoverage(

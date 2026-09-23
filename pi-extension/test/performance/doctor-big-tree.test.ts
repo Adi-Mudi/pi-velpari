@@ -88,11 +88,7 @@ describe("performance — doctor on a big Doc/ tree", () => {
 		});
 		for (let i = 0; i < 500; i++) {
 			writeFileSync(join(docDir, `RTM_App${i}.md`), `# RTM\n`, "utf8");
-			writeFileSync(
-				join(docDir, `RTM_App${i}.json`),
-				rtmJson,
-				"utf8",
-			);
+			writeFileSync(join(docDir, `RTM_App${i}.json`), rtmJson, "utf8");
 		}
 		const start = Date.now();
 		runDoctor(cwd);

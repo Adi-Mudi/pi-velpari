@@ -6,19 +6,11 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	mkdtempSync,
-	mkdirSync,
-	writeFileSync,
-	rmSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-	runHandoff,
-	validateSenaiSchema,
-} from "../../src/ops/handoff.js";
+import { runHandoff, validateSenaiSchema } from "../../src/ops/handoff.js";
 import type { RunState } from "../../src/core/state.js";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
@@ -87,22 +79,14 @@ function seedPublishedArtifacts(cwd: string, projectName: string): void {
 		JSON.stringify({ version: 1, rows: [] }),
 		"utf8",
 	);
-	writeFileSync(
-		join(docDir, "feasibility", `feasibility-study_${projectName}.md`),
-		"# feasibility\n",
-		"utf8",
-	);
+	writeFileSync(join(docDir, "feasibility", `feasibility-study_${projectName}.md`), "# feasibility\n", "utf8");
 	writeFileSync(join(docDir, "design", `design_${projectName}.md`), "# design\n", "utf8");
 	writeFileSync(join(docDir, "pseudocode", `pseudocode_${projectName}.md`), "# pseudocode\n", "utf8");
 	writeFileSync(join(docDir, "tests", `test-plan_${projectName}.md`), "# test plan\n", "utf8");
 	writeFileSync(join(docDir, "tests", `test-cases_${projectName}.md`), "# test cases\n", "utf8");
 	// standards-profile (so validateSenaiSchema accepts)
 	const vpDir = join(cwd, ".pi", "velpari");
-	writeFileSync(
-		join(vpDir, "standards-profile.json"),
-		JSON.stringify({ id: "none", version: "1.0.0" }),
-		"utf8",
-	);
+	writeFileSync(join(vpDir, "standards-profile.json"), JSON.stringify({ id: "none", version: "1.0.0" }), "utf8");
 }
 
 describe("runHandoff — gate errors", () => {

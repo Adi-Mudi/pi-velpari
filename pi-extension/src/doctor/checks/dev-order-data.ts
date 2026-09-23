@@ -46,8 +46,11 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 		if (doRows.length === 0) {
 			items.push({
 				status: "warning",
-				message: "Development-order store rows exist but the row-set is empty — run `/velpari-development-order` update mode and republish.",
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				message:
+					"Development-order store rows exist but the row-set is empty — run `/velpari-development-order` update mode and republish.",
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 				suggestion: suggestionFor("do-data-invalid"),
 			});
 			return { title: "Development-order data sidecar", items };

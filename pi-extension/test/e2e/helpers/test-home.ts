@@ -65,13 +65,7 @@ export function shouldRunE2E(): boolean {
 /** Recognized provider keys (matches the Senai Tier 2 contract, kept
  *  identical here so a future Velpari Tier 2 suite can reuse the same
  *  recognition logic). */
-const PROVIDER_KEY_VARS = [
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"GOOGLE_API_KEY",
-	"MISTRAL_API_KEY",
-	"KIMI_API_KEY",
-];
+const PROVIDER_KEY_VARS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "MISTRAL_API_KEY", "KIMI_API_KEY"];
 
 /** The dummy key CI workflows inject. Treated as "no real key" so
  *  tests that need a real LLM skip locally and on CI alike. */
@@ -86,10 +80,7 @@ export function hasRealLlmKey(): boolean {
 		if (v && v.length > 0 && !DUMMY_KEYS.has(v)) return true;
 	}
 
-	const authPaths = [
-		path.join(homedir(), ".pi", "agent", "auth.json"),
-		path.join(homedir(), ".pi", "auth.json"),
-	];
+	const authPaths = [path.join(homedir(), ".pi", "agent", "auth.json"), path.join(homedir(), ".pi", "auth.json")];
 	if (process.env.KIMI_CODE_HOME) {
 		authPaths.push(path.join(process.env.KIMI_CODE_HOME, "auth.json"));
 		authPaths.push(path.join(process.env.KIMI_CODE_HOME, "agent", "auth.json"));
@@ -104,7 +95,7 @@ export function hasRealLlmKey(): boolean {
 						typeof entry === "object" &&
 						entry !== null &&
 						typeof (entry as { key?: unknown }).key === "string" &&
-						((entry as { key: string }).key.length > 0) &&
+						(entry as { key: string }).key.length > 0 &&
 						!DUMMY_KEYS.has((entry as { key: string }).key),
 				)
 			) {
@@ -138,11 +129,7 @@ function findProjectRoot(start: string): string | null {
 		if (fs.existsSync(pkg)) {
 			try {
 				const json = JSON.parse(fs.readFileSync(pkg, "utf8"));
-				if (
-					json &&
-					(json.name === "pi-velpari" || json.name === "@adi-mudi/pi-velpari")
-				)
-					return dir;
+				if (json && (json.name === "pi-velpari" || json.name === "@adi-mudi/pi-velpari")) return dir;
 			} catch {
 				/* keep walking */
 			}
@@ -173,9 +160,7 @@ function distExtensionDir(): string {
 	if (!root) throw new Error("distExtensionDir: could not locate the pi-velpari project root");
 	const dist = path.join(root, "dist", "pi-extension", "src");
 	if (!fs.existsSync(path.join(dist, "index.js"))) {
-		throw new Error(
-			`distExtensionDir: ${dist}/index.js is missing — run \`npm run build\` before the e2e suite`,
-		);
+		throw new Error(`distExtensionDir: ${dist}/index.js is missing — run \`npm run build\` before the e2e suite`);
 	}
 	return dist;
 }

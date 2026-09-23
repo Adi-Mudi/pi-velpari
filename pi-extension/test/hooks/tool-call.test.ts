@@ -82,9 +82,7 @@ describe("tool_call hook (brainstorm mutation lock)", () => {
 		assert.equal(edit?.block, true);
 
 		// Inside the brainstorm folder: allowed.
-		const inside = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "brainstorm", "brainstorm-notes.md",
-		);
+		const inside = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "brainstorm", "brainstorm-notes.md");
 		assert.equal(fire("write", { path: inside }), undefined);
 
 		// Non-mutating tools pass through.
@@ -136,9 +134,7 @@ describe("tool_call hook (stage mutation lock)", () => {
 		assert.equal(doc?.block, true);
 
 		// Inside the stage folder: allowed.
-		const inside = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "prd", "PRD_X.md",
-		);
+		const inside = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "prd", "PRD_X.md");
 		assert.equal(fire("write", { path: inside }), undefined);
 
 		// Reads and bash pass through.
@@ -167,19 +163,13 @@ describe("tool_call hook (stage mutation lock)", () => {
 		assert.equal(state.currentStage, "planning-tests");
 
 		assert.equal(fire("write", { path: "src/index.ts" })?.block, true);
-		const inside = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "tests", "test-cases_X.md",
-		);
+		const inside = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "tests", "test-cases_X.md");
 		assert.equal(fire("write", { path: inside }), undefined);
 	});
 
 	it("lifts the lock on completed stages", () => {
 		createRun("Test mission", tmpDir);
-		const state = walkTo([
-			"/velpari-approve-brainstorm",
-			"/velpari-prd",
-			"/velpari-prd-approve",
-		]);
+		const state = walkTo(["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-prd-approve"]);
 		assert.equal(state.currentStage, "drafted-prd");
 		assert.equal(fire("write", { path: "src/index.ts" }), undefined);
 	});
@@ -225,9 +215,7 @@ describe("tool_call hook (mutation-lock precedence, D4)", () => {
 		// A write INSIDE the paused stage's folder would be allowed by the
 		// stage lock — but the brainstorm lock owns the whole project while
 		// the session is open and blocks it.
-		const prdWorking = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md",
-		);
+		const prdWorking = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md");
 		const res = fire("write", { path: prdWorking });
 		assert.equal(res?.block, true);
 		assert.match(res?.reason ?? "", /read-only/);
@@ -235,7 +223,13 @@ describe("tool_call hook (mutation-lock precedence, D4)", () => {
 
 		// Writes inside the brainstorm folder stay allowed.
 		const inside = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "brainstorm", "brainstorm-notes.md",
+			tmpDir,
+			".IDE_Plans",
+			"velpari",
+			"runs",
+			opened.runId,
+			"brainstorm",
+			"brainstorm-notes.md",
 		);
 		assert.equal(fire("write", { path: inside }), undefined);
 	});
@@ -243,20 +237,13 @@ describe("tool_call hook (mutation-lock precedence, D4)", () => {
 	it("guardStageMutation is suppressed at brainstorming even when called directly", () => {
 		openPausedBrainstorm("drafting-prd");
 		const state = loadState(tmpDir);
-		const res = guardStageMutation(
-			"write",
-			{ path: "src/index.ts" },
-			state,
-			tmpDir,
-		);
+		const res = guardStageMutation("write", { path: "src/index.ts" }, state, tmpDir);
 		assert.equal(res, undefined, "stage lock must not fire while a brainstorm is open");
 	});
 
 	it("discard lifts the brainstorm lock and restores the stage lock at the resumed stage", () => {
 		const opened = openPausedBrainstorm("drafting-prd");
-		const prdWorking = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md",
-		);
+		const prdWorking = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", opened.runId, "prd", "working-copy.md");
 		assert.equal(fire("write", { path: prdWorking })?.block, true);
 
 		discardBrainstormSession(tmpDir);

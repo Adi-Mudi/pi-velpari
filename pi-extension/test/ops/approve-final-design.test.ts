@@ -11,14 +11,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	existsSync,
-	mkdtempSync,
-	mkdirSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -152,23 +145,12 @@ describe("/velpari-rtm-approve final-design publish path", () => {
 		const runId = loadState(cwd).runId!;
 		const workingDir = join(cwd, ".IDE_Plans", "velpari", "runs", runId, "final-design");
 		mkdirSync(workingDir, { recursive: true });
-		writeFileSync(
-			join(workingDir, "final-design_FinalApp.md"),
-			frontmatter("1.0.0") + requiredSections(),
-			"utf8",
-		);
+		writeFileSync(join(workingDir, "final-design_FinalApp.md"), frontmatter("1.0.0") + requiredSections(), "utf8");
 
 		// B4: the publish gate refuses a final-design publish when any of its
 		// declared inputs is missing; seed them as legacy flat Doc artifacts.
 		mkdirSync(join(cwd, "Doc"), { recursive: true });
-		for (const name of [
-			"design",
-			"atomic-functions",
-			"pseudocode",
-			"test-plan",
-			"test-cases",
-			"development-order",
-		]) {
+		for (const name of ["design", "atomic-functions", "pseudocode", "test-plan", "test-cases", "development-order"]) {
 			writeFileSync(join(cwd, "Doc", `${name}_FinalApp.md`), `# ${name}\n`, "utf8");
 		}
 
@@ -207,21 +189,13 @@ describe("/velpari-rtm-approve final-design publish path", () => {
 		const pubDir = join(cwd, "Doc", "design");
 		mkdirSync(pubDir, { recursive: true });
 		const pubPath = join(pubDir, "final-design_FinalApp.md");
-		writeFileSync(
-			pubPath,
-			frontmatter("1.0.0") + requiredSections(),
-			"utf8",
-		);
+		writeFileSync(pubPath, frontmatter("1.0.0") + requiredSections(), "utf8");
 		const before = readFileSync(pubPath, "utf8");
 
 		const runId = loadState(cwd).runId!;
 		const workingDir = join(cwd, ".IDE_Plans", "velpari", "runs", runId, "final-design");
 		mkdirSync(workingDir, { recursive: true });
-		writeFileSync(
-			join(workingDir, "final-design_FinalApp.md"),
-			frontmatter("1.0.0") + requiredSections(),
-			"utf8",
-		);
+		writeFileSync(join(workingDir, "final-design_FinalApp.md"), frontmatter("1.0.0") + requiredSections(), "utf8");
 
 		const ctx = makeCtx();
 		await handleApprove(ctx, undefined, cwd, { skipDbPublish: true });

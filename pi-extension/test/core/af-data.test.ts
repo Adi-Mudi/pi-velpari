@@ -107,9 +107,7 @@ describe("validateAfData", () => {
 	});
 
 	it("type-checks array and number tier fields when present", () => {
-		const result = validateAfData(
-			data({ functions: [af({ calledByFrIds: "FR-1", complexity: "high" })] }),
-		);
+		const result = validateAfData(data({ functions: [af({ calledByFrIds: "FR-1", complexity: "high" })] }));
 		assert.ok(result.issues.some((i) => i.includes(".calledByFrIds: must be an array")));
 		assert.ok(result.issues.some((i) => i.includes(".complexity: must be a number")));
 	});
@@ -168,9 +166,7 @@ describe("diffAfData", () => {
 
 describe("renderAfMarkdown", () => {
 	it("renders frontmatter, summary, table and change log", () => {
-		const rendered = renderAfMarkdown(
-			data({ tier: "entry", changeLog: ["1.0.0 — initial"] }),
-		);
+		const rendered = renderAfMarkdown(data({ tier: "entry", changeLog: ["1.0.0 — initial"] }));
 		assert.match(rendered, /artifact: atomic-functions/);
 		assert.match(rendered, /atomicTier: entry/);
 		assert.match(rendered, /# Atomic Functions — TestApp/);

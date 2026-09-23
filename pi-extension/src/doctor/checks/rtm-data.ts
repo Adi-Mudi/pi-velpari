@@ -39,7 +39,9 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 			items.push({
 				status: "warning",
 				message: "RTM store rows exist but the row-set is empty — run `/velpari-rtm` update mode and republish.",
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 				suggestion: suggestionFor("rtm-json-invalid"),
 			});
 			return { title: "RTM data sidecar", items };

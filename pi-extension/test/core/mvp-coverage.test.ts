@@ -67,10 +67,7 @@ describe("checkMvpCoverage", () => {
 
 	it("returns null when no Phase-1 requirements exist", () => {
 		const cwd = setup([row("FR-01")]);
-		writeFileSync(
-			join(cwd, "Doc", "requirements", "PRD_TestApp.md"),
-			PSRS.replaceAll("| 1 |", "| 2 |"),
-		);
+		writeFileSync(join(cwd, "Doc", "requirements", "PRD_TestApp.md"), PSRS.replaceAll("| 1 |", "| 2 |"));
 		assert.equal(checkMvpCoverage(cwd, "TestApp"), null);
 	});
 
@@ -85,9 +82,7 @@ describe("checkMvpCoverage", () => {
 	it("no-row is an error", () => {
 		const report = checkMvpCoverage(setup([row("FR-01")]), "TestApp");
 		assert.ok(report);
-		assert.ok(
-			report.issues.some((i) => i.id === "NFR-01" && i.problem === "no-row" && i.severity === "error"),
-		);
+		assert.ok(report.issues.some((i) => i.id === "NFR-01" && i.problem === "no-row" && i.severity === "error"));
 	});
 
 	it("coverage missing is an error; partial and no-tests are warnings", () => {
@@ -111,10 +106,7 @@ describe("checkMvpCoverageSection", () => {
 	});
 
 	it("reports ok with the coverage ratio when fully covered", () => {
-		const section = checkMvpCoverageSection(
-			setup([row("FR-01"), row("FR-02"), row("NFR-01")]),
-			"TestApp",
-		);
+		const section = checkMvpCoverageSection(setup([row("FR-01"), row("FR-02"), row("NFR-01")]), "TestApp");
 		assert.equal(section.items[0]!.status, "ok");
 		assert.match(section.items[0]!.message, /MVP coverage: 2\/2/);
 	});

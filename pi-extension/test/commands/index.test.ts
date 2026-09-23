@@ -144,10 +144,7 @@ describe("commands/index — registerCommands wiring", () => {
 		const pi = makeFakePi();
 		registerCommands(pi);
 		for (const [name, cmd] of pi.commands) {
-			assert.ok(
-				typeof cmd.description === "string" && cmd.description.length > 0,
-				`${name} missing description`,
-			);
+			assert.ok(typeof cmd.description === "string" && cmd.description.length > 0, `${name} missing description`);
 		}
 	});
 

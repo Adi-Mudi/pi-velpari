@@ -8,10 +8,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	REQUIREMENTS_PROFILE_VERSION,
-	validateRequirementsProfile,
-} from "../../src/core/profile.js";
+import { REQUIREMENTS_PROFILE_VERSION, validateRequirementsProfile } from "../../src/core/profile.js";
 
 /** Build a valid baseline profile — caller mutates one field to exercise a branch. */
 function validProfile(): Record<string, unknown> {

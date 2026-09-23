@@ -11,10 +11,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	FEASIBILITY_REQUIRED_SECTIONS,
-	validateFeasibilityDoc,
-} from "../../src/core/feasibility-doc.js";
+import { FEASIBILITY_REQUIRED_SECTIONS, validateFeasibilityDoc } from "../../src/core/feasibility-doc.js";
 
 function study(overrides: Record<string, string> = {}, skip: string[] = []): string {
 	const bodies: Record<string, string> = {
@@ -51,8 +48,7 @@ describe("validateFeasibilityDoc", () => {
 	});
 
 	it("accepts unnumbered headings", () => {
-		const doc = study()
-			.replace(/## \d+\. /g, "## ");
+		const doc = study().replace(/## \d+\. /g, "## ");
 		assert.equal(validateFeasibilityDoc(doc).ok, true);
 	});
 
@@ -60,20 +56,14 @@ describe("validateFeasibilityDoc", () => {
 		const result = validateFeasibilityDoc(study({}, ["Options Analysis"]));
 		assert.equal(result.ok, false);
 		assert.ok(
-			result.issues.some(
-				(i) => i.code === "feasibility-section-missing" && i.message.includes("Options Analysis"),
-			),
+			result.issues.some((i) => i.code === "feasibility-section-missing" && i.message.includes("Options Analysis")),
 		);
 	});
 
 	it("flags an empty section", () => {
 		const result = validateFeasibilityDoc(study({ "Top 5 Risks": "" }, []));
 		assert.equal(result.ok, false);
-		assert.ok(
-			result.issues.some(
-				(i) => i.code === "feasibility-section-empty" && i.message.includes("Top 5 Risks"),
-			),
-		);
+		assert.ok(result.issues.some((i) => i.code === "feasibility-section-empty" && i.message.includes("Top 5 Risks")));
 	});
 
 	it("flags an Overall Verdict without a verdict word", () => {

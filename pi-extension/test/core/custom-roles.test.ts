@@ -54,11 +54,7 @@ describe("loadCustomRoles", () => {
 			invocationHint: "spawn on test trigger",
 			outOfScope: ["do not break things"],
 		};
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 1, roles: [role] }, null, 2),
-			"utf8",
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 1, roles: [role] }, null, 2), "utf8");
 
 		const config = loadCustomRoles(cwd);
 		assert.ok(config !== null);
@@ -88,23 +84,13 @@ describe("loadCustomRoles", () => {
 	it("throws on bad JSON", () => {
 		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 		writeFileSync(getCustomRolesPath(cwd), "not json", "utf8");
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on wrong version", () => {
 		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 2, roles: [] }),
-			"utf8",
-		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 2, roles: [] }), "utf8");
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on missing required field", () => {
@@ -117,10 +103,7 @@ describe("loadCustomRoles", () => {
 			}),
 			"utf8",
 		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on duplicate role ids", () => {
@@ -133,15 +116,8 @@ describe("loadCustomRoles", () => {
 			invocationHint: "i",
 			outOfScope: ["o"],
 		};
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 1, roles: [role, role] }, null, 2),
-			"utf8",
-		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/duplicate role id/i,
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 1, roles: [role, role] }, null, 2), "utf8");
+		assert.throws(() => loadCustomRoles(cwd), /duplicate role id/i);
 	});
 });
 

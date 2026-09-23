@@ -14,11 +14,7 @@ import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-	discoverProjectFiles,
-	formatSuggestion,
-	looksLikeTestPath,
-} from "../../src/core/files-discovery.js";
+import { discoverProjectFiles, formatSuggestion, looksLikeTestPath } from "../../src/core/files-discovery.js";
 
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-files-discovery-"));
@@ -55,11 +51,7 @@ describe("discoverProjectFiles folder classification", () => {
 		touch(cwd, "docs/deep/code.ts");
 		const r = discoverProjectFiles(cwd, []);
 		assert.deepEqual(r.documentFolders, [{ path: "docs/", reason: "document folder" }]);
-		assert.deepEqual(r.documentFiles, [
-			"docs/deep/nested/spec.md",
-			"docs/deep/notes.txt",
-			"docs/guide.md",
-		]);
+		assert.deepEqual(r.documentFiles, ["docs/deep/nested/spec.md", "docs/deep/notes.txt", "docs/guide.md"]);
 	});
 
 	it("classifies an unknown folder with package.json as code (project marker)", () => {

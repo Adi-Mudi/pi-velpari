@@ -168,10 +168,7 @@ describe("syncDecisionsToNotes", () => {
 		const notesPath = path.join(tmpDir, "brainstorm-notes.md");
 		fs.writeFileSync(notesPath, FULL_DOC, "utf8");
 		syncDecisionsToNotes(notesPath, questions);
-		syncDecisionsToNotes(notesPath, [
-			...questions,
-			{ id: "Q3", text: "Storage?", state: "agreed" },
-		]);
+		syncDecisionsToNotes(notesPath, [...questions, { id: "Q3", text: "Storage?", state: "agreed" }]);
 		const raw = fs.readFileSync(notesPath, "utf8");
 		assert.equal(raw.split(DECISIONS_BLOCK_START).length - 1, 1);
 		assert.equal(raw.split(DECISIONS_BLOCK_END).length - 1, 1);

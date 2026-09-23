@@ -21,15 +21,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-import {
-	loadStagePayload,
-	kindForWorkingDir,
-	buildFeasibilityRowsFromSession,
-} from "../../src/ops/stage-payloads.js";
-import {
-	precheckGitForPublish,
-	runDbPublish,
-} from "../../src/ops/db-publish.js";
+import { loadStagePayload, kindForWorkingDir, buildFeasibilityRowsFromSession } from "../../src/ops/stage-payloads.js";
+import { precheckGitForPublish, runDbPublish } from "../../src/ops/db-publish.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { readArtifact, writeArtifact, type ArtifactPayload } from "../../src/io/store.js";
 import { buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
@@ -101,11 +94,7 @@ function writePayload(
 	const workingDir = join(dir, workingDirName);
 	mkdirSync(join(workingDir, "payload"), { recursive: true });
 	const path = join(workingDir, "payload", `${kind}-payload.json`);
-	writeFileSync(
-		path,
-		JSON.stringify({ envelope: env(envelopeOverrides), rows }, null, 2),
-		"utf-8",
-	);
+	writeFileSync(path, JSON.stringify({ envelope: env(envelopeOverrides), rows }, null, 2), "utf-8");
 	return workingDir;
 }
 
@@ -133,9 +122,12 @@ function realGit(): string {
 function fakeGitPath(): string {
 	const bin = join(dir, "fakebin");
 	mkdirSync(bin, { recursive: true });
-	const script = "#!/bin/sh\n" +
+	const script =
+		"#!/bin/sh\n" +
 		'if [ "$1" = "commit" ]; then echo "simulated commit failure" >&2; exit 1; fi\n' +
-		'exec "' + realGit() + '" "$@"\n';
+		'exec "' +
+		realGit() +
+		'" "$@"\n';
 	writeFileSync(join(bin, "git"), script, "utf-8");
 	// make executable via spawnSync chmod equivalent
 	execFileSync("chmod", ["+x", join(bin, "git")]);
@@ -300,8 +292,7 @@ describe("runDbPublish happy path (design + rtm)", () => {
 		assert.ok(readFileSync(yamlPath, "utf-8").includes("designModule"));
 
 		// Git commit contains DB + YAML + markdown
-		const log = execFileSync("git", ["log", "--name-only", "--pretty=format:"], { cwd: dir })
-			.toString();
+		const log = execFileSync("git", ["log", "--name-only", "--pretty=format:"], { cwd: dir }).toString();
 		assert.ok(log.includes("index.db"), "commit must include the DB");
 		assert.ok(log.includes("design_Demo.yaml"), "commit must include the YAML");
 		assert.ok(log.includes("design_Demo.md"), "commit must include the markdown");
@@ -401,9 +392,14 @@ describe("failure paths", () => {
 		const prdMarkdown = fakeMarkdown("Doc/requirements/PRD_Ok.md");
 		const fileHash = createHash("sha256").update(readFileSync(prdMarkdown)).digest("hex");
 		// --- ok case ---
-		const okDir = writePayload("prd-ok", "prd", { fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "Greeting user flow FR." }] }, {
-			inputs: { "prd-file": fileHash },
-		});
+		const okDir = writePayload(
+			"prd-ok",
+			"prd",
+			{ fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "Greeting user flow FR." }] },
+			{
+				inputs: { "prd-file": fileHash },
+			},
+		);
 		const okPayload = loadStagePayload(okDir, "prd");
 		assert.equal(okPayload.ok, true);
 		const okOutcome = runDbPublish({

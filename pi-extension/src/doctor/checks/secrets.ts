@@ -84,7 +84,11 @@ const DB_TEXT_COLUMNS: ReadonlyArray<{ key: string; table: string; columns: Read
 	{ key: "pseudocodeBlock", table: "pseudocode_block", columns: ["content"] },
 	{ key: "testCase", table: "test_case", columns: ["steps", "objective", "expected"] },
 	{ key: "designModule", table: "design_module", columns: ["description"] },
-	{ key: "atomicFunction", table: "atomic_function", columns: ["purpose", "source", "cohesion", "verification", "testable"] },
+	{
+		key: "atomicFunction",
+		table: "atomic_function",
+		columns: ["purpose", "source", "cohesion", "verification", "testable"],
+	},
 	{ key: "devStep", table: "dev_step", columns: ["description"] },
 	{ key: "adr", table: "adr", columns: ["options", "chosen", "rationale"] },
 	{ key: "diagram", table: "diagram", columns: ["mermaid_text"] },
@@ -110,9 +114,9 @@ function sweepDbTextColumns(dbPath: string): DbSecretHit[] {
 		for (const entry of DB_TEXT_COLUMNS) {
 			let rows: Array<Record<string, unknown>>;
 			try {
-				rows = db
-					.prepare(`SELECT * FROM ${entry.table} WHERE status = 'published'`)
-					.all() as unknown as Array<Record<string, unknown>>;
+				rows = db.prepare(`SELECT * FROM ${entry.table} WHERE status = 'published'`).all() as unknown as Array<
+					Record<string, unknown>
+				>;
 			} catch {
 				continue; // table absent (older schema) — nothing to sweep
 			}

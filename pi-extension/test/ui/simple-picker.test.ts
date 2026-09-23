@@ -10,11 +10,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import {
-	runSimplePicker,
-	runSimpleConfirm,
-	type SimplePickerItem,
-} from "../../src/ui/simple-picker.js";
+import { runSimplePicker, runSimpleConfirm, type SimplePickerItem } from "../../src/ui/simple-picker.js";
 
 const ENTER = "\r";
 const DOWN = "\x1b[B";
@@ -35,10 +31,7 @@ function makeTheme() {
 	} as unknown as import("@earendil-works/pi-coding-agent").Theme;
 }
 
-function makeFallbackCtx(
-	selects: (string | undefined)[],
-	capturedSelectOptions?: string[][],
-): ExtensionContext {
+function makeFallbackCtx(selects: (string | undefined)[], capturedSelectOptions?: string[][]): ExtensionContext {
 	let index = 0;
 	return {
 		cwd: "/tmp",
@@ -97,9 +90,7 @@ describe("runSimplePicker fallback", () => {
 	it("never appends hints to fallback labels", async () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx(["Option A"], captured);
-		const items: SimplePickerItem[] = [
-			{ id: "a", label: "Option A", hint: "(recommended)" },
-		];
+		const items: SimplePickerItem[] = [{ id: "a", label: "Option A", hint: "(recommended)" }];
 		await runSimplePicker(ctx, { title: "Pick", items });
 		assert.deepStrictEqual(captured[0], ["Option A"], "fallback label is byte-identical to the item label");
 	});
@@ -137,9 +128,18 @@ describe("runSimplePicker custom TUI", () => {
 			render: (width: number) => string[];
 		};
 		const lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("Pick one")), "title shown");
-		assert.ok(lines.some((l) => l.includes("Only the good ones.")), "subtitle shown");
-		assert.ok(lines.some((l) => l.includes("↑↓ navigate • enter select • esc cancel")), "footer shown");
+		assert.ok(
+			lines.some((l) => l.includes("Pick one")),
+			"title shown",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("Only the good ones.")),
+			"subtitle shown",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("↑↓ navigate • enter select • esc cancel")),
+			"footer shown",
+		);
 		assert.ok(lines.filter((l) => l.startsWith("─")).length >= 4, "borders shown");
 		comp.handleInput("\x1b");
 		await promise;
@@ -168,7 +168,10 @@ describe("runSimplePicker custom TUI", () => {
 			items: [{ id: "a", label: "Option A", hint: "(recommended)" }],
 		});
 		const lines = component!.render(80);
-		assert.ok(lines.some((l) => l.includes("dim:(recommended)")), "hint rendered dim");
+		assert.ok(
+			lines.some((l) => l.includes("dim:(recommended)")),
+			"hint rendered dim",
+		);
 		component!.handleInput("\x1b");
 		await promise;
 	});
@@ -195,10 +198,16 @@ describe("runSimplePicker custom TUI", () => {
 			render: (width: number) => string[];
 		};
 		let lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("(1-3/6)")), "scroll info shown");
+		assert.ok(
+			lines.some((l) => l.includes("(1-3/6)")),
+			"scroll info shown",
+		);
 		for (let i = 0; i < 5; i++) comp.handleInput(DOWN);
 		lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("Item 5")), "scrolled window shows Item 5");
+		assert.ok(
+			lines.some((l) => l.includes("Item 5")),
+			"scrolled window shows Item 5",
+		);
 		assert.ok(!lines.some((l) => l.includes("Item 0")), "Item 0 scrolled out");
 		comp.handleInput(ENTER);
 		const result = await promise;
@@ -328,10 +337,7 @@ describe("width clamping (TUI crash guard)", () => {
 			`Input documents: ${"Very Long Document Name, ".repeat(20)}`,
 			"",
 			"Paths to add to the configuration (14):",
-			...Array.from(
-				{ length: 14 },
-				(_, i) => `  - folder-${i}/with-a-very-long-generated-path-name-${i}`,
-			),
+			...Array.from({ length: 14 }, (_, i) => `  - folder-${i}/with-a-very-long-generated-path-name-${i}`),
 			"Existing configured paths are not touched. Proceed?",
 		].join("\n");
 		const promise = runSimpleConfirm(ctx, "Update inputs", message);
@@ -356,9 +362,18 @@ describe("width clamping (TUI crash guard)", () => {
 			render: (width: number) => string[];
 		};
 		const lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("line one")), "first line shown");
-		assert.ok(lines.some((l) => l.includes("line two")), "second line shown");
-		assert.ok(lines.some((l) => l.includes("line three")), "third line shown");
+		assert.ok(
+			lines.some((l) => l.includes("line one")),
+			"first line shown",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("line two")),
+			"second line shown",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("line three")),
+			"third line shown",
+		);
 		comp.handleInput("\x1b");
 		await promise;
 	});
@@ -389,9 +404,7 @@ describe("width clamping edge cases", () => {
 			bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
 			dim: (text: string) => `\x1b[2m${text}\x1b[22m`,
 		} as unknown as import("@earendil-works/pi-coding-agent").Theme;
-		let component:
-			| { render: (width: number) => string[]; handleInput: (data: string) => void }
-			| undefined;
+		let component: { render: (width: number) => string[]; handleInput: (data: string) => void } | undefined;
 		const custom = async (factory: any): Promise<any> =>
 			new Promise((resolve) => {
 				component = factory({ requestRender: () => {} }, ansiTheme, {}, resolve);

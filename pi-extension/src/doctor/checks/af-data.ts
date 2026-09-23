@@ -43,13 +43,18 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 		if (afRows.length === 0) {
 			items.push({
 				status: "warning",
-				message: "Atomic-functions store rows exist but the row-set is empty — run `/velpari-atomic-function` update mode and republish.",
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				message:
+					"Atomic-functions store rows exist but the row-set is empty — run `/velpari-atomic-function` update mode and republish.",
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 				suggestion: suggestionFor("af-data-invalid"),
 			});
 			return { title: "Atomic-functions data sidecar", items };
 		}
-		const bad = afRows.filter((r) => typeof r.id !== "string" || r.id === "" || typeof r.signature !== "string" || r.signature === "");
+		const bad = afRows.filter(
+			(r) => typeof r.id !== "string" || r.id === "" || typeof r.signature !== "string" || r.signature === "",
+		);
 		if (bad.length > 0) {
 			items.push({
 				status: "error",

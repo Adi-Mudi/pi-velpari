@@ -127,22 +127,14 @@ describe("technology-resources (Phase 1 file-level smoke)", () => {
 			if (f === "_template.md") continue;
 			const content = readFileSync(join(techDir(), f), "utf8");
 			const fm = requireFrontmatter(content, f);
-			assert.match(
-				fm.body,
-				/\(source: https?:\/\/[^\s)]+\)/,
-				`${f} must cite at least one (source: https://...) URL`,
-			);
+			assert.match(fm.body, /\(source: https?:\/\/[^\s)]+\)/, `${f} must cite at least one (source: https://...) URL`);
 		}
 	});
 
 	it("every resource body is dated (Last updated footer)", () => {
 		for (const f of REQUIRED_FILES) {
 			const content = readFileSync(join(techDir(), f), "utf8");
-			assert.match(
-				content,
-				/_Last updated: \d{4}-\d{2}-\d{2}_/,
-				`${f} must carry _Last updated: YYYY-MM-DD_ footer`,
-			);
+			assert.match(content, /_Last updated: \d{4}-\d{2}-\d{2}_/, `${f} must carry _Last updated: YYYY-MM-DD_ footer`);
 		}
 	});
 });

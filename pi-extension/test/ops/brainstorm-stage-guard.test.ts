@@ -135,15 +135,10 @@ describe("/velpari-brainstorm stage guard (brainstorm-anytime)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const stageErrors = harness.notices.filter(
-			(n) => n.level === "error" && /already open/i.test(n.message),
-		);
+		const stageErrors = harness.notices.filter((n) => n.level === "error" && /already open/i.test(n.message));
 		assert.equal(stageErrors.length, 0, "no stage error when no state.json exists");
 		assert.equal(harness.userMessages.length, 1, "parent LLM prompt should be sent");
-		assert.ok(
-			existsSync(join(tmpDir, ".pi", "velpari", "state.json")),
-			"state.json must be created on fresh start",
-		);
+		assert.ok(existsSync(join(tmpDir, ".pi", "velpari", "state.json")), "state.json must be created on fresh start");
 	});
 
 	it("BLOCKS a nested open when currentStage === brainstorming (no state mutation)", async () => {
@@ -152,9 +147,7 @@ describe("/velpari-brainstorm stage guard (brainstorm-anytime)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const stageErrors = harness.notices.filter(
-			(n) => n.level === "error" && /already open/i.test(n.message),
-		);
+		const stageErrors = harness.notices.filter((n) => n.level === "error" && /already open/i.test(n.message));
 		assert.equal(stageErrors.length, 1, "exactly one nested-open error");
 		assert.match(stageErrors[0]!.message, /\/velpari-approve-brainstorm/);
 		assert.match(stageErrors[0]!.message, /discard/);
@@ -172,9 +165,7 @@ describe("/velpari-brainstorm stage guard (brainstorm-anytime)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const stageErrors = harness.notices.filter(
-			(n) => n.level === "error" && /already open/i.test(n.message),
-		);
+		const stageErrors = harness.notices.filter((n) => n.level === "error" && /already open/i.test(n.message));
 		assert.equal(stageErrors.length, 0, "brainstorm-anytime allows opening from brainstormed");
 		assert.equal(harness.userMessages.length, 1, "parent LLM prompt should be sent");
 
@@ -190,9 +181,7 @@ describe("/velpari-brainstorm stage guard (brainstorm-anytime)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const stageErrors = harness.notices.filter(
-			(n) => n.level === "error" && /already open/i.test(n.message),
-		);
+		const stageErrors = harness.notices.filter((n) => n.level === "error" && /already open/i.test(n.message));
 		assert.equal(stageErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
 
@@ -246,18 +235,12 @@ describe("/velpari-brainstorm stage guard (brainstorm-anytime)", () => {
 		setMux();
 		const before = makeStateAt("brainstorming", "ORIGINAL_MISSION");
 		saveState(before, tmpDir);
-		const beforeJson = readFileSync(
-			join(tmpDir, ".pi", "velpari", "state.json"),
-			"utf8",
-		);
+		const beforeJson = readFileSync(join(tmpDir, ".pi", "velpari", "state.json"), "utf8");
 
 		await handleBrainstorm("DIFFERENT_MISSION", harness.ctx, harness.pi, tmpDir);
 
 		// Refused — no new run, no new mission
-		const afterJson = readFileSync(
-			join(tmpDir, ".pi", "velpari", "state.json"),
-			"utf8",
-		);
+		const afterJson = readFileSync(join(tmpDir, ".pi", "velpari", "state.json"), "utf8");
 		assert.equal(beforeJson, afterJson, "state.json must be byte-for-byte unchanged");
 		const after = loadState(tmpDir);
 		assert.equal(after.mission, "ORIGINAL_MISSION", "mission must not change");

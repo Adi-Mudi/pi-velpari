@@ -75,23 +75,17 @@ function makeCtx(
 function makeAgentsJson(cwd: string, agents: Record<string, string>): void {
 	const dir = path.join(cwd, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "agents.json"),
-		JSON.stringify({ version: 1, agents }),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "agents.json"), JSON.stringify({ version: 1, agents }), "utf8");
 }
 
 function slugOf(cwd: string): string {
-	return path.basename(cwd).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+	return path
+		.basename(cwd)
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-");
 }
 
-const REVIEWER_ROLES_UNDER_TEST = [
-	"reviewer",
-	"pseudocode-reviewer",
-	"testplan-reviewer",
-	"design-reviewer",
-] as const;
+const REVIEWER_ROLES_UNDER_TEST = ["reviewer", "pseudocode-reviewer", "testplan-reviewer", "design-reviewer"] as const;
 
 describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates)", () => {
 	it("Phase 3 happy path: 17 created (13 scouts + 4 reviewers), 17 mappings", async () => {
@@ -119,9 +113,9 @@ describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates
 		}
 
 		// agents.json maps the reviewer roles to the generated names.
-		const agentsJson = JSON.parse(
-			fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8"),
-		) as { agents: Record<string, string> };
+		const agentsJson = JSON.parse(fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8")) as {
+			agents: Record<string, string>;
+		};
 		for (const role of REVIEWER_ROLES_UNDER_TEST) {
 			assert.equal(agentsJson.agents[role], `${slug}-${role}`);
 		}
@@ -148,9 +142,9 @@ describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates
 			!fs.existsSync(path.join(agentsDir, "my-custom-reviewer.md")),
 			"custom reviewer file should NOT be created",
 		);
-		const agentsJson = JSON.parse(
-			fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8"),
-		) as { agents: Record<string, string> };
+		const agentsJson = JSON.parse(fs.readFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), "utf8")) as {
+			agents: Record<string, string>;
+		};
 		assert.equal(agentsJson.agents.reviewer, "my-custom-reviewer");
 	});
 
@@ -169,10 +163,7 @@ describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
 		const slug = slugOf(tmpDir);
 		for (const role of REVIEWER_ROLES_UNDER_TEST) {
-			assert.ok(
-				!fs.existsSync(path.join(agentsDir, `${slug}-${role}.md`)),
-				`${role} must not be generated at Phase 1`,
-			);
+			assert.ok(!fs.existsSync(path.join(agentsDir, `${slug}-${role}.md`)), `${role} must not be generated at Phase 1`);
 		}
 	});
 });

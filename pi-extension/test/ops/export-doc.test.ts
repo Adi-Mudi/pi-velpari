@@ -93,9 +93,14 @@ function publishSeed(
 describe("listExportableKinds", () => {
 	test("returns only kinds with published rows, in KIND_ORDER", () => {
 		publishSeed("prd", "r1", env(), PRD_PAYLOAD);
-		publishSeed("rtm", "r1", { ...env(), stage: "building-rtm" }, {
-			rtmRow: [{ id: "TR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "aa" }],
-		});
+		publishSeed(
+			"rtm",
+			"r1",
+			{ ...env(), stage: "building-rtm" },
+			{
+				rtmRow: [{ id: "TR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "aa" }],
+			},
+		);
 		// Draft-only kind must NOT appear (Q2 — drafts never listed).
 		writeArtifact(db, "design", "r1", env({ stage: "designing" }), {
 			designModule: [{ id: "M-1", name: "Module One" }],
@@ -114,15 +119,23 @@ describe("listExportableKinds", () => {
 describe("listPublishedVersions", () => {
 	test("newest first, drafts never listed", () => {
 		publishSeed("prd", "r1", env({ generatedAt: "2026-09-22T00:00:00Z" }), PRD_PAYLOAD);
-		publishSeed("prd", "r2", {
-			version: 2,
-			stage: "drafting-prd",
-			generatedAt: "2026-09-22T12:00:00Z",
-		}, PRD_PAYLOAD);
+		publishSeed(
+			"prd",
+			"r2",
+			{
+				version: 2,
+				stage: "drafting-prd",
+				generatedAt: "2026-09-22T12:00:00Z",
+			},
+			PRD_PAYLOAD,
+		);
 		// Draft for a third run — excluded.
 		writeArtifact(db, "prd", "r3", env(), PRD_PAYLOAD);
 		const versions = listPublishedVersions(db, "prd");
-		assert.deepEqual(versions.map((v) => v.runId), ["r2", "r1"]);
+		assert.deepEqual(
+			versions.map((v) => v.runId),
+			["r2", "r1"],
+		);
 		assert.equal(versions[0]!.version, 2);
 		assert.equal(versions[0]!.stage, "drafting-prd");
 		assert.equal(versions[0]!.generatedAt, "2026-09-22T12:00:00Z");
@@ -193,7 +206,17 @@ describe("kind renderers", () => {
 
 	test("atomic-functions renders tier/criticality/SIL columns", () => {
 		const md = renderAtomicFunctionsMarkdown({
-			atomicFunction: [{ id: "AF-1", name: "ReadRow", signature: "(id) => row", tier: "basic", criticality: "A", sil: "none", isLeaf: 1 }],
+			atomicFunction: [
+				{
+					id: "AF-1",
+					name: "ReadRow",
+					signature: "(id) => row",
+					tier: "basic",
+					criticality: "A",
+					sil: "none",
+					isLeaf: 1,
+				},
+			],
 		});
 		assert.ok(md.includes("| AF-1 | ReadRow | (id) => row | basic | A | none | yes |"));
 	});
@@ -257,7 +280,11 @@ describe("renderEnvelopeHeader", () => {
 			changeLog: '[{"action":"create"}]',
 			status: "published",
 		});
-		assert.ok(md.includes("---\nartifact: prd\nrunId: r1\nstage: drafting-prd\nversion: 3\ngeneratedAt: 2026-09-22T00:00:00Z\n---"));
+		assert.ok(
+			md.includes(
+				"---\nartifact: prd\nrunId: r1\nstage: drafting-prd\nversion: 3\ngeneratedAt: 2026-09-22T00:00:00Z\n---",
+			),
+		);
 		assert.ok(md.includes("# PRD (version 3)"));
 		assert.ok(md.includes("- **Fingerprint:** `cafe"));
 		assert.ok(md.includes("pass"));
@@ -354,39 +381,79 @@ const SEEDS: ReadonlyArray<{
 	payload: ArtifactPayload;
 }> = [
 	{ kind: "prd", envelope: env(), payload: PRD_PAYLOAD },
-	{ kind: "rtm", envelope: env({ stage: "building-rtm" }), payload: {
-		rtmRow: [{ id: "TR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "aa" }],
-	} },
-	{ kind: "feasibility", envelope: env({ stage: "analyzing-feasibility" }), payload: {
-		feasibilityDecision: { verdict: "build", language: "typescript", decidedBy: "user", at: "2026-09-22T00:00:00Z", webSearchConsent: null },
-		feasibilitySpike: [{ language: "typescript", passed: 1, resultRef: null }],
-		reuseScan: [],
-	} },
-	{ kind: "design", envelope: env({ stage: "designing" }), payload: {
-		designModule: [{ id: "M-1", name: "Store" }],
-		moduleSourceFr: [{ moduleId: "M-1", frId: "FR-1" }],
-		adr: [{ id: "ADR-001", adrStatus: "accepted", options: "A;B", chosen: "B", rationale: "why" }],
-		diagram: [{ id: "D-1", diagramKind: "context", mermaidText: "graph TD" }],
-		approach: [{ moduleId: "M-1", tacticId: "t-wal" }],
-	} },
-	{ kind: "atomic-functions", envelope: env({ stage: "analyzing-atomic-functions" }), payload: {
-		atomicFunction: [{ id: "AF-1", name: "ReadRow", signature: "(id)", tier: "basic", criticality: "A", sil: "none", isLeaf: 1 }],
-	} },
-	{ kind: "pseudocode", envelope: env({ stage: "writing-pseudocode" }), payload: {
-		pseudocodeBlock: [{ id: "PB-1", afRef: "AF-1", contentHash: "ff00" }],
-	} },
-	{ kind: "testplan", envelope: env({ stage: "planning-tests" }), payload: {
-		testCase: [{ id: "TC-1", tcKind: "TC", strategyRef: null }],
-		tcTrace: [{ tcId: "TC-1", targetKind: "fr", targetId: "FR-1" }],
-	} },
-	{ kind: "development-order", envelope: env({ stage: "ordering-development" }), payload: {
-		devStep: [{ id: "S-1", module: "Store" }],
-		stepAf: [{ stepId: "S-1", afId: "AF-1" }],
-		stepDep: [],
-	} },
-	{ kind: "final-design", envelope: env({ stage: "finalizing-design" }), payload: {
-		finalSection: [{ no: 1, title: "Overview", sourceArtifact: "design", sourceIds: '["M-1"]' }],
-	} },
+	{
+		kind: "rtm",
+		envelope: env({ stage: "building-rtm" }),
+		payload: {
+			rtmRow: [{ id: "TR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "aa" }],
+		},
+	},
+	{
+		kind: "feasibility",
+		envelope: env({ stage: "analyzing-feasibility" }),
+		payload: {
+			feasibilityDecision: {
+				verdict: "build",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-22T00:00:00Z",
+				webSearchConsent: null,
+			},
+			feasibilitySpike: [{ language: "typescript", passed: 1, resultRef: null }],
+			reuseScan: [],
+		},
+	},
+	{
+		kind: "design",
+		envelope: env({ stage: "designing" }),
+		payload: {
+			designModule: [{ id: "M-1", name: "Store" }],
+			moduleSourceFr: [{ moduleId: "M-1", frId: "FR-1" }],
+			adr: [{ id: "ADR-001", adrStatus: "accepted", options: "A;B", chosen: "B", rationale: "why" }],
+			diagram: [{ id: "D-1", diagramKind: "context", mermaidText: "graph TD" }],
+			approach: [{ moduleId: "M-1", tacticId: "t-wal" }],
+		},
+	},
+	{
+		kind: "atomic-functions",
+		envelope: env({ stage: "analyzing-atomic-functions" }),
+		payload: {
+			atomicFunction: [
+				{ id: "AF-1", name: "ReadRow", signature: "(id)", tier: "basic", criticality: "A", sil: "none", isLeaf: 1 },
+			],
+		},
+	},
+	{
+		kind: "pseudocode",
+		envelope: env({ stage: "writing-pseudocode" }),
+		payload: {
+			pseudocodeBlock: [{ id: "PB-1", afRef: "AF-1", contentHash: "ff00" }],
+		},
+	},
+	{
+		kind: "testplan",
+		envelope: env({ stage: "planning-tests" }),
+		payload: {
+			testCase: [{ id: "TC-1", tcKind: "TC", strategyRef: null }],
+			tcTrace: [{ tcId: "TC-1", targetKind: "fr", targetId: "FR-1" }],
+		},
+	},
+	{
+		kind: "development-order",
+		envelope: env({ stage: "ordering-development" }),
+		payload: {
+			devStep: [{ id: "S-1", module: "Store" }],
+			stepAf: [{ stepId: "S-1", afId: "AF-1" }],
+			stepDep: [],
+		},
+	},
+	{
+		kind: "final-design",
+		envelope: env({ stage: "finalizing-design" }),
+		payload: {
+			finalSection: [{ no: 1, title: "Overview", sourceArtifact: "design", sourceIds: '["M-1"]' }],
+		},
+	},
 ];
 
 /**
@@ -495,10 +562,7 @@ describe("runExport", () => {
 			outputPath: out,
 		});
 		assert.equal(result.ok, true, result.problem);
-		assert.equal(
-			readFileSync(out, "utf8"),
-			exportArtifactYaml(db, "r1", "rtm"),
-		);
+		assert.equal(readFileSync(out, "utf8"), exportArtifactYaml(db, "r1", "rtm"));
 	});
 
 	test("html export contains converted tables", () => {

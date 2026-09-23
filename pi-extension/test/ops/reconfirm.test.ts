@@ -18,17 +18,9 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { hashFileContentNormalized } from "../../src/core/fingerprints.js";
-import {
-	computeStaleSet,
-	loadFreshnessManifest,
-	recordPublish,
-	type StaleItem,
-} from "../../src/core/freshness.js";
+import { computeStaleSet, loadFreshnessManifest, recordPublish, type StaleItem } from "../../src/core/freshness.js";
 import { loadHistory } from "../../src/core/history.js";
 import {
 	appendToChangeLog,
@@ -143,11 +135,11 @@ describe("computeReconfirmSet (D2/D4)", () => {
 			inputs: { "rtm:TestApp": "0".repeat(64) },
 		});
 		const { actionable, refused } = computeReconfirmSet(tmpDir);
-		assert.deepEqual(actionable.map((s) => s.key), ["design:TestApp"]);
 		assert.deepEqual(
-			refused.map((s) => s.key).sort(),
-			["pseudocode:TestApp", "testplan:TestApp"],
+			actionable.map((s) => s.key),
+			["design:TestApp"],
 		);
+		assert.deepEqual(refused.map((s) => s.key).sort(), ["pseudocode:TestApp", "testplan:TestApp"]);
 	});
 });
 
@@ -203,15 +195,13 @@ describe("reconfirmArtifact — audit triple (D5)", () => {
 			hashv: 2,
 		});
 		const result = reconfirmArtifact(tmpDir, staleItem(), { now: NOW });
-		assert.deepEqual(result.changeLogLines, [
-			"Reviewed after `prd:TestApp` vunknown-version — no changes required.",
-		]);
+		assert.deepEqual(result.changeLogLines, ["Reviewed after `prd:TestApp` vunknown-version — no changes required."]);
 	});
 
 	it("re-stamps the RTM JSON sidecar via extraPaths (D6)", () => {
 		const sidecarRel = "Doc/requirements/RTM_TestApp.json";
 		write("Doc/requirements/RTM_TestApp.md", DESIGN_V1);
-		const sidecarAbs = write(sidecarRel, "{\"rows\":[]}");
+		const sidecarAbs = write(sidecarRel, '{"rows":[]}');
 		recordPublish(tmpDir, {
 			artifact: "rtm",
 			projectName: "TestApp",
@@ -221,7 +211,7 @@ describe("reconfirmArtifact — audit triple (D5)", () => {
 			inputs: {},
 			hashv: 2,
 		});
-		fs.writeFileSync(sidecarAbs, "{\"rows\":[1]}", "utf8");
+		fs.writeFileSync(sidecarAbs, '{"rows":[1]}', "utf8");
 
 		const item = staleItem();
 		assert.deepEqual(item.changedInputs, [sidecarRel]);
@@ -266,9 +256,7 @@ describe("reconfirmArtifact — audit triple (D5)", () => {
 			path: "Doc/pseudocode/pseudocode_TestApp.md",
 			publishedAt: "2026-09-20T17:30:00.000Z",
 			inputs: {
-				"design:TestApp": hashFileContentNormalized(
-					path.join(tmpDir, "Doc/design/design_TestApp.md"),
-				)!,
+				"design:TestApp": hashFileContentNormalized(path.join(tmpDir, "Doc/design/design_TestApp.md"))!,
 			},
 			hashv: 2,
 		});
@@ -293,10 +281,7 @@ describe("appendToChangeLog", () => {
 	it("appends at the end of an existing section, before the next ## heading", () => {
 		const doc = "# D\n\n## Change Log\n\n- v1\n\n## 12. Appendix\n\ntail\n";
 		const out = appendToChangeLog(doc, [LINE]);
-		assert.equal(
-			out,
-			`# D\n\n## Change Log\n\n- v1\n${LINE}\n\n## 12. Appendix\n\ntail\n`,
-		);
+		assert.equal(out, `# D\n\n## Change Log\n\n- v1\n${LINE}\n\n## 12. Appendix\n\ntail\n`);
 	});
 
 	it("creates the section at EOF when missing", () => {
@@ -325,10 +310,7 @@ describe("/velpari-reconfirm command (L3, D2)", () => {
 		const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
 		const fake = {
 			commands,
-			registerCommand(
-				name: string,
-				spec: { handler: (args: string, ctx: unknown) => Promise<void> },
-			) {
+			registerCommand(name: string, spec: { handler: (args: string, ctx: unknown) => Promise<void> }) {
 				commands.set(name, spec);
 			},
 		};
@@ -374,10 +356,7 @@ describe("/velpari-reconfirm command (L3, D2)", () => {
 		await runCommand(makeCtx({ notices, select: async () => undefined }));
 
 		assert.ok(!read("Doc/design/design_TestApp.md").includes("Reviewed after"));
-		assert.equal(
-			loadFreshnessManifest(tmpDir).artifacts["design:TestApp"]!.reconfirmedAt,
-			undefined,
-		);
+		assert.equal(loadFreshnessManifest(tmpDir).artifacts["design:TestApp"]!.reconfirmedAt, undefined);
 		assert.equal(computeStaleSet(tmpDir).length, 1, "still stale — nothing written");
 	});
 
@@ -395,10 +374,7 @@ describe("/velpari-reconfirm command (L3, D2)", () => {
 		);
 
 		assert.ok(!read("Doc/design/design_TestApp.md").includes("Reviewed after"));
-		assert.equal(
-			loadFreshnessManifest(tmpDir).artifacts["design:TestApp"]!.reconfirmedAt,
-			undefined,
-		);
+		assert.equal(loadFreshnessManifest(tmpDir).artifacts["design:TestApp"]!.reconfirmedAt, undefined);
 	});
 
 	it("picker + confirm re-confirms the selected artifact end-to-end", async () => {
@@ -414,9 +390,7 @@ describe("/velpari-reconfirm command (L3, D2)", () => {
 		);
 
 		assert.ok(
-			read("Doc/design/design_TestApp.md").includes(
-				"Reviewed after `prd:TestApp` v1.2.0 — no changes required.",
-			),
+			read("Doc/design/design_TestApp.md").includes("Reviewed after `prd:TestApp` v1.2.0 — no changes required."),
 		);
 		assert.deepEqual(computeStaleSet(tmpDir), []);
 		assert.ok(
@@ -436,9 +410,7 @@ describe("/velpari-reconfirm command (L3, D2)", () => {
 		await runCommand(makeCtx({ notices }));
 
 		assert.ok(
-			notices.some(
-				(n) => n.level === "warning" && n.message.includes("NOT re-confirmable"),
-			),
+			notices.some((n) => n.level === "warning" && n.message.includes("NOT re-confirmable")),
 			`refused warning missing: ${JSON.stringify(notices)}`,
 		);
 		assert.ok(notices.some((n) => n.message.includes("Nothing to re-confirm")));

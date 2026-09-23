@@ -8,22 +8,11 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	mkdtempSync,
-	mkdirSync,
-	writeFileSync,
-	readFileSync,
-	rmSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runPublishGate } from "../../src/doctor/gate.js";
-import {
-	createRun,
-	advanceStage,
-	saveState,
-	type RunState,
-} from "../../src/core/state.js";
+import { createRun, advanceStage, saveState, type RunState } from "../../src/core/state.js";
 
 let tmpDir: string;
 
@@ -97,7 +86,8 @@ describe("publish gate — Phase 8 re-verification", () => {
 		// archSubCycle missing → publish gate blocks with arch-sub-cycle.missing.
 		const result = runPublishGate({
 			artifact: "design",
-			workingContent: "# Design\n\n## Architecture Decisions\n\n```yaml\n{\"id\":\"ADR-001\",\"title\":\"x\",\"status\":\"accepted\",\"stage\":\"design\",\"date\":\"2026-01-01\",\"runId\":\"r\",\"context\":\"c\",\"options\":[{\"id\":\"A\",\"label\":\"l\",\"pros\":\"\",\"cons\":\"\"}],\"decision\":\"A\",\"rationale\":\"r\",\"consequences\":\"c\",\"reconsiderTriggers\":[]}\n```\n",
+			workingContent:
+				'# Design\n\n## Architecture Decisions\n\n```yaml\n{"id":"ADR-001","title":"x","status":"accepted","stage":"design","date":"2026-01-01","runId":"r","context":"c","options":[{"id":"A","label":"l","pros":"","cons":""}],"decision":"A","rationale":"r","consequences":"c","reconsiderTriggers":[]}\n```\n',
 			cwd: tmpDir,
 			projectName: "TestApp",
 		});
@@ -176,9 +166,7 @@ describe("publish gate — Phase 8 re-verification", () => {
 			projectName: "TestApp",
 		});
 		// Should not have arch-sub-cycle or adr errors (standards errors are fine).
-		const blocking = result.errors.filter(
-			(e) => e.includes("arch-sub-cycle") || e.includes("adr."),
-		);
+		const blocking = result.errors.filter((e) => e.includes("arch-sub-cycle") || e.includes("adr."));
 		assert.deepEqual(blocking, [], `unexpected blocking errors: ${JSON.stringify(blocking)}`);
 	});
 });

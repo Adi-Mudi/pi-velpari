@@ -15,11 +15,7 @@ import { join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import type { DatabaseSync } from "node:sqlite";
-import {
-	STORE_DB_DIR,
-	buildStoreDbPath,
-	buildStoreYamlPath,
-} from "../../src/core/paths.js";
+import { STORE_DB_DIR, buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
 
 const EXPECTED_TABLES = [
 	"adr",
@@ -74,17 +70,13 @@ describe("db-schema — v001 core schema", () => {
 			assert.ok(v.user_version >= 1, "v001 DDL applied (user_version >= 1)");
 			const tables = (
 				db
-					.prepare(
-						"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-					)
+					.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
 					.all() as Array<{ name: string }>
 			).map((r) => r.name);
 			assert.deepEqual(tables, EXPECTED_TABLES);
 			const idx = (
 				db
-					.prepare(
-						"SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name",
-					)
+					.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name")
 					.all() as Array<{ name: string }>
 			).map((r) => r.name);
 			assert.deepEqual(idx, ["idx_links_from", "idx_links_to"]);
@@ -97,16 +89,10 @@ describe("db-schema — v001 core schema", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			insertEnvelope(db, "r1", "prd");
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-			).run();
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
 			assert.throws(
 				() =>
-					db
-						.prepare(
-							"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('rX', 'prd', 'FR-2', 1, 'h2')",
-						)
-						.run(),
+					db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('rX', 'prd', 'FR-2', 1, 'h2')").run(),
 				/FOREIGN KEY constraint failed/,
 			);
 			// Cascade: deleting the envelope removes its children (via the
@@ -116,10 +102,7 @@ describe("db-schema — v001 core schema", () => {
 				"INSERT INTO rtm_row (run_id, kind, id, fr_ref, phase, target_sha256) VALUES ('r1', 'rtm', 'RTM-1', 'FR-1', 1, 't1')",
 			).run();
 			db.prepare("DELETE FROM artifacts WHERE run_id = 'r1' AND kind = 'prd'").run();
-			assert.equal(
-				(db.prepare("SELECT COUNT(*) AS n FROM fr").get() as { n: number }).n,
-				0,
-			);
+			assert.equal((db.prepare("SELECT COUNT(*) AS n FROM fr").get() as { n: number }).n, 0);
 			assert.equal(
 				(db.prepare("SELECT COUNT(*) AS n FROM rtm_row").get() as { n: number }).n,
 				0,
@@ -134,9 +117,7 @@ describe("db-schema — v001 core schema", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			insertEnvelope(db, "r1", "prd");
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-			).run();
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
 			// Default is draft (checked before any update touches this row).
 			const s0 = db.prepare("SELECT status FROM fr WHERE id = 'FR-1'").get() as {
 				status: string;
@@ -153,10 +134,7 @@ describe("db-schema — v001 core schema", () => {
 				/CHECK constraint failed/,
 			);
 			assert.throws(
-				() =>
-					db
-						.prepare("UPDATE fr SET status = 'archived' WHERE id = 'FR-1'")
-						.run(),
+				() => db.prepare("UPDATE fr SET status = 'archived' WHERE id = 'FR-1'").run(),
 				/CHECK constraint failed/,
 			);
 		} finally {
@@ -171,9 +149,7 @@ describe("db-schema — v001 core schema", () => {
 			assert.throws(
 				() =>
 					db
-						.prepare(
-							"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 'one', 'h1')",
-						)
+						.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 'one', 'h1')")
 						.run(),
 				/cannot store TEXT value in INTEGER column/,
 			);
@@ -185,40 +161,20 @@ describe("db-schema — v001 core schema", () => {
 	test("links (G6): valid edge accepted, PK dedupes per-run, bad relation/kind rejected", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
-			db.prepare(
-				"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
-			).run();
+			db.prepare("INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')").run();
 			assert.throws(
-				() =>
-					db
-						.prepare(
-							"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')",
-						)
-						.run(),
+				() => db.prepare("INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'traces')").run(),
 				/UNIQUE constraint failed/,
 			);
 			assert.throws(
-				() =>
-					db
-						.prepare(
-							"INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'owns')",
-						)
-						.run(),
+				() => db.prepare("INSERT INTO links VALUES ('r1', 'fr', 'FR-1', 'rtm', 'RTM-1', 'owns')").run(),
 				/CHECK constraint failed/,
 			);
 			assert.throws(
-				() =>
-					db
-						.prepare(
-							"INSERT INTO links VALUES ('r1', 'foo', 'FR-1', 'rtm', 'RTM-1', 'traces')",
-						)
-						.run(),
+				() => db.prepare("INSERT INTO links VALUES ('r1', 'foo', 'FR-1', 'rtm', 'RTM-1', 'traces')").run(),
 				/CHECK constraint failed/,
 			);
-			assert.equal(
-				(db.prepare("SELECT COUNT(*) AS n FROM links").get() as { n: number }).n,
-				1,
-			);
+			assert.equal((db.prepare("SELECT COUNT(*) AS n FROM links").get() as { n: number }).n, 1);
 		} finally {
 			closeStoreDb(db);
 		}
@@ -230,24 +186,13 @@ describe("db-schema — v001 core schema", () => {
 			insertEnvelope(db, "r1", "prd");
 			insertEnvelope(db, "r2", "prd");
 			// Same natural id in two runs — coexistence is the update-mode invariant.
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-			).run();
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r2', 'prd', 'FR-1', 1, 'h2')",
-			).run();
-			assert.equal(
-				(db.prepare("SELECT COUNT(*) AS n FROM fr").get() as { n: number }).n,
-				2,
-			);
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r2', 'prd', 'FR-1', 1, 'h2')").run();
+			assert.equal((db.prepare("SELECT COUNT(*) AS n FROM fr").get() as { n: number }).n, 2);
 			// Within one run the natural key is still unique.
 			assert.throws(
 				() =>
-					db
-						.prepare(
-							"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h3')",
-						)
-						.run(),
+					db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h3')").run(),
 				/UNIQUE constraint failed|PRIMARY KEY constraint failed/,
 			);
 		} finally {
@@ -261,9 +206,7 @@ describe("db-schema — v001 core schema", () => {
 			insertEnvelope(db, "r1", "prd");
 			insertEnvelope(db, "r1", "rtm");
 			insertEnvelope(db, "r2", "rtm");
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-			).run();
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
 			// r2's rtm_row cannot reference r1's FR-1 — the FK is (run_id, fr_ref).
 			assert.throws(
 				() =>
@@ -291,9 +234,7 @@ describe("db-schema — v001 core schema", () => {
 			insertEnvelope(db, "r1", "pseudocode");
 			insertEnvelope(db, "r1", "development-order");
 			insertEnvelope(db, "r1", "atomic-functions");
-			db.prepare(
-				"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-			).run();
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
 			db.prepare(
 				"INSERT INTO rtm_row (run_id, kind, id, fr_ref, phase, target_sha256) VALUES ('r1', 'rtm', 'RTM-1', 'FR-1', 1, 't1')",
 			).run();
@@ -321,12 +262,8 @@ describe("db-schema — v001 core schema", () => {
 						.run(),
 				/FOREIGN KEY constraint failed/,
 			);
-			db.prepare(
-				"INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'S1', 'm')",
-			).run();
-			db.prepare(
-				"INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'S2', 'm')",
-			).run();
+			db.prepare("INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'S1', 'm')").run();
+			db.prepare("INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'S2', 'm')").run();
 			db.prepare(
 				"INSERT INTO step_dep (run_id, kind, step_id, depends_on_id) VALUES ('r1', 'development-order', 'S2', 'S1')",
 			).run();
@@ -378,9 +315,7 @@ describe("db-schema — v001 core schema", () => {
 				db.prepare(
 					"INSERT INTO feasibility_decision (run_id, kind, verdict, language, decided_by, at) VALUES ('r2', 'feasibility', ?, 'typescript', 'user', 't4')",
 				).run(verdict);
-				db.prepare(
-					"DELETE FROM feasibility_decision WHERE run_id = 'r2'",
-				).run();
+				db.prepare("DELETE FROM feasibility_decision WHERE run_id = 'r2'").run();
 			}
 			// Spike: language natural key + passed CHECK.
 			db.prepare(
@@ -412,17 +347,9 @@ describe("db-schema — v001 core schema", () => {
 				"INSERT INTO reuse_scan (run_id, kind, candidate, verdict) VALUES ('r1', 'feasibility', 'lib-b', 'build')",
 			).run();
 			// Envelope delete cascades all three feasibility child tables.
-			db.prepare(
-				"DELETE FROM artifacts WHERE run_id = 'r1' AND kind = 'feasibility'",
-			).run();
-			for (const table of [
-				"feasibility_decision",
-				"feasibility_spike",
-				"reuse_scan",
-			]) {
-				const row = db
-					.prepare("SELECT COUNT(*) AS n FROM " + table)
-					.get() as { n: number };
+			db.prepare("DELETE FROM artifacts WHERE run_id = 'r1' AND kind = 'feasibility'").run();
+			for (const table of ["feasibility_decision", "feasibility_spike", "reuse_scan"]) {
+				const row = db.prepare("SELECT COUNT(*) AS n FROM " + table).get() as { n: number };
 				assert.equal(row.n, 0, table + " should be cascade-empty");
 			}
 		} finally {
@@ -433,10 +360,7 @@ describe("db-schema — v001 core schema", () => {
 	test("G4: quick_check reports ok after v001 DDL", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
-			const row = db.prepare("PRAGMA quick_check").get() as Record<
-				string,
-				unknown
-			>;
+			const row = db.prepare("PRAGMA quick_check").get() as Record<string, unknown>;
 			assert.equal(Object.values(row)[0], "ok");
 		} finally {
 			closeStoreDb(db);
@@ -446,18 +370,9 @@ describe("db-schema — v001 core schema", () => {
 	test("store path helpers (2.1): locked layout + sanitization (G10/RES-4)", () => {
 		assert.equal(STORE_DB_DIR, "Doc/store");
 		const cwd = "/proj";
-		assert.equal(
-			buildStoreDbPath("TodoApp", cwd),
-			join(cwd, "Doc", "store", "TodoApp", "index.db"),
-		);
-		assert.equal(
-			buildStoreDbPath("Weird Name/x", cwd),
-			join(cwd, "Doc", "store", "Weird-Name-x", "index.db"),
-		);
-		assert.equal(
-			buildStoreYamlPath("TodoApp", "PRD", cwd),
-			join(cwd, "Doc", "store", "TodoApp", "PRD_TodoApp.yaml"),
-		);
+		assert.equal(buildStoreDbPath("TodoApp", cwd), join(cwd, "Doc", "store", "TodoApp", "index.db"));
+		assert.equal(buildStoreDbPath("Weird Name/x", cwd), join(cwd, "Doc", "store", "Weird-Name-x", "index.db"));
+		assert.equal(buildStoreYamlPath("TodoApp", "PRD", cwd), join(cwd, "Doc", "store", "TodoApp", "PRD_TodoApp.yaml"));
 		assert.equal(
 			buildStoreYamlPath("TodoApp", "test-cases", cwd),
 			join(cwd, "Doc", "store", "TodoApp", "test-cases_TodoApp.yaml"),
@@ -508,9 +423,11 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			};
 			assert.equal(v.user_version, 3, "v002 + v003 migrations applied → user_version = 3");
 			for (const [table, col] of V002_COLUMNS) {
-				const info = db
-					.prepare(`PRAGMA table_info(${table})`)
-					.all() as Array<{ name: string; notnull: number; type: string }>;
+				const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+					name: string;
+					notnull: number;
+					type: string;
+				}>;
 				const found = info.find((r) => r.name === col);
 				assert.ok(found, `column ${table}.${col} must exist after v002`);
 				assert.equal(found.type.toUpperCase(), "TEXT", `${table}.${col} type = TEXT`);
@@ -551,10 +468,7 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		const bump = new sqlite.DatabaseSync(path);
 		bump.exec("PRAGMA user_version = 4");
 		bump.close();
-		assert.throws(
-			() => openStoreDb(path),
-			/schema version|Upgrade your extension/,
-		);
+		assert.throws(() => openStoreDb(path), /schema version|Upgrade your extension/);
 	});
 
 	test("prose columns land with NULL on existing rows after a v001→v002 migration", () => {
@@ -567,28 +481,16 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			insertEnvelope(seed, "r1", "atomic-functions");
 			insertEnvelope(seed, "r1", "design");
 			insertEnvelope(seed, "r1", "development-order");
-			seed
-				.prepare(
-					"INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')",
-				)
-				.run();
-			seed
-				.prepare(
-					"INSERT INTO nfr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'NFR-1', 1, 'h2')",
-				)
-				.run();
+			seed.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'FR-1', 1, 'h1')").run();
+			seed.prepare("INSERT INTO nfr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'NFR-1', 1, 'h2')").run();
 		} finally {
 			closeStoreDb(seed);
 		}
 		// Re-open via the registered flow — migration applies, rows stay.
 		const reopened = openStoreDb(path);
 		try {
-			const frText = reopened
-				.prepare("SELECT text FROM fr WHERE id = 'FR-1'")
-				.get() as { text: unknown };
-			const nfrText = reopened
-				.prepare("SELECT text FROM nfr WHERE id = 'NFR-1'")
-				.get() as { text: unknown };
+			const frText = reopened.prepare("SELECT text FROM fr WHERE id = 'FR-1'").get() as { text: unknown };
+			const nfrText = reopened.prepare("SELECT text FROM nfr WHERE id = 'NFR-1'").get() as { text: unknown };
 			assert.equal(frText.text, null, "v001 rows carry NULL prose before backfill/republish");
 			assert.equal(nfrText.text, null);
 		} finally {
@@ -601,20 +503,14 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		try {
 			// art / rtm_row / diagram / adr / feasibility_* / links have no
 			// new prose columns per §14.4. Spot-check a couple of column lists.
-			const rtmCols = (db
-				.prepare("PRAGMA table_info(rtm_row)")
-				.all() as Array<{ name: string }>).map((r) => r.name);
+			const rtmCols = (db.prepare("PRAGMA table_info(rtm_row)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.ok(rtmCols.includes("fr_ref"));
 			assert.ok(rtmCols.includes("af_ref"));
-			const adrCols = (db
-				.prepare("PRAGMA table_info(adr)")
-				.all() as Array<{ name: string }>).map((r) => r.name);
+			const adrCols = (db.prepare("PRAGMA table_info(adr)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.ok(adrCols.includes("options"));
 			assert.ok(adrCols.includes("chosen"));
 			assert.ok(adrCols.includes("rationale"));
-			const linksCols = (db
-				.prepare("PRAGMA table_info(links)")
-				.all() as Array<{ name: string }>).map((r) => r.name);
+			const linksCols = (db.prepare("PRAGMA table_info(links)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.equal(linksCols.length, 6, "links table still has 6 columns (no adds)");
 		} finally {
 			closeStoreDb(db);

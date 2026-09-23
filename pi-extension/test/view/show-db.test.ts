@@ -12,11 +12,7 @@ import { join } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import {
-	writeArtifact,
-	publishArtifact,
-	type ArtifactEnvelopeInput,
-} from "../../src/io/store.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../src/io/store.js";
 import { showPrd, showRtm, showTestplan } from "../../src/view/show.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
 
@@ -111,19 +107,25 @@ describe("view/show — DB-primary rendering", () => {
 		const dbPath = buildStoreDbPath(PROJECT, dir);
 		const db = openStoreDb(dbPath);
 		try {
-			writeArtifact(db, "testplan", "r1", { ...env(), stage: "planning-tests" }, {
-				testCase: [
-					{
-						id: "TC-1",
-						tcKind: "TC",
-						strategyRef: "S-1",
-						steps: "run parse",
-						objective: "verify parse",
-						expected: "tokens out",
-					},
-				],
-				tcTrace: [{ tcId: "TC-1", targetKind: "af", targetId: "AF-1" }],
-			});
+			writeArtifact(
+				db,
+				"testplan",
+				"r1",
+				{ ...env(), stage: "planning-tests" },
+				{
+					testCase: [
+						{
+							id: "TC-1",
+							tcKind: "TC",
+							strategyRef: "S-1",
+							steps: "run parse",
+							objective: "verify parse",
+							expected: "tokens out",
+						},
+					],
+					tcTrace: [{ tcId: "TC-1", targetKind: "af", targetId: "AF-1" }],
+				},
+			);
 			publishArtifact(db, "r1", "testplan");
 		} finally {
 			closeStoreDb(db);

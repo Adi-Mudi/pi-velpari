@@ -13,12 +13,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
 
-const CANDIDATE_PATHS = [
-	"",
-	"../",
-	"../../",
-	"../../../",
-];
+const CANDIDATE_PATHS = ["", "../", "../../", "../../../"];
 
 function readAt(rel: string): string | null {
 	for (const prefix of CANDIDATE_PATHS) {
@@ -80,10 +75,7 @@ describe("AGENTS.md — principle 10b (reviewer sub-agent)", () => {
 	});
 
 	it("principle 10b references Anthropic Constitutional or SWE-Agent or Cursor Composer/Reviewer", () => {
-		assert.ok(
-			/Anthropic|SWE-Agent|Cursor/.test(md),
-			"principle 10b must cite at least one industry pattern",
-		);
+		assert.ok(/Anthropic|SWE-Agent|Cursor/.test(md), "principle 10b must cite at least one industry pattern");
 	});
 });
 

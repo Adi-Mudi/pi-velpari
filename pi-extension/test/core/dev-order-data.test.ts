@@ -92,12 +92,7 @@ describe("validateDevOrderData — D8 DAG", () => {
 	});
 
 	it("accepts a diamond (shared foundation is not a cycle)", () => {
-		const steps = [
-			step("DO-1"),
-			step("DO-2", ["DO-1"]),
-			step("DO-3", ["DO-1"]),
-			step("DO-4", ["DO-2", "DO-3"]),
-		];
+		const steps = [step("DO-1"), step("DO-2", ["DO-1"]), step("DO-3", ["DO-1"]), step("DO-4", ["DO-2", "DO-3"])];
 		const result = validateDevOrderData(data(steps));
 		assert.deepEqual(result.issues, []);
 		assert.equal(findDependencyCycle(steps), null);
@@ -131,8 +126,11 @@ describe("diffDevOrderData", () => {
 	});
 
 	it("blocks a revision without a version bump", () => {
-		assert.ok(diffDevOrderData(data([step("DO-1")]), data([step("DO-1")])).issues
-			.some((i) => i.includes("version must strictly increase")));
+		assert.ok(
+			diffDevOrderData(data([step("DO-1")]), data([step("DO-1")])).issues.some((i) =>
+				i.includes("version must strictly increase"),
+			),
+		);
 	});
 });
 

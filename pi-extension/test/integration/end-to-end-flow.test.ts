@@ -12,13 +12,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-	createRun,
-	advanceStage,
-	loadState,
-	saveState,
-	type RunState,
-} from "../../src/core/state.js";
+import { createRun, advanceStage, loadState, saveState, type RunState } from "../../src/core/state.js";
 import { runPublishGate } from "../../src/doctor/gate.js";
 
 let tmpDir: string;

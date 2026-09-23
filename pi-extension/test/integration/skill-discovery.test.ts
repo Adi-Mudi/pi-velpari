@@ -57,7 +57,10 @@ describe("skill discovery — Phase 8 re-verification", () => {
 
 	it("Phase 1 + 2 rename: velpari-final-design.md exists; velpari-html-design.md and velpari-design.md do NOT", () => {
 		assert.ok(fileExists("skills/velpari-final-design.md"), "velpari-final-design.md must exist");
-		assert.ok(!fileExists("skills/velpari-html-design.md"), "velpari-html-design.md must be removed (renamed on 2026-09-14)");
+		assert.ok(
+			!fileExists("skills/velpari-html-design.md"),
+			"velpari-html-design.md must be removed (renamed on 2026-09-14)",
+		);
 		assert.ok(!fileExists("skills/velpari-design.md"), "velpari-design.md must be removed");
 	});
 
@@ -66,27 +69,15 @@ describe("skill discovery — Phase 8 re-verification", () => {
 	});
 
 	it("Phase 4 addition: design-conflict-detector.md exists", () => {
-		assert.ok(
-			fileExists("skills/agents/design-conflict-detector.md"),
-			"design-conflict-detector.md must exist",
-		);
+		assert.ok(fileExists("skills/agents/design-conflict-detector.md"), "design-conflict-detector.md must exist");
 	});
 
 	it("standards catalogue and overlays are present", () => {
 		assert.ok(fileExists("skills/standards/catalogue.json"), "catalogue.json must exist");
 		assert.ok(fileExists("skills/standards/README.md"), "standards README must exist");
-		assert.ok(
-			fileExists("skills/standards/overlays/_template/profile.template.json"),
-			"overlay template must exist",
-		);
-		assert.ok(
-			fileExists("skills/standards/overlays/_template/README.md"),
-			"overlay template README must exist",
-		);
-		assert.ok(
-			fileExists("skills/standards/overlays/none/profile.json"),
-			"none overlay profile must exist",
-		);
+		assert.ok(fileExists("skills/standards/overlays/_template/profile.template.json"), "overlay template must exist");
+		assert.ok(fileExists("skills/standards/overlays/_template/README.md"), "overlay template README must exist");
+		assert.ok(fileExists("skills/standards/overlays/none/profile.json"), "none overlay profile must exist");
 		assert.ok(
 			fileExists("skills/standards/overlays/medical-device-b/profile.json"),
 			"medical-device-b overlay profile must exist",
@@ -104,10 +95,7 @@ describe("skill discovery — Phase 8 re-verification", () => {
 			"doctor/check-overlay.md",
 		];
 		for (const f of required) {
-			assert.ok(
-				fileExists(`skills/standards/overlays/medical-device-b/${f}`),
-				`missing medical-device-b/${f}`,
-			);
+			assert.ok(fileExists(`skills/standards/overlays/medical-device-b/${f}`), `missing medical-device-b/${f}`);
 		}
 	});
 

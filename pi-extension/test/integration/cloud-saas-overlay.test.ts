@@ -8,14 +8,8 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	loadCatalogue,
-	findOverlay,
-} from "../../src/core/standards-catalogue.js";
-import {
-	loadOverlay,
-	mergeOverlay,
-} from "../../src/core/standards-overlay.js";
+import { loadCatalogue, findOverlay } from "../../src/core/standards-catalogue.js";
+import { loadOverlay, mergeOverlay } from "../../src/core/standards-overlay.js";
 import { findPackageRoot } from "../../src/core/paths.js";
 
 const pkgRoot = findPackageRoot(process.cwd());
@@ -99,23 +93,15 @@ describe("cloud-saas overlay — profile", () => {
 	it("declares 8 doctor checks", () => {
 		const overlay = loadOverlay(pkgRoot, "cloud-saas")!;
 		assert.strictEqual(overlay.doctorChecks.length, 8);
-		assert.ok(
-			overlay.doctorChecks.some((c) => c.includes("Trust Services Criteria") || c.includes("TSC")),
-		);
-		assert.ok(
-			overlay.doctorChecks.some((c) => c.includes("tenant-isolation") || c.includes("tenant isolation")),
-		);
+		assert.ok(overlay.doctorChecks.some((c) => c.includes("Trust Services Criteria") || c.includes("TSC")));
+		assert.ok(overlay.doctorChecks.some((c) => c.includes("tenant-isolation") || c.includes("tenant isolation")));
 	});
 });
 
 describe("cloud-saas overlay — mergeOverlay", () => {
 	it("appends overlay sections to a design template", () => {
 		const overlay = loadOverlay(pkgRoot, "cloud-saas")!;
-		const merged = mergeOverlay(
-			"design",
-			"# Existing design\n\n## Module Breakdown\n\n## Change Log\n",
-			overlay,
-		);
+		const merged = mergeOverlay("design", "# Existing design\n\n## Module Breakdown\n\n## Change Log\n", overlay);
 		assert.ok(merged.includes("## Module Breakdown"));
 		assert.ok(merged.includes("## Multi-Tenancy Architecture"));
 		assert.ok(merged.includes("## Identity and Access Management"));

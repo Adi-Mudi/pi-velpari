@@ -87,14 +87,7 @@ function enterBuildingRtm(): void {
 	const docDir = path.join(tmpDir, "Doc", "requirements");
 	fs.mkdirSync(docDir, { recursive: true });
 	fs.writeFileSync(path.join(docDir, "PRD_TestApp.md"), PSRS, "utf8");
-	const dir = path.join(
-		tmpDir,
-		".IDE_Plans",
-		"velpari",
-		"runs",
-		loadState(tmpDir).runId,
-		"rtm",
-	);
+	const dir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", loadState(tmpDir).runId, "rtm");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM preview\n", "utf8");
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.json"), rtmJson(), "utf8");

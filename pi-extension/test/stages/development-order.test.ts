@@ -58,14 +58,8 @@ describe("/velpari-development-order — Stage 9 registry", () => {
 
 	it("depends on Stages 6 (atomic-functions) and 7 (pseudocode) — requires Option B order", () => {
 		const artifacts = entry.inputs.map((i) => i.artifact);
-		assert.ok(
-			artifacts.includes("atomic-functions"),
-			"development-order MUST depend on atomic-functions (Stage 6)",
-		);
-		assert.ok(
-			artifacts.includes("pseudocode"),
-			"development-order MUST depend on pseudocode (Stage 7)",
-		);
+		assert.ok(artifacts.includes("atomic-functions"), "development-order MUST depend on atomic-functions (Stage 6)");
+		assert.ok(artifacts.includes("pseudocode"), "development-order MUST depend on pseudocode (Stage 7)");
 	});
 
 	it("missing-input error message names Stage 9 + all prior stages", () => {

@@ -74,11 +74,7 @@ describe("checkPhaseConsistencySection", () => {
 
 	it("errors on a phase mismatch", () => {
 		const section = checkPhaseConsistencySection(setup([row("FR-01", 2)]), "TestApp");
-		assert.ok(
-			section.items.some(
-				(i) => i.status === "error" && /FR-01: RTM phase 2 ≠ PRD phase 1/.test(i.message),
-			),
-		);
+		assert.ok(section.items.some((i) => i.status === "error" && /FR-01: RTM phase 2 ≠ PRD phase 1/.test(i.message)));
 	});
 
 	it("ignores rows whose id is absent from the PRD (fingerprint check's job)", () => {

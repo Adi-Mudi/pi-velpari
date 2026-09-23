@@ -216,20 +216,20 @@ function enterBuildingRtm(json: string): void {
 function seedFrNfrFromPsrs(): void {
 	const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
 	try {
-		const ids = Array.from(PSRS.matchAll(/\|\s*(FR-\d+|NFR-\d+)\s*\|/g)).map((m) =>
-			String(m[1]),
-		);
+		const ids = Array.from(PSRS.matchAll(/\|\s*(FR-\d+|NFR-\d+)\s*\|/g)).map((m) => String(m[1]));
 		const seen = new Set<string>();
 		const frRows: ArtifactPayload = {
-			fr: ids.filter((id) => id.startsWith("FR-") && !seen.has(id)).map((id) => {
-				seen.add(id);
-				return {
-					id,
-					phase: 1,
-					textHash: "f".repeat(64),
-					text: `seeded prose for ${id}`,
-				};
-			}),
+			fr: ids
+				.filter((id) => id.startsWith("FR-") && !seen.has(id))
+				.map((id) => {
+					seen.add(id);
+					return {
+						id,
+						phase: 1,
+						textHash: "f".repeat(64),
+						text: `seeded prose for ${id}`,
+					};
+				}),
 			nfr: ids
 				.filter((id) => id.startsWith("NFR-") && !seen.has(id))
 				.map((id) => {
@@ -332,10 +332,7 @@ describe("publish — publish gate", () => {
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
 		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(mdPath), "markdown published");
-		assert.ok(
-			!fs.existsSync(yamlPath),
-			"Phase 6 §14.3: YAML sidecar is a download view, NOT a publish product",
-		);
+		assert.ok(!fs.existsSync(yamlPath), "Phase 6 §14.3: YAML sidecar is a download view, NOT a publish product");
 		assert.ok(
 			!fs.existsSync(path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.json")),
 			"no .json copy is published",

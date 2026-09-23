@@ -32,18 +32,12 @@ describe("paths registry — observability category", () => {
 	});
 
 	it("buildGroupedPath('logging-plan', 'Demo') → Doc/observability/logging-plan_Demo.md", () => {
-		assert.strictEqual(
-			buildGroupedPath("logging-plan", "Demo"),
-			"Doc/observability/logging-plan_Demo.md",
-		);
+		assert.strictEqual(buildGroupedPath("logging-plan", "Demo"), "Doc/observability/logging-plan_Demo.md");
 	});
 
 	it("buildWorkingGroupedPath emits the <runDir>/observability/ folder", () => {
 		const p = buildWorkingGroupedPath("/cwd", "2026-09-16-10-00-x", "logging-plan", "Demo");
-		assert.strictEqual(
-			p,
-			"/cwd/.IDE_Plans/velpari/runs/2026-09-16-10-00-x/observability/logging-plan_Demo.md",
-		);
+		assert.strictEqual(p, "/cwd/.IDE_Plans/velpari/runs/2026-09-16-10-00-x/observability/logging-plan_Demo.md");
 	});
 });
 

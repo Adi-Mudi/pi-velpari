@@ -94,10 +94,7 @@ describe("withArtifactFrontmatter", () => {
 	});
 
 	it("Phase 7: writes supersedes when input.supersedes is set", () => {
-		const out = withArtifactFrontmatter(
-			"# RTM v2\n",
-			{ ...INPUT, supersedes: "RTM_v1_2026-09-13" },
-		);
+		const out = withArtifactFrontmatter("# RTM v2\n", { ...INPUT, supersedes: "RTM_v1_2026-09-13" });
 		const parsed = parseFrontmatterBlock(out)!;
 		assert.equal(parsed.fields.supersedes, "RTM_v1_2026-09-13");
 	});
@@ -165,10 +162,12 @@ describe("missingFrontmatterFields", () => {
 	});
 
 	it("returns empty when the block is complete", () => {
-		const out = withArtifactFrontmatter(
-			"# T\n",
-			{ ...INPUT, supersedes: "x", sunset: "2099-01-01", deprecatedAt: "2026-09-14" },
-		);
+		const out = withArtifactFrontmatter("# T\n", {
+			...INPUT,
+			supersedes: "x",
+			sunset: "2099-01-01",
+			deprecatedAt: "2026-09-14",
+		});
 		assert.deepEqual(missingFrontmatterFields(out), []);
 	});
 

@@ -30,13 +30,10 @@ describe("/velpari-atomic-function — Stage 6 registry", () => {
 	});
 
 	it("uses 5 scouts named af-source-{rtm,design,prd,feas} + reviewer", () => {
-		assert.deepEqual([...entry.scouts], [
-			"af-source-rtm",
-			"af-source-design",
-			"af-source-prd",
-			"af-source-feas",
-			"reviewer",
-		]);
+		assert.deepEqual(
+			[...entry.scouts],
+			["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"],
+		);
 	});
 
 	it("writes atomic-functions.md (not a folder) into <runDir>/atomic-function/", () => {
@@ -90,10 +87,7 @@ describe("/velpari-atomic-function — Stage 6 registry", () => {
  */
 
 import { buildStagePrompt } from "../../src/core/prompt.js";
-import {
-	DEFAULT_ATOMIC_PROFILE,
-	type AtomicProfile,
-} from "../../src/core/atomic-tier.js";
+import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../src/core/atomic-tier.js";
 
 describe("/velpari-atomic-function — tier injection", () => {
 	const baseInput = {
@@ -137,9 +131,7 @@ describe("/velpari-atomic-function — tier injection", () => {
 	});
 
 	it("renders the Intermediate tier block when tier=intermediate", () => {
-		const prompt = buildStagePrompt(
-			withProfile({ ...DEFAULT_ATOMIC_PROFILE, tier: "intermediate" }),
-		);
+		const prompt = buildStagePrompt(withProfile({ ...DEFAULT_ATOMIC_PROFILE, tier: "intermediate" }));
 		assert.match(prompt, /Tier: Intermediate/);
 		assert.match(prompt, /EARS pattern, inputs, outputs/);
 	});

@@ -289,10 +289,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
  * Run the full audit. Returns the structured report; the caller decides
  * whether to format it, write it to disk, or notify it.
  */
-export function runDoctor(
-	cwd: string = process.cwd(),
-	opts: { embedded?: boolean } = {},
-): DiagnosticReport {
+export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolean } = {}): DiagnosticReport {
 	const projectName = readProjectName(cwd);
 
 	const sections: DiagnosticSection[] = [

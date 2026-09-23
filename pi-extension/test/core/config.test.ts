@@ -144,39 +144,30 @@ describe("getEffectiveProjectNames (v1.3.0+)", () => {
 	});
 
 	it("returns projectNames when only projectNames is set", () => {
-		assert.deepEqual(
-			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] }),
-			["alpha", "beta"],
-		);
+		assert.deepEqual(getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] }), [
+			"alpha",
+			"beta",
+		]);
 	});
 
 	it("de-duplicates projectNames while preserving order", () => {
-		assert.deepEqual(
-			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["x", "x", "y", "x"] }),
-			["x", "y"],
-		);
+		assert.deepEqual(getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["x", "x", "y", "x"] }), [
+			"x",
+			"y",
+		]);
 	});
 
 	it("isMultiProject returns true for ≥ 2 names, false for 1", () => {
 		assert.equal(isMultiProject(VALID_V4), false);
-		assert.equal(
-			isMultiProject({ ...VALID_V4, projectName: "", projectNames: ["a", "b"] }),
-			true,
-		);
+		assert.equal(isMultiProject({ ...VALID_V4, projectName: "", projectNames: ["a", "b"] }), true);
 	});
 
 	it("throws when both fields are set", () => {
-		assert.throws(
-			() => getEffectiveProjectNames({ ...VALID_V4, projectNames: ["x"] }),
-			/sets both/,
-		);
+		assert.throws(() => getEffectiveProjectNames({ ...VALID_V4, projectNames: ["x"] }), /sets both/);
 	});
 
 	it("throws when neither is set", () => {
-		assert.throws(
-			() => getEffectiveProjectNames({ ...VALID_V4, projectName: "" }),
-			/must set either/,
-		);
+		assert.throws(() => getEffectiveProjectNames({ ...VALID_V4, projectName: "" }), /must set either/);
 	});
 });
 

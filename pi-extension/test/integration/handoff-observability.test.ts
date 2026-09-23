@@ -79,10 +79,7 @@ function seedAllRequiredDocs(): void {
 	writeFileSync(join(cwd, "Doc", "design", `final-design_${projectName}.md`), stub);
 }
 
-function seedLoggingPlan(
-	projectName: string,
-	frontmatter: Record<string, string>,
-): void {
+function seedLoggingPlan(projectName: string, frontmatter: Record<string, string>): void {
 	mkdirSync(join(cwd, "Doc", "observability"), { recursive: true });
 	const fm = Object.entries(frontmatter)
 		.map(([k, v]) => `${k}: ${v}`)
@@ -93,7 +90,13 @@ function seedLoggingPlan(
 	);
 }
 
-function makeCtx(): { ui: { notify: (msg: string, level: string) => void; setStatus: (k: string, t?: string) => void; confirm: (t: string, m: string) => Promise<boolean> } } {
+function makeCtx(): {
+	ui: {
+		notify: (msg: string, level: string) => void;
+		setStatus: (k: string, t?: string) => void;
+		confirm: (t: string, m: string) => Promise<boolean>;
+	};
+} {
 	const notices: { msg: string; level: string }[] = [];
 	return {
 		ui: {
@@ -166,10 +169,7 @@ describe("runHandoff — observability block", () => {
 		const payload = JSON.parse(readFileSync(payloadPath, "utf8"));
 		assert.ok(payload.observability, "observability block should exist");
 		assert.strictEqual(payload.observability.loggingPlan.length, 1);
-		assert.strictEqual(
-			payload.observability.loggingPlan[0].overlay,
-			"cloud-saas",
-		);
+		assert.strictEqual(payload.observability.loggingPlan[0].overlay, "cloud-saas");
 	});
 
 	it("writes architect-inputs.json WITHOUT observability block when no plan", async () => {

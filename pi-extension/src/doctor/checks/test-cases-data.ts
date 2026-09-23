@@ -45,8 +45,11 @@ export function checkTestCasesDataSection(cwd: string, projectName: string): Dia
 		if (tcRows.length === 0) {
 			items.push({
 				status: "warning",
-				message: "Test-cases store rows exist but the row-set is empty — run `/velpari-testplan` update mode and republish.",
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				message:
+					"Test-cases store rows exist but the row-set is empty — run `/velpari-testplan` update mode and republish.",
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 				suggestion: suggestionFor("tc-data-invalid"),
 			});
 			return { title: "Test-cases data sidecar", items };

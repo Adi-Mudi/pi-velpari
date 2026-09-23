@@ -69,7 +69,10 @@ function makeHarness(): Harness {
 	return { notices, userMessages, ctx, pi, originalEnv, restoreEnv };
 }
 
-function setMux(envKey: "PI_SUBAGENT_MUX" | "TMUX" | "ZELLIJ_PANE_ID" | "WEZTERM_PANE" | "CMUX_PANE_ID", value: string) {
+function setMux(
+	envKey: "PI_SUBAGENT_MUX" | "TMUX" | "ZELLIJ_PANE_ID" | "WEZTERM_PANE" | "CMUX_PANE_ID",
+	value: string,
+) {
 	// Clear all mux signals first, then set the one we want.
 	delete process.env.PI_SUBAGENT_MUX;
 	delete process.env.TMUX;
@@ -113,9 +116,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
 		// No "multiplexer" error was emitted
-		const muxErrors = harness.notices.filter(
-			(n) => n.level === "error" && /multiplexer/i.test(n.message),
-		);
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
 		assert.equal(muxErrors.length, 0, "no multiplexer error should be emitted when override is set");
 
 		// Handler proceeded to sendUserMessage (parent LLM now drives the lifecycle)
@@ -130,9 +131,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const muxErrors = harness.notices.filter(
-			(n) => n.level === "error" && /multiplexer/i.test(n.message),
-		);
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
 		assert.equal(muxErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
 		assert.ok(existsSync(join(tmpDir, ".pi", "velpari", "state.json")));
@@ -143,9 +142,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const muxErrors = harness.notices.filter(
-			(n) => n.level === "error" && /multiplexer/i.test(n.message),
-		);
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
 		assert.equal(muxErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
 	});
@@ -155,9 +152,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const muxErrors = harness.notices.filter(
-			(n) => n.level === "error" && /multiplexer/i.test(n.message),
-		);
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
 		assert.equal(muxErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
 	});
@@ -167,9 +162,7 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 
-		const muxErrors = harness.notices.filter(
-			(n) => n.level === "error" && /multiplexer/i.test(n.message),
-		);
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
 		assert.equal(muxErrors.length, 0);
 		assert.equal(harness.userMessages.length, 1);
 	});

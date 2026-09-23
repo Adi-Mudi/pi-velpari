@@ -192,8 +192,7 @@ export function closeStoreDb(db: DatabaseSync): void {
  */
 export function storeMetaSet(db: DatabaseSync, key: string, value: string): void {
 	db.prepare(
-		"INSERT INTO store_meta (key, value) VALUES (?, ?) " +
-			"ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		"INSERT INTO store_meta (key, value) VALUES (?, ?) " + "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
 	).run(key, value);
 }
 
@@ -204,8 +203,6 @@ export function storeMetaSet(db: DatabaseSync, key: string, value: string): void
  * @returns {string | null} The stored value, or null.
  */
 export function storeMetaGet(db: DatabaseSync, key: string): string | null {
-	const row = db.prepare("SELECT value FROM store_meta WHERE key = ?").get(key) as
-		| { value: string }
-		| undefined;
+	const row = db.prepare("SELECT value FROM store_meta WHERE key = ?").get(key) as { value: string } | undefined;
 	return row === undefined ? null : row.value;
 }

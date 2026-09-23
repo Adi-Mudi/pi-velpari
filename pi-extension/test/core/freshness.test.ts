@@ -183,7 +183,7 @@ describe("computeStaleSet", () => {
 			inputs: {},
 		});
 		assert.deepEqual(computeStaleSet(cwd), []);
-		writeFileSync(sidecar, "{\"changed\":true}");
+		writeFileSync(sidecar, '{"changed":true}');
 		const stale = computeStaleSet(cwd);
 		assert.equal(stale.length, 1);
 		assert.equal(stale[0]!.reason, "input-changed");
@@ -213,20 +213,18 @@ describe("resolveDeclaredInputs + computeInputHashes", () => {
 	it("hashes found inputs and reports required missing ones", () => {
 		const cwd = tmp();
 		write(cwd, "Doc/requirements/PRD_TestApp.md", "# PRD\n");
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "doc", artifact: "PRD", label: "PRD" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		const hashes = computeInputHashes(cwd, inputs);
 		assert.ok(hashes.ok);
 		assert.match(hashes.hashes["prd:TestApp"]!, /^[0-9a-f]{64}$/);
 
-		const missingInputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "doc", artifact: "RTM", label: "RTM" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const missingInputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "RTM", label: "RTM" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.deepEqual(computeInputHashes(cwd, missingInputs), {
 			ok: false,
 			missing: ["rtm:TestApp"],
@@ -235,11 +233,10 @@ describe("resolveDeclaredInputs + computeInputHashes", () => {
 
 	it("skips missing optional inputs", () => {
 		const cwd = tmp();
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm", optional: true }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm", optional: true }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.deepEqual(computeInputHashes(cwd, inputs), { ok: true, hashes: {} });
 	});
 });
@@ -272,18 +269,9 @@ describe("enumeratePublishedArtifacts", () => {
 });
 
 describe("hashv schemes (A5/D3)", () => {
-	const UPSTREAM = [
-		"# PRD",
-		"",
-		"## Body",
-		"",
-		"substance",
-		"",
-		"## Change Log",
-		"",
-		"- v1.0.0 initial",
-		"",
-	].join("\n");
+	const UPSTREAM = ["# PRD", "", "## Body", "", "substance", "", "## Change Log", "", "- v1.0.0 initial", ""].join(
+		"\n",
+	);
 
 	function setupEntry(cwd: string, hashv?: 2): { upstreamPath: string } {
 		const upstreamPath = write(cwd, "Doc/requirements/PRD_TestApp.md", UPSTREAM);
@@ -382,11 +370,10 @@ describe("re-brainstorm staling (D8)", () => {
 		const cwd = tmp();
 		publishBrainstormV1(cwd);
 		const v2 = republishBrainstormV2(cwd);
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.equal(inputs[0]!.status, "found");
 		assert.equal(inputs[0]!.path, v2, "manifest path (suffixed latest file) must win");
 	});
@@ -394,11 +381,10 @@ describe("re-brainstorm staling (D8)", () => {
 	it("falls back to base-slug disk resolution when no manifest entry exists", () => {
 		const cwd = tmp();
 		const v1 = write(cwd, "Doc/brainstorm/brainstorm-cli-todo.md", "# brainstorm v1\n");
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.equal(inputs[0]!.status, "found");
 		assert.equal(inputs[0]!.path, v1);
 	});
@@ -433,9 +419,7 @@ describe("re-brainstorm staling (D8)", () => {
 		publishBrainstormV1(cwd);
 		republishBrainstormV2(cwd);
 		// Both files on disk; one enumerated artifact under the base slug.
-		const found = enumeratePublishedArtifacts(cwd).filter(
-			(f) => f.artifactKind === "brainstorm",
-		);
+		const found = enumeratePublishedArtifacts(cwd).filter((f) => f.artifactKind === "brainstorm");
 		assert.equal(found.length, 1);
 		assert.equal(found[0]!.slug, "cli-todo");
 

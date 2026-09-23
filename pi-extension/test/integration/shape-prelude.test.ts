@@ -56,8 +56,7 @@ function setupProject(version: string, sectionCount: number): ArchContext {
 	// Doc/design/design_TodoApp.md
 	fs.mkdirSync(path.join(tmpDir, "Doc", "design"), { recursive: true });
 	const md =
-		`---\nversion: ${version}\n---\n\n` +
-		Array.from({ length: sectionCount }, (_, i) => `## ${i}. S`).join("\n");
+		`---\nversion: ${version}\n---\n\n` + Array.from({ length: sectionCount }, (_, i) => `## ${i}. S`).join("\n");
 	fs.writeFileSync(path.join(tmpDir, "Doc", "design", "design_TodoApp.md"), md, "utf8");
 	return loadArchContext("run-test", "Test mission", tmpDir);
 }

@@ -80,9 +80,7 @@ describe("validateRtmData", () => {
 	});
 
 	it("accepts deprecated rows with a reason", () => {
-		const result = validateRtmData(
-			data({ rows: [row({ status: "deprecated", reason: "dropped from scope" })] }),
-		);
+		const result = validateRtmData(data({ rows: [row({ status: "deprecated", reason: "dropped from scope" })] }));
 		assert.equal(result.ok, true);
 	});
 
@@ -179,9 +177,7 @@ describe("renderRtmMarkdown", () => {
 	});
 
 	it("renders the deprecation reason in the status column", () => {
-		const md = renderRtmMarkdown(
-			data({ rows: [row({ status: "deprecated", reason: "replaced by FR-9" })] }),
-		);
+		const md = renderRtmMarkdown(data({ rows: [row({ status: "deprecated", reason: "replaced by FR-9" })] }));
 		assert.match(md, /deprecated \(replaced by FR-9\)/);
 	});
 });

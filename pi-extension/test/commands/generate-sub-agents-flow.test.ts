@@ -140,8 +140,7 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			assert.equal(result.mappingsAdded, 0);
 			assert.equal(result.cancelled, false);
 			const allCustomNotify = ctx.__calls.find(
-				(c) =>
-					c.method === "notify" && /All Phase 1 roles already have custom agents/.test(String(c.args[0])),
+				(c) => c.method === "notify" && /All Phase 1 roles already have custom agents/.test(String(c.args[0])),
 			);
 			assert.ok(allCustomNotify, "expected the all-custom bail notify");
 			// No confirm gate, no files.
@@ -184,9 +183,9 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			}
 
 			// agents.json updated
-			const agentsJson = JSON.parse(
-				readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8"),
-			) as { agents: Record<string, string> };
+			const agentsJson = JSON.parse(readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8")) as {
+				agents: Record<string, string>;
+			};
 			assert.equal(Object.keys(agentsJson.agents).length, 4);
 			assert.equal(agentsJson.agents.extractor, `${slug}-extractor`);
 		} finally {
@@ -204,11 +203,7 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			});
 			await runAgentGenerator(ctx);
 			const confirmCalls = ctx.__calls.filter((c) => c.method === "confirm");
-			assert.equal(
-				confirmCalls.length,
-				1,
-				`expected exactly 1 confirm call, got ${confirmCalls.length}`,
-			);
+			assert.equal(confirmCalls.length, 1, `expected exactly 1 confirm call, got ${confirmCalls.length}`);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -291,9 +286,9 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 			assert.equal(readFileSync(customAgent, "utf8"), handMade);
 
 			// And not in agents.json (custom agents are not mapped unless the user did so)
-			const agentsJson = JSON.parse(
-				readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8"),
-			) as { agents: Record<string, string> };
+			const agentsJson = JSON.parse(readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8")) as {
+				agents: Record<string, string>;
+			};
 			assert.ok(!("my-hand-made-agent" in agentsJson.agents));
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -309,9 +304,7 @@ describe("/velpari-generate-sub-agents flow (Phase 5+6", () => {
 				confirm: async () => true,
 			});
 			await runAgentGenerator(ctx);
-			const summary = ctx.__calls.find(
-				(c) => c.method === "notify" && /Done\./.test(String(c.args[0])),
-			);
+			const summary = ctx.__calls.find((c) => c.method === "notify" && /Done\./.test(String(c.args[0])));
 			assert.ok(summary, "expected the post-write summary notify");
 			assert.match(String(summary!.args[0]), /4 agents written/);
 		} finally {
@@ -357,9 +350,9 @@ describe("/velpari-generate-sub-agents — per-phase selection (generator v2)", 
 				assert.ok(existsSync(join(agentsDir, `${slug}-${role}.md`)), `${role} should be generated`);
 			}
 			// agents.json maps reviewer roles too (D4 — all generated roles).
-			const agentsJson = JSON.parse(
-				readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8"),
-			) as { agents: Record<string, string> };
+			const agentsJson = JSON.parse(readFileSync(join(cwd, ".pi", "velpari", "agents.json"), "utf8")) as {
+				agents: Record<string, string>;
+			};
 			assert.equal(agentsJson.agents.reviewer, `${slug}-reviewer`);
 			assert.equal(Object.keys(agentsJson.agents).length, 17);
 		} finally {

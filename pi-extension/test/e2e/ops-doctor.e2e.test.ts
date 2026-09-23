@@ -28,12 +28,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
@@ -43,10 +38,7 @@ async function runModuleScript<T>(client: RpcClient, script: string): Promise<T>
 	const result = await client.request<any>("bash", {
 		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
 	});
-	assert.ok(
-		result.success === true,
-		`subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-	);
+	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
 	return JSON.parse(output) as T;
@@ -101,8 +93,12 @@ describe("e2e/ops-doctor", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { saveAgentConfig } from " + AGENTS_JS + "; " +
-				"import { runDoctor, formatDiagnosticReport } from " + DOCTOR_JS + "; " +
+			"import { saveAgentConfig } from " +
+				AGENTS_JS +
+				"; " +
+				"import { runDoctor, formatDiagnosticReport } from " +
+				DOCTOR_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"saveAgentConfig(cwd, { version: 1, agents: { extractor: 'test-scout' } }); " +
 				"const report = formatDiagnosticReport(runDoctor(cwd)); " +
@@ -113,20 +109,23 @@ describe("e2e/ops-doctor", () => {
 			out.report.includes("## Agent mapping (agents.json)"),
 			"doctor report is missing the agent-mapping section",
 		);
-		assert.ok(
-			out.report.includes("test-scout"),
-			"agent-mapping section should mention the mapped custom agent",
-		);
+		assert.ok(out.report.includes("test-scout"), "agent-mapping section should mention the mapped custom agent");
 	});
 
-	it("status: no run notifies; with a run it appends a velpari-status entry and sets the footer", { timeout: 60_000 }, async (t) => {
+	it("status: no run notifies; with a run it appends a velpari-status entry and sets the footer", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { clearRun, createRun } from " + STATE_JS + "; " +
-				"import { handleStatus } from " + STATUS_JS + "; " +
+			"import { clearRun, createRun } from " +
+				STATE_JS +
+				"; " +
+				"import { handleStatus } from " +
+				STATUS_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				MOCKS +
@@ -139,7 +138,10 @@ describe("e2e/ops-doctor", () => {
 		);
 
 		assert.strictEqual(out.noRunNotes.length, 1, "no-run status should notify exactly once");
-		assert.ok(out.noRunNotes[0].m.includes("No active Velpari run"), `unexpected no-run message: ${out.noRunNotes[0].m}`);
+		assert.ok(
+			out.noRunNotes[0].m.includes("No active Velpari run"),
+			`unexpected no-run message: ${out.noRunNotes[0].m}`,
+		);
 
 		assert.strictEqual(out.entries.length, 1, "with-run status should append exactly one session entry");
 		assert.strictEqual(out.entries[0].t, "velpari-status", "status entry must use the velpari-status custom type");
@@ -159,8 +161,12 @@ describe("e2e/ops-doctor", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { createRun, loadState } from " + STATE_JS + "; " +
-				"import { handleReset } from " + RESET_JS + "; " +
+			"import { createRun, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleReset } from " +
+				RESET_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"createRun('E2E reset run', cwd); " +
 				MOCKS +
@@ -196,7 +202,9 @@ describe("e2e/ops-doctor", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { showPrd } from " + SHOW_JS + "; " +
+			"import { showPrd } from " +
+				SHOW_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				MOCKS +
 				"await showPrd(ctx, cwd); " +
@@ -205,21 +213,24 @@ describe("e2e/ops-doctor", () => {
 
 		const flat = out.notes.map((n: { m: string }) => n.m).join("\n---\n");
 		assert.ok(flat.includes("# PRD (legacy flat)"), "show-prd did not print the legacy document content");
-		assert.ok(
-			flat.includes("legacy flat path"),
-			"show-prd should note that the legacy flat path was used",
-		);
+		assert.ok(flat.includes("legacy flat path"), "show-prd should note that the legacy flat path was used");
 	});
 
-	it("handoff: wrong stage hard-blocks; finalized-design writes a schema-valid architect-inputs.json", { timeout: 60_000 }, async (t) => {
+	it("handoff: wrong stage hard-blocks; finalized-design writes a schema-valid architect-inputs.json", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, advanceStage, loadState } from " + STATE_JS + "; " +
-				"import { runHandoff, validateSenaiSchema } from " + HANDOFF_JS + "; " +
+				"import { clearRun, createRun, advanceStage, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { runHandoff, validateSenaiSchema } from " +
+				HANDOFF_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"let s = createRun('E2E handoff run', cwd); " +
@@ -261,7 +272,11 @@ describe("e2e/ops-doctor", () => {
 		assert.ok(out.written, "architect-inputs.json was not written");
 		assert.ok(out.schemaOk, "architect-inputs.json failed validateSenaiSchema");
 		assert.strictEqual(out.projectName, "E2EFixture", "handoff lost the projectName");
-		assert.strictEqual(out.docCount, 10, "handoff should reference exactly the 10 required documents (incl. atomic-functions + dev-order + final-design)");
+		assert.strictEqual(
+			out.docCount,
+			10,
+			"handoff should reference exactly the 10 required documents (incl. atomic-functions + dev-order + final-design)",
+		);
 		assert.strictEqual(out.stage, "handoff-ready", "state must advance to handoff-ready after a confirmed handoff");
 	});
 });

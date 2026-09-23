@@ -12,11 +12,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	STAGE_REGISTRY,
-	filterReviewerSlot,
-	overlayRequiresReviewerFor,
-} from "../../src/stages/registry.js";
+import { STAGE_REGISTRY, filterReviewerSlot, overlayRequiresReviewerFor } from "../../src/stages/registry.js";
 import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../src/core/atomic-tier.js";
 
 function profile(tier: AtomicProfile["tier"], reviewerMode?: AtomicProfile["reviewerMode"]): AtomicProfile {
@@ -108,33 +104,18 @@ describe("filterReviewerSlot — tier + overlay gate", () => {
 	});
 
 	it("reviewerMode=always wins regardless of tier", () => {
-		const result = filterReviewerSlot(
-			fakeScouts,
-			"atomic-function",
-			profile("entry", "always"),
-			false,
-		);
+		const result = filterReviewerSlot(fakeScouts, "atomic-function", profile("entry", "always"), false);
 		assert.equal(result.length, 5);
 	});
 
 	it("reviewerMode=never wins even on Advanced tier", () => {
-		const result = filterReviewerSlot(
-			fakeScouts,
-			"atomic-function",
-			profile("advanced", "never"),
-			true,
-		);
+		const result = filterReviewerSlot(fakeScouts, "atomic-function", profile("advanced", "never"), true);
 		assert.equal(result.length, 4);
 		assert.ok(!result.some((s) => s.name === "reviewer"));
 	});
 
 	it("reviewerMode=never wins even with overlay.requiresReviewer=true", () => {
-		const result = filterReviewerSlot(
-			fakeScouts,
-			"atomic-function",
-			profile("entry", "never"),
-			true,
-		);
+		const result = filterReviewerSlot(fakeScouts, "atomic-function", profile("entry", "never"), true);
 		assert.equal(result.length, 4);
 	});
 });

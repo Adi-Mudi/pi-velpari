@@ -11,21 +11,11 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	mkdtempSync,
-	mkdirSync,
-	writeFileSync,
-	readFileSync,
-	rmSync,
-	copyFileSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadCatalogue } from "../../src/core/standards-catalogue.js";
-import {
-	loadOverlay,
-	overlayDir,
-} from "../../src/core/standards-overlay.js";
+import { loadOverlay, overlayDir } from "../../src/core/standards-overlay.js";
 import { loadOverlayChecks } from "../../src/doctor/check-registry.js";
 import { bootstrapOverlayScouts } from "../../src/io/agents-install.js";
 
@@ -97,10 +87,7 @@ function registerInCatalogue(overlayId: string, label: string): void {
 	);
 }
 
-function customizeOverlayProfile(
-	overlayId: string,
-	patch: Record<string, unknown>,
-): void {
+function customizeOverlayProfile(overlayId: string, patch: Record<string, unknown>): void {
 	const profilePath = join(overlayDir(tmpDir, overlayId), "profile.json");
 	const raw = JSON.parse(readFileSync(profilePath, "utf8")) as Record<string, unknown>;
 	const merged = { ...raw, ...patch };
@@ -168,14 +155,7 @@ describe("overlay authoring — bootstrapOverlayScouts", () => {
 	it("copies overlay scout files into .pi/agents/ and reports the result", () => {
 		// Seed an overlay with one scout file
 		const overlayId = "medical-device-b";
-		const overlayScoutsDir = join(
-			tmpDir,
-			"skills",
-			"standards",
-			"overlays",
-			overlayId,
-			"scouts",
-		);
+		const overlayScoutsDir = join(tmpDir, "skills", "standards", "overlays", overlayId, "scouts");
 		mkdirSync(overlayScoutsDir, { recursive: true });
 		writeFileSync(
 			join(overlayScoutsDir, "overlay-design-safety-analyzer.md"),
@@ -184,11 +164,7 @@ describe("overlay authoring — bootstrapOverlayScouts", () => {
 		);
 
 		// Run the bootstrap helper
-		const result = bootstrapOverlayScouts(
-			overlayId,
-			["overlay-design-safety-analyzer"],
-			tmpDir,
-		);
+		const result = bootstrapOverlayScouts(overlayId, ["overlay-design-safety-analyzer"], tmpDir);
 
 		assert.deepEqual(result.installed, ["overlay-design-safety-analyzer"]);
 		assert.deepEqual(result.alreadyPresent, []);
@@ -199,28 +175,16 @@ describe("overlay authoring — bootstrapOverlayScouts", () => {
 		const overlayId = "medical-device-b";
 		const agentsDir = join(tmpDir, ".pi", "agents");
 		mkdirSync(agentsDir, { recursive: true });
-		writeFileSync(
-			join(agentsDir, "overlay-design-safety-analyzer.md"),
-			"# pre-existing",
-			"utf8",
-		);
+		writeFileSync(join(agentsDir, "overlay-design-safety-analyzer.md"), "# pre-existing", "utf8");
 
-		const result = bootstrapOverlayScouts(
-			overlayId,
-			["overlay-design-safety-analyzer"],
-			tmpDir,
-		);
+		const result = bootstrapOverlayScouts(overlayId, ["overlay-design-safety-analyzer"], tmpDir);
 
 		assert.deepEqual(result.installed, []);
 		assert.deepEqual(result.alreadyPresent, ["overlay-design-safety-analyzer"]);
 	});
 
 	it("reports missing scout files gracefully (no throw)", () => {
-		const result = bootstrapOverlayScouts(
-			"no-such-overlay",
-			["overlay-ghost-scout"],
-			tmpDir,
-		);
+		const result = bootstrapOverlayScouts("no-such-overlay", ["overlay-ghost-scout"], tmpDir);
 
 		assert.deepEqual(result.installed, []);
 		assert.deepEqual(result.alreadyPresent, []);

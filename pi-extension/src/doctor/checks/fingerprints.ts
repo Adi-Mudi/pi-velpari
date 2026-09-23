@@ -73,7 +73,9 @@ export function checkFingerprintsSection(cwd: string, projectName: string): Diag
 			items.push({
 				status: "ok",
 				message: `All ${data.rows.length} RTM store row(s) match the current PSRS (${fingerprints.size} requirement(s) fingerprinted).`,
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 			});
 		}
 		return { title: "Trace-link fingerprints", items };

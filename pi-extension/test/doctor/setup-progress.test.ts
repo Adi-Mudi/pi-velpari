@@ -30,11 +30,7 @@ afterEach(() => {
 });
 
 /** Minimal state.json; pausedStage/history entries optional. */
-function writeState(opts: {
-	currentStage: string;
-	pausedStage?: string;
-	runId?: string;
-}): string {
+function writeState(opts: { currentStage: string; pausedStage?: string; runId?: string }): string {
 	const runId = opts.runId ?? "2026-09-21-1200-test";
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });

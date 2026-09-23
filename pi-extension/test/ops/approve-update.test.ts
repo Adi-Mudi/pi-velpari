@@ -61,10 +61,7 @@ projectName: TestApp
 `;
 }
 
-function sectionBodies(opts: {
-	frRows?: string;
-	changeLog?: string;
-}): Array<[string, string]> {
+function sectionBodies(opts: { frRows?: string; changeLog?: string }): Array<[string, string]> {
 	return [
 		["Objective", "One paragraph summary of the objective."],
 		["Problem", "What problem this solves."],
@@ -114,11 +111,7 @@ function sectionBodies(opts: {
 	];
 }
 
-function buildPsrs(opts: {
-	version: string;
-	frRows?: string;
-	changeLog?: string;
-}): string {
+function buildPsrs(opts: { version: string; frRows?: string; changeLog?: string }): string {
 	const parts: string[] = [frontmatter(opts.version)];
 	for (const [heading, body] of sectionBodies(opts)) {
 		parts.push(`## ${heading}\n${body}\n`);
@@ -212,8 +205,7 @@ describe("publish — revision gate", () => {
 			buildPsrs({
 				version: "1.1.0",
 				frRows: FR_TABLE_TWO_ROWS,
-				changeLog:
-					"- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
+				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
 			}),
 		);
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
@@ -254,8 +246,7 @@ describe("publish — revision gate", () => {
 			buildPsrs({
 				version: "1.0.0",
 				frRows: FR_TABLE_TWO_ROWS,
-				changeLog:
-					"- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
+				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
 			}),
 		);
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });

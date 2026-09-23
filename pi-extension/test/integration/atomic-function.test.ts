@@ -28,11 +28,7 @@ import { loadHistory } from "../../src/core/history.js";
 import { handleApprove } from "../../src/ops/approve.js";
 import { resolveDocArtifact, buildRunDir, buildStoreDbPath } from "../../src/core/paths.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import {
-	writeArtifact,
-	publishArtifact,
-	type ArtifactEnvelopeInput,
-} from "../../src/io/store.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../src/io/store.js";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 let tmpDir: string;
@@ -175,7 +171,13 @@ function makeStoreInputs(projectName: string): void {
 		});
 		publishArtifact(db, "r1", "rtm");
 		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
-			feasibilityDecision: { verdict: "go", language: "typescript", decidedBy: "user", at: "2026-09-17T13:00:00.000Z", webSearchConsent: 0 },
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-17T13:00:00.000Z",
+				webSearchConsent: 0,
+			},
 		});
 		publishArtifact(db, "r1", "feasibility");
 		writeArtifact(db, "design", "r1", env("designing"), {
@@ -195,19 +197,9 @@ function makeStoreInputs(projectName: string): void {
 function preInstallScouts(): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
-	const scouts = [
-		"af-source-rtm",
-		"af-source-design",
-		"af-source-prd",
-		"af-source-feas",
-		"reviewer",
-	];
+	const scouts = ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"];
 	for (const s of scouts) {
-		fs.writeFileSync(
-			path.join(agentsDir, `${s}.md`),
-			`---\nname: ${s}\ndescription: stub\n---\n# stub\n`,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(agentsDir, `${s}.md`), `---\nname: ${s}\ndescription: stub\n---\n# stub\n`, "utf8");
 	}
 }
 
@@ -237,11 +229,7 @@ describe("atomic-function end-to-end flow", () => {
 		// Composer sent exactly one prompt to parent LLM.
 		assert.equal(sentMessages.length, 1, "composer should send one prompt");
 		const prompt = sentMessages[0]!;
-		assert.match(
-			prompt,
-			/<pi-velpari stage="analyzing-atomic-functions">/,
-			"prompt metadata block",
-		);
+		assert.match(prompt, /<pi-velpari stage="analyzing-atomic-functions">/, "prompt metadata block");
 		assert.match(prompt, /Mission: e2e-mission/);
 		assert.match(prompt, /Tier: Basic/);
 
@@ -257,10 +245,7 @@ describe("atomic-function end-to-end flow", () => {
 		const scoutsDir = path.join(runDir, "atomic-function", "scouts");
 		fs.mkdirSync(workingCopyDir, { recursive: true });
 		fs.mkdirSync(scoutsDir, { recursive: true });
-		const workingCopyPath = path.join(
-			workingCopyDir,
-			"atomic-functions_E2EApp.md",
-		);
+		const workingCopyPath = path.join(workingCopyDir, "atomic-functions_E2EApp.md");
 		const workingCopyContent = `---
 artifact: atomic-functions
 project: ${projectName}
@@ -327,11 +312,7 @@ updated: 2026-09-17T13:00:00.000Z
 			"changeLog: []",
 			"",
 		].join("\n");
-		fs.writeFileSync(
-			path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`),
-			sidecarContent,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`), sidecarContent, "utf8");
 
 		// Parent LLM (mocked) writes a reviewer verdict (approve).
 		const reviewerReport = {
@@ -340,11 +321,7 @@ updated: 2026-09-17T13:00:00.000Z
 			summary: "Reviewed 4 scout reports + working copy; 0 errors — verdict=approve.",
 			timestamp: new Date().toISOString(),
 		};
-		fs.writeFileSync(
-			path.join(scoutsDir, "reviewer-report.json"),
-			JSON.stringify(reviewerReport, null, 2),
-			"utf8",
-		);
+		fs.writeFileSync(path.join(scoutsDir, "reviewer-report.json"), JSON.stringify(reviewerReport, null, 2), "utf8");
 
 		// ====== Step 3: velpari_stage_publish tool (via handleApprove) ======
 		// The tool's execute() calls handleApprove. We call it directly here
@@ -447,11 +424,7 @@ updated: 2026-09-17T13:00:00.000Z
 			summary: "1 error → block",
 			timestamp: new Date().toISOString(),
 		};
-		fs.writeFileSync(
-			path.join(scoutsDir, "reviewer-report.json"),
-			JSON.stringify(reviewerReport, null, 2),
-			"utf8",
-		);
+		fs.writeFileSync(path.join(scoutsDir, "reviewer-report.json"), JSON.stringify(reviewerReport, null, 2), "utf8");
 
 		// handleApprove should refuse to publish.
 		await handleApprove(ctx, pi, tmpDir, { skipDbPublish: true });

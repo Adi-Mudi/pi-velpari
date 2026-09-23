@@ -26,11 +26,7 @@ function writeAgentsJson(config: unknown): void {
 function writeProjectAgent(name: string): void {
 	const dir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, `${name}.md`),
-		`---\nname: ${name}\ndescription: test agent\n---\n\nBody.\n`,
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, `${name}.md`), `---\nname: ${name}\ndescription: test agent\n---\n\nBody.\n`, "utf8");
 }
 
 beforeEach(() => {
@@ -60,11 +56,7 @@ describe("checkAgentMappingSection", () => {
 		const ok = section.items.find((i) => i.status === "ok");
 		assert.match(ok?.message ?? "", /1 custom mapping\(s\)/);
 		// Custom mapping present → skill-markdown note is emitted.
-		assert.ok(
-			section.items.some(
-				(i) => i.status === "info" && /Skill markdown references/.test(i.message),
-			),
-		);
+		assert.ok(section.items.some((i) => i.status === "info" && /Skill markdown references/.test(i.message)));
 	});
 
 	it("mapping to a nonexistent agent → error item", () => {

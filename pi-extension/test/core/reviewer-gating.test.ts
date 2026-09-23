@@ -77,31 +77,19 @@ describe("reviewer gating — type guard", () => {
 describe("reviewer gating — shouldRunReviewer decision order", () => {
 	describe("tier-default mode", () => {
 		it("Entry tier + no overlay → false", () => {
-			assert.equal(
-				shouldRunReviewer({ profile: profile("entry") }),
-				false,
-			);
+			assert.equal(shouldRunReviewer({ profile: profile("entry") }), false);
 		});
 
 		it("Basic tier + no overlay → false", () => {
-			assert.equal(
-				shouldRunReviewer({ profile: profile("basic") }),
-				false,
-			);
+			assert.equal(shouldRunReviewer({ profile: profile("basic") }), false);
 		});
 
 		it("Intermediate tier + no overlay → true (tier default)", () => {
-			assert.equal(
-				shouldRunReviewer({ profile: profile("intermediate") }),
-				true,
-			);
+			assert.equal(shouldRunReviewer({ profile: profile("intermediate") }), true);
 		});
 
 		it("Advanced tier + no overlay → true (tier default)", () => {
-			assert.equal(
-				shouldRunReviewer({ profile: profile("advanced") }),
-				true,
-			);
+			assert.equal(shouldRunReviewer({ profile: profile("advanced") }), true);
 		});
 
 		it("Entry tier + overlay requiresReviewer → true (overlay wins over tier)", () => {

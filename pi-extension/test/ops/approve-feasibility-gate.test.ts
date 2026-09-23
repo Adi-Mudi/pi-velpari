@@ -16,12 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handleApprove } from "../../src/ops/approve.js";
-import {
-	advanceStage,
-	createRun,
-	loadState,
-	setFeasibilitySession,
-} from "../../src/core/state.js";
+import { advanceStage, createRun, loadState, setFeasibilitySession } from "../../src/core/state.js";
 import { loadFeasibilityRecord } from "../../src/core/feasibility-record.js";
 import { loadFreshnessManifest } from "../../src/core/freshness.js";
 
@@ -65,16 +60,15 @@ const STUDY_SECTIONS = [
 	"Change Log",
 ];
 
-const STUDY =
-	["# Feasibility Study — TestApp", ""]
-		.concat(
-			STUDY_SECTIONS.flatMap((s, i) => [
-				`## ${i + 1}. ${s}`,
-				s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
-				"",
-			]),
-		)
-		.join("\n");
+const STUDY = ["# Feasibility Study — TestApp", ""]
+	.concat(
+		STUDY_SECTIONS.flatMap((s, i) => [
+			`## ${i + 1}. ${s}`,
+			s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
+			"",
+		]),
+	)
+	.join("\n");
 
 function publishedStudyPath(): string {
 	return path.join(tmpDir, "Doc", "feasibility", "feasibility-study_TestApp.md");
@@ -179,12 +173,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 
 		// B3/D9 — the decision record was serialized BEFORE the session
 		// was cleared, carrying the D9 session fields.
-		const recordPath = path.join(
-			tmpDir,
-			"Doc",
-			"feasibility",
-			"feasibility-decision_TestApp.yaml",
-		);
+		const recordPath = path.join(tmpDir, "Doc", "feasibility", "feasibility-decision_TestApp.yaml");
 		assert.ok(fs.existsSync(recordPath), "decision record written");
 		const record = loadFeasibilityRecord(tmpDir, "TestApp")!;
 		assert.equal(record.verdict, "build");

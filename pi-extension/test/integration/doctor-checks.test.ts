@@ -4,14 +4,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	mkdtempSync,
-	mkdirSync,
-	writeFileSync,
-	readFileSync,
-	unlinkSync,
-	existsSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -66,10 +59,7 @@ describe("doctor integration — full-cwd positive case", () => {
 		const report = runDoctor(cwd);
 		for (const s of report.sections) {
 			for (const item of s.items) {
-				assert.ok(
-					["ok", "info", "warning", "error"].includes(item.status),
-					`bad status ${item.status} in ${s.title}`,
-				);
+				assert.ok(["ok", "info", "warning", "error"].includes(item.status), `bad status ${item.status} in ${s.title}`);
 			}
 		}
 	});
@@ -184,10 +174,7 @@ describe("doctor integration — working/published separation", () => {
 	it("errors when a working copy is in Doc/ directly", () => {
 		const cwd = makeCwd();
 		setupFullCwd(cwd);
-		writeFileSync(
-			join(cwd, "Doc", "requirements", "PRD_draft.md"),
-			"working copy leaked into Doc/\n",
-		);
+		writeFileSync(join(cwd, "Doc", "requirements", "PRD_draft.md"), "working copy leaked into Doc/\n");
 		const report = runDoctor(cwd);
 		const sep = report.sections.find((s) => /separation|working.published/i.test(s.title));
 		assert.ok(sep);

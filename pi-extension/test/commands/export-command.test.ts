@@ -151,7 +151,11 @@ describe("runExportFlow", () => {
 	});
 
 	test("cancel at format picker → nothing written", async () => {
-		const ctx = makeMockCtx({ selects: ["prd", "v1 — run r1", undefined as unknown as string], inputs: [], confirms: [] });
+		const ctx = makeMockCtx({
+			selects: ["prd", "v1 — run r1", undefined as unknown as string],
+			inputs: [],
+			confirms: [],
+		});
 		await runExportFlow(ctx, dir);
 		assert.equal(ctx.notifications.at(-1)!.message, "Export cancelled.");
 		assert.ok(!existsSync(join(dir, "Doc", "export")));
@@ -218,11 +222,10 @@ describe("runExportFlow", () => {
 		// version row flipping to draft between the pickers and runExport.
 		const ctx = makeMockCtx(happyScript());
 		const store = await import("../../src/io/store.js");
-		(ctx as unknown as { ui: { input: () => Promise<string> } }).ui.input =
-			async () => {
-				store.revertPublish(db, "r1", "prd");
-				return "";
-			};
+		(ctx as unknown as { ui: { input: () => Promise<string> } }).ui.input = async () => {
+			store.revertPublish(db, "r1", "prd");
+			return "";
+		};
 		await runExportFlow(ctx, dir);
 		const note = ctx.notifications.at(-1)!;
 		assert.equal(note.severity, "error");

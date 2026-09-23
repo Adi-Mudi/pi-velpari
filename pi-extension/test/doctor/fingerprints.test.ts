@@ -14,10 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkFingerprintsSection } from "../../src/doctor/checks/fingerprints.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
-} from "../../src/core/fingerprints.js";
+import { extractRequirementFingerprints, stampFingerprints } from "../../src/core/fingerprints.js";
 import type { RtmData } from "../../src/core/rtm-data.js";
 
 const PSRS = [
@@ -53,10 +50,7 @@ function setup(options: { fingerprint?: string } = {}): string {
 	);
 	if (options.fingerprint) rows[0]!.fingerprint = options.fingerprint;
 	const data: RtmData = { project: "TestApp", version: "1.0.0", rows };
-	writeFileSync(
-		join(cwd, "Doc", "requirements", "RTM_TestApp.json"),
-		JSON.stringify(data),
-	);
+	writeFileSync(join(cwd, "Doc", "requirements", "RTM_TestApp.json"), JSON.stringify(data));
 	writeFileSync(join(cwd, "Doc", "requirements", "RTM_TestApp.md"), "# RTM\n");
 	return cwd;
 }
@@ -89,8 +83,6 @@ describe("checkFingerprintsSection", () => {
 			),
 		);
 		const section = checkFingerprintsSection(cwd, "TestApp");
-		assert.ok(
-			section.items.some((i) => i.status === "error" && /FR-02.*no RTM row/.test(i.message)),
-		);
+		assert.ok(section.items.some((i) => i.status === "error" && /FR-02.*no RTM row/.test(i.message)));
 	});
 });

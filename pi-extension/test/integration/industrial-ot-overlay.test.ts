@@ -8,14 +8,8 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	loadCatalogue,
-	findOverlay,
-} from "../../src/core/standards-catalogue.js";
-import {
-	loadOverlay,
-	mergeOverlay,
-} from "../../src/core/standards-overlay.js";
+import { loadCatalogue, findOverlay } from "../../src/core/standards-catalogue.js";
+import { loadOverlay, mergeOverlay } from "../../src/core/standards-overlay.js";
 import { findPackageRoot } from "../../src/core/paths.js";
 
 const pkgRoot = findPackageRoot(process.cwd());
@@ -28,11 +22,7 @@ describe("industrial-ot overlay — catalogue", () => {
 		assert.ok(entry, "catalogue must list industrial-ot");
 		assert.strictEqual(entry!.id, "industrial-ot");
 		assert.strictEqual(entry!.version, "1.0.0");
-		assert.deepStrictEqual(entry!.standards, [
-			"IEC 61508:2010",
-			"IEC 62443-3-3:2013",
-			"IEC 61131-3:2013",
-		]);
+		assert.deepStrictEqual(entry!.standards, ["IEC 61508:2010", "IEC 62443-3-3:2013", "IEC 61131-3:2013"]);
 	});
 
 	it("declares scopes relevant to industrial / process control", () => {
@@ -91,23 +81,15 @@ describe("industrial-ot overlay — profile", () => {
 	it("declares 7 doctor checks", () => {
 		const overlay = loadOverlay(pkgRoot, "industrial-ot")!;
 		assert.strictEqual(overlay.doctorChecks.length, 7);
-		assert.ok(
-			overlay.doctorChecks.some((c) => c.includes("Safety Integrity Level")),
-		);
-		assert.ok(
-			overlay.doctorChecks.some((c) => c.includes("proof test")),
-		);
+		assert.ok(overlay.doctorChecks.some((c) => c.includes("Safety Integrity Level")));
+		assert.ok(overlay.doctorChecks.some((c) => c.includes("proof test")));
 	});
 });
 
 describe("industrial-ot overlay — mergeOverlay", () => {
 	it("appends overlay sections to a design template", () => {
 		const overlay = loadOverlay(pkgRoot, "industrial-ot")!;
-		const merged = mergeOverlay(
-			"design",
-			"# Existing design\n\n## Module Breakdown\n\n## Change Log\n",
-			overlay,
-		);
+		const merged = mergeOverlay("design", "# Existing design\n\n## Module Breakdown\n\n## Change Log\n", overlay);
 		assert.ok(merged.includes("## Module Breakdown"));
 		assert.ok(merged.includes("## Safety Instrumented System"));
 		assert.ok(merged.includes("## SIL Decomposition"));

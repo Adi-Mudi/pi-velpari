@@ -13,11 +13,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { comparePsrs } from "../../src/core/psrs.js";
 
-function doc(opts: {
-	version: string;
-	frRows: string;
-	changelog: string[];
-}): string {
+function doc(opts: { version: string; frRows: string; changelog: string[] }): string {
 	return `---
 documentType: product-software-requirements
 version: ${opts.version}
@@ -132,10 +128,7 @@ describe("comparePsrs — revision gate", () => {
 			frRows:
 				"| FR-01 | Add expense | must | 1 | expense saved | Integration test | approved |\n" +
 				"| FR-02 | Export CSV | should | 2 | file downloads | Integration test | proposed |",
-			changelog: [
-				"- 2026-09-01 velpari initial approval",
-				"- 2026-09-12 velpari added FR-02 CSV export",
-			],
+			changelog: ["- 2026-09-01 velpari initial approval", "- 2026-09-12 velpari added FR-02 CSV export"],
 		});
 		const result = comparePsrs(BASELINE, updated);
 		assert.equal(result.ok, true);
@@ -149,10 +142,7 @@ describe("comparePsrs — revision gate", () => {
 			version: "1.1.0",
 			// FR-01 deleted outright; HF-01/DATA-01 still reference it.
 			frRows: "| FR-02 | Export CSV | should | 2 | file downloads | Integration test | proposed |",
-			changelog: [
-				"- 2026-09-01 velpari initial approval",
-				"- 2026-09-12 velpari rewrote requirements",
-			],
+			changelog: ["- 2026-09-01 velpari initial approval", "- 2026-09-12 velpari rewrote requirements"],
 		});
 		const result = comparePsrs(BASELINE, updated);
 		assert.equal(result.ok, false);
@@ -166,10 +156,7 @@ describe("comparePsrs — revision gate", () => {
 			frRows:
 				"| FR-01 | Add expense | must | 1 | expense saved | Integration test | deprecated |\n" +
 				"| FR-02 | Export CSV | should | 2 | file downloads | Integration test | proposed |",
-			changelog: [
-				"- 2026-09-01 velpari initial approval",
-				"- 2026-09-12 velpari deprecated FR-01 (feature dropped)",
-			],
+			changelog: ["- 2026-09-01 velpari initial approval", "- 2026-09-12 velpari deprecated FR-01 (feature dropped)"],
 		});
 		const result = comparePsrs(BASELINE, updated);
 		assert.equal(result.ok, true);
@@ -182,10 +169,7 @@ describe("comparePsrs — revision gate", () => {
 			frRows:
 				"| FR-01 | Add expense | must | 1 | expense saved | Integration test | approved |\n" +
 				"| FR-02 | Export CSV | should | 2 | file downloads | Integration test | proposed |",
-			changelog: [
-				"- 2026-09-01 velpari initial approval",
-				"- 2026-09-12 velpari added FR-02",
-			],
+			changelog: ["- 2026-09-01 velpari initial approval", "- 2026-09-12 velpari added FR-02"],
 		});
 		const result = comparePsrs(BASELINE, updated);
 		assert.equal(result.ok, false);

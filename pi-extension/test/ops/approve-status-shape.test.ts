@@ -75,9 +75,7 @@ describe("/velpari-status surfaces ShapeCompatibility", () => {
 
 	it("v1.0.2 with 8 sections → status shows 'Path: migration recommended'", async () => {
 		seedProject("TodoApp");
-		const md =
-			"---\nversion: 1.0.2\n---\n\n" +
-			Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
+		const md = "---\nversion: 1.0.2\n---\n\n" + Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
 		writePublishedDesign(md);
 		const { ctx, pi } = makeCtxAndPi();
 		await handleStatus(ctx as never, pi as never, tmpDir);
@@ -87,9 +85,7 @@ describe("/velpari-status surfaces ShapeCompatibility", () => {
 
 	it("v1.1.0 with 14 sections → status shows 'Path: upgrade'", async () => {
 		seedProject("TodoApp");
-		const md =
-			"---\nversion: 1.1.0\n---\n\n" +
-			Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
+		const md = "---\nversion: 1.1.0\n---\n\n" + Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
 		writePublishedDesign(md);
 		const { ctx, pi } = makeCtxAndPi();
 		await handleStatus(ctx as never, pi as never, tmpDir);

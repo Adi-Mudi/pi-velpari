@@ -14,13 +14,7 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	acquireRunLock,
-	readLockInfo,
-	runLockDir,
-	withRunLock,
-	type RunLockMeta,
-} from "../../src/io/run-lock.js";
+import { acquireRunLock, readLockInfo, runLockDir, withRunLock, type RunLockMeta } from "../../src/io/run-lock.js";
 
 let tmpDir: string;
 

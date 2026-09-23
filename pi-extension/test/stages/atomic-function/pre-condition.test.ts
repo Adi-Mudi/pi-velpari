@@ -27,11 +27,7 @@ import { runPreCondition } from "../../../src/stages/atomic-function/pre-conditi
 import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../../src/core/atomic-tier.js";
 import type { RunState } from "../../../src/core/state.js";
 import { openStoreDb, closeStoreDb } from "../../../src/io/db.js";
-import {
-	writeArtifact,
-	publishArtifact,
-	type ArtifactEnvelopeInput,
-} from "../../../src/io/store.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../../src/io/store.js";
 import { buildStoreDbPath } from "../../../src/core/paths.js";
 
 let tmpDir: string;
@@ -45,11 +41,14 @@ afterEach(() => {
 });
 
 /** Write `.pi/velpari/state.json` directly with the given stage. */
-function makeState(stage: RunState["currentStage"], opts: {
-	runId?: string;
-	mission?: string;
-	standardsProfile?: { id: string; version: string };
-} = {}): void {
+function makeState(
+	stage: RunState["currentStage"],
+	opts: {
+		runId?: string;
+		mission?: string;
+		standardsProfile?: { id: string; version: string };
+	} = {},
+): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
@@ -67,10 +66,7 @@ function makeState(stage: RunState["currentStage"], opts: {
 }
 
 /** Write `.pi/velpari/files.json` with the project name + atomic profile. */
-function makeFilesConfig(opts: {
-	projectName: string;
-	atomic?: Partial<AtomicProfile>;
-}): void {
+function makeFilesConfig(opts: { projectName: string; atomic?: Partial<AtomicProfile> }): void {
 	const cfg = {
 		version: 4,
 		framework: { language: "typescript" },
@@ -82,11 +78,7 @@ function makeFilesConfig(opts: {
 		atomic: opts.atomic ?? {},
 	};
 	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
-	fs.writeFileSync(
-		path.join(tmpDir, ".pi", "velpari", "files.json"),
-		JSON.stringify(cfg, null, 2),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "files.json"), JSON.stringify(cfg, null, 2), "utf8");
 }
 
 /** Create `Doc/<artifact>_<project>.md` (grouped layout) for every input. */

@@ -12,11 +12,7 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	COVERAGE_RULES,
-	checkIdCoverage,
-	extractIds,
-} from "../../src/core/id-coverage.js";
+import { COVERAGE_RULES, checkIdCoverage, extractIds } from "../../src/core/id-coverage.js";
 
 let tmpDir: string;
 
@@ -185,10 +181,7 @@ describe("checkIdCoverage — af-to-pseudocode", () => {
 				"",
 			].join("\n"),
 		);
-		writeDoc(
-			"Doc/pseudocode/pseudocode_TestApp.md",
-			"# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n",
-		);
+		writeDoc("Doc/pseudocode/pseudocode_TestApp.md", "# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n");
 		const results = resultsFor("af-to-pseudocode");
 		assert.equal(results[0]!.status, "missing");
 		assert.deepEqual(results[0]!.missingIds, ["AF-2", "AF-3"]);
@@ -197,10 +190,7 @@ describe("checkIdCoverage — af-to-pseudocode", () => {
 	it("D7: malformed sidecar falls back to markdown scraping", () => {
 		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.md", AF_DOC);
 		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.yaml", "not: [an af doc]\n");
-		writeDoc(
-			"Doc/pseudocode/pseudocode_TestApp.md",
-			"# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n",
-		);
+		writeDoc("Doc/pseudocode/pseudocode_TestApp.md", "# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n");
 		const results = resultsFor("af-to-pseudocode");
 		assert.equal(results[0]!.status, "missing");
 		assert.deepEqual(results[0]!.missingIds, ["AF-2"]);

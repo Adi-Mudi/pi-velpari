@@ -84,13 +84,7 @@ function commandExists(command: string): boolean {
 }
 
 /** Recognized provider keys for the Tier 2 gate (mirrors helpers/test-home.ts). */
-const PROVIDER_KEY_VARS = [
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"GOOGLE_API_KEY",
-	"MISTRAL_API_KEY",
-	"KIMI_API_KEY",
-];
+const PROVIDER_KEY_VARS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "MISTRAL_API_KEY", "KIMI_API_KEY"];
 
 /** True if any recognized provider env var is set to a non-dummy value. */
 function hasAnyRealKey(): boolean {

@@ -13,12 +13,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	findFrRowsMissingKeywords,
-	readSectionBody,
-	referencedIds,
-	validatePsrs,
-} from "../../src/core/psrs.js";
+import { findFrRowsMissingKeywords, readSectionBody, referencedIds, validatePsrs } from "../../src/core/psrs.js";
 
 const FRONTMATTER = `---
 documentType: product-software-requirements
@@ -110,9 +105,7 @@ describe("validatePsrs — strict 20-section structure", () => {
 			const result = validatePsrs(buildDoc({ skipSections: [heading] }));
 			assert.equal(result.ok, false, `missing ${heading} must fail`);
 			assert.ok(
-				result.issues.some(
-					(i) => i.code === "psrs-section-missing" && i.section === heading && i.severity === "error",
-				),
+				result.issues.some((i) => i.code === "psrs-section-missing" && i.section === heading && i.severity === "error"),
 			);
 		}
 	});
@@ -147,8 +140,7 @@ describe("validatePsrs — status lifecycle column", () => {
 		for (const status of ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"]) {
 			const doc = buildDoc({
 				extraRows: {
-					"Functional Requirements":
-						`| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n|---|---|---|---|---|---|---|\n| FR-01 | Add expense | must | 1 | expense saved | Integration test | ${status} |`,
+					"Functional Requirements": `| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n|---|---|---|---|---|---|---|\n| FR-01 | Add expense | must | 1 | expense saved | Integration test | ${status} |`,
 				},
 			});
 			const result = validatePsrs(doc);

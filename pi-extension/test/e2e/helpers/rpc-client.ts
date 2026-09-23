@@ -46,10 +46,7 @@ export interface RpcClientOptions {
 
 export class RpcClient {
 	private child: ChildProcessWithoutNullStreams;
-	private pending = new Map<
-		string,
-		{ resolve: (v: any) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
-	>();
+	private pending = new Map<string, { resolve: (v: any) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
 	private listeners = new Set<(event: RpcEvent) => void>();
 	private buffer = "";
 	private idleResolvers: Array<() => void> = [];
@@ -115,8 +112,7 @@ export class RpcClient {
 			const { resolve, reject, timer } = this.pending.get(msg.id)!;
 			clearTimeout(timer);
 			this.pending.delete(msg.id);
-			if (msg.error)
-				reject(new Error(typeof msg.error === "string" ? msg.error : JSON.stringify(msg.error)));
+			if (msg.error) reject(new Error(typeof msg.error === "string" ? msg.error : JSON.stringify(msg.error)));
 			else resolve(msg);
 			// A response implies a turn boundary for prompt/steer. Treat any
 			// response as "settled" too — otherwise a broken-pi RPC (where
@@ -176,9 +172,7 @@ export class RpcClient {
 			const timer = setTimeout(() => {
 				if (this.pending.has(id)) {
 					this.pending.delete(id);
-					reject(
-						new Error(`RPC timeout after ${this.defaultTimeoutMs}ms for type=${msg.type}`),
-					);
+					reject(new Error(`RPC timeout after ${this.defaultTimeoutMs}ms for type=${msg.type}`));
 				}
 			}, this.defaultTimeoutMs);
 			this.pending.set(id, { resolve, reject, timer });

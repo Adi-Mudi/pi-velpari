@@ -100,14 +100,7 @@ function enterOrderingDevelopment(): void {
 	}
 	assert.equal(loadState(tmpDir).currentStage, "ordering-development");
 	const runId = loadState(tmpDir).runId;
-	const dir = path.join(
-		tmpDir,
-		".IDE_Plans",
-		"velpari",
-		"runs",
-		runId,
-		"development-order",
-	);
+	const dir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", runId, "development-order");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
 		path.join(dir, "development-order_TestApp.md"),
@@ -159,16 +152,8 @@ describe("/velpari-development-order-approve — real publish path", () => {
 
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
-		const pubPath = path.join(
-			tmpDir,
-			"Doc",
-			"development-order",
-			"development-order_TestApp.md",
-		);
-		assert.ok(
-			fs.existsSync(pubPath),
-			`expected publish at ${pubPath}; messages: ${allMessages()}`,
-		);
+		const pubPath = path.join(tmpDir, "Doc", "development-order", "development-order_TestApp.md");
+		assert.ok(fs.existsSync(pubPath), `expected publish at ${pubPath}; messages: ${allMessages()}`);
 
 		// Frontmatter carries the B4 inputs: stamp — one entry per declared
 		// input, each matching the on-disk hash.
@@ -195,16 +180,10 @@ describe("/velpari-development-order-approve — real publish path", () => {
 		const publishable = STAGE_TRANSITIONS.filter((t) => t.command.endsWith("-approve"));
 		assert.equal(publishable.length, 9, "expected the 9 per-stage approve transitions");
 		for (const t of publishable) {
-			assert.ok(
-				stageToArtifact(t.from) !== null,
-				`${t.command}: no stageToArtifact mapping for stage "${t.from}"`,
-			);
+			assert.ok(stageToArtifact(t.from) !== null, `${t.command}: no stageToArtifact mapping for stage "${t.from}"`);
 			// The rest state right after the approve must map too — a
 			// re-publish from the rest state goes through the same switch.
-			assert.ok(
-				stageToArtifact(t.to) !== null,
-				`${t.command}: no stageToArtifact mapping for rest state "${t.to}"`,
-			);
+			assert.ok(stageToArtifact(t.to) !== null, `${t.command}: no stageToArtifact mapping for rest state "${t.to}"`);
 		}
 	});
 });

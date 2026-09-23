@@ -30,12 +30,7 @@ import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
@@ -48,10 +43,7 @@ async function runModuleScript<T>(client: RpcClient, script: string): Promise<T>
 	const result = await client.request<any>("bash", {
 		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
 	});
-	assert.ok(
-		result.success === true,
-		`subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-	);
+	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
 	return JSON.parse(output) as T;
@@ -97,14 +89,20 @@ describe("e2e/brainstorm-gates", () => {
 		if (home) home.cleanup();
 	});
 
-	it("mutation lock: edit/write blocked outside the brainstorm folder while open, lifted after approve", { timeout: 60_000 }, async (t) => {
+	it("mutation lock: edit/write blocked outside the brainstorm folder while open, lifted after approve", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { clearRun, createRun, advanceStage } from " + STATE_JS + "; " +
-				"import { guardBrainstormMutation } from " + GUARD_JS + "; " +
+			"import { clearRun, createRun, advanceStage } from " +
+				STATE_JS +
+				"; " +
+				"import { guardBrainstormMutation } from " +
+				GUARD_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"const s = createRun('E2E brainstorm lock', cwd); " +
@@ -137,14 +135,20 @@ describe("e2e/brainstorm-gates", () => {
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, loadState } from " + STATE_JS + "; " +
-				"import { handleApproveBrainstorm } from " + APPROVE_JS + "; " +
+				"import { clearRun, createRun, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleApproveBrainstorm } from " +
+				APPROVE_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"const s = createRun('E2E approve lock', cwd); " +
 				"const bDir = cwd + '/.IDE_Plans/velpari/runs/' + s.runId + '/brainstorm'; " +
 				"mkdirSync(bDir, { recursive: true }); " +
-				"writeFileSync(bDir + '/brainstorm-notes.md', " + NOTES_EXPR + ", 'utf8'); " +
+				"writeFileSync(bDir + '/brainstorm-notes.md', " +
+				NOTES_EXPR +
+				", 'utf8'); " +
 				MOCKS +
 				"await handleApproveBrainstorm(ctx, pi, cwd); " +
 				"process.stdout.write(JSON.stringify({" +
@@ -169,8 +173,12 @@ describe("e2e/brainstorm-gates", () => {
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, confirmUnderstanding, upsertBrainstormQuestion, loadState } from " + STATE_JS + "; " +
-				"import { handleApproveBrainstorm } from " + APPROVE_JS + "; " +
+				"import { clearRun, createRun, confirmUnderstanding, upsertBrainstormQuestion, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleApproveBrainstorm } from " +
+				APPROVE_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"let s = createRun('E2E open question', cwd); " +
@@ -178,7 +186,9 @@ describe("e2e/brainstorm-gates", () => {
 				"s = upsertBrainstormQuestion(s, { id: 'q1', text: 'Sync or local-only?', state: 'discussing' }, cwd); " +
 				"const bDir = cwd + '/.IDE_Plans/velpari/runs/' + s.runId + '/brainstorm'; " +
 				"mkdirSync(bDir, { recursive: true }); " +
-				"writeFileSync(bDir + '/brainstorm-notes.md', " + NOTES_EXPR + ", 'utf8'); " +
+				"writeFileSync(bDir + '/brainstorm-notes.md', " +
+				NOTES_EXPR +
+				", 'utf8'); " +
 				MOCKS +
 				"await handleApproveBrainstorm(ctx, pi, cwd); " +
 				"process.stdout.write(JSON.stringify({" +
@@ -204,15 +214,21 @@ describe("e2e/brainstorm-gates", () => {
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, confirmUnderstanding, loadState } from " + STATE_JS + "; " +
-				"import { handleApproveBrainstorm } from " + APPROVE_JS + "; " +
+				"import { clearRun, createRun, confirmUnderstanding, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleApproveBrainstorm } from " +
+				APPROVE_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"let s = createRun('E2E tbd notes', cwd); " +
 				"s = confirmUnderstanding(s, cwd); " +
 				"const bDir = cwd + '/.IDE_Plans/velpari/runs/' + s.runId + '/brainstorm'; " +
 				"mkdirSync(bDir, { recursive: true }); " +
-				"writeFileSync(bDir + '/brainstorm-notes.md', " + TBD_NOTES_EXPR + ", 'utf8'); " +
+				"writeFileSync(bDir + '/brainstorm-notes.md', " +
+				TBD_NOTES_EXPR +
+				", 'utf8'); " +
 				MOCKS +
 				"await handleApproveBrainstorm(ctx, pi, cwd); " +
 				"process.stdout.write(JSON.stringify({" +
@@ -231,22 +247,30 @@ describe("e2e/brainstorm-gates", () => {
 		assert.ok(errors[0].m.includes("Decision Summary"), "block reason should name the unfilled section");
 	});
 
-	it("happy path: approve publishes, writes audit log, clears session, advances, surfaces Next hint (no auto-chain, v1.6.2)", { timeout: 60_000 }, async (t) => {
+	it("happy path: approve publishes, writes audit log, clears session, advances, surfaces Next hint (no auto-chain, v1.6.2)", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, confirmUnderstanding, loadState } from " + STATE_JS + "; " +
-				"import { handleApproveBrainstorm } from " + APPROVE_JS + "; " +
+				"import { clearRun, createRun, confirmUnderstanding, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleApproveBrainstorm } from " +
+				APPROVE_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"let s = createRun('E2E approve happy', cwd); " +
 				"s = confirmUnderstanding(s, cwd); " +
 				"const bDir = cwd + '/.IDE_Plans/velpari/runs/' + s.runId + '/brainstorm'; " +
 				"mkdirSync(bDir, { recursive: true }); " +
-				"writeFileSync(bDir + '/brainstorm-notes.md', " + NOTES_EXPR + ", 'utf8'); " +
+				"writeFileSync(bDir + '/brainstorm-notes.md', " +
+				NOTES_EXPR +
+				", 'utf8'); " +
 				MOCKS +
 				"await handleApproveBrainstorm(ctx, pi, cwd); " +
 				"const after = loadState(cwd); " +
@@ -270,8 +294,15 @@ describe("e2e/brainstorm-gates", () => {
 		// `Next: /velpari-prd` info-level notification; the user runs
 		// the next command by hand. Verify both: NO sendUserMessage,
 		// AND the Next hint is present in the notification stream.
-		assert.strictEqual(out.sentCount, 0, `approve must NOT auto-chain (v1.6.2), got sentCount=${out.sentCount}, notes: ${JSON.stringify(out.notes)}`);
-		assert.ok(out.hasNextPrdHint, `approve must surface a "Next: /velpari-prd" hint to the user, notes: ${JSON.stringify(out.notes)}`);
+		assert.strictEqual(
+			out.sentCount,
+			0,
+			`approve must NOT auto-chain (v1.6.2), got sentCount=${out.sentCount}, notes: ${JSON.stringify(out.notes)}`,
+		);
+		assert.ok(
+			out.hasNextPrdHint,
+			`approve must surface a "Next: /velpari-prd" hint to the user, notes: ${JSON.stringify(out.notes)}`,
+		);
 		const errors = out.notes.filter((n: { l: string }) => n.l === "error");
 		assert.deepStrictEqual(errors, [], `happy-path approve produced error notifies: ${JSON.stringify(errors)}`);
 		assert.ok(

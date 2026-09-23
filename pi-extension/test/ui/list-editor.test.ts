@@ -144,11 +144,7 @@ describe("runListEditor fallback", () => {
 
 	it("paginates suggestions and moves between pages", async () => {
 		const captured: string[][] = [];
-		const ctx = makeFallbackCtx(
-			["Next page →", "← Previous page", "Back"],
-			[],
-			captured,
-		);
+		const ctx = makeFallbackCtx(["Next page →", "← Previous page", "Back"], [], captured);
 		const items = Array.from({ length: 5 }, (_, i) => ({
 			id: `s${i}`,
 			kind: "suggestion" as const,
@@ -409,10 +405,7 @@ describe("runListEditor custom TUI", () => {
 			`expected a (none) placeholder, got:\n${lines.join("\n")}`,
 		);
 		const selIdx = lines.findIndex((l) => l.includes("Selected (0)"));
-		assert.ok(
-			lines[selIdx + 1]?.includes("(none)"),
-			"(none) sits directly under the Selected header",
-		);
+		assert.ok(lines[selIdx + 1]?.includes("(none)"), "(none) sits directly under the Selected header");
 		getDone()({ kind: "back" });
 		await promise;
 	});
@@ -497,7 +490,10 @@ describe("runListEditor custom TUI", () => {
 		comp.handleInput(DOWN);
 		comp.handleInput(ENTER);
 		const lines = comp.render(80);
-		assert.ok(lines.some((line) => line.includes("✅ a")), "a moved to the selected group");
+		assert.ok(
+			lines.some((line) => line.includes("✅ a")),
+			"a moved to the selected group",
+		);
 		assert.ok(!lines.some((line) => line.includes("⬜ a")), "a no longer offered as a suggestion");
 		// Back out: UP returns to the action bar, ENTER on Back finishes.
 		comp.handleInput(UP);
@@ -629,12 +625,15 @@ describe("runListEditor Option A sections", () => {
 		});
 		const comp = getComponent() as { render: (width: number) => string[] };
 		const lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("✅ a")), "selected row carries ✅");
-		assert.ok(lines.some((l) => l.includes("⬜ b")), "suggestion row carries ⬜");
 		assert.ok(
-			!lines.some((l) => l.includes("Suggest:") || l.includes("Remove:")),
-			"no per-row prefix swap",
+			lines.some((l) => l.includes("✅ a")),
+			"selected row carries ✅",
 		);
+		assert.ok(
+			lines.some((l) => l.includes("⬜ b")),
+			"suggestion row carries ⬜",
+		);
+		assert.ok(!lines.some((l) => l.includes("Suggest:") || l.includes("Remove:")), "no per-row prefix swap");
 		getDone()({ kind: "back" });
 		await promise;
 	});
@@ -653,14 +652,23 @@ describe("runListEditor Option A sections", () => {
 		comp.handleInput(DOWN);
 		comp.handleInput(ENTER);
 		let lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("Selected (1)")), "added to the selected group");
+		assert.ok(
+			lines.some((l) => l.includes("Selected (1)")),
+			"added to the selected group",
+		);
 		assert.ok(lines.some((l) => l.includes("✅ a")));
 
 		// Toggle it back out.
 		comp.handleInput(ENTER);
 		lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("Selected (0)")), "removed from the selected group");
-		assert.ok(lines.some((l) => l.includes("⬜ a")), "back in suggestions");
+		assert.ok(
+			lines.some((l) => l.includes("Selected (0)")),
+			"removed from the selected group",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("⬜ a")),
+			"back in suggestions",
+		);
 		getDone()({ kind: "back" });
 		await promise;
 	});
@@ -693,7 +701,12 @@ describe("runListEditor Option A sections", () => {
 		const promise = runListEditor(ctx, {
 			title: "Test",
 			items: [
-				{ id: "s1", kind: "suggestion", label: "docs/very/long/path/to/the/real_file_name.md", value: "docs/very/long/path/to/the/real_file_name.md" },
+				{
+					id: "s1",
+					kind: "suggestion",
+					label: "docs/very/long/path/to/the/real_file_name.md",
+					value: "docs/very/long/path/to/the/real_file_name.md",
+				},
 			],
 		});
 		const comp = getComponent() as { render: (width: number) => string[] };
@@ -746,10 +759,7 @@ describe("coverage audit gaps", () => {
 		comp.handleInput(DOWN); // focus the content row
 		const lines = comp.render(40);
 		const continuation = lines.find((l) => l.startsWith("  …"));
-		assert.ok(
-			continuation,
-			`expected a head-truncated detail continuation, got:\n${lines.join("\n")}`,
-		);
+		assert.ok(continuation, `expected a head-truncated detail continuation, got:\n${lines.join("\n")}`);
 		assert.ok(continuation.length <= 40, `continuation fits width 40, got: ${continuation}`);
 		getDone()({ kind: "back" });
 		await promise;
@@ -766,11 +776,7 @@ describe("coverage audit gaps", () => {
 
 	it("fallback clamps the page back when adding a suggestion shrinks the list", async () => {
 		const captured: string[][] = [];
-		const ctx = makeFallbackCtx(
-			["Next page →", "Next page →", "⬜ Suggest: path4", "Back"],
-			[],
-			captured,
-		);
+		const ctx = makeFallbackCtx(["Next page →", "Next page →", "⬜ Suggest: path4", "Back"], [], captured);
 		const items = Array.from({ length: 5 }, (_, i) => ({
 			id: `s${i}`,
 			kind: "suggestion" as const,
@@ -933,7 +939,10 @@ describe("width clamping edge cases", () => {
 			for (const line of lines) {
 				assert.ok(visibleWidth(line) <= width, `line exceeds width ${width}`);
 			}
-			assert.ok(lines.some((l) => l.includes("📄")), "detail line shown");
+			assert.ok(
+				lines.some((l) => l.includes("📄")),
+				"detail line shown",
+			);
 		}
 		comp.handleInput("\x1b");
 		await promise;

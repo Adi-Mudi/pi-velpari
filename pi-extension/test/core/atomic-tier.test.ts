@@ -33,16 +33,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 			assert.equal(BASE_CORE_FIELDS.length, 8);
 			assert.deepEqual(
 				[...BASE_CORE_FIELDS].sort(),
-				[
-					"afId",
-					"cohesion",
-					"name",
-					"purpose",
-					"signature",
-					"source",
-					"testable",
-					"verification",
-				].sort(),
+				["afId", "cohesion", "name", "purpose", "signature", "source", "testable", "verification"].sort(),
 			);
 		});
 	});
@@ -53,18 +44,9 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 		});
 		it("basic has 5 cross-reference fields", () => {
 			assert.equal(TIER_FIELDS.basic.length, 5);
-			const expected = [
-				"calledByFrIds",
-				"designRef",
-				"extractedFrom",
-				"satisfactionFrId",
-				"feasibilityRef",
-			] as const;
+			const expected = ["calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef"] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.basic as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.basic as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 		it("intermediate adds 11 EARS / V-Model / Clean Code fields", () => {
@@ -83,10 +65,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 				"nameIntent",
 			] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.intermediate as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.intermediate as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 		it("advanced adds 11 INCOSE / PMBOK / maintenance fields", () => {
@@ -105,10 +84,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 				"changeLog",
 			] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.advanced as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.advanced as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 	});

@@ -83,9 +83,36 @@ const RTM_JSON = {
 	project: "TestApp",
 	version: "1.0.0",
 	rows: [
-		{ id: "FR-01", title: "FR-01 title", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" },
-		{ id: "FR-02", title: "FR-02 title", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" },
-		{ id: "NFR-01", title: "NFR-01 title", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" },
+		{
+			id: "FR-01",
+			title: "FR-01 title",
+			phase: 1,
+			design: "",
+			implementation: "",
+			tests: [],
+			status: "proposed",
+			coverage: "covered",
+		},
+		{
+			id: "FR-02",
+			title: "FR-02 title",
+			phase: 1,
+			design: "",
+			implementation: "",
+			tests: [],
+			status: "proposed",
+			coverage: "covered",
+		},
+		{
+			id: "NFR-01",
+			title: "NFR-01 title",
+			phase: 1,
+			design: "",
+			implementation: "",
+			tests: [],
+			status: "proposed",
+			coverage: "covered",
+		},
 	],
 };
 
@@ -128,18 +155,12 @@ function setupFullCwd(): void {
 		}),
 	);
 	// .pi/velpari/agents.json
-	writeFile(
-		".pi/velpari/agents.json",
-		JSON.stringify({ version: 1, agents: {} }),
-	);
+	writeFile(".pi/velpari/agents.json", JSON.stringify({ version: 1, agents: {} }));
 	// Doc/requirements/PRD_TestApp.md (required for handleApprove gate)
 	writeFile("Doc/requirements/PRD_TestApp.md", PSRS_FM);
 	// Doc/requirements/RTM_TestApp.md + JSON sidecar
 	writeFile("Doc/requirements/RTM_TestApp.md", "# RTM preview\n");
-	writeFile(
-		"Doc/requirements/RTM_TestApp.json",
-		JSON.stringify(RTM_JSON, null, 2) + "\n",
-	);
+	writeFile("Doc/requirements/RTM_TestApp.json", JSON.stringify(RTM_JSON, null, 2) + "\n");
 	// B4: the publish gate refuses a design publish when its declared input
 	// (the published feasibility study) is missing.
 	writeFile("Doc/feasibility/feasibility-study_TestApp.md", "# Feasibility\n");
@@ -304,25 +325,25 @@ function setupFullCwd(): void {
 		"",
 		"```mermaid",
 		"C4Context",
-		"  Person(user, \"End user\")",
-		"  System(system, \"TestApp\")",
-		"  Rel(user, system, \"Uses\")",
+		'  Person(user, "End user")',
+		'  System(system, "TestApp")',
+		'  Rel(user, system, "Uses")',
 		"```",
 		"",
 		"### 14.2 Container view (C4 Level 2)",
 		"",
 		"```mermaid",
 		"C4Container",
-		"  Person(user, \"End user\")",
-		"  System_Boundary(c1, \"TestApp\") { Container(api, \"API\", \"Node\") }",
-		"  Rel(user, api, \"Uses\")",
+		'  Person(user, "End user")',
+		'  System_Boundary(c1, "TestApp") { Container(api, "API", "Node") }',
+		'  Rel(user, api, "Uses")',
 		"```",
 		"",
 		"### 14.3 Component view (C4 Level 3)",
 		"",
 		"```mermaid",
 		"C4Component",
-		"  Container_Boundary(api, \"API\") { Component(c, \"Core\", \"Node\") }",
+		'  Container_Boundary(api, "API") { Component(c, "Core", "Node") }',
 		"```",
 	].join("\n");
 	const runDir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", run.runId, "design");
@@ -354,10 +375,7 @@ describe("/velpari-rtm-approve end-to-end on a real-cwd with full doctor", () =>
 		// 1. The doctor report must be on disk (since auto-doctor runs
 		//    on every approve, v1.2.1).
 		const reportPath = path.join(tmpDir, PATHS.DOCTOR_REPORT);
-		assert.ok(
-			fs.existsSync(reportPath),
-			`doctor report must be at ${reportPath}`,
-		);
+		assert.ok(fs.existsSync(reportPath), `doctor report must be at ${reportPath}`);
 		const reportBody = fs.readFileSync(reportPath, "utf8");
 		// 2. The report must include ShapeCompatibility — the new section
 		//    from v1.2.2.
@@ -395,10 +413,7 @@ describe("/velpari-rtm-approve end-to-end on a real-cwd with full doctor", () =>
 		// publish-gate + atomic-write happens before the doctor audit).
 		// If the doctor passed, it was advanced.
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
-		assert.ok(
-			fs.existsSync(published),
-			`expected published design at ${published}`,
-		);
+		assert.ok(fs.existsSync(published), `expected published design at ${published}`);
 
 		const content = fs.readFileSync(published, "utf8");
 		// Frontmatter is stamped by handleApprove's withArtifactFrontmatter.

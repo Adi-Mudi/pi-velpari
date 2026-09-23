@@ -162,10 +162,17 @@ describe("ops/backfill", () => {
 		const db = openStoreDb(buildStoreDbPath(PROJECT, dir));
 		try {
 			writeArtifact(db, "atomic-functions", "backfill-t6", AF_ENV, {
-				atomicFunction: [{
-					id: "AF-1", name: "parse", signature: "parse()", tier: "basic",
-					criticality: "A", sil: "none", isLeaf: 1,
-				}],
+				atomicFunction: [
+					{
+						id: "AF-1",
+						name: "parse",
+						signature: "parse()",
+						tier: "basic",
+						criticality: "A",
+						sil: "none",
+						isLeaf: 1,
+					},
+				],
 			});
 			publishArtifact(db, "backfill-t6", "atomic-functions");
 		} finally {

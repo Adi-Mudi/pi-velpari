@@ -12,11 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import {
-	writeArtifact,
-	publishArtifact,
-	type ArtifactEnvelopeInput,
-} from "../../src/io/store.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../src/io/store.js";
 import {
 	STAGE_SLICE_KINDS,
 	DOC_ARTIFACT_TO_KIND,
@@ -53,10 +49,7 @@ describe("ops/db-slices", () => {
 	});
 
 	/** Open + seed a project store at the canonical G10 path. */
-	function seedStore(
-		dir: string,
-		seed: (db: ReturnType<typeof openStoreDb>) => void,
-	): void {
+	function seedStore(dir: string, seed: (db: ReturnType<typeof openStoreDb>) => void): void {
 		const dbPath = buildStoreDbPath(PROJECT, dir);
 		const db = openStoreDb(dbPath);
 		try {
@@ -74,11 +67,7 @@ describe("ops/db-slices", () => {
 					.map((i) => DOC_ARTIFACT_TO_KIND[i.artifact!]),
 			);
 			const actual = new Set(STAGE_SLICE_KINDS[key]);
-			assert.deepEqual(
-				[...actual].sort(),
-				[...expectedKinds].sort(),
-				`slice kinds drift for stage ${key}`,
-			);
+			assert.deepEqual([...actual].sort(), [...expectedKinds].sort(), `slice kinds drift for stage ${key}`);
 		}
 	});
 
@@ -208,18 +197,21 @@ describe("ops/db-slices", () => {
 		// absent row-set → not a prose failure
 		assert.equal(findMissingProse("pseudocode", {}), null);
 		// optional-prose kinds never refuse
-		assert.equal(
-			findMissingProse("design", { designModule: [{ id: "M-1", description: null }] }),
-			null,
-		);
+		assert.equal(findMissingProse("design", { designModule: [{ id: "M-1", description: null }] }), null);
 	});
 
 	test("9. multi-kind stage (pseudocode) requires BOTH kinds published", () => {
 		const dir = dirs[dirs.length - 1]!;
 		seedStore(dir, (db) => {
-			writeArtifact(db, "design", "r1", { ...env(), stage: "designing" }, {
-				designModule: [{ id: "M-1", name: "core", description: "does core" }],
-			});
+			writeArtifact(
+				db,
+				"design",
+				"r1",
+				{ ...env(), stage: "designing" },
+				{
+					designModule: [{ id: "M-1", name: "core", description: "does core" }],
+				},
+			);
 			publishArtifact(db, "r1", "design");
 			// atomic-functions NOT published → refuse names it
 		});
@@ -239,9 +231,15 @@ describe("ops/db-slices", () => {
 				fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "v1 text" }],
 			});
 			publishArtifact(db, "r1", "prd");
-			writeArtifact(db, "prd", "r2", { ...env(), version: 2, generatedAt: "2026-09-23T01:00:00Z" }, {
-				fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "v2 text" }],
-			});
+			writeArtifact(
+				db,
+				"prd",
+				"r2",
+				{ ...env(), version: 2, generatedAt: "2026-09-23T01:00:00Z" },
+				{
+					fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "v2 text" }],
+				},
+			);
 			publishArtifact(db, "r2", "prd");
 		});
 		const slice = resolveStageSlice(dir, PROJECT, "rtm");

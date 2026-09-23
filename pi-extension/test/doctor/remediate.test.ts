@@ -122,11 +122,7 @@ describe("frontmatter remediate", () => {
 
 		// Second run: should be idempotent (no further changes).
 		const second = await frontmatter({ cwd: tmpDir, projectName: "TestApp" });
-		assert.equal(
-			second.changedFiles.length,
-			0,
-			"second run must be a no-op (already stamped)",
-		);
+		assert.equal(second.changedFiles.length, 0, "second run must be a no-op (already stamped)");
 	});
 });
 
@@ -197,21 +193,13 @@ describe("fingerprint-untracked remediate", () => {
 		// .json is left untouched (no deletion).
 		const rtmYamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(rtmYamlPath), "remediate writes the .yaml sidecar");
-		assert.deepEqual(
-			JSON.parse(fs.readFileSync(rtmJsonPath, "utf8")),
-			rtmJson,
-			"legacy .json stays untouched",
-		);
+		assert.deepEqual(JSON.parse(fs.readFileSync(rtmJsonPath, "utf8")), rtmJson, "legacy .json stays untouched");
 		const after = readYamlFile(rtmYamlPath) as typeof rtmJson & {
 			rows: { id: string; fingerprint?: string }[];
 		};
 		for (const row of after.rows) {
 			// hashRequirementText returns raw hex (no "sha256:" prefix).
-			assert.match(
-				String(row.fingerprint ?? ""),
-				/^[0-9a-f]{64}$/,
-				`row ${row.id} must carry a fingerprint`,
-			);
+			assert.match(String(row.fingerprint ?? ""), /^[0-9a-f]{64}$/, `row ${row.id} must carry a fingerprint`);
 		}
 
 		// Idempotent
@@ -250,15 +238,7 @@ describe("working-published-drift remediate", () => {
 		// layout uses lowercase category names ("prd"), per
 		// WORKING_GROUPED_CATEGORIES in core/paths.ts. The test mirrors
 		// the exact layout buildWorkingGroupedPath("PRD", ...) returns.
-		const workingPath = path.join(
-			tmpDir,
-			".IDE_Plans",
-			"velpari",
-			"runs",
-			"2026-09-19-test",
-			"prd",
-			"PRD_TestApp.md",
-		);
+		const workingPath = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", "2026-09-19-test", "prd", "PRD_TestApp.md");
 		fs.mkdirSync(path.dirname(workingPath), { recursive: true });
 		fs.writeFileSync(workingPath, "# Working PRD with NEW content\n", "utf8");
 
@@ -272,10 +252,7 @@ describe("working-published-drift remediate", () => {
 		});
 		assert.equal(result.changedFiles.length, 1, "one file overwritten");
 		assert.equal(result.changedFiles[0], pubPath);
-		assert.equal(
-			fs.readFileSync(pubPath, "utf8"),
-			"# Working PRD with NEW content\n",
-		);
+		assert.equal(fs.readFileSync(pubPath, "utf8"), "# Working PRD with NEW content\n");
 
 		// Idempotent.
 		const again = await workingPublishedDrift({
@@ -316,10 +293,7 @@ describe("runAllSafeRemediates", () => {
 
 	it("REMEDIATE_FNS exposes a function for every SAFE_WHITELIST entry", () => {
 		for (const fp of SAFE_WHITELIST) {
-			assert.ok(
-				typeof REMEDIATE_FNS[fp] === "function",
-				`Missing RemediateFn for "${fp}"`,
-			);
+			assert.ok(typeof REMEDIATE_FNS[fp] === "function", `Missing RemediateFn for "${fp}"`);
 		}
 	});
 });

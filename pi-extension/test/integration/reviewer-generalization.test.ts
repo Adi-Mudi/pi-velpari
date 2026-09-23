@@ -58,10 +58,7 @@ function makeState(stage: RunState["currentStage"]): void {
 	fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 
-function makeFilesConfig(opts: {
-	projectName: string;
-	tier: "entry" | "basic" | "intermediate" | "advanced";
-}): void {
+function makeFilesConfig(opts: { projectName: string; tier: "entry" | "basic" | "intermediate" | "advanced" }): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
@@ -93,11 +90,7 @@ function preInstallScouts(scoutNames: string[]): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
 	for (const s of scoutNames) {
-		fs.writeFileSync(
-			path.join(agentsDir, `${s}.md`),
-			`---\nname: ${s}\ndescription: stub\n---\n# stub\n`,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(agentsDir, `${s}.md`), `---\nname: ${s}\ndescription: stub\n---\n# stub\n`, "utf8");
 	}
 }
 
@@ -136,22 +129,21 @@ function writeStageArtifacts(opts: {
 	fs.mkdirSync(verdictDir, { recursive: true });
 	const verdict: unknown = {
 		verdict: opts.reviewerVerdict,
-		issues: opts.reviewerVerdict === "approve" ? [] : [
-			{
-				severity: "error",
-				rule: "test-rule",
-				location: "AF-1",
-				message: "test error",
-			},
-		],
+		issues:
+			opts.reviewerVerdict === "approve"
+				? []
+				: [
+						{
+							severity: "error",
+							rule: "test-rule",
+							location: "AF-1",
+							message: "test error",
+						},
+					],
 		summary: `${opts.reviewerVerdict} verdict`,
 		timestamp: new Date().toISOString(),
 	};
-	fs.writeFileSync(
-		path.join(runDir, spec.verdictSubpath),
-		JSON.stringify(verdict, null, 2),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(runDir, spec.verdictSubpath), JSON.stringify(verdict, null, 2), "utf8");
 	return path.join(workingDir, opts.artifactFileName);
 }
 
@@ -229,9 +221,7 @@ describe("Plan D — reviewer generalization end-to-end (handleApprove)", () => 
 			if (fs.existsSync(doctorReportPath)) {
 				const content = fs.readFileSync(doctorReportPath, "utf8");
 				// Should NOT contain an error mentioning reviewer.
-				const errorLine = content
-					.split("\n")
-					.find((l) => /Reviewer verdict not found/.test(l) && /❌|error/i.test(l));
+				const errorLine = content.split("\n").find((l) => /Reviewer verdict not found/.test(l) && /❌|error/i.test(l));
 				assert.equal(errorLine, undefined, "reviewer verdict missing should be info, not error");
 			}
 		});
@@ -264,9 +254,11 @@ describe("Plan D — reviewer generalization end-to-end (handleApprove)", () => 
 			await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 
 			// Doc/artifact should exist (skipAutoDoctor = no doctor run).
-			const docPath = path.join(tmpDir, "Doc", ...(stage.artifactKey === "test-plan"
-				? ["tests", stage.docFileName]
-				: [stage.artifactKey, stage.docFileName]));
+			const docPath = path.join(
+				tmpDir,
+				"Doc",
+				...(stage.artifactKey === "test-plan" ? ["tests", stage.docFileName] : [stage.artifactKey, stage.docFileName]),
+			);
 			assert.ok(fs.existsSync(docPath), `Doc artifact should exist at ${docPath}`);
 
 			// State should have advanced (current stage moved on).

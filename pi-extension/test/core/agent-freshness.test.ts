@@ -34,11 +34,7 @@ afterEach(() => {
 function writeState(mission: string): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "state.json"),
-		JSON.stringify({ version: 1, mission }),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, mission }), "utf8");
 }
 
 /** Stamp a freshness manifest with one brainstorm entry published at the

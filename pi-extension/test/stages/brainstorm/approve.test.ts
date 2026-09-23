@@ -163,11 +163,7 @@ describe("handleApproveBrainstorm", () => {
 		const state = createRun(MISSION, tmpDir);
 		// Simulate an already-approved run.
 		const past: RunState = { ...state, currentStage: "brainstormed" };
-		fs.writeFileSync(
-			path.join(tmpDir, ".pi", "velpari", "state.json"),
-			JSON.stringify(past),
-			"utf8",
-		);
+		fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "state.json"), JSON.stringify(past), "utf8");
 
 		await handleApproveBrainstorm(makeCtx(), makePi(), tmpDir);
 		assert.match(lastError(), /current stage is "brainstormed"/);
@@ -255,27 +251,16 @@ describe("handleApproveBrainstorm", () => {
 		// Session entry + status bar reflect the cleared, advanced state.
 		assert.equal(appendedEntries.length, 1);
 		assert.equal(appendedEntries[0]!.customType, "velpari-state");
-		assert.equal(
-			(appendedEntries[0]!.data as Record<string, unknown>).stage,
-			"brainstormed",
-		);
-		assert.ok(
-			statusUpdates.some(
-				(u) => u.key === "velpari" && u.text.includes("brainstormed"),
-			),
-		);
+		assert.equal((appendedEntries[0]!.data as Record<string, unknown>).stage, "brainstormed");
+		assert.ok(statusUpdates.some((u) => u.key === "velpari" && u.text.includes("brainstormed")));
 
 		// v1.6.2: NO auto-chain to PRD. The handler surfaces a clear
 		// "Next: /velpari-prd" hint instead and stops — the user runs
 		// the next command by hand.
-		const nextHint = notifications.find((n) =>
-			n.message.includes("Brainstorm notes published") &&
-			n.message.includes("/velpari-prd"),
+		const nextHint = notifications.find(
+			(n) => n.message.includes("Brainstorm notes published") && n.message.includes("/velpari-prd"),
 		);
-		assert.ok(
-			nextHint,
-			"expected a 'Brainstorm notes published. Next: /velpari-prd' hint",
-		);
+		assert.ok(nextHint, "expected a 'Brainstorm notes published. Next: /velpari-prd' hint");
 		assert.equal(
 			sentMessages.length,
 			0,
@@ -424,9 +409,8 @@ describe("handleApproveBrainstorm — doors (D3)", () => {
 		const loaded = loadState(tmpDir);
 		assert.equal(loaded.currentStage, "brainstormed");
 		assert.equal(loaded.pausedStage, undefined);
-		const nextHint = notifications.find((n) =>
-			n.message.includes("Brainstorm notes published") &&
-			n.message.includes("/velpari-prd"),
+		const nextHint = notifications.find(
+			(n) => n.message.includes("Brainstorm notes published") && n.message.includes("/velpari-prd"),
 		);
 		assert.ok(nextHint, "expected a 'Next: /velpari-prd' hint for door 2");
 	});
@@ -434,11 +418,7 @@ describe("handleApproveBrainstorm — doors (D3)", () => {
 	it("door picker: choosing restart lands at brainstormed", async () => {
 		enterPausedSession("drafted-prd");
 
-		await handleApproveBrainstorm(
-			makePickerCtx("Restart at the PRD stage"),
-			makePi(),
-			tmpDir,
-		);
+		await handleApproveBrainstorm(makePickerCtx("Restart at the PRD stage"), makePi(), tmpDir);
 
 		const loaded = loadState(tmpDir);
 		assert.equal(loaded.currentStage, "brainstormed");
@@ -448,11 +428,7 @@ describe("handleApproveBrainstorm — doors (D3)", () => {
 	it("door picker: choosing continue resumes the paused stage", async () => {
 		enterPausedSession("drafted-prd");
 
-		await handleApproveBrainstorm(
-			makePickerCtx('Continue at "drafted-prd"'),
-			makePi(),
-			tmpDir,
-		);
+		await handleApproveBrainstorm(makePickerCtx('Continue at "drafted-prd"'), makePi(), tmpDir);
 
 		const loaded = loadState(tmpDir);
 		assert.equal(loaded.currentStage, "drafted-prd");

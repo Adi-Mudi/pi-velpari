@@ -28,10 +28,7 @@ import {
 } from "pi-coding-agent-test";
 
 export { testArtifactsDir };
-export type {
-	AssistantMessageScenario,
-	PiIntegrationTestOptions,
-};
+export type { AssistantMessageScenario, PiIntegrationTestOptions };
 
 /** Path to the built extension entry point. */
 export const EXTENSION_ENTRY = join(process.cwd(), "dist/pi-extension/src/index.js");

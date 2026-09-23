@@ -41,31 +41,28 @@ function makePlan(overrides: Partial<LoggingPlan> = {}): LoggingPlan {
 			scopeOut: ["marketing site"],
 			...overrides.objectives,
 		},
-		complianceRegimes:
-			overrides.complianceRegimes ?? [
-				{
-					framework: "PCI-DSS",
-					version: "v4.0",
-					clauses: ["10.2", "10.3", "10.5"],
-					appliesTo: ["authn", "authz", "data-access"],
-				},
-			],
-		eventCatalog:
-			overrides.eventCatalog ?? [
-				{
-					name: "authn-success",
-					minimumSeverity: "notice",
-					retentionMonths: 12,
-					examples: ["login"],
-				},
-			],
-		logShape:
-			overrides.logShape ?? [
-				{ name: "timestamp", type: "string", required: true, description: "ISO 8601", example: "2026-09-16T10:00:00Z" },
-				{ name: "severity", type: "string", required: true, description: "RFC 5424 level", example: "warning" },
-				{ name: "host", type: "string", required: true, description: "Hostname", example: "host-1" },
-				{ name: "message", type: "string", required: true, description: "Human text", example: "ok" },
-			],
+		complianceRegimes: overrides.complianceRegimes ?? [
+			{
+				framework: "PCI-DSS",
+				version: "v4.0",
+				clauses: ["10.2", "10.3", "10.5"],
+				appliesTo: ["authn", "authz", "data-access"],
+			},
+		],
+		eventCatalog: overrides.eventCatalog ?? [
+			{
+				name: "authn-success",
+				minimumSeverity: "notice",
+				retentionMonths: 12,
+				examples: ["login"],
+			},
+		],
+		logShape: overrides.logShape ?? [
+			{ name: "timestamp", type: "string", required: true, description: "ISO 8601", example: "2026-09-16T10:00:00Z" },
+			{ name: "severity", type: "string", required: true, description: "RFC 5424 level", example: "warning" },
+			{ name: "host", type: "string", required: true, description: "Hostname", example: "host-1" },
+			{ name: "message", type: "string", required: true, description: "Human text", example: "ok" },
+		],
 		logLevels: {
 			emergency: "page",
 			alert: "page",
@@ -100,16 +97,15 @@ function makePlan(overrides: Partial<LoggingPlan> = {}): LoggingPlan {
 			maxSkewMs: 50,
 			...overrides.clockSync,
 		},
-		alerting:
-			overrides.alerting ?? [
-				{
-					name: "authn-storm",
-					trigger: ">=10 failures in 5m",
-					severity: "critical",
-					destination: "PagerDuty",
-					slo: "60s",
-				},
-			],
+		alerting: overrides.alerting ?? [
+			{
+				name: "authn-storm",
+				trigger: ">=10 failures in 5m",
+				severity: "critical",
+				destination: "PagerDuty",
+				slo: "60s",
+			},
+		],
 		reviewCadence: {
 			dailyReviewRequired: true,
 			reviewOwner: "Security",
@@ -127,10 +123,7 @@ function makePlan(overrides: Partial<LoggingPlan> = {}): LoggingPlan {
 			testCases: [],
 			...overrides.mapping,
 		},
-		changeLog:
-			overrides.changeLog ?? [
-				{ date: "2026-09-16", author: "agent", note: "initial" },
-			],
+		changeLog: overrides.changeLog ?? [{ date: "2026-09-16", author: "agent", note: "initial" }],
 	};
 }
 
@@ -145,16 +138,7 @@ describe("constants", () => {
 		assert.strictEqual(SYSLOG_SEVERITIES.length, 8);
 		assert.deepEqual(
 			[...SYSLOG_SEVERITIES],
-			[
-				"emergency",
-				"alert",
-				"critical",
-				"error",
-				"warning",
-				"notice",
-				"informational",
-				"debug",
-			],
+			["emergency", "alert", "critical", "error", "warning", "notice", "informational", "debug"],
 		);
 	});
 
@@ -173,16 +157,12 @@ describe("validateLoggingPlan", () => {
 	});
 
 	it("rejects wrong frontmatter.artifact", () => {
-		const errors = validateLoggingPlan(
-			makePlan({ frontmatter: { artifact: "wrong" } as never }),
-		);
+		const errors = validateLoggingPlan(makePlan({ frontmatter: { artifact: "wrong" } as never }));
 		assert.ok(errors.some((e) => e.field === "frontmatter.artifact"));
 	});
 
 	it("rejects non-SemVer version", () => {
-		const errors = validateLoggingPlan(
-			makePlan({ frontmatter: { version: "1.0" } as never }),
-		);
+		const errors = validateLoggingPlan(makePlan({ frontmatter: { version: "1.0" } as never }));
 		assert.ok(errors.some((e) => e.field === "frontmatter.version"));
 	});
 
@@ -203,11 +183,7 @@ describe("validateLoggingPlan", () => {
 				},
 			],
 		});
-		assert.ok(
-			errors.some(
-				(e) => e.field === "eventCatalog[bad].retentionMonths" && e.severity === "error",
-			),
-		);
+		assert.ok(errors.some((e) => e.field === "eventCatalog[bad].retentionMonths" && e.severity === "error"));
 	});
 
 	it("rejects unknown RFC 5424 severity", () => {
@@ -222,24 +198,22 @@ describe("validateLoggingPlan", () => {
 				},
 			],
 		});
-		assert.ok(
-			errors.some((e) => e.field === "eventCatalog[x].minimumSeverity"),
-		);
+		assert.ok(errors.some((e) => e.field === "eventCatalog[x].minimumSeverity"));
 	});
 
 	it("rejects log shape missing RFC 5424 mandatory fields", () => {
 		const errors = validateLoggingPlan({
 			...makePlan(),
-			logShape: [
-				{ name: "custom", type: "string", required: false, description: "x", example: "y" },
-			],
+			logShape: [{ name: "custom", type: "string", required: false, description: "x", example: "y" }],
 		});
 		assert.ok(errors.some((e) => e.field === "logShape" && e.message.includes("timestamp")));
 	});
 
 	it("rejects bad correlation traceContext", () => {
 		const errors = validateLoggingPlan(
-			makePlan({ correlation: { traceContext: "jaeger" as never, headerName: "traceparent", propagatedByDefault: true } }),
+			makePlan({
+				correlation: { traceContext: "jaeger" as never, headerName: "traceparent", propagatedByDefault: true },
+			}),
 		);
 		assert.ok(errors.some((e) => e.field === "correlation.traceContext"));
 	});
@@ -267,9 +241,7 @@ describe("renderLoggingPlanMarkdown", () => {
 	});
 
 	it("includes overlay name in frontmatter when set", () => {
-		const md = renderLoggingPlanMarkdown(
-			makePlan({ frontmatter: { overlay: "financial-payments" } as never }),
-		);
+		const md = renderLoggingPlanMarkdown(makePlan({ frontmatter: { overlay: "financial-payments" } as never }));
 		assert.ok(md.includes("overlay: financial-payments"));
 	});
 

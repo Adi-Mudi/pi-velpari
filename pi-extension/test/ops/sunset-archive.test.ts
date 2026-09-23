@@ -57,7 +57,18 @@ const PSRS = [
 const RTM_JSON = JSON.stringify({
 	project: "TestApp",
 	version: "1.0.0",
-	rows: [{ id: "FR-01", title: "x", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" }],
+	rows: [
+		{
+			id: "FR-01",
+			title: "x",
+			phase: 1,
+			design: "",
+			implementation: "",
+			tests: [],
+			status: "proposed",
+			coverage: "covered",
+		},
+	],
 });
 
 /**
@@ -136,8 +147,8 @@ function designBody(version: string, sunset: string | null, status: string | nul
 		"### 14.1 System Context (C4 Level 1)",
 		"```mermaid",
 		"C4Context",
-		"  Person(user, \"End user\")",
-		"  System(system, \"alpha\")",
+		'  Person(user, "End user")',
+		'  System(system, "alpha")',
 		"```",
 		"### 14.2 Container view (C4 Level 2)",
 		"```mermaid",
@@ -187,9 +198,20 @@ function setupCwd(designContent: string, sunset: string | null): void {
 	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
 	fs.writeFileSync(
 		path.join(tmpDir, ".pi", "velpari", "files.json"),
-		JSON.stringify({ version: 4, projectName: "TestApp", framework: { language: "typescript" }, codePaths: ["src"], testPaths: ["test"], docPaths: ["Doc"], excludedPaths: ["node_modules"] }),
+		JSON.stringify({
+			version: 4,
+			projectName: "TestApp",
+			framework: { language: "typescript" },
+			codePaths: ["src"],
+			testPaths: ["test"],
+			docPaths: ["Doc"],
+			excludedPaths: ["node_modules"],
+		}),
 	);
-	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "standards-profile.json"), JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }));
+	fs.writeFileSync(
+		path.join(tmpDir, ".pi", "velpari", "standards-profile.json"),
+		JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }),
+	);
 	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), JSON.stringify({ version: 1, agents: {} }));
 	fs.mkdirSync(path.join(tmpDir, "Doc", "requirements"), { recursive: true });
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "PRD_TestApp.md"), PSRS);

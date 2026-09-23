@@ -65,7 +65,9 @@ export function checkPhaseConsistencySection(cwd: string, projectName: string): 
 			items.push({
 				status: "ok",
 				message: `All ${checked} RTM store row(s) match the PRD Phase column.`,
-				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				details: [
+					`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`,
+				],
 			});
 		}
 		return { title, items };

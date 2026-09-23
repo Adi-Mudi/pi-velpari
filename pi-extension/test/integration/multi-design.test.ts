@@ -59,7 +59,16 @@ const RTM_JSON = (frId: string) =>
 		project: "Federation",
 		version: "1.0.0",
 		rows: [
-			{ id: frId, title: "x", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" },
+			{
+				id: frId,
+				title: "x",
+				phase: 1,
+				design: "",
+				implementation: "",
+				tests: [],
+				status: "proposed",
+				coverage: "covered",
+			},
 		],
 	});
 
@@ -202,7 +211,10 @@ function setupFederationCwd(): void {
 			excludedPaths: ["node_modules"],
 		}),
 	);
-	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "standards-profile.json"), JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }));
+	fs.writeFileSync(
+		path.join(tmpDir, ".pi", "velpari", "standards-profile.json"),
+		JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }),
+	);
 	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), JSON.stringify({ version: 1, agents: {} }));
 
 	fs.mkdirSync(path.join(tmpDir, "Doc", "requirements"), { recursive: true });

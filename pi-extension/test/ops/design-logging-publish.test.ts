@@ -16,9 +16,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-	atomicWriteJsonWithFrontmatter,
-} from "../../src/io/atomic-write.js";
+import { atomicWriteJsonWithFrontmatter } from "../../src/io/atomic-write.js";
 import { loadState, saveState } from "../../src/core/state.js";
 
 let cwd: string;
@@ -72,11 +70,7 @@ describe("logging-plan publish path (parent LLM contract)", () => {
 
 	it("atomicWriteJsonWithFrontmatter skips undefined / null frontmatter keys", () => {
 		const path = join(cwd, "frontmatter-skip.md");
-		atomicWriteJsonWithFrontmatter(
-			path,
-			{ a: "1", b: undefined, c: null, d: "2" },
-			"body",
-		);
+		atomicWriteJsonWithFrontmatter(path, { a: "1", b: undefined, c: null, d: "2" }, "body");
 		const content = readFileSync(path, "utf8");
 		assert.ok(content.includes("a: 1"));
 		assert.ok(content.includes("d: 2"));
@@ -86,14 +80,10 @@ describe("logging-plan publish path (parent LLM contract)", () => {
 
 	it("publish path: parent LLM updates state.json:loggingPlanPublishedPath", () => {
 		const state = loadState(cwd);
-		state.loggingPlanPublishedPath =
-			"/abs/Doc/observability/logging-plan_Demo.md";
+		state.loggingPlanPublishedPath = "/abs/Doc/observability/logging-plan_Demo.md";
 		saveState(state, cwd);
 		const reloaded = loadState(cwd);
-		assert.strictEqual(
-			reloaded.loggingPlanPublishedPath,
-			"/abs/Doc/observability/logging-plan_Demo.md",
-		);
+		assert.strictEqual(reloaded.loggingPlanPublishedPath, "/abs/Doc/observability/logging-plan_Demo.md");
 	});
 
 	it("published plan survives a state.json round-trip (legacy + new fields coexist)", () => {

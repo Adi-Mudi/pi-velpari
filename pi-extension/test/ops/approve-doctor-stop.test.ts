@@ -149,14 +149,7 @@ function enterBuildingRtm(): void {
 	const docDir = path.join(tmpDir, "Doc", "requirements");
 	fs.mkdirSync(docDir, { recursive: true });
 	fs.writeFileSync(path.join(docDir, "PRD_TestApp.md"), PSRS, "utf8");
-	const dir = path.join(
-		tmpDir,
-		".IDE_Plans",
-		"velpari",
-		"runs",
-		loadState(tmpDir).runId,
-		"rtm",
-	);
+	const dir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", loadState(tmpDir).runId, "rtm");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM preview\n", "utf8");
 	// Phase 6 (§14): RTM is DB-primary; the working copy must carry a
@@ -182,20 +175,20 @@ function enterBuildingRtm(): void {
 function seedFrNfrFromPsrs(): void {
 	const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
 	try {
-		const ids = Array.from(PSRS.matchAll(/\|\s*(FR-\d+|NFR-\d+)\s*\|/g)).map((m) =>
-			String(m[1]),
-		);
+		const ids = Array.from(PSRS.matchAll(/\|\s*(FR-\d+|NFR-\d+)\s*\|/g)).map((m) => String(m[1]));
 		const seen = new Set<string>();
 		const frRows: ArtifactPayload = {
-			fr: ids.filter((id) => id.startsWith("FR-") && !seen.has(id)).map((id) => {
-				seen.add(id);
-				return {
-					id,
-					phase: 1,
-					textHash: "f".repeat(64),
-					text: `seeded prose for ${id}`,
-				};
-			}),
+			fr: ids
+				.filter((id) => id.startsWith("FR-") && !seen.has(id))
+				.map((id) => {
+					seen.add(id);
+					return {
+						id,
+						phase: 1,
+						textHash: "f".repeat(64),
+						text: `seeded prose for ${id}`,
+					};
+				}),
 			nfr: ids
 				.filter((id) => id.startsWith("NFR-") && !seen.has(id))
 				.map((id) => {
@@ -258,17 +251,11 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
 		const yamlPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.yaml");
 		assert.ok(fs.existsSync(mdPath), "publish gate cleared — RTM markdown on disk");
-		assert.ok(
-			!fs.existsSync(yamlPath),
-			"publish gate cleared — no YAML sidecar written (download view only)",
-		);
+		assert.ok(!fs.existsSync(yamlPath), "publish gate cleared — no YAML sidecar written (download view only)");
 
 		// The doctor report was written.
 		const reportPath = path.join(tmpDir, PATHS.DOCTOR_REPORT);
-		assert.ok(
-			fs.existsSync(reportPath),
-			`full doctor report must be written at ${reportPath}`,
-		);
+		assert.ok(fs.existsSync(reportPath), `full doctor report must be written at ${reportPath}`);
 		const reportBody = fs.readFileSync(reportPath, "utf8");
 		assert.ok(reportBody.length > 0, "report has content");
 
@@ -277,11 +264,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		assert.match(message, /Doctor stopped the advance/i, message);
 
 		// State did NOT advance.
-		assert.equal(
-			loadState(tmpDir).currentStage,
-			stageBefore,
-			"stage must remain unchanged on doctor findings",
-		);
+		assert.equal(loadState(tmpDir).currentStage, stageBefore, "stage must remain unchanged on doctor findings");
 	});
 
 	it("blocks on warnings too (not just errors) per the v1.2.1 policy", async () => {
@@ -300,10 +283,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		const message = allMessages();
 		const sawDoctorStop = /Doctor stopped the advance/.test(message);
 		const sawDoctorClean = /Doctor: clean/.test(message);
-		assert.ok(
-			sawDoctorStop || sawDoctorClean,
-			"doctor audit must report either stop or clean in the notify stream",
-		);
+		assert.ok(sawDoctorStop || sawDoctorClean, "doctor audit must report either stop or clean in the notify stream");
 		if (sawDoctorStop) {
 			assert.equal(state.currentStage, "building-rtm", "stage held when doctor stopped");
 		} else {
@@ -315,9 +295,7 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 		enterBuildingRtm();
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
-		const doctorMsg = notices
-			.map((n) => n.message)
-			.find((m) => /Doctor stopped the advance/.test(m));
+		const doctorMsg = notices.map((n) => n.message).find((m) => /Doctor stopped the advance/.test(m));
 		// v1.2.3 UI: when the doctor blocks, the notify carries a
 		// grouped list (one line per section) with tags.
 		if (doctorMsg) {

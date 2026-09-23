@@ -8,13 +8,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-	openStoreDb,
-	closeStoreDb,
-	migrate,
-	maxKnownVersion,
-	MIGRATIONS,
-} from "../../src/io/db.js";
+import { openStoreDb, closeStoreDb, migrate, maxKnownVersion, MIGRATIONS } from "../../src/io/db.js";
 import { statSync } from "node:fs";
 
 describe("io/db — store foundation", () => {
@@ -44,14 +38,8 @@ describe("io/db — store foundation", () => {
 				synchronous: number;
 			};
 			assert.equal(sync.synchronous, 1); // NORMAL
-			const busy = db.prepare("PRAGMA busy_timeout").get() as Record<
-				string,
-				unknown
-			>;
-			assert.ok(
-				Object.values(busy).includes(5000),
-				`busy_timeout should be 5000, got ${JSON.stringify(busy)}`,
-			);
+			const busy = db.prepare("PRAGMA busy_timeout").get() as Record<string, unknown>;
+			assert.ok(Object.values(busy).includes(5000), `busy_timeout should be 5000, got ${JSON.stringify(busy)}`);
 		} finally {
 			closeStoreDb(db);
 		}
@@ -123,10 +111,7 @@ describe("io/db — store foundation", () => {
 		const dbPath = join(dir, "checked.db");
 		const db = openStoreDb(dbPath);
 		try {
-			const row = db.prepare("PRAGMA quick_check").get() as Record<
-				string,
-				unknown
-			>;
+			const row = db.prepare("PRAGMA quick_check").get() as Record<string, unknown>;
 			assert.equal(Object.values(row)[0], "ok");
 		} finally {
 			closeStoreDb(db);
@@ -145,11 +130,7 @@ describe("io/db — store foundation", () => {
 		// After TRUNCATE checkpoint the -wal file is either gone or 0 bytes.
 		if (existsSync(walPath)) {
 			const stat = statSync(walPath);
-			assert.equal(
-				stat.size,
-				0,
-				"WAL should be truncated to 0 after close",
-			);
+			assert.equal(stat.size, 0, "WAL should be truncated to 0 after close");
 		}
 	});
 
@@ -168,10 +149,7 @@ describe("io/db — store foundation", () => {
 			for (let i = 1; i < list.length; i++) {
 				const prev = list[i - 1];
 				const curr = list[i];
-				assert.ok(
-					prev && curr && curr.version > prev.version,
-					`migration versions must ascend strictly (${i})`,
-				);
+				assert.ok(prev && curr && curr.version > prev.version, `migration versions must ascend strictly (${i})`);
 			}
 		} finally {
 			closeStoreDb(db);
@@ -190,11 +168,7 @@ describe("io/db — store foundation", () => {
 			db.exec("ROLLBACK;");
 			// Table must not exist after rollback — proves txn semantics used by
 			// the runner protect user_version stamping.
-			const tables = db
-				.prepare(
-					"SELECT name FROM sqlite_master WHERE type='table' AND name='t'",
-				)
-				.get();
+			const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='t'").get();
 			assert.equal(tables, undefined);
 		} finally {
 			closeStoreDb(db);

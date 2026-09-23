@@ -48,18 +48,16 @@ describe("SCAN_TYPE_ROLES + DEFAULT_SCANS", () => {
 
 describe("enforceReadOnlyTools", () => {
 	it("strips write/edit/bash for code and doc scans", () => {
-		assert.deepEqual(
-			enforceReadOnlyTools(["read", "write", "grep", "bash", "glob"], "code"),
-			["read", "grep", "glob"],
-		);
+		assert.deepEqual(enforceReadOnlyTools(["read", "write", "grep", "bash", "glob"], "code"), ["read", "grep", "glob"]);
 		assert.deepEqual(enforceReadOnlyTools(["write", "edit"], "doc"), []);
 	});
 
 	it("keeps websearch+fetchurl for community scans only", () => {
-		assert.deepEqual(
-			enforceReadOnlyTools(["read", "websearch", "fetchurl"], "community"),
-			["read", "websearch", "fetchurl"],
-		);
+		assert.deepEqual(enforceReadOnlyTools(["read", "websearch", "fetchurl"], "community"), [
+			"read",
+			"websearch",
+			"fetchurl",
+		]);
 		assert.deepEqual(enforceReadOnlyTools(["read", "websearch"], "code"), ["read"]);
 	});
 
@@ -70,11 +68,7 @@ describe("enforceReadOnlyTools", () => {
 
 describe("prepareDispatch", () => {
 	it("prepares a code-scan dispatch (30s timeout, read-only tools)", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "Scan the codebase", scanType: "code" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "Scan the codebase", scanType: "code" }, RUN_DIR, 0);
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
 		assert.equal(res.prepared.agent, "extractor");
@@ -97,19 +91,10 @@ describe("prepareDispatch", () => {
 	});
 
 	it("returns the prepared payload shape (subagentArgs: agent/cwd/task/timeoutMs)", () => {
-		const res = prepareDispatch(
-			{ agent: "prd-checker", task: "Check PRD delta", scanType: "doc" },
-			RUN_DIR,
-			1,
-		);
+		const res = prepareDispatch({ agent: "prd-checker", task: "Check PRD delta", scanType: "doc" }, RUN_DIR, 1);
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
-		assert.deepEqual(Object.keys(res.prepared.subagentArgs).sort(), [
-			"agent",
-			"cwd",
-			"task",
-			"timeoutMs",
-		]);
+		assert.deepEqual(Object.keys(res.prepared.subagentArgs).sort(), ["agent", "cwd", "task", "timeoutMs"]);
 		assert.equal(res.prepared.subagentArgs.agent, "prd-checker");
 		assert.equal(res.prepared.subagentArgs.cwd, RUN_DIR);
 		assert.equal(res.prepared.subagentArgs.task, "Check PRD delta");
@@ -118,11 +103,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("rejects an unknown scout", () => {
-		const res = prepareDispatch(
-			{ agent: "secret-agent", task: "x", scanType: "code" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "secret-agent", task: "x", scanType: "code" }, RUN_DIR, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /not a velpari scout/);
@@ -130,11 +111,7 @@ describe("prepareDispatch", () => {
 
 	it("rejects web-search-agent for non-community scans (FR-52)", () => {
 		for (const scanType of ["code", "doc"] as const) {
-			const res = prepareDispatch(
-				{ agent: "web-search-agent", task: "x", scanType },
-				RUN_DIR,
-				0,
-			);
+			const res = prepareDispatch({ agent: "web-search-agent", task: "x", scanType }, RUN_DIR, 0);
 			assert.equal(res.ok, false);
 			if (res.ok) return;
 			assert.match(res.reason, /community/);
@@ -142,11 +119,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("rejects a scout that does not serve the scan type", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "doc" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "doc" }, RUN_DIR, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /does not serve/);
@@ -166,12 +139,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("enforces the total dispatch cap (3)", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "code" },
-			RUN_DIR,
-			3,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "code" }, RUN_DIR, 3, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /cap reached \(3\)/);
@@ -229,11 +197,7 @@ describe("prepareDispatch v3 — persistent mode", () => {
 	it("resolves session handle from state.activeSubagents when mode=persistent", () => {
 		const cwd = tmpCwd();
 		let state = createRun("Mission", cwd);
-		state = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			cwd,
-		);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
 
 		const res = prepareDispatch(
 			{
@@ -258,11 +222,7 @@ describe("prepareDispatch v3 — persistent mode", () => {
 	it("resolves the doc-code handle for sessionHandleKey=docCode", () => {
 		const cwd = tmpCwd();
 		let state = createRun("Mission", cwd);
-		state = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			cwd,
-		);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
 
 		const res = prepareDispatch(
 			{
@@ -453,13 +413,7 @@ describe("role → agent-name resolution (agents.json)", () => {
 	});
 
 	it("defaults to the identity mapping when agents.json is absent", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "code" },
-			RUN_DIR,
-			0,
-			0,
-			tmpCwd(),
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "code" }, RUN_DIR, 0, 0, tmpCwd());
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
 		assert.equal(res.prepared.subagentArgs.agent, "extractor");
@@ -469,13 +423,7 @@ describe("role → agent-name resolution (agents.json)", () => {
 		const cwd = tmpCwd();
 		saveAgentConfig(cwd, { version: 1, agents: { "web-search-agent": "my-web-scout" } });
 		for (const scanType of ["code", "doc"] as const) {
-			const res = prepareDispatch(
-				{ agent: "web-search-agent", task: "x", scanType },
-				RUN_DIR,
-				0,
-				0,
-				cwd,
-			);
+			const res = prepareDispatch({ agent: "web-search-agent", task: "x", scanType }, RUN_DIR, 0, 0, cwd);
 			assert.equal(res.ok, false);
 			if (res.ok) return;
 			assert.match(res.reason, /community/);

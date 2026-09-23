@@ -194,15 +194,7 @@ describe("velpari_stage_publish tool", () => {
 		fs.mkdirSync(brainstormDir, { recursive: true });
 		fs.writeFileSync(path.join(brainstormDir, "brainstorm-testapp.md"), "# brainstorm\n", "utf8");
 		const runId = loadState(tmpDir).runId;
-		const prdPath = path.join(
-			tmpDir,
-			".IDE_Plans",
-			"velpari",
-			"runs",
-			runId,
-			"prd",
-			"PRD_TestApp.md",
-		);
+		const prdPath = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", runId, "prd", "PRD_TestApp.md");
 		// Minimal PSRS that passes validatePsrs: frontmatter + all 20
 		// required sections. Section bodies may be minimal.
 		const psrs = [
@@ -311,10 +303,7 @@ describe("velpari_stage_publish tool", () => {
 
 		const res = await exec();
 		assert.equal(res.isError, undefined);
-		assert.ok(
-			notices.join("\n"),
-			`expected publish to proceed; notices: ${JSON.stringify(notices)}`,
-		);
+		assert.ok(notices.join("\n"), `expected publish to proceed; notices: ${JSON.stringify(notices)}`);
 		const snap = res.details as Record<string, unknown>;
 		assert.equal(snap.published, true);
 		// advanceStage performs ONE transition (drafting-prd → drafted-prd);

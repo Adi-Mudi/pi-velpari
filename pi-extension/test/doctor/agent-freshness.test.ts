@@ -19,11 +19,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { checkAgentFreshnessSection } from "../../src/doctor/checks/agent-freshness.js";
-import {
-	GENERATION_PHASES,
-	REVIEWER_ROLES,
-	type GenerationPhase,
-} from "../../src/core/agents-config.js";
+import { GENERATION_PHASES, REVIEWER_ROLES, type GenerationPhase } from "../../src/core/agents-config.js";
 import { getProjectSlug } from "../../src/core/agents-generator.js";
 
 let tmpDir: string;
@@ -39,11 +35,7 @@ afterEach(() => {
 function writeState(mission: string): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "state.json"),
-		JSON.stringify({ version: 1, mission }),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, mission }), "utf8");
 }
 
 /** Stamp a brainstorm publish in the freshness manifest
@@ -72,21 +64,13 @@ function stampBrainstormPublish(publishedAt: string): void {
 function writeFilesJson(atomic: Record<string, unknown>): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "files.json"),
-		JSON.stringify({ version: 4, projectName: "demo", atomic }),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "files.json"), JSON.stringify({ version: 4, projectName: "demo", atomic }), "utf8");
 }
 
 function writeAgentsJson(agents: Record<string, string>): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "agents.json"),
-		JSON.stringify({ version: 1, agents }),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "agents.json"), JSON.stringify({ version: 1, agents }), "utf8");
 }
 
 /** Write generated agent files for every role of the phase. */
@@ -123,19 +107,13 @@ describe("checkAgentFreshnessSection", () => {
 
 	it("empty project → one info per phase (bundled fallback), no errors or warnings", () => {
 		const section = checkAgentFreshnessSection(tmpDir);
-		const missingInfos = section.items.filter(
-			(i) => i.status === "info" && /have no generated agent/.test(i.message),
-		);
+		const missingInfos = section.items.filter((i) => i.status === "info" && /have no generated agent/.test(i.message));
 		assert.equal(missingInfos.length, 4, "one bundled-fallback info per phase");
 		assert.ok(missingInfos[0]!.details && missingInfos[0]!.details.length > 0);
 		assert.equal(section.items.filter((i) => i.status === "error").length, 0);
 		assert.equal(section.items.filter((i) => i.status === "warning").length, 0);
 		// Reviewer not required at the default basic tier → policy info.
-		assert.ok(
-			section.items.some(
-				(i) => i.status === "info" && /Reviewer presence not required/.test(i.message),
-			),
-		);
+		assert.ok(section.items.some((i) => i.status === "info" && /Reviewer presence not required/.test(i.message)));
 	});
 
 	it("phase 1 fully generated → ok item naming the phase", () => {
@@ -151,9 +129,7 @@ describe("checkAgentFreshnessSection", () => {
 		stampBrainstormPublish("2026-09-20T10:00:00.000Z");
 		writeGeneratedAgents(2, new Date("2026-09-20T09:00:00.000Z")); // 1h BEFORE publish
 		const section = checkAgentFreshnessSection(tmpDir);
-		const staleWarnings = section.items.filter(
-			(i) => i.status === "warning" && /regenerate Phase 2/.test(i.message),
-		);
+		const staleWarnings = section.items.filter((i) => i.status === "warning" && /regenerate Phase 2/.test(i.message));
 		assert.equal(staleWarnings.length, GENERATION_PHASES[2].roles.length);
 		for (const warning of staleWarnings) {
 			assert.match(warning.suggestion ?? "", /--phase 2/);
@@ -164,17 +140,13 @@ describe("checkAgentFreshnessSection", () => {
 		stampBrainstormPublish("2026-09-20T10:00:00.000Z");
 		writeGeneratedAgents(2, new Date("2026-09-20T11:00:00.000Z"));
 		const section = checkAgentFreshnessSection(tmpDir);
-		const staleWarnings = section.items.filter(
-			(i) => i.status === "warning" && /regenerate Phase 2/.test(i.message),
-		);
+		const staleWarnings = section.items.filter((i) => i.status === "warning" && /regenerate Phase 2/.test(i.message));
 		assert.equal(staleWarnings.length, 0);
 		assert.ok(
 			section.items.some(
 				(i) =>
 					i.status === "ok" &&
-					new RegExp(
-						`Phase 2: all ${GENERATION_PHASES[2].roles.length} generated agent\\(s\\) fresh`,
-					).test(i.message),
+					new RegExp(`Phase 2: all ${GENERATION_PHASES[2].roles.length} generated agent\\(s\\) fresh`).test(i.message),
 			),
 		);
 	});
@@ -202,9 +174,7 @@ describe("checkAgentFreshnessSection", () => {
 		for (const role of REVIEWER_ROLES) writeAgentFile(role);
 		const section = checkAgentFreshnessSection(tmpDir);
 		assert.equal(section.items.filter((i) => i.status === "error").length, 0);
-		const reviewerOks = section.items.filter(
-			(i) => i.status === "ok" && /reviewer role/.test(i.message),
-		);
+		const reviewerOks = section.items.filter((i) => i.status === "ok" && /reviewer role/.test(i.message));
 		assert.equal(reviewerOks.length, REVIEWER_ROLES.length);
 	});
 
@@ -218,9 +188,7 @@ describe("checkAgentFreshnessSection", () => {
 		const section = checkAgentFreshnessSection(tmpDir);
 		assert.equal(section.items.filter((i) => i.status === "error").length, 0);
 		assert.ok(
-			section.items.some(
-				(i) => i.status === "ok" && /my-reviewer\.md \(reviewer role reviewer\)/.test(i.message),
-			),
+			section.items.some((i) => i.status === "ok" && /my-reviewer\.md \(reviewer role reviewer\)/.test(i.message)),
 		);
 	});
 
@@ -228,11 +196,7 @@ describe("checkAgentFreshnessSection", () => {
 		writeFilesJson({ ...ADVANCED_ATOMIC, reviewerMode: "never" });
 		const section = checkAgentFreshnessSection(tmpDir);
 		assert.equal(section.items.filter((i) => i.status === "error").length, 0);
-		assert.ok(
-			section.items.some(
-				(i) => i.status === "info" && /Reviewer presence not required/.test(i.message),
-			),
-		);
+		assert.ok(section.items.some((i) => i.status === "info" && /Reviewer presence not required/.test(i.message)));
 	});
 
 	it("summary item reports generated/stale counts", () => {
@@ -242,8 +206,7 @@ describe("checkAgentFreshnessSection", () => {
 		const section = checkAgentFreshnessSection(tmpDir);
 		const summary = section.items.find((i) => /Agent freshness summary/.test(i.message));
 		assert.ok(summary, "summary item present");
-		const generatedTotal =
-			GENERATION_PHASES[1].roles.length + GENERATION_PHASES[2].roles.length;
+		const generatedTotal = GENERATION_PHASES[1].roles.length + GENERATION_PHASES[2].roles.length;
 		assert.match(
 			summary!.message,
 			new RegExp(

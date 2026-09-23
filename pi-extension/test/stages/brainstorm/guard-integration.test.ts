@@ -151,11 +151,7 @@ describe("brainstorm-anytime — full lifecycle integration (A2)", () => {
 	it("a nested open is the only blocked re-entry", () => {
 		enterStage("designing");
 		openBrainstormSession(tmpDir);
-		assert.throws(
-			() => openBrainstormSession(tmpDir),
-			/already open|brainstorming/,
-			"nested open must throw",
-		);
+		assert.throws(() => openBrainstormSession(tmpDir), /already open|brainstorming/, "nested open must throw");
 		// The paused session is untouched.
 		const state = loadState(tmpDir);
 		assert.equal(state.currentStage, "brainstorming");

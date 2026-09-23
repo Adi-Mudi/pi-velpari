@@ -16,11 +16,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-	loadOverlay,
-	mergeOverlay,
-	overlayDir,
-} from "../../src/core/standards-overlay.js";
+import { loadOverlay, mergeOverlay, overlayDir } from "../../src/core/standards-overlay.js";
 import { cataloguePath } from "../../src/core/standards-catalogue.js";
 
 let tmpDir: string;
@@ -43,8 +39,22 @@ function writeCatalogue(): void {
 		JSON.stringify({
 			version: "1.0.0",
 			overlays: [
-				{ id: "none", version: "1.0.0", label: "Common Core", standards: ["RFC 2119"], scopes: ["any"], inferenceSignals: [] },
-				{ id: "medical-device-b", version: "1.0.0", label: "Medical Device B", standards: ["IEC 62304"], scopes: ["medical-device"], inferenceSignals: ["fda"] },
+				{
+					id: "none",
+					version: "1.0.0",
+					label: "Common Core",
+					standards: ["RFC 2119"],
+					scopes: ["any"],
+					inferenceSignals: [],
+				},
+				{
+					id: "medical-device-b",
+					version: "1.0.0",
+					label: "Medical Device B",
+					standards: ["IEC 62304"],
+					scopes: ["medical-device"],
+					inferenceSignals: ["fda"],
+				},
 			],
 		}),
 		"utf8",
@@ -79,7 +89,17 @@ describe("loadOverlay — happy path", () => {
 
 describe("loadOverlay — failure cases", () => {
 	it("returns null when the catalogue is missing", () => {
-		writeOverlayProfile("none", { id: "none", version: "1.0.0", label: "x", standards: [], scopes: [], inferenceSignals: [], requiredSections: { prd: [], design: [], testplan: [] }, extraScouts: [], doctorChecks: [] });
+		writeOverlayProfile("none", {
+			id: "none",
+			version: "1.0.0",
+			label: "x",
+			standards: [],
+			scopes: [],
+			inferenceSignals: [],
+			requiredSections: { prd: [], design: [], testplan: [] },
+			extraScouts: [],
+			doctorChecks: [],
+		});
 		assert.strictEqual(loadOverlay(tmpDir, "none"), null);
 	});
 

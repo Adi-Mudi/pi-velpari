@@ -17,24 +17,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {
-	loadPseudocodeReviewerVerdict,
-} from "../../src/doctor/checks/pseudocode-reviewer.js";
-import {
-	loadTestplanReviewerVerdict,
-} from "../../src/doctor/checks/testplan-reviewer.js";
-import {
-	loadDesignReviewerVerdict,
-} from "../../src/doctor/checks/design-reviewer.js";
+import { loadPseudocodeReviewerVerdict } from "../../src/doctor/checks/pseudocode-reviewer.js";
+import { loadTestplanReviewerVerdict } from "../../src/doctor/checks/testplan-reviewer.js";
+import { loadDesignReviewerVerdict } from "../../src/doctor/checks/design-reviewer.js";
 import {
 	REVIEWER_STAGE_SPECS,
 	checkVerifierVerdictsSection,
 	verifierSpecForArtifact,
 } from "../../src/doctor/checks/reviewer-verdict.js";
-import {
-	DEFAULT_ATOMIC_PROFILE,
-	type AtomicProfile,
-} from "../../src/core/atomic-tier.js";
+import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../src/core/atomic-tier.js";
 
 let tmpDir: string;
 
@@ -83,12 +74,7 @@ describe("REVIEWER_STAGE_SPECS — per-stage mapping", () => {
 	it("has exactly 4 reviewer stages (atomic-function, pseudocode, testplan, design)", () => {
 		assert.equal(REVIEWER_STAGE_SPECS.length, 4);
 		const keys = REVIEWER_STAGE_SPECS.map((s: { stageKey: string }) => s.stageKey);
-		assert.deepEqual(keys, [
-			"atomic-function",
-			"pseudocode",
-			"testplan",
-			"architecture-generator",
-		]);
+		assert.deepEqual(keys, ["atomic-function", "pseudocode", "testplan", "architecture-generator"]);
 	});
 
 	it("each stage has a unique reviewer role + verdict subpath", () => {
@@ -249,15 +235,9 @@ describe("verifierSpecForArtifact — C3 stage→verifier map", () => {
 		}
 		// Legacy policy pinned: atomic-function errors on a missing verdict
 		// even at basic tier; the Plan-D stages are tier-aware.
-		assert.equal(
-			REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!.missingVerdict,
-			"always-error",
-		);
+		assert.equal(REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!.missingVerdict, "always-error");
 		for (const key of ["pseudocode", "testplan", "architecture-generator"]) {
-			assert.equal(
-				REVIEWER_STAGE_SPECS.find((s) => s.stageKey === key)!.missingVerdict,
-				"tier-aware",
-			);
+			assert.equal(REVIEWER_STAGE_SPECS.find((s) => s.stageKey === key)!.missingVerdict, "tier-aware");
 		}
 	});
 });
@@ -275,13 +255,8 @@ describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
 				i.status === "info" && /no verifier verdict on disk yet/.test(i.message),
 		);
 		assert.equal(noVerdict.length, REVIEWER_STAGE_SPECS.length);
-		assert.equal(
-			section.items.filter((i: { status: string }) => i.status === "error").length,
-			0,
-		);
-		const summary = section.items.find((i: { message: string }) =>
-			/Verifier verdict summary/.test(i.message),
-		);
+		assert.equal(section.items.filter((i: { status: string }) => i.status === "error").length, 0);
+		const summary = section.items.find((i: { message: string }) => /Verifier verdict summary/.test(i.message));
 		assert.ok(summary);
 		assert.match(summary!.message, /0 of 4 verifier stage\(s\)/);
 	});
@@ -295,14 +270,10 @@ describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
 		});
 		const section = checkVerifierVerdictsSection(tmpDir);
 		const okItem = section.items.find(
-			(i: { status: string; message: string }) =>
-				i.status === "ok" && /pseudocode: verdict approve/.test(i.message),
+			(i: { status: string; message: string }) => i.status === "ok" && /pseudocode: verdict approve/.test(i.message),
 		);
 		assert.ok(okItem, "expected an ok item for the approve verdict");
-		assert.equal(
-			section.items.filter((i: { status: string }) => i.status === "error").length,
-			0,
-		);
+		assert.equal(section.items.filter((i: { status: string }) => i.status === "error").length, 0);
 	});
 
 	it("block verdict → error item", () => {
@@ -315,8 +286,7 @@ describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
 		const section = checkVerifierVerdictsSection(tmpDir);
 		assert.ok(
 			section.items.some(
-				(i: { status: string; message: string }) =>
-					i.status === "error" && /testplan: verdict block/.test(i.message),
+				(i: { status: string; message: string }) => i.status === "error" && /testplan: verdict block/.test(i.message),
 			),
 		);
 	});
@@ -329,14 +299,10 @@ describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
 		const section = checkVerifierVerdictsSection(tmpDir);
 		assert.ok(
 			section.items.some(
-				(i: { status: string; message: string }) =>
-					i.status === "warning" && /not valid JSON/.test(i.message),
+				(i: { status: string; message: string }) => i.status === "warning" && /not valid JSON/.test(i.message),
 			),
 		);
-		assert.equal(
-			section.items.filter((i: { status: string }) => i.status === "error").length,
-			0,
-		);
+		assert.equal(section.items.filter((i: { status: string }) => i.status === "error").length, 0);
 	});
 
 	it("verdict older than the published artifact → stale warning", () => {
@@ -381,9 +347,7 @@ describe("checkVerifierVerdictsSection — C3 anytime reporting", () => {
 
 		const section = checkVerifierVerdictsSection(tmpDir);
 		assert.equal(
-			section.items.filter((i: { status: string; message: string }) =>
-				/predates the published/.test(i.message),
-			).length,
+			section.items.filter((i: { status: string; message: string }) => /predates the published/.test(i.message)).length,
 			0,
 		);
 	});

@@ -106,10 +106,7 @@ function makePi(recorder: { sentPrompts: string[] }) {
 function writeFilesConfig(projectName: string) {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "files.json"),
-		JSON.stringify({ version: 4, projectName }),
-	);
+	fs.writeFileSync(path.join(dir, "files.json"), JSON.stringify({ version: 4, projectName }));
 }
 
 function writeValidExistingProfile() {
@@ -153,10 +150,7 @@ describe("/velpari-configure-requirements — UI handler", () => {
 		assert.equal(piRecorder.sentPrompts.length, 1, "research consent + pi → one prompt sent");
 		const saved = loadRequirementsProfile(tmpDir);
 		assert.ok(saved, "profile was not saved");
-		assert.equal(
-			saved!.profileKind === "built-in" || saved!.profileKind === "common-core",
-			true,
-		);
+		assert.equal(saved!.profileKind === "built-in" || saved!.profileKind === "common-core", true);
 		assert.match(allMessages(), /Profile saved:/);
 	});
 

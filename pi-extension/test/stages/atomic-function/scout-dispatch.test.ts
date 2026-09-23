@@ -27,11 +27,7 @@ import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../../src/core/at
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { RunState } from "../../../src/core/state.js";
 import { openStoreDb, closeStoreDb } from "../../../src/io/db.js";
-import {
-	writeArtifact,
-	publishArtifact,
-	type ArtifactEnvelopeInput,
-} from "../../../src/io/store.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../../src/io/store.js";
 import { buildStoreDbPath } from "../../../src/core/paths.js";
 
 let tmpDir: string;
@@ -48,9 +44,12 @@ function makeCtx(): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
-function makeState(stage: RunState["currentStage"], opts: {
-	standardsProfile?: { id: string; version: string };
-} = {}): void {
+function makeState(
+	stage: RunState["currentStage"],
+	opts: {
+		standardsProfile?: { id: string; version: string };
+	} = {},
+): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
@@ -67,10 +66,7 @@ function makeState(stage: RunState["currentStage"], opts: {
 	fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 
-function makeFilesConfig(opts: {
-	projectName: string;
-	atomic?: Partial<AtomicProfile>;
-}): void {
+function makeFilesConfig(opts: { projectName: string; atomic?: Partial<AtomicProfile> }): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
@@ -151,19 +147,9 @@ function seedStore(projectName: string): void {
 function preInstallAllScouts(): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
-	const scouts = [
-		"af-source-rtm",
-		"af-source-design",
-		"af-source-prd",
-		"af-source-feas",
-		"reviewer",
-	];
+	const scouts = ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"];
 	for (const s of scouts) {
-		fs.writeFileSync(
-			path.join(agentsDir, `${s}.md`),
-			`---\nname: ${s}\ndescription: stub\n---\n# stub\n`,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(agentsDir, `${s}.md`), `---\nname: ${s}\ndescription: stub\n---\n# stub\n`, "utf8");
 	}
 }
 
@@ -196,10 +182,7 @@ describe("dispatchScouts — bootstrap", () => {
 		// And the files should now exist on disk
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
 		for (const name of ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"]) {
-			assert.ok(
-				fs.existsSync(path.join(agentsDir, `${name}.md`)),
-				`expected ${name}.md to be installed`,
-			);
+			assert.ok(fs.existsSync(path.join(agentsDir, `${name}.md`)), `expected ${name}.md to be installed`);
 		}
 	});
 

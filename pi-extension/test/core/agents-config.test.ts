@@ -99,10 +99,7 @@ describe("saveAgentConfig → loadAgentConfig round-trip", () => {
 		};
 		saveAgentConfig(cwd, config);
 
-		const onDisk = JSON.parse(readFileSync(getAgentConfigPath(cwd), "utf8")) as Record<
-			string,
-			unknown
-		>;
+		const onDisk = JSON.parse(readFileSync(getAgentConfigPath(cwd), "utf8")) as Record<string, unknown>;
 		assert.equal(onDisk._comment, AGENTS_CONFIG_COMMENT);
 
 		const loaded = loadAgentConfig(cwd);
@@ -214,10 +211,7 @@ describe("VELPARI_ROLES cross-check", () => {
 	it("covers every SCAN_TYPE_ROLES entry", () => {
 		const scanRoles = Object.values(SCAN_TYPE_ROLES).flat();
 		for (const name of scanRoles) {
-			assert.ok(
-				(VELPARI_ROLES as readonly string[]).includes(name),
-				`scan role "${name}" missing from VELPARI_ROLES`,
-			);
+			assert.ok((VELPARI_ROLES as readonly string[]).includes(name), `scan role "${name}" missing from VELPARI_ROLES`);
 		}
 	});
 });
@@ -280,10 +274,12 @@ describe("GENERATION_PHASES (generator v2)", () => {
 	});
 
 	it("logging scouts stay bundled-only (not phase-mapped)", () => {
-		const allPhaseRoles = [1, 2, 3, 4].flatMap((p) => [
-			...GENERATION_PHASES[p as 1 | 2 | 3 | 4].roles,
-		]);
-		for (const loggingRole of ["logging-standards-researcher", "logging-architecture-designer", "logging-compliance-mapper"]) {
+		const allPhaseRoles = [1, 2, 3, 4].flatMap((p) => [...GENERATION_PHASES[p as 1 | 2 | 3 | 4].roles]);
+		for (const loggingRole of [
+			"logging-standards-researcher",
+			"logging-architecture-designer",
+			"logging-compliance-mapper",
+		]) {
 			assert.ok(!allPhaseRoles.includes(loggingRole), `${loggingRole} must not be phase-mapped`);
 		}
 	});

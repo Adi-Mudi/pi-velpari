@@ -59,10 +59,7 @@ describe("/velpari-final-design — Stage 10 registry", () => {
 
 	it("depends on development-order — Stage 10 requires Stage 9 to be approved", () => {
 		const artifacts = entry.inputs.map((i) => i.artifact);
-		assert.ok(
-			artifacts.includes("development-order"),
-			"final-design MUST depend on development-order (Stage 9)",
-		);
+		assert.ok(artifacts.includes("development-order"), "final-design MUST depend on development-order (Stage 9)");
 	});
 
 	it("missing-input error message names Stage 10 + all prior stages", () => {

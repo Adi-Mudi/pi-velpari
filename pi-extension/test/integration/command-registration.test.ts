@@ -11,10 +11,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	COMMAND_NAMES,
-	CommandName,
-} from "../../src/commands/index.js";
+import { COMMAND_NAMES, CommandName } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 	it("exports 43 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill)", () => {
@@ -74,10 +71,7 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-backfill",
 		];
 		for (const cmd of expected) {
-			assert.ok(
-				(COMMAND_NAMES as readonly string[]).includes(cmd),
-				`missing command: ${cmd}`,
-			);
+			assert.ok((COMMAND_NAMES as readonly string[]).includes(cmd), `missing command: ${cmd}`);
 		}
 	});
 
@@ -106,10 +100,7 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-final-design-approve",
 		];
 		for (const cmd of perStage) {
-			assert.ok(
-				(COMMAND_NAMES as readonly string[]).includes(cmd),
-				`missing per-stage approve command: ${cmd}`,
-			);
+			assert.ok((COMMAND_NAMES as readonly string[]).includes(cmd), `missing per-stage approve command: ${cmd}`);
 		}
 	});
 
