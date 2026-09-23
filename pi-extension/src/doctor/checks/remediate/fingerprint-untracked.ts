@@ -1,19 +1,24 @@
 /**
- * RemediateFn for `fingerprint-untracked` (Phase 2, Level B).
+ * RemediateFn for `fingerprint-untracked` (Phase 2, Level B) — now
+ * READ-ONLY for DB-backed RTMs (Phase 7, OQ2: locked decision 2).
  *
- * Deterministic transformation: stamp SHA-256 fingerprints on every
- * RTM row that doesn't have one, using the fingerprints derived from
- * the published PSRS. Then re-render the published RTM markdown from
- * the JSON sidecar. No LLM in the loop.
+ * DB path (store has published RTM rows): NO write. Fingerprints on
+ * DB-backed RTMs are stamped by the publish chain (`rtm_row.target_sha256`,
+ * written by runDbPublish), and `/velpari-reconfirm` is the sanctioned
+ * re-stamp path after input changes. A second write path here would
+ * violate D2's single-writer discipline and dirty the committed DB.
+ * Returns an outcome that points at the sanctioned flows.
  *
- * Idempotent: if every row already carries a fingerprint, the file is
- * not touched.
+ * Legacy path (no store rows — pre-store project): the exact Phase 2
+ * behavior (sidecar re-stamp + re-render), since a legacy project has
+ * no DB write path to protect.
  */
 
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
 import { extractRequirementFingerprints, stampFingerprints } from "../../../core/fingerprints.js";
 import { renderRtmMarkdown, resolveRtmSidecar, type RtmData } from "../../../core/rtm-data.js";
+import { readLatestPublishedRows } from "../../../io/store.js";
 import { readYamlFile, writeYamlFile } from "../../../core/yaml-data.js";
 import { atomicWriteFile } from "../../../io/atomic-write.js";
 import type { RemediateFn, RemediateOutcome } from "./index.js";
@@ -21,6 +26,14 @@ import type { RemediateFn, RemediateOutcome } from "./index.js";
 export const fingerprint = "fingerprint-untracked" as const;
 
 export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => {
+	// DB-backed RTM: read-only — the publish chain + /velpari-reconfirm
+	// own the write path (OQ2). Report no changed files; the suggestion
+	// text in fix-suggestions.ts carries the pointer.
+	const fromDb = readLatestPublishedRows(ctx.cwd, ctx.projectName, "rtm");
+	if (fromDb) {
+		return { changedFiles: [] };
+	}
+
 	const rtm = resolveDocArtifact("RTM", ctx.projectName, ctx.cwd);
 	if (!rtm) return { changedFiles: [] };
 	const psrs = resolveDocArtifact("PRD", ctx.projectName, ctx.cwd);

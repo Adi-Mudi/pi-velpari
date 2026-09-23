@@ -673,6 +673,38 @@ export function extractAfIdsFromStore(cwd: string, projectName: string): string[
 	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
 }
 
+/**
+ * The test-case→requirement trace ids from the store's `tc_trace` rows
+ * (Phase 7 id-coverage edges — the store's machine-written link edges
+ * beat sidecar parsing). FR/NFR targets only (AF traces have no RTM row
+ * counterpart, matching the legacy sidecar extractor).
+ * @param {string} cwd - Project root (locates the store DB).
+ * @param {string} projectName - Project whose testplan edges to read.
+ * @returns {string[] | null} Sorted unique trace ids, or null when no published rows exist.
+ */
+export function extractTestCaseTracesFromStore(cwd: string, projectName: string): string[] | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
+	if (!fromDb) return null;
+	const rows = (fromDb.rows.tcTrace as Array<{ targetId: unknown }> | undefined) ?? [];
+	const ids = rows.map((r) => String(r.targetId)).filter((id) => /^(?:FR|NFR)-\d+$/.test(id));
+	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
+}
+
+/**
+ * The dev-step→AF references from the store's `step_af` rows (Phase 7
+ * id-coverage edges — machine-written edges beat sidecar parsing).
+ * @param {string} cwd - Project root (locates the store DB).
+ * @param {string} projectName - Project whose development-order edges to read.
+ * @returns {string[] | null} Sorted unique AF ids, or null when no published rows exist.
+ */
+export function extractDevOrderAfRefsFromStore(cwd: string, projectName: string): string[] | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "development-order");
+	if (!fromDb) return null;
+	const rows = (fromDb.rows.stepAf as Array<{ afId: unknown }> | undefined) ?? [];
+	const ids = rows.map((r) => String(r.afId)).filter((id) => /^AF-\d+$/.test(id));
+	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle primitives
 // ---------------------------------------------------------------------------

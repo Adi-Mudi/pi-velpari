@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { checkRowFingerprints, extractRequirementFingerprints } from "../../core/fingerprints.js";
 import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { readYamlFile } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -26,6 +27,55 @@ export function checkFingerprintsSection(cwd: string, projectName: string): Diag
 			message: "Fingerprint check skipped — project name missing.",
 			suggestion: suggestionFor("project-name-missing"),
 		});
+		return { title: "Trace-link fingerprints", items };
+	}
+
+	// Phase 7 (OQ3a) — DB-first: fingerprint values from the store's
+	// rtm_row.target_sha256 column (written by the publish chain);
+	// PSRS side stays the published PRD file (the G8-mirrored view).
+	const fromDb = readLatestPublishedRows(cwd, projectName, "rtm");
+	if (fromDb) {
+		const rtmRows = (fromDb.rows.rtmRow as Array<Record<string, unknown>> | undefined) ?? [];
+		const psrs = resolveDocArtifact("PRD", projectName, cwd);
+		if (!psrs) {
+			items.push({
+				status: "info",
+				message: "Fingerprint check skipped — the published PRD view is missing.",
+				suggestion: suggestionFor("psrs-missing"),
+			});
+			return { title: "Trace-link fingerprints", items };
+		}
+		const data: RtmData = {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			rows: rtmRows.map((r) => ({
+				id: String(r.id),
+				title: "",
+				phase: Number(r.phase),
+				design: "",
+				implementation: "",
+				tests: [],
+				status: "proposed" as const,
+				coverage: "covered" as const,
+				fingerprint: r.targetSha256 === null || r.targetSha256 === undefined ? undefined : String(r.targetSha256),
+			})),
+		};
+		const fingerprints = extractRequirementFingerprints(readFileSync(psrs.path, "utf8"));
+		const issues = checkRowFingerprints(data.rows, fingerprints);
+		for (const issue of issues) {
+			items.push({
+				status: issue.problem === "untracked" ? "warning" : "error",
+				message: issue.message,
+				suggestion: suggestionFor(issue.problem === "untracked" ? "fingerprint-untracked" : "fingerprint-suspect"),
+			});
+		}
+		if (items.length === 0) {
+			items.push({
+				status: "ok",
+				message: `All ${data.rows.length} RTM store row(s) match the current PSRS (${fingerprints.size} requirement(s) fingerprinted).`,
+				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+			});
+		}
 		return { title: "Trace-link fingerprints", items };
 	}
 

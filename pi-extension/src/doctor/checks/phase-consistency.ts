@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { extractRequirementPhases } from "../../core/psrs.js";
 import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { readYamlFile } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -26,6 +27,47 @@ export function checkPhaseConsistencySection(cwd: string, projectName: string): 
 			message: "Phase consistency check skipped — project name missing.",
 			suggestion: suggestionFor("project-name-missing"),
 		});
+		return { title, items };
+	}
+
+	// Phase 7 (OQ3a) — DB-first: RTM phases from the store's rtm_row rows
+	// (id + phase are stored 1:1); PSRS side stays the published PRD file
+	// (the G8-mirrored human view, same input the publish gate checks).
+	const fromDb = readLatestPublishedRows(cwd, projectName, "rtm");
+	if (fromDb) {
+		const rtmRows = (fromDb.rows.rtmRow as Array<Record<string, unknown>> | undefined) ?? [];
+		const psrs = resolveDocArtifact("PRD", projectName, cwd);
+		if (!psrs) {
+			items.push({
+				status: "info",
+				message: "Phase consistency check skipped — the published PRD view is missing.",
+				suggestion: suggestionFor("psrs-missing"),
+			});
+			return { title, items };
+		}
+		const phases = extractRequirementPhases(readFileSync(psrs.path, "utf8"));
+		let checked = 0;
+		for (const row of rtmRows) {
+			const id = String(row.id);
+			const phase = phases.get(id);
+			if (phase === undefined) continue; // unknown-id is the fingerprint check's job
+			checked++;
+			const rtmPhase = Number(row.phase);
+			if (phase !== rtmPhase) {
+				items.push({
+					status: "error",
+					message: `${id}: RTM phase ${rtmPhase} ≠ PRD phase ${phase}.`,
+					suggestion: suggestionFor("phase-mismatch"),
+				});
+			}
+		}
+		if (items.length === 0) {
+			items.push({
+				status: "ok",
+				message: `All ${checked} RTM store row(s) match the PRD Phase column.`,
+				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+			});
+		}
 		return { title, items };
 	}
 

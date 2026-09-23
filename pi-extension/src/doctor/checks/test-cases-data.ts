@@ -20,6 +20,8 @@ import {
 	validateTestCasesData,
 	type TestCasesData,
 } from "../../core/test-cases-data.js";
+import { renderTestCasesMarkdown as renderTestCasesMarkdownFromRows } from "../../ops/export-doc.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -36,6 +38,54 @@ export function checkTestCasesDataSection(cwd: string, projectName: string): Dia
 		return { title: "Test-cases data sidecar", items };
 	}
 
+	// Phase 7 (OQ3a) — DB-first: newest published test-cases rows.
+	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
+	if (fromDb) {
+		const tcRows = (fromDb.rows.testCase as Array<Record<string, unknown>> | undefined) ?? [];
+		if (tcRows.length === 0) {
+			items.push({
+				status: "warning",
+				message: "Test-cases store rows exist but the row-set is empty — run `/velpari-testplan` update mode and republish.",
+				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				suggestion: suggestionFor("tc-data-invalid"),
+			});
+			return { title: "Test-cases data sidecar", items };
+		}
+		const bad = tcRows.filter((r) => typeof r.id !== "string" || r.id === "" || typeof r.tcKind !== "string");
+		if (bad.length > 0) {
+			items.push({
+				status: "error",
+				message: `Test-cases store rows failed validation (${bad.length} row(s) with an empty id or missing tcKind).`,
+				details: bad.slice(0, 20).map((r) => `id=${String(r.id)} tcKind=${String(r.tcKind)}`),
+				suggestion: suggestionFor("tc-data-invalid"),
+			});
+			return { title: "Test-cases data sidecar", items };
+		}
+		const dbMd = resolveDocArtifact("test-cases", projectName, cwd);
+		if (dbMd) {
+			const renderedBody = parseFrontmatterBlock(renderTestCasesMarkdownFromRows(fromDb.rows))?.body ?? "";
+			const publishedText = readFileSync(dbMd.path, "utf8");
+			const publishedBody = parseFrontmatterBlock(publishedText)?.body ?? publishedText;
+			if (renderedBody.trim() !== publishedBody.trim()) {
+				items.push({
+					status: "error",
+					message: "Published test-cases markdown has drifted from the store (hand-edited after publish?).",
+					details: [`Markdown: ${dbMd.path}`, `Store: Doc/store/${projectName}/index.db`],
+					suggestion: suggestionFor("tc-data-drift"),
+				});
+				return { title: "Test-cases data sidecar", items };
+			}
+		}
+		items.push({
+			status: "ok",
+			message: `Test-cases store rows valid — ${tcRows.length} test(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+		});
+		return { title: "Test-cases data sidecar", items };
+	}
+
+	// Legacy fallback (OQ3a): the exact Phase 2 sidecar semantics for
+	// pre-store projects; the backfill pointer rides in the warning.
 	const md = resolveDocArtifact("test-cases", projectName, cwd);
 	if (!md) {
 		items.push({
@@ -50,7 +100,9 @@ export function checkTestCasesDataSection(cwd: string, projectName: string): Dia
 	if (!sidecar) {
 		items.push({
 			status: "warning",
-			message: "Test-cases sidecar missing — the markdown is not backed by machine-readable data.",
+			message:
+				"Test-cases sidecar missing and no store rows published — the markdown is not backed by machine-readable data. " +
+				"Run `/velpari-backfill test-cases` to import the legacy artifact into the store.",
 			details: [`Expected: ${md.path.replace(/\.md$/, ".yaml")}`],
 			suggestion: suggestionFor("tc-data-missing"),
 		});

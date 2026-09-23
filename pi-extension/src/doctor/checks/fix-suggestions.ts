@@ -45,7 +45,7 @@ export const SUGGESTIONS = {
 	"fingerprint-suspect":
 		"A requirement changed after the RTM linked to it. Re-run `/velpari-rtm` in update mode to review the design/test links, then `/velpari-atomic-function-approve`.",
 	"fingerprint-untracked":
-		"Republish the RTM (`/velpari-rtm` update mode + `/velpari-pseudocode-approve`) — approve stamps fingerprints automatically.",
+		"DB-backed RTM: fingerprints are stamped by publish — re-run the publishing stage or `/velpari-reconfirm` after input changes. Legacy sidecar project: republish the RTM (`/velpari-rtm` update mode + approve) — approve stamps fingerprints automatically.",
 
 	// Phase 2 (Level B) — auto-remediable. Added alongside
 	// the SAFE_WHITELIST entry so the suggestion is suggested
@@ -186,6 +186,14 @@ export const SUGGESTIONS = {
 		"Fix the development-order YAML sidecar issues in the working copy, then republish. The D8 schema (steps with id/module/afs/dependsOn, acyclic) is in skills/velpari-development-order.md (two-file contract).",
 	"do-data-drift":
 		"Never hand-edit the published development-order markdown — edit the YAML sidecar via `/velpari-development-order` update mode and republish; approve regenerates the markdown from the data.",
+
+	// Phase 7 — store DB checks (doctor as SQL)
+	"store-db-missing":
+		"No store DB yet (or pre-store project). Publish an artifact via its stage approve, or import legacy artifacts with `/velpari-backfill <kind>`.",
+	"store-db-corrupt":
+		"The store DB failed SQLite integrity checking. Restore from git history (`git checkout <commit> -- Doc/store/`) or rebuild from the exported YAML beside the DB; do NOT keep writing to a corrupt DB.",
+	"store-db-orphan-link":
+		"A trace link points at a row that does not exist in the store. Re-run the publishing stage (update mode) to regenerate consistent rows, or `/velpari-backfill <kind>` for legacy data.",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

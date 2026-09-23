@@ -26,7 +26,7 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_V001_DDL, SCHEMA_V002_ADDITIONS } from "./db-schema.js";
+import { SCHEMA_V001_DDL, SCHEMA_V002_ADDITIONS, SCHEMA_V003_STORE_META } from "./db-schema.js";
 import type { DatabaseSync } from "node:sqlite";
 
 // Lazy driver load (D9): `node:sqlite` is experimental and prints an
@@ -88,6 +88,13 @@ export const MIGRATIONS: readonly Migration[] = [
 		name: "prose columns — Phase 6 amendment (§14), 14 nullable TEXT additions",
 		up: (db: DatabaseSync) => {
 			db.exec(SCHEMA_V002_ADDITIONS);
+		},
+	},
+	{
+		version: 3,
+		name: "store_meta table — Phase 7 doctor bookkeeping (review v1.1 decision 1)",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V003_STORE_META);
 		},
 	},
 ];
@@ -169,4 +176,36 @@ export function closeStoreDb(db: DatabaseSync): void {
 	} finally {
 		db.close();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// store_meta (v003 — Phase 7 doctor bookkeeping)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upsert one store_meta row. Write side of the doctor's bookkeeping
+ * table; called ONLY from the standalone integrity check (the embedded
+ * post-publish doctor run must never write — locked decision 1).
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {string} key - Metadata key (e.g. "integrity_checked_at").
+ * @param {string} value - Value to store (ISO timestamp).
+ */
+export function storeMetaSet(db: DatabaseSync, key: string, value: string): void {
+	db.prepare(
+		"INSERT INTO store_meta (key, value) VALUES (?, ?) " +
+			"ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+	).run(key, value);
+}
+
+/**
+ * Read one store_meta row, or null when unset.
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {string} key - Metadata key to read.
+ * @returns {string | null} The stored value, or null.
+ */
+export function storeMetaGet(db: DatabaseSync, key: string): string | null {
+	const row = db.prepare("SELECT value FROM store_meta WHERE key = ?").get(key) as
+		| { value: string }
+		| undefined;
+	return row === undefined ? null : row.value;
 }

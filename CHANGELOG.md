@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 7 — doctor as SQL (2026-09-23)
+
+The doctor's data checks now read the store DB directly (sidecar fallback with a `/velpari-backfill` warning stays for pre-store projects), and three new SQL-backed audits cover the database itself: G4 integrity (`PRAGMA quick_check` + `integrity_check` per project DB), `links`-adjacency orphan detection, and a secrets sweep over DB text columns (newest published version per kind, OQ4a). Schema v003 adds the STRICT `store_meta(key, value)` bookkeeping table — stamped `integrity_checked_at` on standalone `/velpari-doctor` runs only; the embedded post-publish doctor run never writes (the DB file was just git-committed). Id-coverage consumes machine-written store link edges (`tc_trace` / `step_af`) with sidecar fallback; `fingerprint-untracked` remediation is read-only for DB-backed RTMs (`/velpari-reconfirm` is the sanctioned re-stamp path).
+
+#### Added
+
+- **`doctor/checks/integrity.ts`** — G4 store-DB integrity check (multi-design: one audit per effective projectName; info note for pre-store projects; error on any non-"ok" PRAGMA result; standalone-only `store_meta` stamp).
+- **`doctor/checks/db-link-orphans.ts`** — `links` adjacency audit: every link endpoint must resolve to a row in the same run (drafts count as resolved; final_section nodes keyed by `CAST(no AS TEXT)`; feasibility nodes keyed by run_id).
+- **`store_meta` (v003)** — `io/db.ts:storeMetaSet` / `storeMetaGet`; STRICT per §11/RES-2; invisible to export YAML and fingerprints (envelope/export column whitelists).
+- **Fix suggestions** — `store-db-missing`, `store-db-corrupt`, `store-db-orphan-link`.
+
+#### Changed
+
+- **8 doctor reporters read store rows first** (`rtm-data`, `af-data`, `test-cases-data`, `dev-order-data`, `trace-link-consistency`, `fingerprints`, `phase-consistency`, `remediate/fingerprint-untracked`) — identical verdict semantics; legacy sidecar path preserved as OQ3a fallback with a backfill warning in the sidecar-missing items.
+- **Secrets scan sweeps DB text columns** (G9) in addition to the 4 file locations.
+- **id-coverage reads store link edges first** (`extractTestCaseTracesFromStore`, `extractDevOrderAfRefsFromStore` — intended enhancement, plan v1.1 review item 5), sidecar fallback unchanged.
+- **`runDoctor(cwd, opts)`** gains the `embedded` flag; the post-publish audit (`ops/approve.ts`) passes `embedded: true` so the integrity check never stamps a just-committed DB.
+
 ### DB-primary storage Phase 6 — strict reads + `/velpari-backfill` (2026-09-23)
 
 From PRD onward the per-project SQLite store (`Doc/store/<project>/index.db`) is the **single machine source of truth**: stages and scouts read pre-rendered `## DB Input Slices` blocks from the store only — Doc/ markdown, YAML sidecars, and HTML/JSON exports are human views. Brainstorm notes stay the one file-based input; the reviewer agent is the sole slice+view exception (drift = a finding). Schema v002 added 14 prose columns (Phase 1); Phase 2 retired the sidecar publish loop (5 DB-rendered artifacts re-render from rows, 5 hybrid docs stay LLM-authored + hash-bound).

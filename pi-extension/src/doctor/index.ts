@@ -62,6 +62,8 @@ import { checkDesignReadiness } from "./checks/design-readiness.js";
 import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
 import { checkGateWiringSection, checkStaleDownstreamSection } from "./checks/stale-downstream.js";
 import { checkFreshnessSection } from "./checks/freshness.js";
+import { checkDbIntegritySection } from "./checks/integrity.js";
+import { checkDbLinkOrphansSection } from "./checks/db-link-orphans.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
 import { checkLoggingPlanSection } from "./checks/logging-plan.js";
@@ -287,7 +289,10 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
  * Run the full audit. Returns the structured report; the caller decides
  * whether to format it, write it to disk, or notify it.
  */
-export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
+export function runDoctor(
+	cwd: string = process.cwd(),
+	opts: { embedded?: boolean } = {},
+): DiagnosticReport {
 	const projectName = readProjectName(cwd);
 
 	const sections: DiagnosticSection[] = [
@@ -313,6 +318,11 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkFeasibilityRecordSection(cwd, projectName),
 		checkStaleDownstreamSection(cwd, projectName),
 		checkFreshnessSection(cwd),
+		// Standalone runs stamp store_meta.integrity_checked_at; the
+		// embedded post-publish run (approve.ts) passes embedded: true and
+		// never writes — the DB file was just git-committed (Phase 7).
+		checkDbIntegritySection(cwd, { embedded: opts.embedded === true }),
+		checkDbLinkOrphansSection(cwd),
 		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
 		buildMultiplexerSection(cwd),

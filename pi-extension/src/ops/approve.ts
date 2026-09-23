@@ -792,7 +792,7 @@ export async function handleApprove(
 	// ad-hoc audit path.
 	const skipAutoDoctor = opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
 	if (!skipAutoDoctor) {
-		const doctorReport = runDoctor(cwd);
+		const doctorReport = runDoctor(cwd, { embedded: true });
 		writeDoctorReport(doctorReport, cwd);
 		const doctorReportPath = join(cwd, PATHS.DOCTOR_REPORT);
 		if (doctorReport.summary.error > 0 || doctorReport.summary.warning > 0) {

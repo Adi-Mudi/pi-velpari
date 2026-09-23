@@ -19,6 +19,8 @@ import {
 	validateDevOrderData,
 	type DevOrderData,
 } from "../../core/dev-order-data.js";
+import { renderDevelopmentOrderMarkdown as renderDevOrderMarkdownFromRows } from "../../ops/export-doc.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { parseYaml } from "../../core/yaml-data.js";
@@ -37,6 +39,54 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 		return { title: "Development-order data sidecar", items };
 	}
 
+	// Phase 7 (OQ3a) — DB-first: newest published development-order rows.
+	const fromDb = readLatestPublishedRows(cwd, projectName, "development-order");
+	if (fromDb) {
+		const doRows = (fromDb.rows.devStep as Array<Record<string, unknown>> | undefined) ?? [];
+		if (doRows.length === 0) {
+			items.push({
+				status: "warning",
+				message: "Development-order store rows exist but the row-set is empty — run `/velpari-development-order` update mode and republish.",
+				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				suggestion: suggestionFor("do-data-invalid"),
+			});
+			return { title: "Development-order data sidecar", items };
+		}
+		const bad = doRows.filter((r) => typeof r.id !== "string" || r.id === "" || typeof r.module !== "string");
+		if (bad.length > 0) {
+			items.push({
+				status: "error",
+				message: `Development-order store rows failed validation (${bad.length} row(s) with an empty id or module).`,
+				details: bad.slice(0, 20).map((r) => `id=${String(r.id)} module=${String(r.module)}`),
+				suggestion: suggestionFor("do-data-invalid"),
+			});
+			return { title: "Development-order data sidecar", items };
+		}
+		const dbMd = resolveDocArtifact("development-order", projectName, cwd);
+		if (dbMd) {
+			const renderedBody = parseFrontmatterBlock(renderDevOrderMarkdownFromRows(fromDb.rows))?.body ?? "";
+			const publishedText = readFileSync(dbMd.path, "utf8");
+			const publishedBody = parseFrontmatterBlock(publishedText)?.body ?? publishedText;
+			if (renderedBody.trim() !== publishedBody.trim()) {
+				items.push({
+					status: "error",
+					message: "Published development-order markdown has drifted from the store (hand-edited after publish?).",
+					details: [`Markdown: ${dbMd.path}`, `Store: Doc/store/${projectName}/index.db`],
+					suggestion: suggestionFor("do-data-drift"),
+				});
+				return { title: "Development-order data sidecar", items };
+			}
+		}
+		items.push({
+			status: "ok",
+			message: `Development-order store rows valid — ${doRows.length} step(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+		});
+		return { title: "Development-order data sidecar", items };
+	}
+
+	// Legacy fallback (OQ3a): the exact Phase 2 sidecar semantics for
+	// pre-store projects; the backfill pointer rides in the warning.
 	const md = resolveDocArtifact("development-order", projectName, cwd);
 	if (!md) {
 		items.push({
@@ -51,7 +101,9 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 	if (!sidecar) {
 		items.push({
 			status: "warning",
-			message: "Development-order sidecar missing — the markdown is not backed by machine-readable data.",
+			message:
+				"Development-order sidecar missing and no store rows published — the markdown is not backed by machine-readable data. " +
+				"Run `/velpari-backfill development-order` to import the legacy artifact into the store.",
 			details: [`Expected: ${md.path.replace(/\.md$/, ".yaml")}`],
 			suggestion: suggestionFor("do-data-missing"),
 		});

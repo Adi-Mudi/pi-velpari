@@ -14,6 +14,8 @@
 
 import { readFileSync } from "node:fs";
 import { renderAfMarkdown, resolveAfSidecar, validateAfData, type AfData } from "../../core/af-data.js";
+import { renderAtomicFunctionsMarkdown as renderAfMarkdownFromRows } from "../../ops/export-doc.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { deriveAtomicProfile } from "../../core/atomic-tier.js";
 import { loadFilesConfig } from "../../core/config.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
@@ -34,6 +36,57 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 		return { title: "Atomic-functions data sidecar", items };
 	}
 
+	// Phase 7 (OQ3a) — DB-first: newest published atomic-functions rows.
+	const fromDb = readLatestPublishedRows(cwd, projectName, "atomic-functions");
+	if (fromDb) {
+		const afRows = (fromDb.rows.atomicFunction as Array<Record<string, unknown>> | undefined) ?? [];
+		if (afRows.length === 0) {
+			items.push({
+				status: "warning",
+				message: "Atomic-functions store rows exist but the row-set is empty — run `/velpari-atomic-function` update mode and republish.",
+				details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+				suggestion: suggestionFor("af-data-invalid"),
+			});
+			return { title: "Atomic-functions data sidecar", items };
+		}
+		const bad = afRows.filter((r) => typeof r.id !== "string" || r.id === "" || typeof r.signature !== "string" || r.signature === "");
+		if (bad.length > 0) {
+			items.push({
+				status: "error",
+				message: `Atomic-functions store rows failed validation (${bad.length} row(s) with an empty id or signature).`,
+				details: bad.slice(0, 20).map((r) => `id=${String(r.id)} signature=${String(r.signature)}`),
+				suggestion: suggestionFor("af-data-invalid"),
+			});
+			return { title: "Atomic-functions data sidecar", items };
+		}
+		const dbMd = resolveDocArtifact("atomic-functions", projectName, cwd);
+		if (dbMd) {
+			// View drift (DB-path): deterministic re-render of the DB rows
+			// must match the published body (G5 renderers).
+			const renderedBody = parseFrontmatterBlock(renderAfMarkdownFromRows(fromDb.rows))?.body ?? "";
+			const publishedText = readFileSync(dbMd.path, "utf8");
+			const publishedBody = parseFrontmatterBlock(publishedText)?.body ?? publishedText;
+			if (renderedBody.trim() !== publishedBody.trim()) {
+				items.push({
+					status: "error",
+					message: "Published atomic-functions markdown has drifted from the store (hand-edited after publish?).",
+					details: [`Markdown: ${dbMd.path}`, `Store: Doc/store/${projectName}/index.db`],
+					suggestion: suggestionFor("af-data-drift"),
+				});
+				return { title: "Atomic-functions data sidecar", items };
+			}
+		}
+		items.push({
+			status: "ok",
+			message: `Atomic-functions store rows valid — ${afRows.length} function(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
+		});
+		return { title: "Atomic-functions data sidecar", items };
+	}
+
+	// Legacy fallback (OQ3a): no published DB rows — the exact Phase 2
+	// sidecar semantics for pre-store projects; the backfill pointer
+	// rides in the sidecar-missing warning.
 	const md = resolveDocArtifact("atomic-functions", projectName, cwd);
 	if (!md) {
 		items.push({
@@ -48,7 +101,9 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 	if (!sidecar) {
 		items.push({
 			status: "warning",
-			message: "Atomic-functions sidecar missing — the markdown is not backed by machine-readable data.",
+			message:
+				"Atomic-functions sidecar missing and no store rows published — the markdown is not backed by machine-readable data. " +
+				"Run `/velpari-backfill atomic-functions` to import the legacy artifact into the store.",
 			details: [`Expected: ${md.path.replace(/\.md$/, ".yaml")}`],
 			suggestion: suggestionFor("af-data-missing"),
 		});

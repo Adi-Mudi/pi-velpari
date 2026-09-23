@@ -31,7 +31,7 @@
 import { readFileSync } from "node:fs";
 import { loadFilesConfig } from "./config.js";
 import { extractAfIdsFromSidecar } from "./af-data.js";
-import { extractAfIdsFromStore } from "../io/store.js";
+import { extractAfIdsFromStore, extractTestCaseTracesFromStore, extractDevOrderAfRefsFromStore } from "../io/store.js";
 import { extractTestCaseTracesFromSidecar } from "./test-cases-data.js";
 import { extractDevOrderAfRefsFromSidecar } from "./dev-order-data.js";
 import { resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
@@ -363,11 +363,20 @@ export function checkIdCoverage(cwd: string): IdCoverageReport {
 			// D7 — sidecar-first downstream refs: when the downstream
 			// artifact carries a machine-readable sidecar, its ids win
 			// over markdown scraping (test-cases traces / dev-order afs).
+			// Phase 7 (intended enhancement, plan v1.1 review item 5):
+			// the store's LINKS TABLE is the primary edge source when the
+			// kind is published — machine-written edges beat sidecar
+			// parsing. Sidecar fallback (legacy projects) unchanged;
+			// whole-doc scan stays the final fallback.
 			let downstreamRefsOverride: readonly string[] | undefined;
 			if (rule.downstream === "test-cases") {
-				downstreamRefsOverride = extractTestCaseTracesFromSidecar(downstream.path) ?? undefined;
+				downstreamRefsOverride = extractTestCaseTracesFromStore(cwd, downstream.projectName)
+					?? extractTestCaseTracesFromSidecar(downstream.path)
+					?? undefined;
 			} else if (rule.downstream === "development-order") {
-				downstreamRefsOverride = extractDevOrderAfRefsFromSidecar(downstream.path) ?? undefined;
+				downstreamRefsOverride = extractDevOrderAfRefsFromStore(cwd, downstream.projectName)
+					?? extractDevOrderAfRefsFromSidecar(downstream.path)
+					?? undefined;
 			}
 			results.push(
 				...checkDownstreamCoverage(

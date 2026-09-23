@@ -42,6 +42,7 @@ const EXPECTED_TABLES = [
 	"rtm_row",
 	"step_af",
 	"step_dep",
+	"store_meta",
 	"tc_trace",
 	"test_case",
 ];
@@ -64,7 +65,7 @@ describe("db-schema — v001 core schema", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	test("v001 applied: user_version >= 1 (Phase 6 sets it to 2 after v002 prose migration), all tables + G6 indexes present", () => {
+	test("v001 applied: user_version >= 1 (v3 after the v002 prose + v003 store_meta migrations), all tables + G6 indexes present", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
@@ -499,13 +500,13 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		["dev_step", "description"],
 	];
 
-	test("v002 applies on a fresh open: user_version = 2, all 14 prose columns present + nullable", () => {
+	test("v002 applies on a fresh open: user_version = 3 (v002 + v003 store_meta), all 14 prose columns present + nullable", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 2, "v002 migration applied → user_version = 2");
+			assert.equal(v.user_version, 3, "v002 + v003 migrations applied → user_version = 3");
 			for (const [table, col] of V002_COLUMNS) {
 				const info = db
 					.prepare(`PRAGMA table_info(${table})`)
@@ -532,23 +533,23 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			const v = db2.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 2);
+			assert.equal(v.user_version, 3);
 		} finally {
 			closeStoreDb(db2);
 		}
 	});
 
-	test("G3 downgrade guard: user_version > 2 refuses to open", async () => {
+	test("G3 downgrade guard: user_version > 3 refuses to open", async () => {
 		const path = join(dir, "index.db");
 		const seed = openStoreDb(path);
 		closeStoreDb(seed);
-		// Bump to v3 — a future, unknown migration. This extension only knows up to v2.
+		// Bump to v4 — a future, unknown migration. This extension only knows up to v3.
 		// Uses dynamic import (ESM-friendly) to reach node:sqlite without polluting
 		// the registered lazy loader. The test proves the downgrade guard reads
 		// PRAGMA user_version directly and refuses an opening from an older extension.
 		const sqlite = (await import("node:sqlite")) as typeof import("node:sqlite");
 		const bump = new sqlite.DatabaseSync(path);
-		bump.exec("PRAGMA user_version = 3");
+		bump.exec("PRAGMA user_version = 4");
 		bump.close();
 		assert.throws(
 			() => openStoreDb(path),

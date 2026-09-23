@@ -17,6 +17,10 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getEffectiveProjectNames } from "../../core/projectnames.js";
+import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
+import { buildStoreDbPath } from "../../core/paths.js";
+import { openStoreDb, closeStoreDb } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -61,6 +65,100 @@ export function scanForSecrets(text: string): ScanHit[] {
 		}
 	}
 	return hits;
+}
+
+// ---------------------------------------------------------------------------
+// DB text-column sweep (G9 — Phase 7; OQ4a: newest published version only)
+// ---------------------------------------------------------------------------
+
+/**
+ * The TEXT prose columns secrets could hide in (G9: spike results,
+ * reuse-scan URLs, requirement/test prose). Readable column list per
+ * row-set — the store reader maps camelCase keys from these tables.
+ * Newest published version per kind only (OQ4a).
+ */
+const DB_TEXT_COLUMNS: ReadonlyArray<{ key: string; table: string; columns: ReadonlyArray<string> }> = [
+	{ key: "fr", table: "fr", columns: ["text"] },
+	{ key: "nfr", table: "nfr", columns: ["text"] },
+	{ key: "prdSection", table: "prd_section", columns: ["body"] },
+	{ key: "pseudocodeBlock", table: "pseudocode_block", columns: ["content"] },
+	{ key: "testCase", table: "test_case", columns: ["steps", "objective", "expected"] },
+	{ key: "designModule", table: "design_module", columns: ["description"] },
+	{ key: "atomicFunction", table: "atomic_function", columns: ["purpose", "source", "cohesion", "verification", "testable"] },
+	{ key: "devStep", table: "dev_step", columns: ["description"] },
+	{ key: "adr", table: "adr", columns: ["options", "chosen", "rationale"] },
+	{ key: "diagram", table: "diagram", columns: ["mermaid_text"] },
+	{ key: "feasibilityDecision", table: "feasibility_decision", columns: [] },
+	{ key: "feasibilitySpike", table: "feasibility_spike", columns: ["result_ref"] },
+	{ key: "reuseScan", table: "reuse_scan", columns: ["candidate"] },
+];
+
+interface DbSecretHit {
+	kind: string;
+	rowKey: string;
+	column: string;
+	pattern: string;
+	match: string;
+}
+
+/** Sweep the newest published version's text columns of one project DB. */
+function sweepDbTextColumns(dbPath: string): DbSecretHit[] {
+	const hits: DbSecretHit[] = [];
+	if (!existsSync(dbPath)) return hits;
+	const db = openStoreDb(dbPath);
+	try {
+		for (const entry of DB_TEXT_COLUMNS) {
+			let rows: Array<Record<string, unknown>>;
+			try {
+				rows = db
+					.prepare(`SELECT * FROM ${entry.table} WHERE status = 'published'`)
+					.all() as unknown as Array<Record<string, unknown>>;
+			} catch {
+				continue; // table absent (older schema) — nothing to sweep
+			}
+			for (const row of rows) {
+				for (const col of entry.columns) {
+					const camel = col.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+					const value = row[camel] ?? row[col];
+					if (typeof value !== "string" || value === "") continue;
+					for (const hit of scanForSecrets(value)) {
+						hits.push({
+							kind: entry.table,
+							rowKey: String(row.id ?? row.no ?? row.language ?? row.candidate ?? "?"),
+							column: col,
+							pattern: hit.pattern,
+							match: hit.match,
+						});
+					}
+				}
+			}
+		}
+	} finally {
+		closeStoreDb(db);
+	}
+	return hits;
+}
+
+/**
+ * Run the DB sweep across every effective projectName's store DB
+ * (multi-design: one sweep per DB). Returns hits + which DBs scanned.
+ */
+function sweepAllStores(cwd: string): { hits: DbSecretHit[]; scanned: string[] } {
+	const hits: DbSecretHit[] = [];
+	const scanned: string[] = [];
+	try {
+		const cfg = loadFilesConfig(cwd);
+		if (!validateFilesConfig(cfg)) return { hits, scanned };
+		for (const projectName of getEffectiveProjectNames(cfg)) {
+			const dbPath = buildStoreDbPath(projectName, cwd);
+			if (!existsSync(dbPath)) continue;
+			scanned.push(`Doc/store/${projectName}/index.db`);
+			hits.push(...sweepDbTextColumns(dbPath));
+		}
+	} catch {
+		// degrade silently — the file scan result still stands
+	}
+	return { hits, scanned };
 }
 
 /**
@@ -126,6 +224,27 @@ export function checkSecretScan(cwd: string): DiagnosticSection {
 		items.push({
 			status: "warning",
 			message: `Secret scan: ${totalHits} potential secret(s) across ${targets.length} file(s).`,
+		});
+	}
+
+	// G9 (Phase 7, OQ4a): sweep the store DBs' text columns — newest
+	// published version per kind, multi-design aware.
+	const dbSweep = sweepAllStores(cwd);
+	for (const hit of dbSweep.hits) {
+		items.push({
+			status: "warning",
+			message: `${hit.kind}[${hit.rowKey}].${hit.column}: ${hit.pattern} — "${hit.match}"`,
+			details: dbSweep.scanned,
+			suggestion: suggestionFor("secret-detected"),
+		});
+	}
+	if (dbSweep.scanned.length > 0) {
+		items.push({
+			status: dbSweep.hits.length === 0 ? "ok" : "warning",
+			message:
+				dbSweep.hits.length === 0
+					? `Store DB sweep: no secrets in text columns (${dbSweep.scanned.length} DB(s) scanned).`
+					: `Store DB sweep: ${dbSweep.hits.length} potential secret(s) in DB text columns.`,
 		});
 	}
 

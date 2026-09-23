@@ -334,3 +334,26 @@ ALTER TABLE atomic_function ADD COLUMN verification TEXT;
 ALTER TABLE atomic_function ADD COLUMN testable TEXT;
 ALTER TABLE dev_step ADD COLUMN description TEXT;
 `;
+
+/**
+ * v003 — store metadata table (Phase 7, review v1.1 decision 1).
+ *
+ * DB-level metadata for doctor bookkeeping. Deliberately NOT part of
+ * `artifacts`: the artifacts PK is (run_id, kind), so a per-row stamp
+ * would be ambiguous, and a stamp inside the embedded post-publish
+ * doctor run would dirty the just-git-committed DB file. store_meta is
+ * keyed by a simple string key — one row `integrity_checked_at` is
+ * stamped on standalone /velpari-doctor runs only.
+ *
+ * Guard: envelope/export mappings in io/store.ts (`readEnvelope` /
+ * `buildExportObject`) are column-whitelisted, so store_meta can never
+ * leak into export YAML or fingerprints.
+ *
+ * STRICT per §11/RES-2 (typed columns, no silent corruption).
+ */
+export const SCHEMA_V003_STORE_META = `
+CREATE TABLE IF NOT EXISTS store_meta (
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+) STRICT;
+`;
