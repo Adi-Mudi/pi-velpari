@@ -21,6 +21,14 @@
  *      nothing" is checked at skill level via `test -s`; the async
  *      subagent completion is not observable from tool_result, so only
  *      the spawn half is enforceable here.)
+ *   4. Store DB scope lock (Phase 8): edit/write into `Doc/store/**`
+ *      (the per-project SQLite store + its exported YAML views) is
+ *      blocked ALWAYS — between stages included. Every legitimate store
+ *      write is code-side (publish tool, backfill, reconfirm, export);
+ *      a hand edit of the committed DB would corrupt the single source
+ *      of truth (D2/D7). Accepted boundary: bash writes are not covered
+ *      (same as guards 1–3) — checksums + the doctor's integrity/orphan
+ *      audits are the backstop.
  *
  * The runner does not catch handler errors for tool_call — a throw
  * propagates and blocks the tool entirely. So every step is wrapped in
@@ -30,7 +38,7 @@
 import { relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { STAGE_FOLDERS } from "../core/constants.js";
-import { buildRunDir } from "../core/paths.js";
+import { buildRunDir, STORE_DB_DIR } from "../core/paths.js";
 import { loadState, type RunState } from "../core/state.js";
 import { guardBrainstormMutation } from "../stages/brainstorm/guard.js";
 
@@ -69,6 +77,40 @@ export function guardStageMutation(
 			`Locked: stage "${state.currentStage}" in progress. ` +
 			`Finish it (working copy → preview → velpari_stage_publish tool) or /velpari-reset.\n` +
 			`Target allowed only under ${relative(cwd, allowedRoot)}/.`,
+	};
+}
+
+/**
+ * Store DB scope lock (Phase 8): block edit/write tool calls whose
+ * target lands under `<cwd>/Doc/store/` — ALWAYS, run or no run, any
+ * stage. The store (SQLite DB + exported YAML views) is written
+ * exclusively by code paths (stage publish tool, `/velpari-backfill`,
+ * `/velpari-reconfirm`, `/velpari-export`); an LLM hand edit would
+ * corrupt the committed source of truth. Runs LAST (after the
+ * brainstorm/stage/spawn guards) and blocks only store paths, so it
+ * never shadows the existing precedence. Fail-open like its siblings.
+ */
+export function guardStoreDbMutation(
+	toolName: string,
+	input: Record<string, unknown> | undefined,
+	cwd: string,
+): { block: true; reason: string } | undefined {
+	if (toolName !== "edit" && toolName !== "write") return undefined;
+
+	const target = typeof input?.path === "string" ? resolve(cwd, input.path) : "";
+	const storeRoot = resolve(cwd, STORE_DB_DIR);
+	// Fail-open: a malformed/missing path can never be judged in-store,
+	// so it is allowed (the block below only fires on a POSITIVE store
+	// match — an empty target must never block).
+	if (!target) return undefined;
+	if (!target.startsWith(storeRoot + sep)) return undefined;
+
+	return {
+		block: true,
+		reason:
+			`Locked: Doc/store/ is the project's SQLite store + export views — never edited by hand.\n` +
+			`The store is written only by the stage publish tool, /velpari-backfill, /velpari-reconfirm, ` +
+			`and /velpari-export (code paths).`,
 	};
 }
 
@@ -117,6 +159,10 @@ export function registerToolCallHook(pi: ExtensionAPI): void {
 			// 3. Scout spawn guard.
 			const spawnBlock = guardScoutSpawn(event.toolName, input, state);
 			if (spawnBlock) return spawnBlock;
+
+			// 4. Store DB scope lock (Phase 8) — runs last, store paths only.
+			const storeBlock = guardStoreDbMutation(event.toolName, input, ctx.cwd);
+			if (storeBlock) return storeBlock;
 		} catch {
 			// Fail open — never wedge edits on a guard bug.
 		}

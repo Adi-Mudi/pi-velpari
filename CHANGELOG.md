@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 8 — hooks/locks + reset draft cleanup (2026-09-24)
+
+`tool_call`'s write-lock now covers the stage DB scope (master outline row 8): a new always-on store-scope guard blocks edit/write tool calls into `Doc/store/**` (the SQLite store + its exported YAML views) — between stages included, closing the gap where the committed source of truth could be hand-edited. Sanctioned writers stay code-side (stage publish tool, `/velpari-backfill`, `/velpari-reconfirm`, `/velpari-export`); the bash bypass is an accepted limitation (checksums + the integrity/orphan audits backstop it). `/velpari-reset` now deletes the run's DRAFT store rows before clearing state (Q2's phase-8 duty — `deleteRunDrafts` per project DB, published rows survive; order locked: capture runId → delete drafts → clearRun → notify). State transitions and the `before_agent_start` status injection are unchanged (verified). No new dependencies.
+
 ### DB-primary storage Phase 7 — doctor as SQL (2026-09-23)
 
 The doctor's data checks now read the store DB directly (sidecar fallback with a `/velpari-backfill` warning stays for pre-store projects), and three new SQL-backed audits cover the database itself: G4 integrity (`PRAGMA quick_check` + `integrity_check` per project DB), `links`-adjacency orphan detection, and a secrets sweep over DB text columns (newest published version per kind, OQ4a). Schema v003 adds the STRICT `store_meta(key, value)` bookkeeping table — stamped `integrity_checked_at` on standalone `/velpari-doctor` runs only; the embedded post-publish doctor run never writes (the DB file was just git-committed). Id-coverage consumes machine-written store link edges (`tc_trace` / `step_af`) with sidecar fallback; `fingerprint-untracked` remediation is read-only for DB-backed RTMs (`/velpari-reconfirm` is the sanctioned re-stamp path).

@@ -128,4 +128,67 @@ describe("/velpari-reset handler", () => {
 		assert.ok(fs.existsSync(workFile), "working copies must NOT be deleted by reset");
 		assert.equal(fs.readFileSync(workFile, "utf8"), "# User notes\n");
 	});
+
+	it("deletes the run's DRAFT store rows but keeps PUBLISHED rows (Q2, Phase 8)", async () => {
+		writeFilesConfig();
+		const run = createRun("DraftCleanup", tmpDir);
+		const runId = run.runId!;
+		assert.ok(runId, "precondition: runId exists");
+
+		// Seed a store DB with one published + one draft envelope (each with
+		// a child fr row so the cascade is exercised).
+		const { openStoreDb, closeStoreDb } = await import("../../src/io/db.js");
+		const { buildStoreDbPath } = await import("../../src/core/paths.js");
+		const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
+		try {
+			db.prepare(
+				"INSERT INTO artifacts (run_id, kind, version, stage, generated_at, sha256_fingerprint, status) " +
+					"VALUES (?, 'prd', 1, 'drafting-prd', '2026-09-22T00:00:00Z', 'f', 'published')",
+			).run(runId);
+			db.prepare("INSERT INTO fr (run_id, kind, id, phase, text_hash) VALUES (?, 'prd', 'FR-1', 1, 'h')").run(runId);
+			db.prepare(
+				"INSERT INTO artifacts (run_id, kind, version, stage, generated_at, sha256_fingerprint, status) " +
+					"VALUES (?, 'rtm', 1, 'building-rtm', '2026-09-22T00:00:00Z', 'f', 'draft')",
+			).run(runId);
+			db.prepare(
+				"INSERT INTO rtm_row (run_id, kind, id, fr_ref, phase, target_sha256) VALUES (?, 'rtm', 'RTM-1', 'FR-1', 1, 't')",
+			).run(runId);
+		} finally {
+			closeStoreDb(db);
+		}
+
+		confirmAnswer = true;
+		await handleReset(makeCtx(), tmpDir);
+
+		// Draft rows gone; published rows survive (append-only history).
+		const after = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
+		try {
+			const rtm = after
+				.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE run_id = ? AND status = 'draft'")
+				.get(runId) as { n: number };
+			assert.equal(rtm.n, 0, "draft envelopes must be deleted by reset");
+			const pub = after
+				.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE run_id = ? AND status = 'published'")
+				.get(runId) as { n: number };
+			assert.equal(pub.n, 1, "published envelope must survive reset");
+			const fr = after.prepare("SELECT COUNT(*) AS n FROM fr WHERE run_id = ?").get(runId) as { n: number };
+			assert.equal(fr.n, 1, "published child rows survive");
+			const rtmRow = after.prepare("SELECT COUNT(*) AS n FROM rtm_row WHERE run_id = ?").get(runId) as { n: number };
+			assert.equal(rtmRow.n, 0, "draft child rows cascade away with the draft envelope");
+		} finally {
+			closeStoreDb(after);
+		}
+		// Notify mentions the cleanup count.
+		assert.match(allMessages(), /draft store row\(s\) deleted/);
+	});
+
+	it("skips DB cleanup silently when no store DB exists (state reset still completes)", async () => {
+		writeFilesConfig();
+		createRun("NoDbReset", tmpDir);
+		confirmAnswer = true;
+		await handleReset(makeCtx(), tmpDir);
+		assert.equal(loadState(tmpDir).currentStage, "none");
+		assert.equal(notices.length, 1);
+		assert.match(allMessages(), /reset\. State is now empty\./i);
+	});
 });
