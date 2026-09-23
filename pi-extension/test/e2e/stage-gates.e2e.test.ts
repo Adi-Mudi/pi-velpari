@@ -43,8 +43,14 @@ const SKIP_MESSAGE = "Tier 1 E2E tests require pi binary on PATH, RUN_E2E=1, and
  *  project via the RPC bash channel; returns the parsed JSON payload the
  *  script printed to stdout. */
 async function runModuleScript<T>(client: RpcClient, script: string): Promise<T> {
-	const result = await client.request<any>("bash", {
-		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
+		const result = await client.request<any>("bash", {
+		command: [
+			// node:sqlite is experimental and prints an ExperimentalWarning to
+			// stderr on first load (D9) — the bash channel merges stdout+stderr
+			// and these scripts parse the union as JSON, so silence warnings.
+			"NODE_NO_WARNINGS=1 node --input-type=module -e",
+			JSON.stringify(script),
+		].join(" "),
 	});
 	assert.ok(
 		result.success === true,
@@ -60,6 +66,9 @@ const CONSTANTS_JS = JSON.stringify(distModuleUrl("core/constants.js"));
 const HISTORY_JS = JSON.stringify(distModuleUrl("core/history.js"));
 const REGISTRY_JS = JSON.stringify(distModuleUrl("stages/registry.js"));
 const APPROVE_JS = JSON.stringify(distModuleUrl("ops/approve.js"));
+const DB_JS = JSON.stringify(distModuleUrl("io/db.js"));
+const STORE_JS = JSON.stringify(distModuleUrl("io/store.js"));
+const PATHS_JS = JSON.stringify(distModuleUrl("core/paths.js"));
 
 describe("e2e/stage-gates", () => {
 	let home: TestHome | undefined;
@@ -338,6 +347,16 @@ describe("e2e/stage-gates", () => {
 				`const dir = join(cwd, "Doc", "feasibility"); ` +
 				`mkdirSync(dir, { recursive: true }); ` +
 				`writeFileSync(join(dir, "feasibility-study_E2ESkipApp.md"), "# Feasibility\\n", "utf8"); ` +
+				// Phase 6: the design stage reads its input from the project
+				// store (strict DB slice) — publish the feasibility rows too.
+				`import { openStoreDb, closeStoreDb } from ${DB_JS}; ` +
+				`import { writeArtifact, publishArtifact } from ${STORE_JS}; ` +
+				`import { buildStoreDbPath } from ${PATHS_JS}; ` +
+				`const db = openStoreDb(buildStoreDbPath("E2ESkipApp", cwd)); ` +
+				`try { ` +
+				`  writeArtifact(db, "feasibility", "r1", { version: 1, stage: "analyzing-feasibility", generatedAt: "2026-09-23T00:00:00.000Z", inputs: "{}", reviewerVerdict: null, changeLog: "[]" }, { feasibilityDecision: { verdict: "go", language: "typescript", decidedBy: "user", at: "2026-09-23T00:00:00.000Z", webSearchConsent: 0 } }); ` +
+				`  publishArtifact(db, "r1", "feasibility"); ` +
+				`} finally { closeStoreDb(db); } ` +
 				`notes.length = 0; ` +
 				`await runStage("architecture-generator", ctx, pi, cwd); ` +
 				`const allowedErrors = notes.filter((n) => n.l === "error").map((n) => n.m); ` +
