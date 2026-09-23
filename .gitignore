@@ -12,3 +12,6 @@ skills/senai-*.md
 pi-session-*.html
 Doc/store/**/index.db-wal
 Doc/store/**/index.db-shm
+.vscode/
+.pi/tasks/
+.tmp-test/
