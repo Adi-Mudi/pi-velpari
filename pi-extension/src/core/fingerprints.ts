@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readSectionBody } from "./psrs.js";
 import { resolveDocArtifact } from "./paths.js";
-import { loadRtmDataForEngine, type RtmData, type RtmRow } from "./rtm-data.js";
+import { loadRtmDataForEngine, type RtmRow } from "./rtm-data.js";
 
 /** SHA-256 hex of the normalized requirement text. */
 export function hashRequirementText(text: string): string {

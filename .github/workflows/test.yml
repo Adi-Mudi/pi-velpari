@@ -34,6 +34,15 @@ jobs:
       - name: Biome lint
         run: npm run lint
 
+      # Phase 6 housekeeping (2026-09-23) — biome format check. The
+      # previous CI surface only ran biome lint, which allowed 138 format
+      # errors to accumulate silently across pi-extension/src/. This step
+      # mirrors a local `npx biome format pi-extension/src/` (without
+      # --write) so future drift fails the build. Format is auto-fixable
+      # via `biome format --write pi-extension/src/`.
+      - name: Biome format check
+        run: npx biome format pi-extension/src/
+
       - name: Build + unit tests
         run: npm test
 
