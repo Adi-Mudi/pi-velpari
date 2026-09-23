@@ -31,6 +31,13 @@ import * as path from "node:path";
 import { handleAtomicFunction } from "../../../src/stages/atomic-function/index.js";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { RunState } from "../../../src/core/state.js";
+import { openStoreDb, closeStoreDb } from "../../../src/io/db.js";
+import {
+	writeArtifact,
+	publishArtifact,
+	type ArtifactEnvelopeInput,
+} from "../../../src/io/store.js";
+import { buildStoreDbPath } from "../../../src/core/paths.js";
 
 let tmpDir: string;
 let notices: Array<{ message: string; level: string }>;
@@ -102,6 +109,51 @@ function makeAllInputs(projectName: string): void {
 	const artifacts = ["PRD", "RTM", "feasibility-study", "design"];
 	for (const a of artifacts) {
 		fs.writeFileSync(path.join(docDir, `${a}_${projectName}.md`), `# ${a}\n`, "utf8");
+	}
+	seedStore(projectName);
+}
+
+/**
+ * Phase 6: the atomic-function stage resolves its inputs from the project
+ * store (strict DB read, §14.1) — publish the four upstream kinds so the
+ * composer's slice gate passes.
+ */
+function seedStore(projectName: string): void {
+	const db = openStoreDb(buildStoreDbPath(projectName, tmpDir));
+	try {
+		const env = (stage: string): ArtifactEnvelopeInput => ({
+			version: 1,
+			stage,
+			generatedAt: "2026-09-23T00:00:00.000Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		});
+		writeArtifact(db, "prd", "r1", env("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse input" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+		writeArtifact(db, "rtm", "r1", env("building-rtm"), {
+			rtmRow: [{ id: "FR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "a".repeat(64) }],
+		});
+		publishArtifact(db, "r1", "rtm");
+		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-23T00:00:00.000Z",
+				webSearchConsent: 0,
+			},
+		});
+		publishArtifact(db, "r1", "feasibility");
+		writeArtifact(db, "design", "r1", env("designing"), {
+			designModule: [{ id: "M-1", name: "core", description: "core logic" }],
+		});
+		publishArtifact(db, "r1", "design");
+	} finally {
+		closeStoreDb(db);
 	}
 }
 
