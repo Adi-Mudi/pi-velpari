@@ -31,13 +31,13 @@ without surprises. `/velpari-final-design-approve` remains as the manual fallbac
 ## Sequence
 
 ```
-published artifacts (concatenated into prompt by handler):
-  - Doc/design_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
-  - Doc/pseudocode_<projectName>.md
-  - Doc/tests/test-plan_<projectName>.md
-  - Doc/tests/test-cases_<projectName>.md
-  - Doc/development-order_<projectName>.md
+upstream artifacts (pre-loaded into the prompt's `## DB Input Slices`
+block from the project store — NEVER open Doc/ files):
+  - design slice (Modules, Module Source FRs, ADRs)
+  - atomic-functions slice (AF catalog with tier/criticality)
+  - pseudocode slice (blocks with content)
+  - testplan slice (Test Cases + Traces — covers both test-plan and test-cases)
+  - development-order slice (Steps, Step AFs, Step Deps)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -76,9 +76,10 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
   artifact path it must write. The 3 cross-checkers write JSON reports
   into `<scoutReportDir>`; the finalizer writes the working copy at
   `<workingCopy>`.
-- **Task content** — Pass the concatenated published-artifacts content
+- **Task content** — Pass the `## DB Input Slices` block content
   (in the prompt), the report path (or working-copy path for the
   finalizer), and the cross-references to the other scouts' inputs.
+  Scouts must NOT open Doc/ files.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
   `subagent_interrupt` (Pi-backed only) if a scout hangs.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation

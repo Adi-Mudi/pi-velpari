@@ -227,6 +227,19 @@ export interface BuildStagePromptInput {
 		 * When provided, this is rendered as a fenced markdown section in the prompt.
 		 */
 		inputArtifactContent?: string;
+		/**
+		 * Phase 6 (decision 9): pre-rendered `## DB Input Slices` block body
+		 * from `ops/db-slices.ts:resolveStageSlice` — the strict DB-only read.
+		 * When present, rendered as the `## DB Input Slices` block (the stage
+		 * + scouts read ONLY this block, never Doc/ files).
+		 */
+		dbInputSlice?: string;
+		/**
+		 * Phase 6 (decision 6): per-scout role slice lines — rendered as the
+		 * `## Scout Slices` block mapping each scout role to the row-sets it
+		 * reads from the DB Input Slices block. Empty = block omitted.
+		 */
+		scoutSliceLines?: readonly string[];
 		/** Path where the LLM should write the working-copy artifact. */
 		workingCopy?: string;
 		/** Directory under run/ where the scouts write their reports. */
@@ -385,6 +398,36 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 			].join("\n")
 		: "";
 
+	// Phase 6 (decision 9): the strict DB-only read. When the handler
+	// resolved a DB slice (ops/db-slices.ts:resolveStageSlice), render it as
+	// the `## DB Input Slices` block — the stage + scouts read ONLY this
+	// block; Doc/ markdown, YAML, HTML exports are human views (§14.1).
+	const dbSliceSection = input.paths.dbInputSlice
+		? [
+				`## DB Input Slices (pre-loaded from the project store — the single machine source of truth)`,
+				``,
+				`Read ONLY this block for upstream artifacts. NEVER open Doc/ files, YAML sidecars, or HTML/JSON exports — they are human views, not inputs.`,
+				``,
+				input.paths.dbInputSlice,
+				``,
+			].join("\n")
+		: "";
+
+	// Phase 6 (decision 6): per-scout role slice lines. Each scout reads only
+	// the row-sets named for its role; the reviewer role (when present) is the
+	// sole slice+view exception (decision 1).
+	const scoutSliceSection =
+		input.paths.scoutSliceLines && input.paths.scoutSliceLines.length > 0
+			? [
+					`## Scout Slices (per-role row-sets from the DB Input Slices block)`,
+					``,
+					...input.paths.scoutSliceLines.map((line) => `- ${line}`),
+					``,
+					`Scouts must NOT open Doc/ files. The reviewer agent (when spawned) reads the DB slice AND the published Doc/ view — a mismatch is a finding.`,
+					``,
+				].join("\n")
+			: "";
+
 	// Change-aware brainstorm: render the existing-context block when the
 	// handler found published artifacts / config / history. Paths only —
 	// the parent LLM reads the content on demand.
@@ -417,7 +460,7 @@ export function buildStagePrompt(input: BuildStagePromptInput): string {
 	// handles for routing during the DISCUSS loop.
 	const activeSubagentsSection = renderActiveSubagents(input.activeSubagents ?? null);
 
-	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, activeSubagentsSection, updateModeSection, conditionalSection, inputContentSection, skill]
+	return [metadata, profileSection, atomicProfileSection, existingContextSection, answersSection, scanPlanSection || flagsSection, activeSubagentsSection, updateModeSection, conditionalSection, dbSliceSection, scoutSliceSection, inputContentSection, skill]
 		.filter((s) => s.length > 0)
 		.join("\n");
 }

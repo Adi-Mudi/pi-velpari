@@ -20,9 +20,10 @@ to `Doc/pseudocode_<projectName>.md` without surprises. `/velpari-pseudocode-app
 ## Sequence
 
 ```
-design + atomic functions (concatenated into prompt by handler):
-  - Doc/design_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
+design + atomic functions (pre-loaded into the prompt's `## DB Input
+Slices` block from the project store — NEVER open Doc/ files):
+  - design slice (Modules, Module Source FRs, ADRs)
+  - atomic-functions slice (AF catalog with tier/criticality)
         │
         ▼
 spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:

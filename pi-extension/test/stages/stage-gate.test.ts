@@ -19,6 +19,60 @@ import { advanceStage, createRun } from "../../src/core/state.js";
 import { nextCommandsFor, STAGE_TRANSITIONS } from "../../src/core/constants.js";
 import { hashFileContent } from "../../src/core/fingerprints.js";
 import { recordPublish } from "../../src/core/freshness.js";
+import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import {
+	writeArtifact,
+	publishArtifact,
+	type ArtifactEnvelopeInput,
+} from "../../src/io/store.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
+
+/**
+ * Phase 6 read flip: runStage resolves stage inputs from the project store
+ * DB slices. These helpers seed the store so the rtm / architecture-generator
+ * fixtures get past the strict slice gate (a Doc/-only project refuses).
+ */
+function storeEnv(stage: string): ArtifactEnvelopeInput {
+	return {
+		version: 1,
+		stage,
+		generatedAt: "2026-09-20T17:00:00.000Z",
+		inputs: "{}",
+		reviewerVerdict: null,
+		changeLog: "[]",
+	};
+}
+
+function seedStorePrd(): void {
+	const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
+	try {
+		writeArtifact(db, "prd", "r1", storeEnv("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+	} finally {
+		closeStoreDb(db);
+	}
+}
+
+function seedStoreFeasibility(): void {
+	const db = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
+	try {
+		writeArtifact(db, "feasibility", "r1", storeEnv("analyzing-feasibility"), {
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-20T17:00:00.000Z",
+				webSearchConsent: 0,
+			},
+		});
+		publishArtifact(db, "r1", "feasibility");
+	} finally {
+		closeStoreDb(db);
+	}
+}
 
 interface Notice {
 	message: string;
@@ -352,6 +406,7 @@ describe("runStage stage-start freshness check (A3)", () => {
 	it("legacy no-stamp input warns but does not block (D7)", async () => {
 		advanceToDraftedPrd();
 		seedConfigAndPrd();
+		seedStorePrd(); // Phase 6: the rtm slice reads the store, not Doc/
 		// Legacy entry: no inputs map.
 		recordPublish(tmpDir, {
 			artifact: "prd",
@@ -373,6 +428,7 @@ describe("runStage stage-start freshness check (A3)", () => {
 	it("no manifest at all → stage starts without freshness notices", async () => {
 		advanceToDraftedPrd();
 		seedConfigAndPrd();
+		seedStorePrd(); // Phase 6: the rtm slice reads the store, not Doc/
 
 		const sent: string[] = [];
 		await runStage("rtm", makeCtx(), piMock(sent), tmpDir);
@@ -413,6 +469,7 @@ describe("feasibility-skip gate", () => {
 	it("allows /velpari-architecture-generator from built-rtm when a published feasibility doc exists", async () => {
 		advanceToBuiltRtm();
 		seedProjectConfig();
+		seedStoreFeasibility(); // Phase 6: the design slice reads the store
 		const feasDir = path.join(tmpDir, "Doc", "feasibility");
 		fs.mkdirSync(feasDir, { recursive: true });
 		fs.writeFileSync(path.join(feasDir, "feasibility-study_TestApp.md"), "# Feasibility\n");

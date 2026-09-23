@@ -24,14 +24,15 @@ to `Doc/development-order_<projectName>.md` without surprises.
 ## Sequence
 
 ```
-published artifacts (concatenated into prompt by handler):
-  - Doc/design_<projectName>.md
-  - Doc/PRD_<projectName>.md
-  - Doc/RTM_<projectName>.md
-  - Doc/feasibility-study_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
-  - Doc/pseudocode_<projectName>.md
-  - Doc/test-plan_<projectName>.md + Doc/test-cases_<projectName>.md
+upstream artifacts (pre-loaded into the prompt's `## DB Input Slices`
+block from the project store — NEVER open Doc/ files):
+  - design slice (Modules, Module Source FRs, ADRs)
+  - prd slice (FR, NFR rows with prose)
+  - rtm slice (Traceability Rows)
+  - feasibility slice (Decision, Spikes, Reuse Scan)
+  - atomic-functions slice (AF catalog with tier/criticality)
+  - pseudocode slice (blocks with content)
+  - testplan slice (Test Cases + Traces — covers both test-plan and test-cases)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -71,9 +72,10 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
 - **Working directory** — Pass `cwd: <runDir>` so scouts can use relative paths.
 - **Explicit output path** — Each scout's `task:` MUST include the exact
   artifact path it must write.
-- **Task content** — Pass the concatenated published-artifacts content (in
+- **Task content** — Pass the `## DB Input Slices` block content (in
   the prompt) and the scout's own report path. Each scout's skill markdown
-  describes what to extract.
+  describes what to extract from which slice row-set. Scouts must NOT open
+  Doc/ files.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
   `subagent_interrupt` (Pi-backed only) if a scout hangs.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation or

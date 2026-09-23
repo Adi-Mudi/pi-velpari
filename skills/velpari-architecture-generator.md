@@ -8,7 +8,9 @@ description: Pi-Velpari Design stage (v1.7.0, plan 8 phases) — orchestrate 7 v
 Produce the high-level design: module breakdown, data model, interface
 contracts, data flow, error handling, and non-functional considerations.
 The handler has already validated the gate (feasibility study must exist)
-and embedded its path in the prompt. Your job is to spawn 4 subagents in
+and pre-loaded the feasibility slice (Decision, Spikes, Reuse Scan) into
+the prompt's `## DB Input Slices` block — NEVER open Doc/ files. Your job
+is to spawn 4 subagents in
 parallel, read their reports, and write the working-copy design.
 
 > **Phase 2 update (plan §Phase 2):** Before this prompt runs, the handler
@@ -135,7 +137,8 @@ multiplexer pane.
 6. **Strict checkpoints:**
    - `contract-definer`, `data-flow-mapper`, `error-definer` need
      `module-decomposer`'s report. Start them in parallel — they all read
-     the input artifact. The data-flow and error scouts also benefit from
+     the `## DB Input Slices` block (feasibility slice — never Doc/ files).
+     The data-flow and error scouts also benefit from
      the contract scout's report (in the second batch if needed).
    - Write the working copy only after all 4 reports exist.
 

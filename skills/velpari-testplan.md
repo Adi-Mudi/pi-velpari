@@ -26,9 +26,10 @@ without surprises. `/velpari-testplan-approve` remains as the manual fallback.
 ## Sequence
 
 ```
-pseudocode + atomic functions (concatenated into prompt by handler):
-  - Doc/pseudocode_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
+pseudocode + atomic functions (pre-loaded into the prompt's `## DB Input
+Slices` block from the project store — NEVER open Doc/ files):
+  - pseudocode slice (blocks with content)
+  - atomic-functions slice (AF catalog with tier/criticality)
         │
         ▼
 spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:

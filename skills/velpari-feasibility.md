@@ -23,10 +23,10 @@ overall verdict filled, the user has approved the preview, and the
 
 ## Read-First Rule (HARD)
 
-1. **Read every input artifact BEFORE asking the user anything.** The RTM
-   path is in the prompt; read it fully. If PRD/brainstorm paths are
-   available, read them too.
-2. **Never ask a question whose answer exists in an input artifact.**
+1. **Read every input BEFORE asking the user anything.** The RTM slice is
+   pre-loaded in the prompt's `## DB Input Slices` block — read it fully.
+   Never open Doc/ files; the slice is the input.
+2. **Never ask a question whose answer exists in an input.**
    An orchestra that asks before reading is broken.
 3. **Default to "Insufficient data".** If the inputs are silent on a
    dimension, the scout marks it "Insufficient data — collect more before
@@ -38,7 +38,7 @@ overall verdict filled, the user has approved the preview, and the
 ## Sequence
 
 ```
-RTM (already in prompt as inputArtifact)
+RTM slice (already in prompt as `## DB Input Slices` — from the project store)
         │
         ▼
 READ all inputs fully (Read-First Rule)

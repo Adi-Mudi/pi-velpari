@@ -5,10 +5,12 @@ description: Pi-Velpari Atomic Function stage (required Stage 6, FR-35) — orch
 
 # Atomic Function Stage
 
-(Required Stage 6 — runs after the design stage is approved.) Read the published artifacts and propose
+(Required Stage 6 — runs after the design stage is approved.) Read the
+DB Input Slices and propose
 atomic function splits — small, leaf-node functions that can be unit-tested
-in isolation. The handler has already concatenated the PRD, RTM,
-pseudocode, and test cases into the prompt. Your job is to spawn 4
+in isolation. The handler has already loaded the PRD, RTM, feasibility,
+and design rows from the project store into the prompt's `## DB Input
+Slices` block. Your job is to spawn 4
 subagents in parallel, read their reports, and write the working-copy
 atomic-functions doc.
 
@@ -22,12 +24,12 @@ preview, and the `velpari_stage_publish` tool can publish the artifact to
 ## Sequence
 
 ```
-published artifacts (concatenated into prompt by handler):
-  - Doc/brainstorm-<slug>.md
-  - Doc/PRD_<projectName>.md
-  - Doc/RTM_<projectName>.md
-  - Doc/feasibility-study_<projectName>.md
-  - Doc/design_<projectName>.md
+upstream artifacts (pre-loaded into the prompt's `## DB Input Slices`
+block from the project store — NEVER open Doc/ files):
+  - prd slice   (FR, NFR rows with prose)
+  - rtm slice   (Traceability Rows)
+  - feasibility slice (Decision, Spikes, Reuse Scan)
+  - design slice (Modules, Module Source FRs, ADRs)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -68,9 +70,11 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
 - **Working directory** — Pass `cwd: <runDir>` so scouts can use relative paths.
 - **Explicit output path** — Each scout's `task:` MUST include the exact
   artifact path it must write.
-- **Task content** — Pass the concatenated published-artifacts content (in
+- **Task content** — Pass the `## DB Input Slices` block content (in
   the prompt) and the scout's own report path. Each scout's skill markdown
-  describes what to extract from which artifact.
+  describes what to extract from which slice row-set. Scouts must NOT open
+  Doc/ files. The reviewer agent is the sole exception: it reads the DB
+  slice AND the published Doc/ view — a mismatch is a finding.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
   `subagent_interrupt` (Pi-backed only) if a scout hangs.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation or

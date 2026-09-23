@@ -10,7 +10,9 @@ remains a separate document from PSRS (see `Doc/velpari-requirements-
 orchestration-design.md` §6 — RTM maps requirements to design,
 implementation, helper functions, and test cases, while PSRS defines
 what the system must do). The handler has already validated the gate
-(PSRS must exist) and embedded its path in the prompt. Your job is to
+and pre-loaded the PRD slice (FR, NFR, PRD Sections rows with prose)
+into the prompt's `## DB Input Slices` block — NEVER open Doc/ files.
+Your job is to
 spawn 4 subagents in parallel, read their reports, and write the
 working-copy RTM.
 
@@ -25,7 +27,7 @@ surprises. `/velpari-rtm-approve` remains as the manual fallback.
 ## Sequence
 
 ```
-PSRS (already in prompt as inputArtifact)
+PRD slice (already in prompt as `## DB Input Slices` — from the project store)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:

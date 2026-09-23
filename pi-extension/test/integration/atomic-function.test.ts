@@ -26,7 +26,13 @@ import { handleAtomicFunction } from "../../src/stages/atomic-function/index.js"
 import { loadState, type RunState } from "../../src/core/state.js";
 import { loadHistory } from "../../src/core/history.js";
 import { handleApprove } from "../../src/ops/approve.js";
-import { resolveDocArtifact, buildRunDir } from "../../src/core/paths.js";
+import { resolveDocArtifact, buildRunDir, buildStoreDbPath } from "../../src/core/paths.js";
+import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import {
+	writeArtifact,
+	publishArtifact,
+	type ArtifactEnvelopeInput,
+} from "../../src/io/store.js";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 let tmpDir: string;
@@ -141,6 +147,47 @@ function makeDocInputs(projectName: string): void {
 }
 
 /**
+ * Seed the project store with published prd / rtm / feasibility / design
+ * rows (Phase 6 read flip — the atomic-function stage resolves its inputs
+ * from the DB slices, and a Doc/-only project refuses loudly).
+ * @param {string} projectName - Project whose store to seed.
+ * @returns {void}
+ */
+function makeStoreInputs(projectName: string): void {
+	const dbPath = buildStoreDbPath(projectName, tmpDir);
+	const db = openStoreDb(dbPath);
+	try {
+		const env = (stage: string): ArtifactEnvelopeInput => ({
+			version: 1,
+			stage,
+			generatedAt: "2026-09-17T13:00:00.000Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		});
+		writeArtifact(db, "prd", "r1", env("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse input" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+		writeArtifact(db, "rtm", "r1", env("building-rtm"), {
+			rtmRow: [{ id: "R-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "a".repeat(64) }],
+		});
+		publishArtifact(db, "r1", "rtm");
+		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
+			feasibilityDecision: { verdict: "go", language: "typescript", decidedBy: "user", at: "2026-09-17T13:00:00.000Z", webSearchConsent: 0 },
+		});
+		publishArtifact(db, "r1", "feasibility");
+		writeArtifact(db, "design", "r1", env("designing"), {
+			designModule: [{ id: "M-1", name: "core", description: "core logic" }],
+		});
+		publishArtifact(db, "r1", "design");
+	} finally {
+		closeStoreDb(db);
+	}
+}
+
+/**
  * Pre-install the 4 atomic-function scout agent files into `.pi/agents/` so
  * the stage runner's dispatch resolves them (no-op when already present).
  * @returns {void}
@@ -178,6 +225,7 @@ describe("atomic-function end-to-end flow", () => {
 		makeState("designed", "e2e-mission");
 		makeFilesConfig({ projectName, atomicTier: "basic" });
 		makeDocInputs(projectName);
+		makeStoreInputs(projectName);
 		preInstallScouts();
 
 		const ctx = makeCtx();
@@ -341,6 +389,7 @@ updated: 2026-09-17T13:00:00.000Z
 		// still exercised.
 		makeFilesConfig({ projectName, atomicTier: "entry" });
 		makeDocInputs(projectName);
+		makeStoreInputs(projectName);
 		preInstallScouts();
 
 		const ctx = makeCtx();

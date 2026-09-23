@@ -84,6 +84,19 @@ reviewerReportPath: "<abs path>/reviewer-report.json"
 The reviewer reads every input above and writes one verdict JSON to
 `reviewerReportPath`.
 
+## DB slice + published view (Phase 6, decision 1 exception)
+
+The reviewer is the **sole agent allowed — and required — to read both**:
+
+1. Read the `## DB Input Slices` block from your task prompt (the
+   project store's published rows — the single machine source of truth).
+2. Read the working copy AND (when a published view exists) the published
+   `Doc/` markdown for the same artifact.
+3. A mismatch between the DB slice rows and the view is a **finding** —
+   report it with severity `error`, rule `slice-view-drift`.
+
+All other scouts read the DB slice ONLY — they never open Doc/ files.
+
 ## Verdict handling
 
 The reviewer verdict JSON shape:

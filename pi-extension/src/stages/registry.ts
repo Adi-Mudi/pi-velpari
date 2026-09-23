@@ -68,6 +68,12 @@ import {
 } from "../core/profile.js";
 import { runStageWithScouts, type StageRunConfig } from "../core/stage-runner.js";
 import { ensureStageAgents } from "../io/agents-install.js";
+import {
+	docArtifactToKind,
+	resolveStageSlice,
+	SCOUT_SLICE_LINES,
+} from "../ops/db-slices.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
 /** Stages that route through the registry. (Brainstorm is bespoke.) */
 export type StageKey =
@@ -486,14 +492,16 @@ function firstMissingArtifact(
 	cwd: string,
 	order: readonly string[],
 ): string {
-	// Mirror `resolveDocArtifact` semantics: an artifact is "missing" only when
-	// BOTH the grouped path AND the legacy flat path are absent. If either path
-	// exists, the artifact is considered present (matching pre-Phase-B behaviour).
+	// Phase 6 read flip (Subphase 3.6): pre-conditions check the PROJECT
+	// STORE DB, not Doc/ file existence. All stage inputs are DB-only
+	// (user directive 2026-09-23 — brainstorm is the sole file-based input).
+	// A kind is "present" when the store has at least one PUBLISHED version
+	// of it; a missing/unpublished kind refuses loudly and names
+	// /velpari-backfill (decision 3) — never a silent file fallback.
 	for (const artifact of order) {
-		const groupedFull = join(cwd, _buildGroupedPath(artifact, projectName));
-		const legacyFull = join(cwd, buildOutputPath(artifact, projectName));
-		if (existsSync(groupedFull)) continue;
-		if (existsSync(legacyFull)) continue;
+		const kind = docArtifactToKind(artifact);
+		if (!kind) continue; // unknown mapping — cannot check the store
+		if (readLatestPublishedRows(cwd, projectName, kind) !== null) continue;
 		return artifact;
 	}
 	return order[0]!;
@@ -501,20 +509,17 @@ function firstMissingArtifact(
 
 function atomicMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, AF_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run atomic-function: missing ${artifact} at ${cwd}/${groupedPath}. All previous stages (prd, rtm, feasibility, design) must be published.`;
+	return `Cannot run atomic-function: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
 function devOrderMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, DO_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run development-order: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run development-order: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
 function finalDesignMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, FINAL_DESIGN_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run final-design: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run final-design: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
 interface ResolveInputsDeps {
@@ -530,6 +535,13 @@ export type ResolveInputsResult =
 			inputArtifactPath: string;
 			/** Concatenated contents of all resolved inputs; undefined for single-input stages (caller reads from disk). */
 			inputArtifactContent?: string;
+			/**
+			 * Phase 6 (decision 9): pre-rendered `## DB Input Slices` block body
+			 * from `resolveStageSlice` — present when the stage has DB-backed
+			 * doc inputs. Rendered by prompt.ts as its own block; brainstorm
+			 * file sections (if any) stay in `inputArtifactContent`.
+			 */
+			dbInputSlice?: string;
 	  }
 	| { ok: false; error: string };
 
@@ -545,10 +557,28 @@ export function resolveStageInputs(
 	spec: StageSpec,
 	deps: ResolveInputsDeps,
 ): ResolveInputsResult {
+	// Phase 6 read flip (decision record §14.1): every `doc` input resolves
+	// from the project store as a DB slice — stages and scouts NEVER read
+	// Doc/ markdown. Brainstorm notes stay the ONE file-based input
+	// (decision 1); a refused slice is a LOUD stop that names
+	// `/velpari-backfill <kind>` (decision 3) — never a silent file fallback.
+	const docInputs = spec.inputs.filter((input) => input.kind === "doc");
+	const fileInputs = spec.inputs.filter((input) => input.kind === "brainstorm");
+
+	let slicePath: string | undefined;
+	let sliceBlock: string | undefined;
+	if (docInputs.length > 0) {
+		const slice = resolveStageSlice(deps.cwd, deps.projectName, spec.key);
+		if (!slice.ok) {
+			return { ok: false, error: slice.message };
+		}
+		slicePath = `db://${deps.projectName}/${spec.key}`;
+		sliceBlock = slice.block;
+	}
+
 	const paths: string[] = [];
 	const labels: string[] = [];
-
-	for (const input of spec.inputs) {
+	for (const input of fileInputs) {
 		const resolved = resolveOne(input, deps);
 		if (!resolved) {
 			if (input.optional) continue;
@@ -567,25 +597,40 @@ export function resolveStageInputs(
 		labels.push(resolved.label);
 	}
 
-	if (paths.length === 0) {
-		return { ok: false, error: `No inputs resolved for /velpari-${spec.key}.` };
+	if (docInputs.length === 0) {
+		// File-only stage (prd): brainstorm notes are the sole input — the
+		// legacy single-input path is preserved byte-for-byte.
+		if (paths.length === 0) {
+			return { ok: false, error: `No inputs resolved for /velpari-${spec.key}.` };
+		}
+		if (paths.length === 1) {
+			return { ok: true, inputArtifactPath: paths[0]! };
+		}
+		const sections: string[] = [];
+		for (let i = 0; i < paths.length; i++) {
+			const content = readFileSync(paths[i]!, "utf8");
+			sections.push(`## ${labels[i]}\n\n${content}`);
+		}
+		return {
+			ok: true,
+			inputArtifactPath: paths[0]!,
+			inputArtifactContent: sections.join("\n\n---\n\n"),
+		};
 	}
 
-	if (paths.length === 1) {
-		return { ok: true, inputArtifactPath: paths[0]! };
-	}
-
-	// Multi-input stage: read each file and concatenate.
+	// DB-backed stage: the slice block rides in `dbInputSlice` (rendered as
+	// `## DB Input Slices`); brainstorm file inputs (atomic-function's
+	// optional notes) stay in `inputArtifactContent`.
 	const sections: string[] = [];
 	for (let i = 0; i < paths.length; i++) {
-		const p = paths[i]!;
-		const content = readFileSync(p, "utf8");
-		sections.push(`## ${labels[i]}\n\n${content}`);
+		const content = readFileSync(paths[i]!, "utf8");
+		sections.push(`## Brainstorm Notes (${labels[i]})\n\n${content}`);
 	}
 	return {
 		ok: true,
-		inputArtifactPath: paths[0]!,
-		inputArtifactContent: sections.join("\n\n---\n\n"),
+		inputArtifactPath: slicePath ?? paths[0]!,
+		inputArtifactContent: sections.length > 0 ? sections.join("\n\n---\n\n") : undefined,
+		dbInputSlice: sliceBlock,
 	};
 }
 
@@ -895,6 +940,10 @@ export async function runStage(
 		scouts: gatedScouts,
 		inputArtifactPath: inputs.inputArtifactPath,
 		inputArtifactContent: inputs.inputArtifactContent,
+		// Phase 6 decision 6 — per-scout role slice lines for the prompt's
+		// `## Scout Slices` block (empty for prd: brainstorm is file-based).
+		scoutSliceLines: SCOUT_SLICE_LINES[stageKey] ?? [],
+		dbInputSlice: inputs.dbInputSlice,
 		workingCopyDir,
 		workingCopyPath,
 		scoutsDir,
