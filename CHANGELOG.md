@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 6 — strict reads + `/velpari-backfill` (2026-09-23)
+
+From PRD onward the per-project SQLite store (`Doc/store/<project>/index.db`) is the **single machine source of truth**: stages and scouts read pre-rendered `## DB Input Slices` blocks from the store only — Doc/ markdown, YAML sidecars, and HTML/JSON exports are human views. Brainstorm notes stay the one file-based input; the reviewer agent is the sole slice+view exception (drift = a finding). Schema v002 added 14 prose columns (Phase 1); Phase 2 retired the sidecar publish loop (5 DB-rendered artifacts re-render from rows, 5 hybrid docs stay LLM-authored + hash-bound).
+
+#### Added
+
+- **L1 slice builder** (`ops/db-slices.ts`) — `resolveStageSlice` per stage key with three LOUD refusal reasons (no store DB / kind unpublished / rows lack v002 prose), each naming `/velpari-backfill <kind>`; compact deterministic per-kind slice renderers (G5) + per-role `SCOUT_SLICE_LINES`.
+- **Prompt blocks** — `## DB Input Slices` (never open Doc/ files) + `## Scout Slices` (per-role row-set references) rendered by `core/prompt.ts` from pre-rendered L1 strings.
+- **43rd command `/velpari-backfill <kind>`** (`ops/backfill.ts` + `commands/backfill.ts`) — parses the legacy published markdown/sidecar for one kind (sidecar-first: RTM/AF engine readers; generic pipe-table parser for the rest), writes rows with v002 prose, checksum-verifies, publishes, checkpoints. Store-only (no Doc/ write, no stage advance, no git); idempotent no-op when the kind is already imported; refuses zero-row imports.
+
+#### Changed
+
+- **Stage inputs + pre-conditions are DB-first** (`stages/registry.ts`) — `resolveStageInputs` resolves doc inputs via the slice; `firstMissingArtifact` checks published store rows, not Doc/ file existence; refuse messages name the store path and `/velpari-backfill <kind>`. `core/stage-runner.ts` never reads a `db://` marker path.
+- **SHOW commands render from the store** (`view/show.ts`) via the Phase 5 renderers (newest published version); legacy file read remains as the view fallback for pre-store projects.
+- **10 skills rewritten** — 9 stage skills + reviewer instruct slice-only reads; reviewer keeps the slice+view exception.
+- **Command surface 42 → 43** (`commands/index.ts`, registration test, both AGENTS.md files — one pass so none drifts); AGENTS.md principle 10f rewritten (sidecar retired as source; legacy read fallback until Phase 11).
+
 ### DB-primary storage Phase 5 — `/velpari-export` (on-demand document download, 2026-09-22)
 
 New **42nd command** (view/ops group): export a published artifact version straight from the per-project SQLite store (`Doc/store/<project>/index.db`) to a file the user picks — read-only (D4). No publish/approve/gate changes; drafts are never listed or exported (Q2); export is an additional view, never a publish product (Q3).

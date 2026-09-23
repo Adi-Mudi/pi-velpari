@@ -40,9 +40,10 @@ import { registerShowPseudocodeCommand } from "./show-pseudocode.js";
 import { registerShowTestplanCommand } from "./show-testplan.js";
 import { registerShowLoggingCommand } from "./show-logging.js";
 import { registerExportCommand } from "./export.js";
+import { registerBackfillCommand } from "./backfill.js";
 
 /**
- * All 42 user-facing commands. v1.6.0 replaced the generic
+ * All 43 user-facing commands. v1.6.0 replaced the generic
  * `the publish tool` command (which the parent LLM invokes via the
  * `velpari_stage_publish` tool during preview-yes) with 9 per-stage
  * `/velpari-<stage>-approve` fall-back commands for stages 2–10. Brainstorm
@@ -115,6 +116,8 @@ export const COMMAND_NAMES = [
 	"velpari-show-logging",
 	// View/ops — Phase 5 on-demand DB export (42nd command)
 	"velpari-export",
+	// View/ops — Phase 6 backfill import (43rd command)
+	"velpari-backfill",
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -172,4 +175,6 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerShowLoggingCommand(pi);
 	// View/ops — Phase 5 on-demand DB export
 	registerExportCommand(pi);
+	// View/ops — Phase 6 backfill import (43rd command)
+	registerBackfillCommand(pi);
 }

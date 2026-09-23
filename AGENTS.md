@@ -95,7 +95,7 @@ Full tree: `tree -L 2` or read individual folders for detail.
 
 10e. **Re-confirm path + normalized hashing (A5).** `/velpari-reconfirm` is the second stale-resolution path: a picker over `input-changed` stale items only (`input-missing`/`no-stamp` are republish-only), one artifact at a time; a cancelled picker writes nothing. Each confirm writes the audit triple: the mandated Change Log line ``Reviewed after `<artifact>` vX.Y — no changes required.`` in the published artifact (upstream version from its frontmatter, `unknown-version` fallback), a manifest re-stamp with `reconfirmedAt` (RTM `extraPaths` recomputed), and a history entry. Freshness hashing is **normalized** for `hashv: 2` manifest entries — the `## Change Log` section is excluded (`core/fingerprints.ts:hashFileContentNormalized`), so the audit line never re-stales downstream consumers; entries without `hashv` keep legacy whole-file checking until their next publish/re-confirm (no mass-staling). All new publishes stamp `hashv: 2`. The command edits a published `Doc/` artifact from code — a stated, narrow exception to the publish-only invariant; the LLM `tool_call` lock is unaffected.
 
-10f. **YAML sidecars (B3).** Sidecar = source of truth; the published markdown is RE-RENDERED from it at publish time and is never hand-edited. `ops/sidecar-registry.ts:SIDECAR_REGISTRY` maps artifact kind → detect/validate/diff/render; `ops/approve.ts` runs one generalized loop for all four sidecar artifacts (RTM, atomic-functions, test-cases, development-order). Publish REQUIRES the sidecar (D6); missing sidecar on a legacy published artifact is a doctor warning, drift is an error. RTM reads dual-format `.yaml` → legacy `.json` (D4), writes always `.yaml`. Feasibility is the sole code-generated sidecar (`feasibility-decision_<project>.yaml`, serialized from the session before it is cleared — D9). Dev-order validation proves the `dependsOn` DAG acyclic (D8). Id-coverage reads ids sidecar-first with markdown fallback (D7).
+10f. **DB-primary reads (Phase 6).** The per-project SQLite store (`Doc/store/<project>/index.db`) is the single machine source of truth; markdown/YAML/HTML are human views (DB-rendered for 5 artifacts — prd, rtm, atomic-functions, test-cases, development-order; LLM-authored + hash-bound for 5 hybrid docs — design, pseudocode, testplan-plan, feasibility-study, final-design). Stages + scouts read `## DB Input Slices` blocks from the store only; brainstorm notes remain the one file-based input; the reviewer agent is the sole slice+view exception (drift = a finding). Sidecar YAML files are retired as sources (legacy read fallback until Phase 11) — YAML is a download view via `/velpari-export`. A pre-store project recovers with the one-step `/velpari-backfill <kind>` import (43rd command; idempotent, store-only — no Doc/ write, no stage advance, no git commit).
 
 11. **Deterministic, not creative.** File paths, file formats, state JSON shape, stage transitions, handoff schema are all fixed by code.
 12. **Mirrors Senai's discipline.** Same control surface (approve/status/reset/configure/doctor), state file layout, scout-pattern UI.
@@ -167,10 +167,10 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 
 ## Command surface
 
-**42 commands total** (see `commands/COMMAND_NAMES` for the full list):
+**43 commands total** (see `commands/COMMAND_NAMES` for the full list):
 - **10 stage** — 5 pre-production (`brainstorm`, `prd`, `rtm`, `feasibility`, `architecture-generator`) + 3 build-planning (`atomic-function`, `pseudocode`, `testplan`) + 2 execution/consolidation (`development-order`, `final-design`).
 - **10 approve (fall-back)** — 9 per-stage `/velpari-<stage>-approve` + the bespoke `/velpari-approve-brainstorm`.
-- **6 ops/discipline** — `status`, `reset`, `handoff`, `doctor`, `design-logging`, `reconfirm` (A5).
+- **7 ops/discipline** — `status`, `reset`, `handoff`, `doctor`, `design-logging`, `reconfirm` (A5), `backfill` (Phase 6 — 43rd command).
 - **6 configure** — `configure-inputs`, `configure-requirements`, `configure-standards`, `configure-agents`, `agents`, `generate-sub-agents`.
 - **1 wrapper** — `prd-rtm`.
 - **8 view** — `show-<stage>` + `show-logging`.

@@ -17,8 +17,8 @@ import {
 } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 42 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 42);
+	it("exports 43 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 43);
 	});
 
 	it("contains all expected user-facing commands", () => {
@@ -69,6 +69,9 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-show-pseudocode",
 			"velpari-show-testplan",
 			"velpari-show-logging",
+			// View/ops — Phase 5 export + Phase 6 backfill (43rd command)
+			"velpari-export",
+			"velpari-backfill",
 		];
 		for (const cmd of expected) {
 			assert.ok(
