@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 10 — portfolio registry + diagram assets (2026-09-24)
+
+The hub-and-spoke storage model (D6) gains its optional hub: a per-workspace metadata registry at `Doc/store/portfolio.db` (committed raw per D2/D7 — the Phase 9 auto-heal now marks BOTH SQLite files binary and ignores both WALs). The registry is METADATA-ONLY by design (user-locked): project name, db path, display name, last publish/run/stage — cross-project artifact rollups stay out (additive later). The publish chain syncs the registry PRE-commit (fail-open, outside the store transaction — never a rollback trigger; the Q6d failure path re-syncs best-effort), every registry write ends with `wal_checkpoint(TRUNCATE)` (registry G1 — the committed file must never trail its git-ignored WAL), and `/velpari-portfolio --repair` rebuilds the registry from the spokes at any time (no registry integrity_check — it is fully derivable, a conscious skip). D8 is realized: `mermaid_text` starting with `image:` renders as a markdown image (path relative to the owning DB dir; renderers never read the filesystem — byte-stable per G5; missing assets surface via the doctor's new portfolio check, and `..`-escaping paths are rejected without probing). `/velpari-portfolio` is the 44th command. No new dependencies.
+
+#### Added
+
+- **`Doc/store/portfolio.db`** — the portfolio registry (v001-p, STRICT `projects` table; own schema module + own version ceiling + own pin test — store pins untouched).
+- **`io/portfolio.ts`** — L0 registry API (`syncProject` / `listProjects` / `removeProject`).
+- **`ops/portfolio.ts`** — `syncPortfolioRegistry` / `repairPortfolioRegistry` (spoke-derived, idempotent, checkpoint-after-write, fail-open).
+- **`/velpari-portfolio`** — the 44th command (list + `--repair`).
+- **`doctor/checks/portfolio.ts`** — registry↔disk drift (stale / unregistered / orphan) + D8 asset sweep (missing / `..`-traversal-rejected).
+
+#### Changed
+
+- **`ops/db-publish.ts`** — pre-commit registry sync (7b) + rollback re-sync (step 8); portfolio.db joins the publish commit set.
+- **`ops/git-attributes.ts`** — the heal now also appends `Doc/store/portfolio.db binary` + its WAL ignores.
+- **`ops/export-doc.ts` + `ops/db-slices.ts`** — D8 `image:` → markdown-image rendering; inline diagram text unchanged.
+- **`test/integration/command-registration.test.ts`** — command count 43 → 44.
+
 ### DB-primary storage Phase 9 — git integration + YAML rebuild (2026-09-24)
 
 The store DB is committed raw, so every user repo now carries git protection for it, and the merge/recovery story becomes executable. The publish chain auto-heals the user repo's `.gitattributes` (`Doc/store/**/index.db binary` — merge prevention via the built-in macro) and `.gitignore` (`index.db-wal` / `-shm`) before committing, and the healed files join the same publish commit (automatic but never silent — a notify reports the append; the doctor's new Git integration section makes drift visible anytime). OQ1 decided: `state.json` stays OUT of the publish commit set — backup = artifact world only (DB + YAML + docs); a restored checkout re-establishes the run position via `/velpari-backfill` + a fresh run. D9 is made real: `importArtifactYaml` (L0) imports a store-export YAML back into the DB (parse → validate → write → checksum-verify → publish; schema-invalid YAML is refused, content tampering is NOT detected — the export carries no fingerprint, git's reviewable YAML diffs are the tamper guard), exposed as `/velpari-backfill <kind> --from-export`. The G2 runbook ships at `skills/db-store-merge-runbook.md`. No new dependencies.

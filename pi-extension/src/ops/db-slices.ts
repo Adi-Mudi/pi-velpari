@@ -144,9 +144,11 @@ function sortedBy(rows: RowLike[], key: string, numeric = false): RowLike[] {
 
 /**
  * Render one kind's slice from its published rows — compact per-kind
- * template, deterministic order (natural-key sorts, G5).
+ * template, deterministic order (natural-key sorts, G5). `projectName`
+ * feeds D8 asset-path resolution for design diagrams (optional; omitted
+ * → asset refs render with the DB-dir-relative path as-is).
  */
-export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknown>): string {
+export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknown>, projectName = ""): string {
 	switch (kind) {
 		case "prd": {
 			const fr = sortedBy(rowsOf(rows, "fr"), "id");
@@ -219,7 +221,16 @@ export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknow
 			const diagrams = sortedBy(rowsOf(rows, "diagram"), "id");
 			let diagramBlocks = "";
 			for (const d of diagrams) {
-				diagramBlocks += `#### Diagram ${cell(d.id)} (${cell(d.diagramKind)})\n\n\`\`\`mermaid\n${String(d.mermaidText ?? "")}\n\`\`\`\n\n`;
+				// D8 (Phase 10, §15.5): image:-prefixed diagram text is an ASSET
+				// reference — render as a markdown image (path relative to the
+				// DB dir; never probed here — the doctor sweep is authoritative).
+				const text = String(d.mermaidText ?? "");
+				if (text.startsWith("image:")) {
+					const asset = text.slice("image:".length).trim();
+					diagramBlocks += `#### Diagram ${cell(d.id)} (${cell(d.diagramKind)})\n\n![diagram ${cell(d.id)}](../../store/${cell(projectName)}/${asset})\n\n`;
+				} else {
+					diagramBlocks += `#### Diagram ${cell(d.id)} (${cell(d.diagramKind)})\n\n\`\`\`mermaid\n${text}\n\`\`\`\n\n`;
+				}
 			}
 			return (
 				table(
@@ -396,7 +407,7 @@ export function resolveStageSlice(cwd: string, projectName: string, stageKey: St
 			};
 		}
 		sections.push(
-			`### ${kind} (run ${read.envelope.runId} v${read.envelope.version})\n\n${renderStageSlice(kind, read.rows)}`,
+			`### ${kind} (run ${read.envelope.runId} v${read.envelope.version})\n\n${renderStageSlice(kind, read.rows, projectName)}`,
 		);
 	}
 	return { ok: true, block: sections.join("\n---\n\n"), kinds };

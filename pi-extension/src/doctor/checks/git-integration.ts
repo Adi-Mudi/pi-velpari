@@ -19,7 +19,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { STORE_DB_ATTR_LINE, STORE_IGNORE_LINES } from "../../ops/git-attributes.js";
+import {
+	PORTFOLIO_ATTR_LINE,
+	PORTFOLIO_IGNORE_LINES,
+	STORE_DB_ATTR_LINE,
+	STORE_IGNORE_LINES,
+} from "../../ops/git-attributes.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -45,48 +50,49 @@ export function checkGitIntegrationSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	const attrPath = join(cwd, ".gitattributes");
-	const ignorePath = join(cwd, ".gitignore");
-
-	// .gitattributes - binary attr (merge prevention).
+	const ignorePath = join(cwd, ".gitignore"); // .gitattributes - binary attrs (merge prevention: store DB + registry).
+	const expectedAttrs = [STORE_DB_ATTR_LINE, PORTFOLIO_ATTR_LINE];
 	if (!existsSync(attrPath)) {
 		items.push({
 			status: "warning",
 			message:
-				".gitattributes missing - the store DB has no binary attribute (merge conflicts on index.db will need the runbook instead of refusing loudly).",
-			details: [`expected line: ${STORE_DB_ATTR_LINE}`],
+				".gitattributes missing - the store DB and registry have no binary attribute (merge conflicts will need the runbook instead of refusing loudly).",
+			details: expectedAttrs.map((l) => `expected line: ${l}`),
 			suggestion: suggestionFor("git-attr-missing"),
 		});
 	} else {
 		const content = readFileSync(attrPath, "utf8");
-		if (hasLine(content, STORE_DB_ATTR_LINE)) {
-			items.push({ status: "ok", message: ".gitattributes: store DB marked binary." });
+		const missing = expectedAttrs.filter((line) => !hasLine(content, line));
+		if (missing.length === 0) {
+			items.push({ status: "ok", message: ".gitattributes: store DB + registry marked binary." });
 		} else {
 			items.push({
 				status: "warning",
-				message: ".gitattributes exists but lacks the store-DB binary attribute.",
-				details: [`expected line: ${STORE_DB_ATTR_LINE}`],
+				message: `.gitattributes lacks ${missing.length} binary attribute(s).`,
+				details: missing.map((l) => `expected line: ${l}`),
 				suggestion: suggestionFor("git-attr-missing"),
 			});
 		}
 	}
 
-	// .gitignore - WAL sidecars never committed.
+	// .gitignore - WAL sidecars never committed (store + registry).
+	const expectedIgnores = [...STORE_IGNORE_LINES, ...PORTFOLIO_IGNORE_LINES];
 	if (!existsSync(ignorePath)) {
 		items.push({
 			status: "warning",
 			message: ".gitignore missing - the WAL sidecar files (-wal/-shm) risk being committed.",
-			details: STORE_IGNORE_LINES.map((l) => `expected line: ${l}`),
+			details: expectedIgnores.map((l) => `expected line: ${l}`),
 			suggestion: suggestionFor("git-ignore-missing"),
 		});
 	} else {
 		const content = readFileSync(ignorePath, "utf8");
-		const missing = STORE_IGNORE_LINES.filter((line) => !hasLine(content, line));
+		const missing = expectedIgnores.filter((line) => !hasLine(content, line));
 		if (missing.length === 0) {
-			items.push({ status: "ok", message: ".gitignore: WAL sidecars excluded." });
+			items.push({ status: "ok", message: ".gitignore: WAL sidecars excluded (store + registry)." });
 		} else {
 			items.push({
 				status: "warning",
-				message: `.gitignore lacks ${missing.length} store sidecar pattern(s).`,
+				message: `.gitignore lacks ${missing.length} sidecar pattern(s).`,
 				details: missing.map((l) => `expected line: ${l}`),
 				suggestion: suggestionFor("git-ignore-missing"),
 			});

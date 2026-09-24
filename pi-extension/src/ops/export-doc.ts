@@ -286,7 +286,7 @@ export function renderFeasibilityMarkdown(rows: Record<string, unknown>): string
 }
 
 /** design — modules, source FRs, ADRs, diagrams (mermaid), approaches. */
-export function renderDesignMarkdown(rows: Record<string, unknown>): string {
+export function renderDesignMarkdown(rows: Record<string, unknown>, projectSlug = ""): string {
 	const modules = sorted((rows.designModule as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const sourceFr = sorted((rows.moduleSourceFr as RowLikeAlias[] | undefined) ?? [], (r) => `${r.moduleId} ${r.frId}`);
 	const adr = sorted((rows.adr as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
@@ -296,7 +296,9 @@ export function renderDesignMarkdown(rows: Record<string, unknown>): string {
 	if (diagrams.length > 0) {
 		diagramBlocks = "## Diagrams\n\n";
 		for (const d of diagrams) {
-			diagramBlocks += `### ${str(d, "id")} (${str(d, "diagramKind")})\n\n\`\`\`mermaid\n${str(d, "mermaidText")}\n\`\`\`\n\n`;
+			// No project context (legacy callers/tests) → fall back to the DB-dir
+			// asset path as-is (the doctor sweep still resolves it correctly).
+			diagramBlocks += renderDiagram(d, projectSlug || "PROJECT");
 		}
 	}
 	return (
@@ -322,6 +324,38 @@ export function renderDesignMarkdown(rows: Record<string, unknown>): string {
 			approach.map((r) => [r.moduleId, r.tacticId]),
 		)
 	);
+}
+
+/**
+ * Render ONE diagram row (D8, Phase 10 — v1.3 markdown-image output).
+ * `image:`-prefixed mermaid_text is an ASSET reference: the remainder is a
+ * path relative to the owning DB dir (Doc/store/<project>/). Renderers NEVER
+ * read the filesystem (G5 byte-stability; review v1.2 item 12) — the asset
+ * existence check is the doctor's portfolio-asset-missing sweep alone.
+ *
+ * Output: a plain markdown image `![diagram <id>](<resolved-path>)` — a
+ * mermaid fence around `image:…` would render broken in every viewer,
+ * defeating D8's "viewable in any tool" goal (review v1.3 design question).
+ * Resolved path: `../../store/<project>/<asset>` — grouped docs live at
+ * Doc/<category>/, so up-2 is Doc/ (constant per kind, G5-safe). Custom
+ * /velpari-export destinations may not resolve the relative link — accepted
+ * limitation (decision §15.5); the doctor sweep is authoritative.
+ *
+ * Inline diagram text (no image: prefix) renders as today: a mermaid fence,
+ * verbatim.
+ *
+ * @param {RowLikeAlias} d - The diagram row (id, diagramKind, mermaidText).
+ * @param {string} projectSlug - Sanitized project name (the DB dir name).
+ * @returns {string} Markdown block (heading + image or fence).
+ */
+export function renderDiagram(d: RowLikeAlias, projectSlug: string): string {
+	const id = str(d, "id");
+	const text = str(d, "mermaidText");
+	if (text.startsWith("image:")) {
+		const asset = text.slice("image:".length).trim();
+		return `### ${id} (${str(d, "diagramKind")})\n\n![diagram ${id}](../../store/${projectSlug}/${asset})\n\n`;
+	}
+	return `### ${id} (${str(d, "diagramKind")})\n\n\`\`\`mermaid\n${text}\n\`\`\`\n\n`;
 }
 
 /** atomic-functions — the AF catalog with tier/criticality/SIL columns. */
@@ -431,12 +465,13 @@ export function renderFinalDesignMarkdown(rows: Record<string, unknown>): string
 	);
 }
 
-/** Per-kind renderer dispatch (KIND_ORDER's twin — one entry per kind). */
-const RENDERERS: Record<ArtifactKind, (rows: Record<string, unknown>) => string> = {
+/** Per-kind renderer dispatch (KIND_ORDER's twin — one entry per kind). Design
+ * takes the project slug for D8 asset paths (Phase 10). */
+const RENDERERS: Record<ArtifactKind, (rows: Record<string, unknown>, projectSlug?: string) => string> = {
 	prd: renderPrdMarkdown,
 	rtm: renderRtmMarkdown,
 	feasibility: renderFeasibilityMarkdown,
-	design: renderDesignMarkdown,
+	design: (rows, projectSlug) => renderDesignMarkdown(rows, projectSlug),
 	"atomic-functions": renderAtomicFunctionsMarkdown,
 	pseudocode: renderPseudocodeMarkdown,
 	testplan: renderTestplanMarkdown,
@@ -602,6 +637,18 @@ function countRows(rows: Record<string, unknown>): Record<string, number> {
 }
 
 /**
+ * Derive the project slug (DB dir name) from the export request's dbPath —
+ * `.../Doc/store/<slug>/index.db`. Used for D8 asset-path resolution; empty
+ * when the shape does not match (non-store dbPath).
+ * @param {ExportInput} input - The export request.
+ * @returns {string} The project slug, or "".
+ */
+function projectSlugOf(input: ExportInput): string {
+	const m = /[\\/]store[\\/]([^\\/]+)[\\/]index\.db$/.exec(input.dbPath);
+	return m ? m[1]! : "";
+}
+
+/**
  * Export one published artifact version from the store DB to a file (D4).
  * Read-only against the DB; the only write is the destination file via
  * atomicWriteFile. Refusals return `ok:false` + `problem` — never throw.
@@ -653,7 +700,7 @@ export function runExport(input: ExportInput): ExportResult {
 			}
 			bytes = yaml;
 		} else {
-			const md = renderEnvelopeHeader(read.envelope) + "\n" + RENDERERS[input.kind](read.rows);
+			const md = renderEnvelopeHeader(read.envelope) + "\n" + RENDERERS[input.kind](read.rows, projectSlugOf(input));
 			bytes = input.format === "html" ? mdToHtml(md) : md;
 		}
 		atomicWriteFile(input.outputPath, bytes, "utf8");

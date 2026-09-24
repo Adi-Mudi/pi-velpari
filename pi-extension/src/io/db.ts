@@ -27,6 +27,8 @@ import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { SCHEMA_V001_DDL, SCHEMA_V002_ADDITIONS, SCHEMA_V003_STORE_META } from "./db-schema.js";
+import { PORTFOLIO_USER_VERSION } from "./portfolio-schema.js";
+import { applyPortfolioSchema } from "./portfolio.js";
 import type { DatabaseSync } from "node:sqlite";
 
 // Lazy driver load (D9): `node:sqlite` is experimental and prints an
@@ -176,6 +178,42 @@ export function closeStoreDb(db: DatabaseSync): void {
 	} finally {
 		db.close();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// portfolio REGISTRY (Phase 10 — D6 hub-and-spoke; a SECOND SQLite file with
+// its own schema module, version ceiling, and pin test — see io/portfolio.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Open (and create if missing) the portfolio REGISTRY database, apply the
+ * same production PRAGMA set (RES-2), enforce the registry's OWN G3 ceiling
+ * (independent of the store's — review v1.1 gap 5), and apply v001-p when
+ * fresh. Writers must checkpoint this connection exactly like a store one
+ * (review v1.2 gap 10 — io/portfolio.ts helpers leave that to the caller).
+ *
+ * @throws Error when the registry's user_version exceeds PORTFOLIO_USER_VERSION
+ *         (downgrade protection — "upgrade your extension").
+ */
+export function openPortfolioDb(dbPath: string): DatabaseSync {
+	mkdirSync(dirname(dbPath), { recursive: true });
+	const db = new (databaseSyncCtor())(dbPath);
+	applyPragmas(db);
+
+	const current = db.prepare("PRAGMA user_version").get() as {
+		user_version: number;
+	};
+	if (current.user_version > PORTFOLIO_USER_VERSION) {
+		db.close();
+		throw new Error(
+			`velpari portfolio registry: database at '${dbPath}' has schema version ${current.user_version}, ` +
+				`but this extension supports at most ${PORTFOLIO_USER_VERSION}. ` +
+				`Upgrade your extension to open it.`,
+		);
+	}
+
+	applyPortfolioSchema(db);
+	return db;
 }
 
 // ---------------------------------------------------------------------------

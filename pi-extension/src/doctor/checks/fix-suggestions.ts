@@ -200,6 +200,18 @@ export const SUGGESTIONS = {
 		"Add `Doc/store/**/index.db binary` to .gitattributes — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
 	"git-ignore-missing":
 		"Add `Doc/store/**/index.db-wal` and `Doc/store/**/index.db-shm` to .gitignore — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
+
+	// Phase 10 — portfolio registry (§15.5 drift visibility)
+	"portfolio-stale":
+		"The registry points at a project DB that no longer exists. Run `/velpari-portfolio --repair` to resync (removes orphans, refreshes rows).",
+	"portfolio-unregistered":
+		"A per-project DB is not in the portfolio registry. Run `/velpari-portfolio --repair` (or just publish once — the chain syncs pre-commit).",
+	"portfolio-orphan":
+		"The registry is unreadable or holds rows with no backing data. Run `/velpari-portfolio --repair` to rebuild it from the per-project DBs (the registry is fully derivable — never hand-edit it).",
+	"portfolio-asset-missing":
+		"A design diagram references an image asset that is not on disk. Commit the asset beside the project DB (Doc/store/<project>/) or fix the image: path, then re-run /velpari-doctor.",
+	"portfolio-asset-invalid":
+		"A design diagram's image: path escapes the project DB directory (..) — paths must stay inside Doc/store/<project>/. Fix the diagram text via the design stage and republish.",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

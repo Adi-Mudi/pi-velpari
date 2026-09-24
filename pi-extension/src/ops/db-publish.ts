@@ -39,8 +39,9 @@ import {
 	type ArtifactPayload,
 } from "../io/store.js";
 import { ensureStoreGitIntegration } from "./git-attributes.js";
+import { syncPortfolioRegistry, repairPortfolioRegistry } from "./portfolio.js";
 import { openStoreDb } from "../io/db.js";
-import { buildStoreDbPath, buildStoreYamlPath } from "../core/paths.js";
+import { buildStoreDbPath, buildStoreYamlPath, buildPortfolioDbPath } from "../core/paths.js";
 import { hashFileContent } from "../core/fingerprints.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { resolveDocArtifact } from "../core/paths.js";
@@ -212,13 +213,24 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 			for (const line of heal.appended) {
 				warnings.push(`git integration healed: ${line}`);
 			}
+			// 7b. Portfolio registry sync (Phase 10, §15.5) — PRE-commit so the
+			// registry joins the same commit it describes (review v1.3 ordering).
+			// Fail-open and OUTSIDE the store transaction: any failure is a
+			// warning, the publish proceeds (RES-1 untouched). The registry file
+			// itself joins addPaths when present.
+			const registry = syncPortfolioRegistry(input.cwd);
+			for (const change of registry.changes) {
+				warnings.push(`portfolio registry: ${change.kind} ${change.projectName} — ${change.detail}`);
+			}
 			/**
 			 * Convert an absolute path to a repo-relative path for git add/commit.
 			 * @param {string} p - Absolute path under the project root.
 			 * @returns {string} Path relative to the git work tree (cwd).
 			 */
 			const rel = (p: string): string => relative(input.cwd, p);
-			const addPaths = [dbPath, yamlPath, ...input.publishedPaths, ...heal.changedPaths].map(rel);
+			const registryPath = buildPortfolioDbPath(input.cwd);
+			const registryInCommit = existsSync(registryPath) ? [registryPath] : [];
+			const addPaths = [dbPath, yamlPath, ...input.publishedPaths, ...heal.changedPaths, ...registryInCommit].map(rel);
 			const add = spawnSync("git", ["add", "--", ...addPaths], { cwd: input.cwd, encoding: "utf-8" });
 			if (add.error || add.status !== 0) {
 				problems.push(`git add failed: ${(add.stderr ?? add.error?.message ?? "unknown").trim()}`);
@@ -261,6 +273,11 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 				} finally {
 					rdb.close();
 				}
+				// Registry re-sync (Phase 10, review v1.3): the pre-commit sync
+				// may describe the now-rolled-back publish — re-derive from the
+				// reverted spokes (idempotent, fail-open, self-correcting).
+				const resync = repairPortfolioRegistry(input.cwd);
+				warnings.push(`portfolio registry re-synced after rollback (${resync.changes.length} change(s)).`);
 			} catch (rollbackErr) {
 				problems.push(
 					`ROLLBACK FAILED on top of the publish failure — store may hold published rows for ` +

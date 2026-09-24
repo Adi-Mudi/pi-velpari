@@ -41,6 +41,7 @@ import { registerShowTestplanCommand } from "./show-testplan.js";
 import { registerShowLoggingCommand } from "./show-logging.js";
 import { registerExportCommand } from "./export.js";
 import { registerBackfillCommand } from "./backfill.js";
+import { registerPortfolioCommand } from "./portfolio.js";
 
 /**
  * All 43 user-facing commands. v1.6.0 replaced the generic
@@ -118,6 +119,8 @@ export const COMMAND_NAMES = [
 	"velpari-export",
 	// View/ops — Phase 6 backfill import (43rd command)
 	"velpari-backfill",
+	// Ops — Phase 10 portfolio registry (44th command)
+	"velpari-portfolio",
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -177,4 +180,6 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerExportCommand(pi);
 	// View/ops — Phase 6 backfill import (43rd command)
 	registerBackfillCommand(pi);
+	// Ops — Phase 10 portfolio registry (44th command)
+	registerPortfolioCommand(pi);
 }

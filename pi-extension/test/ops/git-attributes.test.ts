@@ -11,7 +11,13 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
-import { ensureStoreGitIntegration, STORE_DB_ATTR_LINE, STORE_IGNORE_LINES } from "../../src/ops/git-attributes.js";
+import {
+	ensureStoreGitIntegration,
+	STORE_DB_ATTR_LINE,
+	STORE_IGNORE_LINES,
+	PORTFOLIO_ATTR_LINE,
+	PORTFOLIO_IGNORE_LINES,
+} from "../../src/ops/git-attributes.js";
 
 let dirs: string[] = [];
 
@@ -24,7 +30,7 @@ after(() => {
 });
 
 describe("ensureStoreGitIntegration", () => {
-	test("no files → creates both with exactly the expected lines", () => {
+	test("no files → creates both with exactly the expected lines (store + registry)", () => {
 		const dir = dirs[dirs.length - 1]!;
 		const result = ensureStoreGitIntegration(dir);
 		assert.equal(result.changed, true);
@@ -34,7 +40,9 @@ describe("ensureStoreGitIntegration", () => {
 		const attr = readFileSync(join(dir, ".gitattributes"), "utf8");
 		const ignore = readFileSync(join(dir, ".gitignore"), "utf8");
 		assert.ok(attr.includes(STORE_DB_ATTR_LINE));
+		assert.ok(attr.includes(PORTFOLIO_ATTR_LINE), "registry binary attr must heal too");
 		for (const line of STORE_IGNORE_LINES) assert.ok(ignore.includes(line));
+		for (const line of PORTFOLIO_IGNORE_LINES) assert.ok(ignore.includes(line), `${line} must heal`);
 	});
 
 	test("existing files → appends, preserves every original line", () => {
@@ -68,9 +76,9 @@ describe("ensureStoreGitIntegration", () => {
 		assert.equal(readFileSync(join(dir, ".gitignore"), "utf8"), ignoreBefore);
 	});
 
-	test("partial heal: attr present but ignores missing → only .gitignore changes", () => {
+	test("partial heal: BOTH attrs present but ignores missing → only .gitignore changes", () => {
 		const dir = dirs[dirs.length - 1]!;
-		writeFileSync(join(dir, ".gitattributes"), `${STORE_DB_ATTR_LINE}\n`, "utf8");
+		writeFileSync(join(dir, ".gitattributes"), `${STORE_DB_ATTR_LINE}\n${PORTFOLIO_ATTR_LINE}\n`, "utf8");
 		writeFileSync(join(dir, ".gitignore"), "node_modules/\n", "utf8");
 		const result = ensureStoreGitIntegration(dir);
 		assert.equal(result.changed, true);
@@ -101,6 +109,12 @@ describe("ensureStoreGitIntegration", () => {
 		// `binary` is a macro attribute - git reports it as "set" (some
 		// versions print the macro name itself).
 		assert.match(out, /binary: (set|binary|specified)$/m);
+		// Phase 10: the REGISTRY carries the same binary attr.
+		const reg = execFileSync("git", ["check-attr", "binary", "--", join("Doc", "store", "portfolio.db")], {
+			cwd: dir,
+			encoding: "utf8",
+		});
+		assert.match(reg, /binary: (set|binary|specified)$/m);
 		// And a NON-store file stays unaffected.
 		const other = execFileSync("git", ["check-attr", "binary", "--", "README.md"], {
 			cwd: dir,

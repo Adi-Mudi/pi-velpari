@@ -65,6 +65,7 @@ import { checkFreshnessSection } from "./checks/freshness.js";
 import { checkDbIntegritySection } from "./checks/integrity.js";
 import { checkDbLinkOrphansSection } from "./checks/db-link-orphans.js";
 import { checkGitIntegrationSection } from "./checks/git-integration.js";
+import { checkPortfolioSection } from "./checks/portfolio.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
 import { checkLoggingPlanSection } from "./checks/logging-plan.js";
@@ -325,6 +326,9 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		// store DB (binary attr + WAL ignores). Warnings only; the next
 		// publish auto-heals via ops/git-attributes.ts.
 		checkGitIntegrationSection(cwd),
+		// Phase 10 — §15.5 drift visibility: portfolio registry vs the
+		// per-project DBs + D8 image-asset existence (traversal rejected).
+		checkPortfolioSection(cwd),
 		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
 		buildMultiplexerSection(cwd),

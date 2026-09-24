@@ -10,7 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { checkGitIntegrationSection } from "../../src/doctor/checks/git-integration.js";
-import { STORE_DB_ATTR_LINE, STORE_IGNORE_LINES } from "../../src/ops/git-attributes.js";
+import {
+	PORTFOLIO_ATTR_LINE,
+	PORTFOLIO_IGNORE_LINES,
+	STORE_DB_ATTR_LINE,
+	STORE_IGNORE_LINES,
+} from "../../src/ops/git-attributes.js";
 
 let dirs: string[] = [];
 
@@ -23,10 +28,14 @@ after(() => {
 });
 
 describe("checkGitIntegrationSection", () => {
-	test("both patterns present → ok items", () => {
+	test("both patterns present → ok items (store + registry patterns)", () => {
 		const dir = dirs[dirs.length - 1]!;
-		writeFileSync(join(dir, ".gitattributes"), `${STORE_DB_ATTR_LINE}\n`, "utf8");
-		writeFileSync(join(dir, ".gitignore"), [...STORE_IGNORE_LINES, "node_modules/"].join("\n") + "\n", "utf8");
+		writeFileSync(join(dir, ".gitattributes"), [STORE_DB_ATTR_LINE, PORTFOLIO_ATTR_LINE].join("\n") + "\n", "utf8");
+		writeFileSync(
+			join(dir, ".gitignore"),
+			[...STORE_IGNORE_LINES, ...PORTFOLIO_IGNORE_LINES, "node_modules/"].join("\n") + "\n",
+			"utf8",
+		);
 		const section = checkGitIntegrationSection(dir);
 		assert.equal(section.title, "Git integration");
 		assert.equal(section.items.length, 2);
@@ -46,15 +55,20 @@ describe("checkGitIntegrationSection", () => {
 		}
 	});
 
-	test("partial: attr ok, ignore missing one pattern → mixed statuses", () => {
+	test("partial: attrs ok, ignore missing one pattern → mixed statuses", () => {
 		const dir = dirs[dirs.length - 1]!;
-		writeFileSync(join(dir, ".gitattributes"), `${STORE_DB_ATTR_LINE}\n`, "utf8");
-		writeFileSync(join(dir, ".gitignore"), `${STORE_IGNORE_LINES[0]}\n`, "utf8");
+		writeFileSync(join(dir, ".gitattributes"), [STORE_DB_ATTR_LINE, PORTFOLIO_ATTR_LINE].join("\n") + "\n", "utf8");
+		writeFileSync(
+			join(dir, ".gitignore"),
+			[STORE_IGNORE_LINES[0]!, PORTFOLIO_IGNORE_LINES[0]!].join("\n") + "\n",
+			"utf8",
+		);
 		const section = checkGitIntegrationSection(dir);
 		assert.equal(section.items[0]?.status, "ok");
 		assert.equal(section.items[1]?.status, "warning");
-		// The missing shm pattern is named, the present wal pattern is not required.
-		assert.ok(section.items[1]?.details?.some((d) => d.includes("-shm")));
+		// The missing shm patterns are named in the expected lines.
+		assert.ok(section.items[1]?.details?.some((d) => d.includes("index.db-shm")));
+		assert.ok(section.items[1]?.details?.some((d) => d.includes("portfolio.db-shm")));
 	});
 
 	test("suggestions point at the runbook + publish auto-heal", () => {

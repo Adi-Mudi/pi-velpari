@@ -299,15 +299,14 @@ describe("runDbPublish happy path (design + rtm)", () => {
 
 		// Phase 9 (subphase 2.1 evidence): the FIRST publish commit carries
 		// EXACTLY the chain's outputs + the auto-healed git-integration
-		// files (ensureStoreGitIntegration appends both into the empty temp
-		// repo and the healed paths join addPaths) — nothing else.
+		// files + (Phase 10, v1.3) the portfolio registry synced pre-commit.
 		const headFiles = execFileSync("git", ["show", "--name-only", "--pretty=format:", "HEAD"], { cwd: dir })
 			.toString()
 			.split("\n")
 			.map((l) => l.trim())
 			.filter((l) => l.length > 0);
 		const legal =
-			/^(?:Doc\/store\/Demo\/(?:index\.db|design_Demo\.yaml)|Doc\/design\/design_Demo\.md|\.gitattributes|\.gitignore)$/;
+			/^(?:Doc\/store\/Demo\/(?:index\.db|design_Demo\.yaml)|Doc\/design\/design_Demo\.md|\.gitattributes|\.gitignore|Doc\/store\/portfolio\.db)$/;
 		assert.ok(
 			headFiles.every((f) => legal.test(f)),
 			`unexpected paths in the first publish commit: ${headFiles.join(", ")}`,

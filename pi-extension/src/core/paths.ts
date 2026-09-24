@@ -303,6 +303,23 @@ export function buildStoreDbPath(projectName: string, cwd: string = process.cwd(
 }
 
 /**
+ * Build the portfolio REGISTRY path (Phase 10 - D6 hub-and-spoke, user-locked
+ * home): Doc/store/portfolio.db under the cwd. Committed raw (D2/D7) - the
+ * git patterns live in ops/git-attributes.ts (PORTFOLIO_ATTR_LINE et al).
+ *
+ * Deliberately NOT inside a per-project subdir: the registry is the ONE hub
+ * beside the N spokes, and store tooling enumerates per-project index.db
+ * files (which portfolio.db never matches - plan R5), so the two file
+ * families never collide.
+ *
+ * @param {string} cwd - Project root.
+ * @returns {string} Absolute registry DB path.
+ */
+export function buildPortfolioDbPath(cwd: string = process.cwd()): string {
+	return join(cwd, STORE_DB_DIR, "portfolio.db");
+}
+
+/**
  * Build the YAML sidecar path for a store artifact (RES-1).
  * The sidecar lands beside the DB so each publish produces a
  * reviewable, git-friendly diff next to the raw committed `index.db`

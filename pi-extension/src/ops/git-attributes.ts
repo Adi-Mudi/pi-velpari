@@ -28,6 +28,15 @@ export const STORE_DB_ATTR_LINE = "Doc/store/**/index.db binary";
 /** .gitignore patterns for the WAL sidecar files (G1 — never committed). */
 export const STORE_IGNORE_LINES: readonly string[] = ["Doc/store/**/index.db-wal", "Doc/store/**/index.db-shm"];
 
+/**
+ * The gitattributes pattern marking the portfolio REGISTRY as binary
+ * (Phase 10 — a second SQLite file with the exact G2 merge hazard).
+ */
+export const PORTFOLIO_ATTR_LINE = "Doc/store/portfolio.db binary";
+
+/** .gitignore patterns for the REGISTRY's WAL sidecar files (registry G1). */
+export const PORTFOLIO_IGNORE_LINES: readonly string[] = ["Doc/store/portfolio.db-wal", "Doc/store/portfolio.db-shm"];
+
 /** Result of one ensureStoreGitIntegration call. */
 export interface GitIntegrationResult {
 	/** true when at least one line was appended to at least one file. */
@@ -95,17 +104,20 @@ export function ensureStoreGitIntegration(cwd: string): GitIntegrationResult {
 	const changedPaths: string[] = [];
 	try {
 		const attrContent = existsSync(attrPath) ? readFileSync(attrPath, "utf8") : "";
-		if (!hasLine(attrContent, STORE_DB_ATTR_LINE)) {
-			const added = appendLines(attrPath, [STORE_DB_ATTR_LINE]);
+		const missingAttrs = [STORE_DB_ATTR_LINE, PORTFOLIO_ATTR_LINE].filter((line) => !hasLine(attrContent, line));
+		if (missingAttrs.length > 0) {
+			const added = appendLines(attrPath, missingAttrs);
 			if (added) {
 				appended.push(`.gitattributes: ${added}`);
 				changedPaths.push(attrPath);
 			}
 		}
 		const ignoreContent = existsSync(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
-		const missingIgnores = STORE_IGNORE_LINES.filter((line) => !hasLine(ignoreContent, line));
+		const missingIgnores = [...STORE_IGNORE_LINES, ...PORTFOLIO_IGNORE_LINES].filter(
+			(line) => !hasLine(ignoreContent, line),
+		);
 		if (missingIgnores.length > 0) {
-			const added = appendLines(ignorePath, [...missingIgnores]);
+			const added = appendLines(ignorePath, missingIgnores);
 			if (added) {
 				appended.push(`.gitignore: ${added}`);
 				changedPaths.push(ignorePath);

@@ -24,6 +24,8 @@ import {
 } from "../../src/io/store.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
+import { renderDesignMarkdown } from "../../src/ops/export-doc.js";
+import { renderStageSlice } from "../../src/ops/db-slices.js";
 
 const PROJECT = "alpha";
 let dirs: string[] = [];
@@ -185,6 +187,57 @@ describe("importArtifactYaml", () => {
 			assert.equal(result.ok, false);
 			assert.match(result.message, /store write failed/);
 			assert.equal(readArtifact(db, "r-bad", "prd"), null);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("D8: image:-prefixed diagram renders as a MARKDOWN IMAGE (byte-stable, no fs read)", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const db = openStoreDb(buildStoreDbPath(PROJECT, dir));
+		try {
+			// design.module_source_fr.fr_id → fr(run_id, id): seed the parent
+			// under the SAME run id (run-scoped FK).
+			writeArtifact(
+				db,
+				"prd",
+				"run-d8",
+				{ version: 1, stage: "drafting-prd", generatedAt: "2026-09-24T00:00:00.000Z" },
+				{ fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "Seed prose." }] },
+			);
+			publishArtifact(db, "run-d8", "prd");
+			const payload = {
+				designModule: [{ id: "M-1", name: "core" }],
+				moduleSourceFr: [{ moduleId: "M-1", frId: "FR-1" }],
+				diagram: [
+					{ id: "D-IMG", diagramKind: "context", mermaidText: "image:assets/ctx.png" },
+					{ id: "D-MMD", diagramKind: "container", mermaidText: "graph TD; A-->B" },
+				],
+				adr: [{ id: "ADR-1", adrStatus: "accepted", options: "a|b", chosen: "a", rationale: "r" }],
+				approach: [{ moduleId: "M-1", tacticId: "T-01" }],
+			};
+			writeArtifact(
+				db,
+				"design",
+				"run-d8",
+				{ version: 1, stage: "designing", generatedAt: "2026-09-24T00:00:00.000Z" },
+				payload as never,
+			);
+			publishArtifact(db, "run-d8", "design");
+			const yaml = exportArtifactYaml(db, "run-d8", "design")!;
+			const result = importArtifactYaml(db, "backfill", yaml);
+			assert.equal(result.ok, true, result.message);
+
+			const md = renderDesignMarkdown(readArtifact(db, "run-d8", "design")!.rows, "alpha");
+			// Asset ref → markdown image with the up-2 resolved path (G5-safe).
+			assert.ok(md.includes("![diagram D-IMG](../../store/alpha/assets/ctx.png)"), md);
+			// Inline text → mermaid fence, verbatim (no fs read anywhere).
+			assert.ok(md.includes("```mermaid\ngraph TD; A-->B\n```"), md);
+			// The output is byte-identical on a second render (G5).
+			assert.equal(renderDesignMarkdown(readArtifact(db, "run-d8", "design")!.rows, "alpha"), md);
+			// Slice rendering (the stage-read path) resolves identically.
+			const slice = renderStageSlice("design", readArtifact(db, "run-d8", "design")!.rows, "alpha");
+			assert.ok(slice.includes("![diagram D-IMG](../../store/alpha/assets/ctx.png)"), slice);
 		} finally {
 			closeStoreDb(db);
 		}
