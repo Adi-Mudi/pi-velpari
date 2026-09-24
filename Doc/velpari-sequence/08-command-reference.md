@@ -114,6 +114,8 @@ static table is filtered by the dynamic transition lock — see
 
 Every stage reads **all prior published artifacts** + `files.json` +
 requirements profile (compact) + standards overlay + agent mapping. The
-machine-enforced per-command scope is declared in `COMMAND_SCOPE` and checked
-before any LLM call. The finalized addition: scope checking also verifies
-input **freshness**, not just presence (`03-staleness-and-validation.md`).
+per-command scope is checked before any LLM call (the historical
+`COMMAND_SCOPE` table name; the live surface is
+`commands/index.ts:COMMAND_NAMES`). The finalized addition: scope checking
+also verifies input **freshness**, not just presence
+(`03-staleness-and-validation.md`).

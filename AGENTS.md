@@ -167,10 +167,10 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 
 ## Command surface
 
-**43 commands total** (see `commands/COMMAND_NAMES` for the full list):
+**44 commands total** (see `commands/index.ts:COMMAND_NAMES` for the full list):
 - **10 stage** — 5 pre-production (`brainstorm`, `prd`, `rtm`, `feasibility`, `architecture-generator`) + 3 build-planning (`atomic-function`, `pseudocode`, `testplan`) + 2 execution/consolidation (`development-order`, `final-design`).
 - **10 approve (fall-back)** — 9 per-stage `/velpari-<stage>-approve` + the bespoke `/velpari-approve-brainstorm`.
-- **7 ops/discipline** — `status`, `reset`, `handoff`, `doctor`, `design-logging`, `reconfirm` (A5), `backfill` (Phase 6 — 43rd command).
+- **8 ops/discipline** — `status`, `reset`, `handoff`, `doctor`, `design-logging`, `reconfirm` (A5), `backfill` (Phase 6 — 43rd command), `portfolio` (Phase 10 — 44th command).
 - **6 configure** — `configure-inputs`, `configure-requirements`, `configure-standards`, `configure-agents`, `agents`, `generate-sub-agents`.
 - **1 wrapper** — `prd-rtm`.
 - **8 view** — `show-<stage>` + `show-logging`.
@@ -181,7 +181,7 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 - TypeScript strict mode; prefer explicit types; export public interfaces from their modules.
 - `path.join` for all paths; atomic writes via `io/atomic-write.ts`; ESM imports with explicit `.js` extensions.
 - Keep command handlers thin. State logic → `state.ts`; prompt logic → `prompt.ts`. Don't mutate loaded state in place — use `advanceStage()` and `saveState()`.
-- **Per-command doc scope is the source of truth** — declared in `commands.ts:COMMAND_SCOPE`. `checkDocScope` validates inputs pre-LLM. Drift is a defect.
+- **Per-command doc scope is the source of truth** — checked via `checkDocScope` pre-LLM (the historical `commands.ts:COMMAND_SCOPE` table name; the live registration surface is `commands/index.ts:COMMAND_NAMES`). Drift is a defect.
 - **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. (FR-47)
 - **No runtime dependency on Senai.** TUI patterns re-implemented in `pi-extension/src/ui/` using Pi primitives. (FR-55)
 - **Uniform subagent pattern.** All scouts via `subagent()` from `pi-interactive-subagents`. Stages 2–10 use `core/stage-runner.ts:runStageWithScouts()`; brainstorm uses `stages/brainstorm/dispatcher.ts` (read-only tools enforced).
