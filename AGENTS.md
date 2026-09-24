@@ -181,7 +181,7 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 - TypeScript strict mode; prefer explicit types; export public interfaces from their modules.
 - `path.join` for all paths; atomic writes via `io/atomic-write.ts`; ESM imports with explicit `.js` extensions.
 - Keep command handlers thin. State logic → `state.ts`; prompt logic → `prompt.ts`. Don't mutate loaded state in place — use `advanceStage()` and `saveState()`.
-- **Per-command doc scope is the source of truth** — checked via `checkDocScope` pre-LLM (the historical `commands.ts:COMMAND_SCOPE` table name; the live registration surface is `commands/index.ts:COMMAND_NAMES`). Drift is a defect.
+- **Per-command doc scope is the source of truth** — validated pre-LLM by the publish gate's stage-input checks (the historical `commands.ts:COMMAND_SCOPE` table was retired; the live command surface is `commands/index.ts:COMMAND_NAMES`). Drift is a defect.
 - **No `/velpari-architect` command.** Velpari produces inputs; Senai generates architecture. (FR-47)
 - **No runtime dependency on Senai.** TUI patterns re-implemented in `pi-extension/src/ui/` using Pi primitives. (FR-55)
 - **Uniform subagent pattern.** All scouts via `subagent()` from `pi-interactive-subagents`. Stages 2–10 use `core/stage-runner.ts:runStageWithScouts()`; brainstorm uses `stages/brainstorm/dispatcher.ts` (read-only tools enforced).
