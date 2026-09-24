@@ -70,7 +70,11 @@ export async function handleReset(ctx: ExtensionCommandContext, cwd: string = pr
 	clearRun(cwd);
 	ctx.ui.notify(
 		`Run ${runId} reset. State is now empty.` +
-			(draftsDeleted > 0 ? ` ${draftsDeleted} draft store row(s) deleted.` : ""),
+			(draftsDeleted > 0 ? ` ${draftsDeleted} draft store row(s) deleted.` : "") +
+			// Phase 11 (§15.6): migration-aware note — published rows
+			// (including the one-time migration's run 'migrated' rows)
+			// survive a reset; only the reset run's DRAFT rows are deleted.
+			` Published store rows (including run 'migrated') stay.`,
 		"info",
 	);
 }

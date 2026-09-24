@@ -25,6 +25,8 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteJson } from "../io/atomic-write.js";
+import { readLatestPublishedRows } from "../io/store.js";
+import { renderDesignMarkdown } from "./export-doc.js";
 import { advanceStage, type RunState } from "../core/state.js";
 import { buildGroupedPath, buildOutputPath, resolveDocArtifact } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
@@ -454,13 +456,20 @@ export function buildObservabilitySection(
  * section is absent (consistent with gateADR's lenient mode).
  */
 function collectADRDecisions(_state: RunState, projectName: string, cwd: string): AdrSummary[] {
-	const designPath = resolveDocArtifact("design", projectName, cwd);
-	if (!designPath) return [];
-	let content: string;
-	try {
-		content = readFileSync(designPath.path, "utf8");
-	} catch {
-		return [];
+	// Phase 11 (Design 11 — gap 2): DB-first. Q3-retired projects (flag
+	// DEFAULT OFF) have NO published design file — the payload renders
+	// from the store's published rows via the Phase 5 renderer. The file
+	// read remains the fallback for legacy / flag-ON projects.
+	const fromDb = readLatestPublishedRows(cwd, projectName, "design");
+	let content: string | null = fromDb ? renderDesignMarkdown(fromDb.rows, projectName) : null;
+	if (!content) {
+		const designPath = resolveDocArtifact("design", projectName, cwd);
+		if (!designPath) return [];
+		try {
+			content = readFileSync(designPath.path, "utf8");
+		} catch {
+			return [];
+		}
 	}
 	const adrs: ADR[] = parseADRSection(content);
 	return adrs.map((a) => ({

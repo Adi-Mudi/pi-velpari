@@ -37,6 +37,14 @@ Feasibility stays inside Phase 2 (finalized). On first runs it is mandatory; on
 revision runs the staleness system decides whether it must be re-run — no separate
 phase, no bent rules.
 
+> **Phase 11 (Q3) reading note:** each `PUBLISH: Doc/…` line in the diagram
+> below names the store kind a stage publishes. The default publish is
+> DB-only — the store DB under `Doc/store/<project>/` (+ the YAML export
+> beside it) is the source and `Doc/` markdown is written only for legacy
+> projects or with `"velpari": {"markdownWrites": true}` in `files.json`.
+> Read `PUBLISH:` as "the artifact lands in the store; this is its view path"
+> (`/velpari-export` + the `show` commands render it on demand).
+
 ## Master end-to-end flow
 
 ```text

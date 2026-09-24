@@ -23,6 +23,7 @@ import { join } from "node:path";
 
 import { loadStagePayload, kindForWorkingDir, buildFeasibilityRowsFromSession } from "../../src/ops/stage-payloads.js";
 import { precheckGitForPublish, runDbPublish } from "../../src/ops/db-publish.js";
+import { markdownWritesEnabled } from "../../src/core/config.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { readArtifact, writeArtifact, type ArtifactPayload } from "../../src/io/store.js";
 import { buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
@@ -586,5 +587,105 @@ describe("feasibility vocabulary + multi-design", () => {
 			closeStoreDb(dbA);
 			closeStoreDb(dbB);
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Phase 11 (Design 9): flag-aware commit sets. The Q3 retirement makes
+// DB-only the SHIPPED default (velpari.markdownWrites DEFAULT OFF):
+// approve passes publishedPaths: [] and the commit set carries DB + YAML
+// + registry + healed git files — NO markdown. These variants pin the
+// DB-era default so the retirement cannot silently regress.
+// ---------------------------------------------------------------------------
+
+describe("flag-aware commit sets (Phase 11 Design 9)", () => {
+	/** Minimal v4 files.json (markdownWritesEnabled reads only `.velpari`). */
+	function writeFilesConfig(velpari: Record<string, unknown> | null): void {
+		mkdirSync(join(dir, ".pi", "velpari"), { recursive: true });
+		const base = {
+			version: 4,
+			projectName: "Demo",
+			codePaths: [],
+			inputDocuments: [],
+			testPaths: [],
+			outputPaths: {},
+			excludedPaths: [],
+		};
+		const config = velpari === null ? base : { ...base, velpari };
+		writeFileSync(join(dir, ".pi", "velpari", "files.json"), JSON.stringify(config), "utf-8");
+	}
+
+	test("flag-OFF shape: publishedPaths [] → commit = DB + YAML + registry + heal, NO markdown", () => {
+		initGitRepo();
+		seedPrd("Demo", "r1", "FR-1");
+		const workingDir = writePayload("design", "design", designRows());
+		const payload = loadStagePayload(workingDir, "design");
+		assert.equal(payload.ok, true);
+		// A published markdown EXISTS on disk (legacy history) but is NOT
+		// passed as a publishedPath — the flag-OFF approve contract.
+		fakeMarkdown("Doc/design/design_Demo.md");
+
+		const outcome = runDbPublish({
+			cwd: dir,
+			projectName: "Demo",
+			runId: "r1",
+			kind: "design",
+			yamlArtifact: "design",
+			envelope: payload.envelope!,
+			payload: payload.payload!,
+			publishedPaths: [],
+		});
+		assert.deepEqual(outcome.problems, []);
+
+		const headFiles = execFileSync("git", ["show", "--name-only", "--pretty=format:", "HEAD"], { cwd: dir })
+			.toString()
+			.split("\n")
+			.map((l) => l.trim())
+			.filter((l) => l.length > 0);
+		const legal =
+			/^(?:Doc\/store\/Demo\/(?:index\.db|design_Demo\.yaml)|\.gitattributes|\.gitignore|Doc\/store\/portfolio\.db)$/;
+		assert.ok(
+			headFiles.every((f) => legal.test(f)),
+			`unexpected paths in the flag-OFF commit: ${headFiles.join(", ")}`,
+		);
+		assert.ok(!headFiles.some((f) => f.endsWith(".md")), "flag-OFF commits must carry NO markdown");
+		assert.ok(headFiles.includes("Doc/store/Demo/index.db"), "commit must include the DB");
+		assert.ok(headFiles.includes("Doc/store/Demo/design_Demo.yaml"), "commit must include the YAML");
+	});
+
+	test("write-alongside shape (flag ON): published markdown joins the commit", () => {
+		initGitRepo();
+		seedPrd("Demo2", "r1", "FR-1");
+		const workingDir = writePayload("design", "design", designRows());
+		const payload = loadStagePayload(workingDir, "design");
+		const markdown = fakeMarkdown("Doc/design/design_Demo2.md");
+		const outcome = runDbPublish({
+			cwd: dir,
+			projectName: "Demo2",
+			runId: "r1",
+			kind: "design",
+			yamlArtifact: "design",
+			envelope: payload.envelope!,
+			payload: payload.payload!,
+			publishedPaths: [markdown],
+		});
+		assert.deepEqual(outcome.problems, []);
+		const headFiles = execFileSync("git", ["show", "--name-only", "--pretty=format:", "HEAD"], { cwd: dir }).toString();
+		assert.ok(headFiles.includes("Doc/design/design_Demo2.md"), "flag-ON commits carry the markdown");
+	});
+
+	test("accessor defaults: absent key = OFF, explicit true = ON, skipDbPublish implies ON", () => {
+		writeFilesConfig(null);
+		assert.equal(markdownWritesEnabled(dir), false, "absent velpari key must default OFF");
+		writeFilesConfig({ markdownWrites: true });
+		assert.equal(markdownWritesEnabled(dir), true, "explicit opt-in must enable write-alongside");
+		writeFilesConfig({ markdownWrites: false });
+		assert.equal(markdownWritesEnabled(dir), false, "explicit false stays OFF");
+		writeFilesConfig(null);
+		assert.equal(
+			markdownWritesEnabled(dir, { skipDbPublish: true }),
+			true,
+			"the skipDbPublish test escape hatch implies the markdown-only legacy mode",
+		);
 	});
 });

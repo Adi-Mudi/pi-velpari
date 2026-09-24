@@ -75,7 +75,9 @@ See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-arti
 
 ## Commands
 
-32 commands total (v1.4.0: + `/velpari-design-logging`, `/velpari-show-logging`). See [`Doc/velpari-sequence/08-command-reference.md`](Doc/velpari-sequence/08-command-reference.md) for the full list. Quick reference:
+45 commands total. See [`Doc/velpari-sequence/08-command-reference.md`](Doc/velpari-sequence/08-command-reference.md) for the full list. Quick reference:
+
+> **Publish is DB-only by default (Phase 11, Q3):** approve writes store rows + the YAML export beside `Doc/store/<project>/index.db` + a git commit — nothing to `Doc/`; opt back into markdown write-alongside with `files.json` `"velpari": {"markdownWrites": true}`. A legacy project imports once via `/velpari-migrate-store --dry-run` → `--execute`.
 
 | Category | Commands |
 |---|---|
@@ -83,6 +85,7 @@ See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-arti
 | Discipline | `/velpari-approve-brainstorm`, `/velpari-prd-approve`, `/velpari-rtm-approve`, `/velpari-feasibility-approve`, `/velpari-architecture-generator-approve`, `/velpari-atomic-function-approve`, `/velpari-pseudocode-approve`, `/velpari-testplan-approve`, `/velpari-development-order-approve`, `/velpari-final-design-approve` (9 per-stage fall-back commands — the normal publish flow is auto-publish via the `velpari_stage_publish` tool), `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-configure-requirements`, `/velpari-configure-standards`, `/velpari-configure-agents`, `/velpari-agents`, `/velpari-generate-sub-agents`, `/velpari-doctor`, `/velpari-handoff`, **`/velpari-design-logging`** (cross-cutting — runs after Design is approved) |
 | Wrapper | `/velpari-prd-rtm` |
 | View | `/velpari-show-brainstorm`, `/velpari-show-prd`, `/velpari-show-rtm`, `/velpari-show-feasibility`, `/velpari-show-design`, `/velpari-show-pseudocode`, `/velpari-show-testplan`, **`/velpari-show-logging`** |
+| Ops / store | `/velpari-reconfirm`, `/velpari-backfill`, `/velpari-portfolio`, `/velpari-migrate-store`, `/velpari-export` |
 
 ### Sub-agent generator (v2)
 

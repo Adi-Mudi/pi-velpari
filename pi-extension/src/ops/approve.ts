@@ -31,7 +31,7 @@ import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
-import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { loadFilesConfig, markdownWritesEnabled, validateFilesConfig } from "../core/config.js";
 import { isSunsetPast } from "../core/shape.js";
 import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
@@ -212,6 +212,55 @@ function hasNewChangeLogEntry(published: string, updated: string): boolean {
 		.map((l) => l.trim())
 		.filter((l) => l.length > 0);
 	return updatedLines.some((l) => !publishedLines.has(l));
+}
+
+/**
+ * Stamp one target's freshness manifest entry (B4). Shared by BOTH publish
+ * modes (Phase 11 Q3): write-alongside passes the written sidecar /
+ * feasibility-record paths as extraPaths candidates; DB-only passes none
+ * (no Doc/ writes exist) — the entry's inputs still stamp, and the
+ * DB-era stale-set machinery resolves them against the exported YAML
+ * (core/freshness.ts, Design 10).
+ */
+function stampFreshnessEntry(
+	cwd: string,
+	target: { fileArtifact: string; groupedAbs: string },
+	projectName: string,
+	publishNow: string,
+	inputHashes: Record<string, string> | null,
+	sidecarAbs: string | null,
+	recordAbs: string | null,
+	notify: (message: string, severity?: "error" | "info" | "warning") => void,
+): void {
+	if (!inputHashes) return;
+	try {
+		// D3 — the manifest entry also records the sidecar hash (both files
+		// are the publish). D9 — the feasibility record joins the study's
+		// own extraPaths the same way.
+		const extraPaths: Record<string, string> = {};
+		if (sidecarAbs) {
+			const sidecarHash = hashFileContent(sidecarAbs);
+			if (sidecarHash) extraPaths[relative(cwd, sidecarAbs)] = sidecarHash;
+		}
+		if (recordAbs) {
+			const recordHash = hashFileContent(recordAbs);
+			if (recordHash) extraPaths[relative(cwd, recordAbs)] = recordHash;
+		}
+		recordPublish(cwd, {
+			artifact: target.fileArtifact.toLowerCase(),
+			projectName,
+			path: relative(cwd, target.groupedAbs),
+			...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
+			publishedAt: publishNow,
+			inputs: inputHashes,
+			hashv: 2,
+		});
+	} catch {
+		notify(
+			`Freshness manifest write failed for ${target.fileArtifact} — the publish is intact, only the stamp was skipped.`,
+			"warning",
+		);
+	}
 }
 
 export interface ApproveOpts {
@@ -400,6 +449,12 @@ export async function handleApprove(
 	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
 	// `skipAutoDoctor`); production never sets it.
 	const skipDbPublish = opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
+	// Phase 11 (Q3/RES-3, Design 4): write-alongside markdown publishing is
+	// the opt-IN rollback hatch (files.json `velpari.markdownWrites`) —
+	// DEFAULT OFF, publish writes DB only (rows + YAML + commit; nothing
+	// to Doc/). The skipDbPublish test escape hatch implies ON: it is the
+	// documented markdown-only legacy mode (pre-Phase-4 behavior).
+	const markdownWrites = markdownWritesEnabled(cwd, { skipDbPublish });
 	const storeKind = kindForWorkingDir(mapping.workingDir);
 	if (!skipDbPublish && !storeKind) {
 		ctx.ui.notify(
@@ -634,6 +689,15 @@ export async function handleApprove(
 	}
 
 	for (const target of targets) {
+		// Phase 11 (Q3/RES-3): the Doc/ write block is RETIRED under the
+		// default (markdownWrites OFF) — publish writes DB only. The
+		// freshness manifest stamp below runs in BOTH modes: it lives in
+		// .pi/velpari/ (never a Doc/ write) and keeps input-changed alive
+		// via the DB-era YAML-hash resolution (core/freshness.ts).
+		if (!markdownWrites) {
+			stampFreshnessEntry(cwd, target, projectName, publishNow, inputHashes, null, null, ctx.ui.notify);
+			continue;
+		}
 		// Stamp the uniform artifact frontmatter at publish time (RTM
 		// traceability upgrade, Phase 1). Existing fields (e.g. the PSRS
 		// schema on the PRD) are preserved; `created` carries over from
@@ -695,35 +759,16 @@ export async function handleApprove(
 			decisionRecordAbs = writeFeasibilityRecord(cwd, projectName, state.feasibilitySession, publishNow);
 		}
 		if (inputHashes) {
-			try {
-				// D3 — the manifest entry also records the sidecar hash
-				// (both files are the publish). D9 — the feasibility record
-				// joins the study's own extraPaths the same way.
-				const extraPaths: Record<string, string> = {};
-				if (target.sidecar) {
-					const sidecarAbs = join(dirname(target.groupedAbs), target.sidecar.name);
-					const sidecarHash = hashFileContent(sidecarAbs);
-					if (sidecarHash) extraPaths[relative(cwd, sidecarAbs)] = sidecarHash;
-				}
-				if (decisionRecordAbs) {
-					const recordHash = hashFileContent(decisionRecordAbs);
-					if (recordHash) extraPaths[relative(cwd, decisionRecordAbs)] = recordHash;
-				}
-				recordPublish(cwd, {
-					artifact: target.fileArtifact.toLowerCase(),
-					projectName,
-					path: relative(cwd, target.groupedAbs),
-					...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
-					publishedAt: publishNow,
-					inputs: inputHashes,
-					hashv: 2,
-				});
-			} catch {
-				ctx.ui.notify(
-					`Freshness manifest write failed for ${target.fileArtifact} — the publish is intact, only the stamp was skipped.`,
-					"warning",
-				);
-			}
+			stampFreshnessEntry(
+				cwd,
+				target,
+				projectName,
+				publishNow,
+				inputHashes,
+				target.sidecar ? join(dirname(target.groupedAbs), target.sidecar.name) : null,
+				decisionRecordAbs,
+				ctx.ui.notify,
+			);
 		}
 		ctx.ui.notify(
 			target.publishedPath
@@ -734,11 +779,14 @@ export async function handleApprove(
 	}
 
 	// ---- Phase 4 (DB-primary storage): the DB publish chain (Q6) ----
-	// Markdown targets are on disk (Q3: read-authoritative). Now: DB write
-	// (draft) → checksum verify → Q2 flip → YAML export beside the DB →
-	// G8 PRD mirror → checkpoint → explicit-path git commit. Any failure
-	// reverts the DB rows to draft, deletes the YAML, and blocks the
-	// stage advance; markdown stays (accepted risk R1).
+	// Phase 11 (Q3): flag-OFF (DEFAULT) — the DB chain IS the whole
+	// publish: DB write (draft) → checksum verify → Q2 flip → YAML export
+	// beside the DB → G8 → checkpoint → explicit-path git commit (DB +
+	// YAML only; publishedPaths is empty — nothing was written to Doc/).
+	// Flag-ON — markdown targets are also on disk (write-alongside) and
+	// join the commit set. Any failure reverts the DB rows to draft,
+	// deletes the YAML, and blocks the stage advance; on flag-ON the
+	// markdown stays (accepted risk R1).
 	if (!skipDbPublish && storeKind && payloadResult && payloadResult.envelope && payloadResult.payload) {
 		// Feasibility adapter (4.3): decision + spike rows come from the
 		// settled session (the gate above guaranteed decision + language).
@@ -759,7 +807,7 @@ export async function handleApprove(
 			yamlArtifact: mapping.artifact,
 			envelope,
 			payload: rows,
-			publishedPaths: targets.map((t) => t.groupedAbs),
+			publishedPaths: markdownWrites ? targets.map((t) => t.groupedAbs) : [],
 			...(storeKind === "prd" ? { prdPublishedPath: publishedPrdPath(projectName, cwd) ?? undefined } : {}),
 		});
 		for (const w of dbOutcome.warnings) ctx.ui.notify(w, "warning");

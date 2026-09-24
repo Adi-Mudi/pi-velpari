@@ -27,14 +27,26 @@
  * (it governs LLM writes, not command code). The artifact is re-read and
  * atomically rewritten on every call — never cached.
  *
+ * Phase 11 (Design 12): DB-era artifacts have no published file — the
+ * audit lines append to the store envelope's `change_log` column instead
+ * (a sanctioned CODE store write — ops/reconfirm is not the LLM
+ * tool_call lock's subject, and not a Doc/ hand-edit). Legacy / flag-ON
+ * targets keep the file append. Target selection is EXISTENCE-based: a
+ * published file gets the file append, a store-only artifact gets the
+ * envelope append.
+ *
  * The interactive picker lives in the L3 command (`commands/reconfirm.ts`)
  * because L1 cannot import L2 UI (doctor fix-picker split precedent).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { hashFileContentNormalized } from "../core/fingerprints.js";
+import { buildStoreDbPath } from "../core/paths.js";
+import { checkpointNow, readLatestPublishedRows } from "../io/store.js";
+import { closeStoreDb, openStoreDb } from "../io/db.js";
+import { docArtifactToKind } from "./db-slices.js";
 import {
 	computeStaleSet,
 	loadFreshnessManifest,
@@ -138,12 +150,20 @@ export function reconfirmArtifact(cwd: string, item: StaleItem, opts?: Reconfirm
 	}
 	const now = opts?.now ?? new Date().toISOString();
 	const artifactAbs = join(cwd, item.path);
-	const content = readFileSync(artifactAbs, "utf8");
 
 	// (a) Mandated Change Log line per changed input. extraPaths entries
 	// (root-relative paths, e.g. the RTM JSON sidecar) are named as-is.
 	const lines = item.changedInputs.map((inputId) => reconfirmChangeLogLine(inputId, upstreamVersion(cwd, inputId)));
-	atomicWriteFile(artifactAbs, appendToChangeLog(content, lines), "utf8");
+	if (existsSync(artifactAbs)) {
+		// Legacy / flag-ON target — today's file append (the 10e exception).
+		const content = readFileSync(artifactAbs, "utf8");
+		atomicWriteFile(artifactAbs, appendToChangeLog(content, lines), "utf8");
+	} else {
+		// Phase 11 (Design 12): DB-era target — the audit lines append to
+		// the envelope's changeLog column (store write, sanctioned writer;
+		// NOT a store-scope-guard violation and NOT a Doc/ hand-edit).
+		appendChangeLogToStoreEnvelope(cwd, item, lines);
+	}
 
 	// (b) Re-stamp the manifest entry with current normalized hashes (D3/D6).
 	const manifest = loadFreshnessManifest(cwd);
@@ -179,4 +199,51 @@ export function reconfirmArtifact(cwd: string, item: StaleItem, opts?: Reconfirm
 	}
 
 	return { key: item.key, path: item.path, changeLogLines: lines, reconfirmedAt: now };
+}
+
+/**
+ * Phase 11 (Design 12): append the audit lines to the store envelope's
+ * `change_log` column for a DB-era artifact (no published file). The
+ * envelope is the item's kind's NEWEST published row (the manifest entry
+ * carries no run id); the merge is JSON-array semantics, matching the
+ * column's `[]` default. Ends with a checkpoint (G1 — the committed DB
+ * must never trail its WAL).
+ *
+ * @param {string} cwd - Project root.
+ * @param {StaleItem} item - The re-confirmed stale item (key =
+ *   `<artifactKey>:<projectName>`).
+ * @param {readonly string[]} lines - The mandated audit lines.
+ */
+function appendChangeLogToStoreEnvelope(cwd: string, item: StaleItem, lines: readonly string[]): void {
+	const idx = item.key.indexOf(":");
+	const artifactKey = idx > 0 ? item.key.slice(0, idx) : item.artifact;
+	const projectName = idx > 0 ? item.key.slice(idx + 1) : "";
+	const kind = docArtifactToKind(artifactKey);
+	if (!kind || !projectName) {
+		throw new Error(
+			`${item.key}: the published artifact is missing and no store target exists — cannot re-confirm. Republish instead.`,
+		);
+	}
+	const latest = readLatestPublishedRows(cwd, projectName, kind);
+	if (!latest) {
+		throw new Error(`${item.key}: no published store rows — cannot re-confirm. Republish instead.`);
+	}
+	const db = openStoreDb(buildStoreDbPath(projectName, cwd));
+	try {
+		let existing: unknown = [];
+		try {
+			existing = JSON.parse(latest.envelope.changeLog);
+		} catch {
+			existing = [];
+		}
+		const merged = JSON.stringify([...(Array.isArray(existing) ? existing : []), ...lines]);
+		db.prepare("UPDATE artifacts SET change_log = ? WHERE run_id = ? AND kind = ?").run(
+			merged,
+			latest.envelope.runId,
+			kind,
+		);
+		checkpointNow(db);
+	} finally {
+		closeStoreDb(db);
+	}
 }

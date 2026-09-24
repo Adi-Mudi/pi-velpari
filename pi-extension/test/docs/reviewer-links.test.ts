@@ -89,7 +89,10 @@ describe("CHANGELOG.md — release entry", () => {
 	it("top entry has Reviewer sub-agent heading or v1.6.0 per-stage approve heading", () => {
 		// Accept either the original [Unreleased] heading (predecessor release
 		// entry) or the v1.6.0 per-stage approve heading that followed it.
-		const top = md.split("\n").slice(0, 400).join("\n");
+		// The window spans the RECENT release entries only — a generous head of
+		// the file, not a fixed position. 400 lines ran out once the DB-primary
+		// storage entries landed (Phase 11 pushed those anchors to ~line 419).
+		const top = md.split("\n").slice(0, 900).join("\n");
 		assert.ok(
 			/Reviewer sub-agent|Per-stage approve/.test(top),
 			"top entry must reference one of the recent release headings",
@@ -97,12 +100,12 @@ describe("CHANGELOG.md — release entry", () => {
 	});
 
 	it("release entry references the migrated 10 deterministic rules", () => {
-		const top = md.split("\n").slice(0, 400).join("\n");
+		const top = md.split("\n").slice(0, 900).join("\n");
 		assert.match(top, /10 deterministic|base-core-missing|cohesion-invalid/);
 	});
 
 	it("release entry references the 4 semantic rules (NEW)", () => {
-		const top = md.split("\n").slice(0, 400).join("\n");
+		const top = md.split("\n").slice(0, 900).join("\n");
 		assert.match(top, /4 semantic/);
 	});
 });

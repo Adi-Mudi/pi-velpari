@@ -27,10 +27,16 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../io/atomic-write.js";
-import { loadFilesConfig } from "./config.js";
+import { loadFilesConfig, markdownWritesEnabled } from "./config.js";
 import { PATHS } from "./constants.js";
 import { hashFileContent, hashFileContentNormalized } from "./fingerprints.js";
-import { GROUPED_CATEGORIES, resolveBrainstormArtifact, resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
+import {
+	GROUPED_CATEGORIES,
+	buildStoreYamlPath,
+	resolveBrainstormArtifact,
+	resolveDocArtifact,
+	resolveDocArtifactAll,
+} from "./paths.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -333,6 +339,17 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 		// root-relative path.
 		const p = join(cwd, parsed.id);
 		return existsSync(p) ? p : null;
+	}
+	// Phase 11 (Design 10 — the freshness chain survives retirement):
+	// DB-era inputs hash the kind's EXPORTED YAML bytes — rewritten +
+	// fingerprinted at every publish — so `input-changed` keeps firing
+	// after the markdown writes retire (Q3, flag DEFAULT OFF). The input
+	// id's artifact key IS the YAML label (PRD, test-plan, …), so no
+	// mapping table is needed. File resolution remains for legacy /
+	// flag-ON projects and as the fallback when no store YAML exists.
+	if (!markdownWritesEnabled(cwd)) {
+		const yamlPath = buildStoreYamlPath(parsed.id, parsed.kind, cwd);
+		if (existsSync(yamlPath)) return yamlPath;
 	}
 	return resolveDocArtifact(artifactKeyForKind(parsed.kind), parsed.id, cwd)?.path ?? null;
 }

@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 11 — one-time migration + markdown-write retirement (2026-09-24)
+
+RES-3 lands: `/velpari-migrate-store` (45th command) imports every legacy-published `Doc/` document into its project's store DB exactly once — `--dry-run` first (writes NOTHING), then a confirm-gated `--execute` that is idempotent on re-run (already-published kinds are no-op skips), re-exporting one `<Artifact>_<project>.yaml` beside each DB (the Phase 9 runbook rebuild source, including for kinds previously imported by `/velpari-backfill`, which never exported) and committing per project (`velpari(migrate): <project> (run migrated)`, explicit paths only — DB + YAML + registry + healed git files; legacy markdown is never committed). Q3 lands in the same phase: the markdown publish write is RETIRED and DEFAULT OFF — approve now writes DB rows + YAML + git commit and NOTHING to `Doc/`; the `.IDE_Plans/velpari/runs/<run-id>/<stage>/*.md` working copies are untouched (the mandated temp `.md` review surface) and existing `Doc/` markdown stays on disk as readable history (never rewritten, never deleted). Write-alongside is the explicit opt-IN rollback hatch via `files.json` `"velpari": {"markdownWrites": true}` (absent key = OFF). Three retirement-blast-radius fixes land with it: freshness inputs hash the exported YAML bytes for DB-era projects (so `input-changed` keeps firing when markdown never changes), handoff renders the design payload from the store (file read = legacy fallback), and `/velpari-reconfirm` appends its audit line to the store envelope's `changeLog` column when no published file exists. No new dependencies.
+
+#### Added
+
+- **`/velpari-migrate-store`** — the 45th command: usage / `--dry-run` (report only) / `--execute` (confirm gate → migrate → verify → per-project commit). G7 run-open hard-block (message names `/velpari-reset`) + the publish chain's git-identity precheck run BEFORE any write.
+- **`ops/migrate.ts`** — the migration engine: `migratePrecheck`, `discoverLegacyProjects` (grouped + legacy-flat `Doc/`), `migrateDryRun` (pure), `migrateExecute` (FK-ordered kinds under run id `migrated`, checksum verify, YAML re-export, checkpoint, registry sync, per-project commit), `renderMigrateReport`.
+- **`core/config.ts:markdownWritesEnabled`** — the single accessor for the retirement flag (DEFAULT OFF; `skipDbPublish` test escape hatch implies ON).
+- **`test/ops/migrate.test.ts`** + **`test/commands/migrate-command.test.ts`** — preconditions, dry-run writes nothing, idempotent re-run, zero-row skip, 9-YAML contract, commit-set assert, G1 WAL check, and the R7 gate item (input-changed fires after a DB-era republish).
+- **`commands/reset` note** — published store rows (including run `migrated`) survive a reset.
+
+#### Changed
+
+- **`ops/approve.ts`** — flag-OFF: the `Doc/` write block is retired (`publishedPaths` is empty); the freshness stamp runs in BOTH modes (`stampFreshnessEntry`).
+- **`core/freshness.ts`** — DB-era input resolution hashes the kind's exported YAML bytes instead of a frozen markdown file.
+- **`ops/handoff.ts`** — the design ADR payload comes from `readLatestPublishedRows` + `renderDesignMarkdown` with the file read as fallback.
+- **`ops/reconfirm.ts`** — existence-based target: no published file → append the audit line to the store envelope's `changeLog` column (sanctioned code store write) + checkpoint.
+- **`ops/backfill.ts`** — exports the 9 per-kind loaders + `LegacyLoad`, `payloadRowCount`, `KIND_STAGE`, `KIND_YAML_LABELS`, `FK_UPSTREAM` for reuse (zero behavior change).
+- **`doctor/checks/working-published.ts`** — DB-era aware: reports the store's published-kind count and marks the markdown totals as a retired view under flag OFF.
+- **`test/integration/command-registration.test.ts`** — command count 44 → 45.
+- **`test/db-store/publish.test.ts`** — flag-aware first-publish commit-set variants (DB-only by default; markdown joins the set only on opt-in).
+
 ### DB-primary storage Phase 10 — portfolio registry + diagram assets (2026-09-24)
 
 The hub-and-spoke storage model (D6) gains its optional hub: a per-workspace metadata registry at `Doc/store/portfolio.db` (committed raw per D2/D7 — the Phase 9 auto-heal now marks BOTH SQLite files binary and ignores both WALs). The registry is METADATA-ONLY by design (user-locked): project name, db path, display name, last publish/run/stage — cross-project artifact rollups stay out (additive later). The publish chain syncs the registry PRE-commit (fail-open, outside the store transaction — never a rollback trigger; the Q6d failure path re-syncs best-effort), every registry write ends with `wal_checkpoint(TRUNCATE)` (registry G1 — the committed file must never trail its git-ignored WAL), and `/velpari-portfolio --repair` rebuilds the registry from the spokes at any time (no registry integrity_check — it is fully derivable, a conscious skip). D8 is realized: `mermaid_text` starting with `image:` renders as a markdown image (path relative to the owning DB dir; renderers never read the filesystem — byte-stable per G5; missing assets surface via the doctor's new portfolio check, and `..`-escaping paths are rejected without probing). `/velpari-portfolio` is the 44th command. No new dependencies.

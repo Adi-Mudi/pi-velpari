@@ -112,9 +112,21 @@ stays human-readable and agent-readable.
   present (af→pseudocode, af→dev-order); downstream refs come from the
   test-cases sidecar `traces` and dev-order sidecar `afs` when present;
   markdown scraping remains the fallback (legacy not-checkable unchanged).
-- **Freshness semantics (D5).** Sidecars join their own artifact's
-  `extraPaths` only; downstream declared inputs keep hashing the rendered
-  markdown. Switching the hash target to sidecars is a deferred cleanup.
+- **Freshness semantics (D5 + Phase 11).** Sidecars join their own artifact's
+  `extraPaths` only. Downstream declared inputs hash the rendered markdown for
+  legacy / flag-ON projects; for DB-era projects (markdown writes retired, Q3
+  DEFAULT OFF) they hash the kind's EXPORTED YAML bytes beside the store DB —
+  that is where the deferred "switch the hash target" cleanup landed, because a
+  file nothing rewrites would freeze every hash and silently kill
+  `input-changed` (decision record §15.6.9).
+- **DB-only publish (Phase 11, Q3).** `approve` no longer writes the published
+  markdown to `Doc/`: publish = store rows + the YAML export beside the DB + a
+  git commit, with write-alongside as the explicit opt-IN hatch
+  (`"velpari": {"markdownWrites": true}` in `files.json`; absent = OFF). So
+  the `Doc/…` paths named in this document are the store kind's human view
+  (`/velpari-export` + the `show` commands); legacy files stay on disk
+  untouched, and a pre-store project imports once via `/velpari-migrate-store`
+  (`--dry-run` first, then the confirm-gated `--execute`).
 - **Requirement↔test link authority (c8 — shipped 2026-09-21).** The RTM
   sidecar `rows[].tests[]` is the authoritative record of which tests verify
   which requirement; the test-cases sidecar `traces[]` is the per-test

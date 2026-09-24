@@ -24,6 +24,12 @@ Notes:
 - `/velpari-final-design` produces a consolidation document, not HTML
   (historical name; the `/velpari-html-design` name is reserved for a future
   mockup generator).
+- **Publish target (Phase 11, Q3):** the `Doc/…` paths above are what a stage
+  writes when markdown writes are ON. The **default is DB-only** — approve
+  writes store rows + the YAML export beside the DB + a git commit and
+  NOTHING to `Doc/`; the `Doc/…` files are then the store kind's human view
+  (`/velpari-export` + the `show` commands). Legacy projects keep their
+  files; opt in with `"velpari": {"markdownWrites": true}` in `files.json`.
 
 ## Approve commands (10)
 
@@ -47,16 +53,19 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-agents` | View + validate the mapping. |
 | `/velpari-generate-sub-agents` | Per-phase dynamic agent generation (phase auto-detected from run state; `--phase N` overrides) — see `05-sub-agent-generation.md`. |
 
-## Ops / discipline commands (6)
+## Ops / discipline commands (9)
 
 | Command | Purpose |
 |---|---|
 | `/velpari-status` | Current stage, run, staleness summary, the single correct next command. |
-| `/velpari-doctor` | Full audit anytime: setup, secrets, agents, formats, freshness/staleness, ID coverage, reviewer verdicts. |
-| `/velpari-reset` | Discard the current run (destructive; confirmed). |
+| `/velpari-doctor` | Full audit anytime: setup, secrets, agents, formats, freshness/staleness, ID coverage, reviewer verdicts, DB integrity/links/portfolio. |
+| `/velpari-reset` | Discard the current run (destructive; confirmed). Published store rows — including run `migrated` — survive; only the run's draft rows are deleted. |
 | `/velpari-handoff` | Final validation → `.pi/senai/architect-inputs.json`. Blocks on any staleness. |
 | `/velpari-design-logging` | Cross-cutting logging architecture plan (after Design approved; not a stage). |
 | `/velpari-reconfirm` | Re-confirm a stale artifact whose changed inputs have no impact (see below). |
+| `/velpari-backfill <kind>` | One-step import of a pre-store project into its store DB (`--from-export` rebuilds from the YAML beside the DB). Store-only; no stage advance. |
+| `/velpari-portfolio` | List the portfolio registry (`Doc/store/portfolio.db`); `--repair` rebuilds it from the spokes. |
+| `/velpari-migrate-store` | One-time legacy migration (Phase 11, RES-3): `--dry-run` reports per project/kind and writes nothing; `--execute` confirms first, then imports into the store under run `migrated`, re-exports the YAMLs beside each DB, verifies, and commits per project. |
 
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 
@@ -77,6 +86,11 @@ republish. Gates and behavior:
   with current normalized hashes + a `reconfirmedAt` marker (RTM JSON
   sidecar `extraPaths` recomputed too); (c) a `history.jsonl` entry when a
   run is active.
+- **Write target (Phase 11):** the target is chosen by EXISTENCE. A published
+  `Doc/` file → the line is appended to it (legacy / flag-ON projects). No
+  published file (the DB-only default) → the line appends to the store
+  envelope's `changeLog` column, followed by a checkpoint — the audit trail
+  survives the retired markdown write.
 - Freshness hashing for re-confirmed/newly published entries excludes the
   `## Change Log` section (`hashv: 2`), so the audit line itself never
   re-stales downstream consumers. Legacy (`hashv`-less) entries keep

@@ -175,7 +175,11 @@ describe("saveFilesConfig", () => {
 	it("round-trips through load", () => {
 		const cwd = tmp();
 		saveFilesConfig(VALID_V4, cwd);
-		assert.deepEqual(loadFilesConfig(cwd), VALID_V4);
+		// loadFilesConfig merges defaultConfig() over the file, so defaulted
+		// keys come back too. Phase 11 (§15.6) pins `velpari.markdownWrites`
+		// OFF — publish writes DB only; write-alongside is the explicit
+		// opt-IN rollback hatch.
+		assert.deepEqual(loadFilesConfig(cwd), { ...VALID_V4, velpari: { markdownWrites: false } });
 	});
 });
 

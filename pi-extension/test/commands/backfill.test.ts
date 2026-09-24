@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { backfillFromExport, backfillKind } from "../../src/ops/backfill.js";
+import { backfillFromExport, backfillKind, exportLegacyLoaders, type LegacyLoad } from "../../src/ops/backfill.js";
 import {
 	readLatestPublishedRows,
 	KIND_ORDER,
@@ -299,5 +299,47 @@ describe("ops/backfill --from-export", () => {
 		const result = backfillFromExport(dir, PROJECT, "bogus" as never, "backfill");
 		assert.equal(result.ok, false);
 		assert.match(result.note, /unknown kind/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Phase 11 1.1 — exportLegacyLoaders: the migration engine reuses the
+// proven per-kind parsers verbatim (Design 1). Smoke: full kind coverage
+// + one loader round-trip through the accessor.
+// ---------------------------------------------------------------------------
+
+describe("ops/backfill exportLegacyLoaders", () => {
+	let dirs: string[] = [];
+
+	beforeEach(() => {
+		dirs.push(mkdtempSync(join(tmpdir(), "velpari-backfill-exp-")));
+	});
+
+	after(() => {
+		for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+	});
+
+	test("1. accessor covers every store kind with a callable loader", () => {
+		const loaders = exportLegacyLoaders();
+		for (const kind of KIND_ORDER) {
+			const loader = loaders[kind];
+			assert.equal(typeof loader, "function", kind);
+		}
+	});
+
+	test("2. loader round-trip: prd parses the published markdown via the accessor", () => {
+		const dir = dirs[dirs.length - 1]!;
+		mkdirSync(join(dir, "Doc", "requirements"), { recursive: true });
+		writeFileSync(join(dir, "Doc", "requirements", `PRD_${PROJECT}.md`), PRD_MD, "utf8");
+		const loaded: LegacyLoad | null = exportLegacyLoaders().prd!(PROJECT, dir);
+		assert.ok(loaded, "prd loader must parse the published markdown");
+		assert.match(loaded.source, /PRD_/);
+		const fr = (loaded.payload as { fr: { id: string }[] }).fr;
+		assert.equal(fr.length, 2);
+	});
+
+	test("3. loader returns null when no legacy source exists", () => {
+		const dir = dirs[dirs.length - 1]!;
+		assert.equal(exportLegacyLoaders().prd!(PROJECT, dir), null);
 	});
 });

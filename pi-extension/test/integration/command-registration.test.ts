@@ -14,8 +14,8 @@ import { strict as assert } from "node:assert";
 import { COMMAND_NAMES, CommandName } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 44 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill; Phase 10: +velpari-portfolio)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 44);
+	it("exports 45 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill; Phase 10: +velpari-portfolio; Phase 11: +velpari-migrate-store)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 45);
 	});
 
 	it("contains all expected user-facing commands", () => {
@@ -69,6 +69,10 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			// View/ops — Phase 5 export + Phase 6 backfill (43rd command)
 			"velpari-export",
 			"velpari-backfill",
+			// Ops — Phase 10 portfolio registry (44th command)
+			"velpari-portfolio",
+			// Ops — Phase 11 one-time migration (45th command, §15.6)
+			"velpari-migrate-store",
 		];
 		for (const cmd of expected) {
 			assert.ok((COMMAND_NAMES as readonly string[]).includes(cmd), `missing command: ${cmd}`);

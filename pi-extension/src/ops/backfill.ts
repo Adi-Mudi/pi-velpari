@@ -153,14 +153,14 @@ function readLegacyMarkdown(
 // markdown-table fallback. Returns null when nothing is parseable.
 // ---------------------------------------------------------------------------
 
-interface LegacyLoad {
+export interface LegacyLoad {
 	payload: ArtifactPayload;
 	/** Human source description for the change-log provenance line. */
 	source: string;
 }
 
 /** Row count across every array row-set in a payload. */
-function payloadRowCount(payload: ArtifactPayload): number {
+export function payloadRowCount(payload: ArtifactPayload): number {
 	let count = 0;
 	for (const value of Object.values(payload)) {
 		if (Array.isArray(value)) count += value.length;
@@ -644,7 +644,7 @@ function loadFinalDesign(projectName: string, cwd: string): LegacyLoad | null {
 // ---------------------------------------------------------------------------
 
 /** Store kind → the envelope `stage` it is imported under. */
-const KIND_STAGE: Record<ArtifactKind, string> = {
+export const KIND_STAGE: Record<ArtifactKind, string> = {
 	prd: "drafting-prd",
 	rtm: "building-rtm",
 	feasibility: "analyzing-feasibility",
@@ -669,12 +669,22 @@ const LOADERS: Record<ArtifactKind, (projectName: string, cwd: string) => Legacy
 };
 
 /**
+ * Phase 11 (§15.6): the one-time migration engine reuses these proven
+ * per-kind loaders verbatim — RES-3's parse step IS the backfill engine
+ * (Design 1: reuse, don't reimplement). Thin accessor over the internal
+ * map; backfill behavior is unchanged.
+ */
+export function exportLegacyLoaders(): Record<ArtifactKind, (projectName: string, cwd: string) => LegacyLoad | null> {
+	return LOADERS;
+}
+
+/**
  * Upstream kind required by each kind's run-scoped cross-kind FKs
  * (db-schema.ts): rtm_row.fr_ref → fr; module_source_fr.fr_id → fr;
  * pseudocode_block.af_ref + step_af.af_id → atomic_function. Kinds not
  * listed here are self-contained within their own kind.
  */
-const FK_UPSTREAM: Partial<Record<ArtifactKind, ArtifactKind>> = {
+export const FK_UPSTREAM: Partial<Record<ArtifactKind, ArtifactKind>> = {
 	rtm: "prd",
 	design: "prd",
 	pseudocode: "atomic-functions",
@@ -694,7 +704,7 @@ export interface BackfillResult {
  * publish chain writes `<label>_<project>.yaml`). Same mapping as
  * ops/export-doc.ts:KIND_LABELS — kept local to avoid an L1↔L1 cycle.
  */
-const KIND_YAML_LABELS: Record<ArtifactKind, string> = {
+export const KIND_YAML_LABELS: Record<ArtifactKind, string> = {
 	prd: "PRD",
 	rtm: "RTM",
 	feasibility: "feasibility-study",

@@ -29,6 +29,15 @@ export interface FilesConfig {
 	/** Optional atomic-function tier profile (ISO/IEC 29110 + IEC 61508/IEC 62304).
 	 *  When absent, deriveAtomicProfile() returns the defaults (basic / A / none). */
 	atomic?: AtomicProfile;
+	/** Phase 11 (Q3/RES-3, §15.6): velpari extension block. Absent = defaults
+	 *  (the validator is shape-based, so unknown sibling keys still pass). */
+	velpari?: {
+		/** Write the published markdown alongside the store DB (the
+		 *  pre-Phase-11 write-alongside behavior). DEFAULT OFF — publish
+		 *  writes DB ONLY (rows + YAML + git commit; nothing to Doc/).
+		 *  Flip ON to restore write-alongside — the rollback hatch. */
+		markdownWrites?: boolean;
+	};
 }
 
 /** Senai-parity default exclusions for discovery and scans. */
@@ -62,12 +71,26 @@ function defaultConfig(): FilesConfig {
 	return {
 		...DEFAULT_CONFIG,
 		framework: {},
+		velpari: { markdownWrites: false },
 		codePaths: [],
 		inputDocuments: [],
 		testPaths: [],
 		outputPaths: {},
 		excludedPaths: [...DEFAULT_EXCLUDED_PATHS],
 	};
+}
+
+/**
+ * Phase 11 (Q3/RES-3): is write-alongside markdown publishing enabled?
+ * DEFAULT OFF — publish writes DB only. Opt IN via files.json
+ * `"velpari": {"markdownWrites": true}` (absent key = OFF); the
+ * approve-level `skipDbPublish` test escape hatch also implies ON (the
+ * documented markdown-only test mode). Single accessor so every consumer
+ * shares the default-OFF semantics.
+ */
+export function markdownWritesEnabled(cwd: string = process.cwd(), opts?: { skipDbPublish?: boolean }): boolean {
+	if (opts?.skipDbPublish === true) return true;
+	return loadFilesConfig(cwd).velpari?.markdownWrites === true;
 }
 
 /** Pre-v4 shape, kept for migration. */
