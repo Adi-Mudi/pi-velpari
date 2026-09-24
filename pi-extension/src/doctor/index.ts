@@ -64,6 +64,7 @@ import { checkGateWiringSection, checkStaleDownstreamSection } from "./checks/st
 import { checkFreshnessSection } from "./checks/freshness.js";
 import { checkDbIntegritySection } from "./checks/integrity.js";
 import { checkDbLinkOrphansSection } from "./checks/db-link-orphans.js";
+import { checkGitIntegrationSection } from "./checks/git-integration.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
 import { checkLoggingPlanSection } from "./checks/logging-plan.js";
@@ -320,6 +321,10 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		// never writes — the DB file was just git-committed (Phase 7).
 		checkDbIntegritySection(cwd, { embedded: opts.embedded === true }),
 		checkDbLinkOrphansSection(cwd),
+		// Phase 9 — G2a visibility: user-repo git protection for the raw
+		// store DB (binary attr + WAL ignores). Warnings only; the next
+		// publish auto-heals via ops/git-attributes.ts.
+		checkGitIntegrationSection(cwd),
 		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
 		buildMultiplexerSection(cwd),

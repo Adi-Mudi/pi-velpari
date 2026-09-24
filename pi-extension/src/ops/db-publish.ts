@@ -38,6 +38,7 @@ import {
 	type ArtifactEnvelopeInput,
 	type ArtifactPayload,
 } from "../io/store.js";
+import { ensureStoreGitIntegration } from "./git-attributes.js";
 import { openStoreDb } from "../io/db.js";
 import { buildStoreDbPath, buildStoreYamlPath } from "../core/paths.js";
 import { hashFileContent } from "../core/fingerprints.js";
@@ -203,13 +204,21 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 
 		// --- 7. Git commit (Q6c) — explicit paths ONLY ---
 		if (problems.length === 0) {
+			// 7a. User-repo git integration (Phase 9, §15.4): append-if-missing
+			// the binary attr + wal/shm ignores. Automatic but NOT silent —
+			// the notify below reports the heal, and the changed files JOIN
+			// addPaths so the heal lands in this publish commit.
+			const heal = ensureStoreGitIntegration(input.cwd);
+			for (const line of heal.appended) {
+				warnings.push(`git integration healed: ${line}`);
+			}
 			/**
 			 * Convert an absolute path to a repo-relative path for git add/commit.
 			 * @param {string} p - Absolute path under the project root.
 			 * @returns {string} Path relative to the git work tree (cwd).
 			 */
 			const rel = (p: string): string => relative(input.cwd, p);
-			const addPaths = [dbPath, yamlPath, ...input.publishedPaths].map(rel);
+			const addPaths = [dbPath, yamlPath, ...input.publishedPaths, ...heal.changedPaths].map(rel);
 			const add = spawnSync("git", ["add", "--", ...addPaths], { cwd: input.cwd, encoding: "utf-8" });
 			if (add.error || add.status !== 0) {
 				problems.push(`git add failed: ${(add.stderr ?? add.error?.message ?? "unknown").trim()}`);

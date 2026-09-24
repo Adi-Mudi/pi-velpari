@@ -12,12 +12,13 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { backfillKind } from "../../src/ops/backfill.js";
+import { backfillFromExport, backfillKind } from "../../src/ops/backfill.js";
 import {
 	readLatestPublishedRows,
 	KIND_ORDER,
 	writeArtifact,
 	publishArtifact,
+	exportArtifactYaml,
 	type ArtifactEnvelopeInput,
 } from "../../src/io/store.js";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
@@ -196,5 +197,107 @@ describe("ops/backfill", () => {
 		assert.equal(result.ok, false);
 		assert.match(result.note, /atomic-functions/);
 		assert.match(result.note, /\/velpari-backfill atomic-functions/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Phase 9 — backfillFromExport (D9 made real): rebuild one kind from the
+// store's own export YAML beside the DB.
+// ---------------------------------------------------------------------------
+
+describe("ops/backfill --from-export", () => {
+	let dirs: string[] = [];
+
+	beforeEach(() => {
+		dirs.push(mkdtempSync(join(tmpdir(), "velpari-backfill-fe-")));
+	});
+
+	after(() => {
+		for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+	});
+
+	/** Publish a PRD to the store and export its YAML beside the DB. */
+	function seedStoreWithYaml(dir: string): void {
+		const db = openStoreDb(buildStoreDbPath(PROJECT, dir));
+		try {
+			writeArtifact(
+				db,
+				"prd",
+				"run-orig",
+				{
+					version: 1,
+					stage: "drafting-prd",
+					generatedAt: "2026-09-24T00:00:00.000Z",
+					inputs: "{}",
+					reviewerVerdict: null,
+					changeLog: "[]",
+				},
+				{
+					fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "The system shall parse input." }],
+				},
+			);
+			publishArtifact(db, "run-orig", "prd");
+			const yaml = exportArtifactYaml(db, "run-orig", "prd");
+			assert.ok(yaml);
+			mkdirSync(join(dir, "Doc", "store", PROJECT), { recursive: true });
+			writeFileSync(join(dir, "Doc", "store", PROJECT, `PRD_${PROJECT}.yaml`), yaml, "utf8");
+		} finally {
+			closeStoreDb(db);
+		}
+	}
+
+	test("1. rebuild: wipe rows → --from-export restores them under the YAML runId", () => {
+		const dir = dirs[dirs.length - 1]!;
+		seedStoreWithYaml(dir);
+		// Wipe ALL rows (simulate the lost store the runbook rebuilds from).
+		const db = openStoreDb(buildStoreDbPath(PROJECT, dir));
+		try {
+			db.exec("DELETE FROM artifacts; DELETE FROM fr;");
+		} finally {
+			closeStoreDb(db);
+		}
+		assert.equal(readLatestPublishedRows(dir, PROJECT, "prd"), null);
+		const result = backfillFromExport(dir, PROJECT, "prd", "backfill");
+		assert.equal(result.ok, true, result.note);
+		assert.equal(result.rowCount, 1);
+		const read = readLatestPublishedRows(dir, PROJECT, "prd");
+		assert.ok(read);
+		assert.equal(read.envelope.runId, "run-orig");
+		assert.equal(read.envelope.status, "published");
+		assert.equal((read.rows.fr as unknown[]).length, 1);
+	});
+
+	test("2. refuse: no export YAML for the kind → names the expected path", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const result = backfillFromExport(dir, PROJECT, "prd", "backfill");
+		assert.equal(result.ok, false);
+		assert.match(result.note, /no export YAML found/);
+		assert.ok(result.note.includes(`PRD_${PROJECT}.yaml`), result.note);
+		assert.equal(readLatestPublishedRows(dir, PROJECT, "prd"), null);
+	});
+
+	test("3. refuse: schema-invalid YAML is not importable", () => {
+		const dir = dirs[dirs.length - 1]!;
+		mkdirSync(join(dir, "Doc", "store", PROJECT), { recursive: true });
+		const badYaml = [
+			"runId: r-bad",
+			"kind: prd",
+			"version: 1",
+			"stage: s",
+			"generatedAt: t",
+			"rows:",
+			"  bogus: []",
+		].join("\n");
+		writeFileSync(join(dir, "Doc", "store", PROJECT, `PRD_${PROJECT}.yaml`), badYaml, "utf8");
+		const result = backfillFromExport(dir, PROJECT, "prd", "backfill");
+		assert.equal(result.ok, false);
+		assert.match(result.note, /unknown row-set 'bogus'/);
+	});
+
+	test("4. refuse: unknown kind lists the legal kinds", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const result = backfillFromExport(dir, PROJECT, "bogus" as never, "backfill");
+		assert.equal(result.ok, false);
+		assert.match(result.note, /unknown kind/);
 	});
 });

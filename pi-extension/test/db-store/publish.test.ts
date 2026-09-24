@@ -297,6 +297,26 @@ describe("runDbPublish happy path (design + rtm)", () => {
 		assert.ok(log.includes("design_Demo.yaml"), "commit must include the YAML");
 		assert.ok(log.includes("design_Demo.md"), "commit must include the markdown");
 
+		// Phase 9 (subphase 2.1 evidence): the FIRST publish commit carries
+		// EXACTLY the chain's outputs + the auto-healed git-integration
+		// files (ensureStoreGitIntegration appends both into the empty temp
+		// repo and the healed paths join addPaths) — nothing else.
+		const headFiles = execFileSync("git", ["show", "--name-only", "--pretty=format:", "HEAD"], { cwd: dir })
+			.toString()
+			.split("\n")
+			.map((l) => l.trim())
+			.filter((l) => l.length > 0);
+		const legal =
+			/^(?:Doc\/store\/Demo\/(?:index\.db|design_Demo\.yaml)|Doc\/design\/design_Demo\.md|\.gitattributes|\.gitignore)$/;
+		assert.ok(
+			headFiles.every((f) => legal.test(f)),
+			`unexpected paths in the first publish commit: ${headFiles.join(", ")}`,
+		);
+		assert.ok(
+			headFiles.includes(".gitattributes") && headFiles.includes(".gitignore"),
+			"first publish must carry the healed git-integration files",
+		);
+
 		// G1: checkpoint truncated the WAL (0 bytes or gone)
 		const wal = buildStoreDbPath("Demo", dir) + "-wal";
 		if (existsSync(wal)) assert.equal(statSync(wal).size, 0);

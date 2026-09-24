@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 9 — git integration + YAML rebuild (2026-09-24)
+
+The store DB is committed raw, so every user repo now carries git protection for it, and the merge/recovery story becomes executable. The publish chain auto-heals the user repo's `.gitattributes` (`Doc/store/**/index.db binary` — merge prevention via the built-in macro) and `.gitignore` (`index.db-wal` / `-shm`) before committing, and the healed files join the same publish commit (automatic but never silent — a notify reports the append; the doctor's new Git integration section makes drift visible anytime). OQ1 decided: `state.json` stays OUT of the publish commit set — backup = artifact world only (DB + YAML + docs); a restored checkout re-establishes the run position via `/velpari-backfill` + a fresh run. D9 is made real: `importArtifactYaml` (L0) imports a store-export YAML back into the DB (parse → validate → write → checksum-verify → publish; schema-invalid YAML is refused, content tampering is NOT detected — the export carries no fingerprint, git's reviewable YAML diffs are the tamper guard), exposed as `/velpari-backfill <kind> --from-export`. The G2 runbook ships at `skills/db-store-merge-runbook.md`. No new dependencies.
+
+#### Added
+
+- **`ops/git-attributes.ts`** — `ensureStoreGitIntegration(cwd)`: append-if-missing binary attr + WAL ignores into the USER repo; idempotent, append-only, exact-pattern detection; returns `{ changed, appended, changedPaths }`.
+- **`.gitattributes` (repo root)** — dogfood/CI protection for this repo's own store.
+- **`io/store.ts:importArtifactYaml`** — the D9 rebuild path; the YAML's own `runId` wins (run-scoped cross-kind FKs keep chained rebuilds intact).
+- **`/velpari-backfill <kind> --from-export`** — rebuilds one kind from the store YAML beside the DB (runbook's central recovery step; store-only contract unchanged).
+- **`skills/db-store-merge-runbook.md`** — G2 merge-conflict + recovery runbook (ships; `.npmignore` excludes `Doc/`).
+- **`doctor/checks/git-integration.ts`** — Git integration section (warnings + runbook pointers when the user repo lacks the patterns).
+- **Fix suggestions** — `git-attr-missing`, `git-ignore-missing`.
+
+#### Changed
+
+- **`ops/db-publish.ts` step 7** — heal call + one-line notify per appended file; healed `.gitattributes`/`.gitignore` join the publish commit's `addPaths`.
+
 ### DB-primary storage Phase 8 — hooks/locks + reset draft cleanup (2026-09-24)
 
 `tool_call`'s write-lock now covers the stage DB scope (master outline row 8): a new always-on store-scope guard blocks edit/write tool calls into `Doc/store/**` (the SQLite store + its exported YAML views) — between stages included, closing the gap where the committed source of truth could be hand-edited. Sanctioned writers stay code-side (stage publish tool, `/velpari-backfill`, `/velpari-reconfirm`, `/velpari-export`); the bash bypass is an accepted limitation (checksums + the integrity/orphan audits backstop it). `/velpari-reset` now deletes the run's DRAFT store rows before clearing state (Q2's phase-8 duty — `deleteRunDrafts` per project DB, published rows survive; order locked: capture runId → delete drafts → clearRun → notify). State transitions and the `before_agent_start` status injection are unchanged (verified). No new dependencies.

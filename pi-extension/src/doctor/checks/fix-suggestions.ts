@@ -194,6 +194,12 @@ export const SUGGESTIONS = {
 		"The store DB failed SQLite integrity checking. Restore from git history (`git checkout <commit> -- Doc/store/`) or rebuild from the exported YAML beside the DB; do NOT keep writing to a corrupt DB.",
 	"store-db-orphan-link":
 		"A trace link points at a row that does not exist in the store. Re-run the publishing stage (update mode) to regenerate consistent rows, or `/velpari-backfill <kind>` for legacy data.",
+
+	// Phase 9 — git integration (G2a visibility)
+	"git-attr-missing":
+		"Add `Doc/store/**/index.db binary` to .gitattributes — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
+	"git-ignore-missing":
+		"Add `Doc/store/**/index.db-wal` and `Doc/store/**/index.db-shm` to .gitignore — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

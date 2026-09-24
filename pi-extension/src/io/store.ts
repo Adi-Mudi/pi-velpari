@@ -35,7 +35,7 @@
 import type { DatabaseSync } from "node:sqlite"; // type-only: the driver stays behind io/db.ts (D9)
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { toYamlString } from "../core/yaml-data.js";
+import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { openStoreDb, closeStoreDb } from "./db.js";
 
@@ -703,6 +703,190 @@ export function extractDevOrderAfRefsFromStore(cwd: string, projectName: string)
 	const rows = (fromDb.rows.stepAf as Array<{ afId: unknown }> | undefined) ?? [];
 	const ids = rows.map((r) => String(r.afId)).filter((id) => /^AF-\d+$/.test(id));
 	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
+}
+
+// ---------------------------------------------------------------------------
+// importArtifactYaml — the D9 rebuild path (Phase 9, §15.4)
+// ---------------------------------------------------------------------------
+
+/** importArtifactYaml result — `ok:false` carries human-refusal reasons. */
+export interface ImportArtifactResult {
+	ok: boolean;
+	/** Human summary (refusal reason or success note) — callers notify verbatim. */
+	message: string;
+	/** Total rows imported across row-sets (0 on refusal). */
+	rowCount: number;
+}
+
+/**
+ * Import one artifact from its export YAML — the D9 rebuild tool (Phase 9
+ * review gap 2): "DB is rebuildable from YAML" becomes executable. The
+ * input must be exactly `exportArtifactYaml`/`buildExportObject`'s shape
+ * (runId/kind/version/stage/generatedAt/inputs/reviewerVerdict/changeLog +
+ * rows), because the YAML beside the DB IS that bytes (RES-1).
+ *
+ * Run id: the YAML's own `runId` WINS; the `runId` parameter is only the
+ * fallback for hand-repaired YAML that omits it. Rationale: cross-kind FKs
+ * are run-scoped (`rtm_row.fr_ref → fr(run_id, id)`), so a chained rebuild
+ * (rtm → prd, pseudocode → atomic-functions) lands correctly only under
+ * the original run ids. Re-importing the same (run_id, kind) is idempotent
+ * — writeArtifact's upsert rewrites that version in place.
+ *
+ * Flow: parse → validate rows against KIND_TABLES (schema-invalid YAML is
+ * a loud refusal, never a partial import) → writeArtifact → verify →
+ * publishArtifact — all or nothing (writeArtifact's own txn + a draft
+ * rollback below when the checksum verify fails).
+ *
+ * Tamper scope (plan R6, honest): the export carries NO fingerprint, so
+ * the post-import checksum proves YAML↔row consistency only — it catches
+ * schema-invalid YAML, never content tampering. The real tamper guard is
+ * git's reviewable YAML diffs + the merge runbook's human resolution.
+ *
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {string} runId - FALLBACK run id (the YAML's own runId wins).
+ * @param {string} yamlText - The export YAML bytes (the store YAML file read).
+ * @returns {ImportArtifactResult} Outcome; throws nothing.
+ */
+export function importArtifactYaml(db: DatabaseSync, runId: string, yamlText: string): ImportArtifactResult {
+	// 1. Parse (strict — line/column errors reach the user verbatim).
+	const parsed = parseYaml(yamlText);
+	if (!parsed.ok) {
+		return { ok: false, message: `YAML parse failed: ${parsed.error}`, rowCount: 0 };
+	}
+	const data = parsed.data as Record<string, unknown> | null;
+	if (data === null || typeof data !== "object" || Array.isArray(data)) {
+		return {
+			ok: false,
+			message:
+				"YAML is not a mapping — expected the export shape (runId/kind/version/stage/generatedAt/inputs/reviewerVerdict/changeLog + rows).",
+			rowCount: 0,
+		};
+	}
+
+	// 2. Identity fields.
+	const kindRaw = typeof data.kind === "string" ? data.kind : "";
+	const kind = KIND_ORDER.find((k) => k === kindRaw);
+	if (!kind) {
+		return {
+			ok: false,
+			message: `unknown or missing kind '${kindRaw}' — expected one of: ${KIND_ORDER.join(", ")}`,
+			rowCount: 0,
+		};
+	}
+	const version = Number(data.version);
+	if (!Number.isFinite(version) || version < 1 || Math.floor(version) !== version) {
+		return { ok: false, message: `version must be a positive integer (got ${String(data.version)})`, rowCount: 0 };
+	}
+	const stage = typeof data.stage === "string" && data.stage.length > 0 ? data.stage : null;
+	const generatedAt = typeof data.generatedAt === "string" && data.generatedAt.length > 0 ? data.generatedAt : null;
+	if (!stage || !generatedAt) {
+		return { ok: false, message: "missing envelope fields: stage and generatedAt are required", rowCount: 0 };
+	}
+	// The YAML's own runId wins (run-scoped FK chains — see docblock); the
+	// parameter is the fallback for hand-repaired YAML that omits it.
+	const yamlRunId = typeof data.runId === "string" && data.runId.length > 0 ? data.runId : runId;
+	if (!yamlRunId) {
+		return {
+			ok: false,
+			message: "missing runId — the export shape carries one; supply it or pass the fallback parameter",
+			rowCount: 0,
+		};
+	}
+	// inputs/changeLog stay raw JSON strings in the export shape; a
+	// hand-repaired mapping is preserved by re-serializing it.
+	const asJsonString = (v: unknown, fallback: string): string => {
+		if (typeof v === "string") return v;
+		if (v === undefined || v === null) return fallback;
+		try {
+			return JSON.stringify(v);
+		} catch {
+			return fallback;
+		}
+	};
+	const inputs = asJsonString(data.inputs, "{}");
+	const reviewerVerdict = typeof data.reviewerVerdict === "string" ? data.reviewerVerdict : null;
+	const changeLog = asJsonString(data.changeLog, "[]");
+
+	// 3. Rows: validate every row-set key against KIND_TABLES; unknown keys
+	// and non-mapping rows are loud refusals (STRICT tables would reject
+	// them mid-txn anyway — refuse BEFORE the write with a clean message).
+	const rowsField = data.rows;
+	if (rowsField === undefined || rowsField === null || typeof rowsField !== "object" || Array.isArray(rowsField)) {
+		return { ok: false, message: "missing or malformed 'rows' mapping — expected the export shape", rowCount: 0 };
+	}
+	const legalKeys = new Set(KIND_TABLES[kind].map((spec) => spec.key));
+	const specs = KIND_TABLES[kind];
+	const payload: Record<string, unknown> = {};
+	let rowCount = 0;
+	for (const [key, value] of Object.entries(rowsField as Record<string, unknown>)) {
+		if (!legalKeys.has(key)) {
+			return {
+				ok: false,
+				message: `unknown row-set '${key}' for kind '${kind}' — legal: ${[...legalKeys].join(", ") || "(none)"}`,
+				rowCount: 0,
+			};
+		}
+		const spec = specs.find((s) => s.key === key);
+		if (spec?.single) {
+			if (value === null || typeof value !== "object" || Array.isArray(value)) {
+				return { ok: false, message: `row-set '${key}' must be a mapping (single decision row)`, rowCount: 0 };
+			}
+			payload[key] = value;
+			rowCount += 1;
+			continue;
+		}
+		if (value !== undefined && value !== null && !Array.isArray(value)) {
+			return { ok: false, message: `row-set '${key}' must be a list of mappings`, rowCount: 0 };
+		}
+		const list = (value as unknown[] | undefined) ?? [];
+		for (const row of list) {
+			if (row === null || typeof row !== "object" || Array.isArray(row)) {
+				return { ok: false, message: `row-set '${key}' carries a non-mapping row — schema-invalid YAML`, rowCount: 0 };
+			}
+		}
+		if (list.length > 0) payload[key] = list;
+		rowCount += list.length;
+	}
+	if (rowCount === 0) {
+		return { ok: false, message: "export carries zero rows — refusing an empty import", rowCount: 0 };
+	}
+
+	// 4. Write → verify → publish (the backfill chain). A checksum failure
+	// rolls the rows back to draft-free state (delete the draft envelope).
+	try {
+		writeArtifact(
+			db,
+			kind,
+			yamlRunId,
+			{ version, stage, generatedAt, inputs, reviewerVerdict, changeLog },
+			payload as ArtifactPayload,
+		);
+	} catch (err) {
+		return {
+			ok: false,
+			message: `store write failed (schema-invalid YAML?): ${err instanceof Error ? err.message : String(err)}`,
+			rowCount,
+		};
+	}
+	const check = verifyExportChecksum(db, yamlRunId, kind);
+	if (!check.ok) {
+		try {
+			db.prepare("DELETE FROM artifacts WHERE run_id = ? AND kind = ? AND status = 'draft'").run(yamlRunId, kind);
+		} catch {
+			// Rollback is best-effort; the refusal below is what matters.
+		}
+		return {
+			ok: false,
+			message: `checksum verify failed after import (expected ${check.expected}, got ${check.actual}) — draft rows removed. Schema-invalid YAML is not importable.`,
+			rowCount,
+		};
+	}
+	publishArtifact(db, yamlRunId, kind);
+	return {
+		ok: true,
+		message: `imported ${rowCount} row(s) for kind '${kind}' as run ${yamlRunId} v${version} (published).`,
+		rowCount,
+	};
 }
 
 // ---------------------------------------------------------------------------

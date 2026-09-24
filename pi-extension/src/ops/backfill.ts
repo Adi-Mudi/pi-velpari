@@ -24,6 +24,7 @@ import type { ArtifactKind, ArtifactPayload } from "../io/store.js";
 import {
 	KIND_ORDER,
 	checkpointNow,
+	importArtifactYaml,
 	publishArtifact,
 	readLatestPublishedRows,
 	verifyExportChecksum,
@@ -31,7 +32,7 @@ import {
 	type ArtifactEnvelopeInput,
 } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
-import { buildStoreDbPath, resolveDocArtifact } from "../core/paths.js";
+import { buildStoreDbPath, buildStoreYamlPath, resolveDocArtifact } from "../core/paths.js";
 import { loadRtmDataForEngine } from "../core/rtm-data.js";
 import { loadAfDataForEngine } from "../core/af-data.js";
 import { loadFeasibilityRecord } from "../core/feasibility-record.js";
@@ -686,6 +687,88 @@ export interface BackfillResult {
 	/** Human summary — always non-empty; the command notifies it verbatim. */
 	note: string;
 	rowCount: number;
+}
+
+/**
+ * Store kind → the YAML sidecar label used by buildStoreYamlPath (the
+ * publish chain writes `<label>_<project>.yaml`). Same mapping as
+ * ops/export-doc.ts:KIND_LABELS — kept local to avoid an L1↔L1 cycle.
+ */
+const KIND_YAML_LABELS: Record<ArtifactKind, string> = {
+	prd: "PRD",
+	rtm: "RTM",
+	feasibility: "feasibility-study",
+	design: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	testplan: "test-plan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/**
+ * Import one kind from the store's OWN export YAML beside the DB — the
+ * D9 rebuild path (Phase 9 1.3, §15.4): `/velpari-backfill <kind>
+ * --from-export`. The runbook's central recovery step.
+ *
+ * Store-only (same contract as backfillKind): no Doc/ write, no stage
+ * advance, no git commit. NOT idempotent-guarded the way backfillKind is:
+ * a re-import of the same version is a harmless upsert (writeArtifact
+ * rewrites that (run_id, kind) in place), so a repeated rebuild attempt
+ * is safe.
+ *
+ * @param cwd - Project root.
+ * @param projectName - Project whose store/YAML to read.
+ * @param kind - Store kind (KIND_ORDER member).
+ * @param runId - Fallback run id (the YAML's own runId wins — run-scoped FK chains).
+ */
+export function backfillFromExport(
+	cwd: string,
+	projectName: string,
+	kind: ArtifactKind,
+	runId: string,
+): BackfillResult {
+	if (!KIND_ORDER.includes(kind)) {
+		return {
+			ok: false,
+			kind,
+			note: `unknown kind '${kind}' — expected one of: ${KIND_ORDER.join(", ")}`,
+			rowCount: 0,
+		};
+	}
+	const yamlPath = buildStoreYamlPath(projectName, KIND_YAML_LABELS[kind], cwd);
+	if (!existsSync(yamlPath)) {
+		return {
+			ok: false,
+			kind,
+			note: `no export YAML found for '${kind}' at ${yamlPath} — the store YAML beside the DB is the rebuild source. Publish once (or /velpari-export yaml) to create it, then retry.`,
+			rowCount: 0,
+		};
+	}
+	let yamlText: string;
+	try {
+		yamlText = readFileSync(yamlPath, "utf8");
+	} catch (err) {
+		return {
+			ok: false,
+			kind,
+			note: `cannot read ${yamlPath}: ${err instanceof Error ? err.message : String(err)}`,
+			rowCount: 0,
+		};
+	}
+	const db = openStoreDb(buildStoreDbPath(projectName, cwd));
+	try {
+		const result = importArtifactYaml(db, runId, yamlText);
+		if (result.ok) checkpointNow(db);
+		return {
+			ok: result.ok,
+			kind,
+			note: result.ok ? `${result.message} Source: ${yamlPath}.` : result.message,
+			rowCount: result.rowCount,
+		};
+	} finally {
+		closeStoreDb(db);
+	}
 }
 
 /**
