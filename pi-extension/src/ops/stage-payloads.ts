@@ -373,8 +373,23 @@ function checkFields(
  * Returns the validated envelope (normalized: inputs/changeLog as JSON
  * strings, ready for writeArtifact) + payload rows, or a problem list.
  * Unknown keys are rejected everywhere (envelope, rows, per-row).
+ *
+ * `opts.requirePrdFileHash` (Phase 12 Fix 2) — the prd kind's G8 mirror hash
+ * (`inputs["prd-file"]`) is required unless the caller passes `false`. The
+ * publish path passes `false` when no published PRD markdown exists (the
+ * DB-only default), because the hash names a file the default never writes.
+ * Absent/false = the caller wants the strict legacy contract.
+ *
+ * @param {string} workingDirPath - The stage's working-copy directory.
+ * @param {ArtifactKind} kind - Store kind the payload must match.
+ * @param {{ requirePrdFileHash?: boolean }} [opts] - Mode-aware validations.
+ * @returns {StagePayloadResult} Validated envelope + rows, or problems.
  */
-export function loadStagePayload(workingDirPath: string, kind: ArtifactKind): StagePayloadResult {
+export function loadStagePayload(
+	workingDirPath: string,
+	kind: ArtifactKind,
+	opts: { requirePrdFileHash?: boolean } = {},
+): StagePayloadResult {
 	const path = stagePayloadPath(workingDirPath, kind);
 	const problems: string[] = [];
 	if (!existsSync(path)) {
@@ -424,7 +439,11 @@ export function loadStagePayload(workingDirPath: string, kind: ArtifactKind): St
 		if (env.inputs !== undefined && !inputsIsObject && typeof env.inputs !== "string") {
 			problems.push("payload.envelope.inputs must be an object (artifact → sha256) or a JSON string");
 		}
-		if (kind === "prd") {
+		// Phase 12 Fix 2: the G8 mirror hash only means something when a
+		// published PRD markdown exists (write-alongside / legacy project).
+		// In the DB-only default nothing is written to Doc/, so requiring the
+		// hash forces the stage LLM to invent one for a file that cannot exist.
+		if (kind === "prd" && opts.requirePrdFileHash !== false) {
 			const inputsObj =
 				typeof env.inputs === "string"
 					? safeParseInputs(env.inputs)

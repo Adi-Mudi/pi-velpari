@@ -689,3 +689,46 @@ describe("flag-aware commit sets (Phase 11 Design 9)", () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// 6. Phase 12 Fix 2 — the G8 `prd-file` hash requirement is mode-aware
+// ---------------------------------------------------------------------------
+// The prd payload's `inputs["prd-file"]` names the PUBLISHED PRD markdown.
+// The DB-only publish default never writes that file, so the requirement is
+// dropped when the caller says so (approve passes false when no published PRD
+// exists). Default = required, so the legacy/write-alongside contract and the
+// existing prd cases above stay byte-identical.
+
+describe("prd payload — G8 hash requirement is mode-aware (Phase 12 Fix 2)", () => {
+	/** Minimal valid prd payload rows (fr + nfr + prdSection). */
+	function prdRows(): Record<string, unknown> {
+		return {
+			fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "The system shall accept input." }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "d4e5f6", text: "p95 shall stay under 200 ms." }],
+			prdSection: [{ no: 1, title: "Objective", body: "Prose." }],
+		};
+	}
+
+	test("default (no opts): the 64-hex hash is still required", () => {
+		const workingDir = writePayload("prd-fix2-default", "prd", prdRows());
+		const result = loadStagePayload(workingDir, "prd");
+		assert.equal(result.ok, false);
+		assert.ok(result.problems.some((p) => p.includes('inputs["prd-file"]')));
+	});
+
+	test("requirePrdFileHash:false (DB-only default): a payload without the hash is accepted", () => {
+		const workingDir = writePayload("prd-fix2-dbonly", "prd", prdRows());
+		const result = loadStagePayload(workingDir, "prd", { requirePrdFileHash: false });
+		assert.equal(result.ok, true);
+		assert.deepEqual(JSON.parse(result.envelope!.inputs as string), {});
+	});
+
+	test("requirePrdFileHash:true: a valid hash passes, a malformed one is refused", () => {
+		const good = writePayload("prd-fix2-on", "prd", prdRows(), { inputs: { "prd-file": "a".repeat(64) } });
+		assert.equal(loadStagePayload(good, "prd", { requirePrdFileHash: true }).ok, true);
+
+		const bad = writePayload("prd-fix2-bad", "prd", prdRows(), { inputs: { "prd-file": "not-a-hash" } });
+		assert.equal(loadStagePayload(bad, "prd", { requirePrdFileHash: true }).ok, false);
+	});
+});
+

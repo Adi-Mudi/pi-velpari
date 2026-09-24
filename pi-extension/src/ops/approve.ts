@@ -399,6 +399,15 @@ export async function handleApprove(
 		publishedPath: string | null;
 		/** Sidecar published next to the markdown (B3 registry artifacts). */
 		sidecar?: { name: string; content: string };
+		/**
+		 * Phase 12 Fix 1 — the LLM-authored working copy, kept aside when
+		 * `content` is replaced by the DB renderer below. Shape/traceability
+		 * gates must validate what the user reviewed: the rendered view is a
+		 * deliberately lossy human view (pipe tables only), so `validatePsrs`
+		 * over it can never pass (21 errors) and the DB-only default could not
+		 * publish a PRD at all.
+		 */
+		gateContent?: string;
 	}
 	const targets: PublishTarget[] = [];
 	for (const file of files) {
@@ -469,7 +478,17 @@ export async function handleApprove(
 	// fires when the payload is REQUIRED (`!skipDbPublish`); legacy
 	// minimal-cwd tests pass through (the gate validates target.content
 	// directly when no payload exists).
-	const payloadResult = loadStagePayload(workingDirPath, storeKind!);
+	// Phase 12 Fix 2 + 2b: G8's `prd-file` names the ALREADY-PUBLISHED PRD
+	// markdown — the revision the payload mirrors. Snapshot it BEFORE any
+	// write: after the Doc write the file carries a fresh frontmatter stamp
+	// (`generatedAt`), so a hash taken post-write could never be supplied by a
+	// caller (a first publish in markdown mode was therefore always refused).
+	// First publish (no file yet) → requirement and mirror check both skipped;
+	// a revision → the payload must name the current published file's hash.
+	const publishedPrdBeforePublish = publishedPrdPath(projectName, cwd);
+	const payloadResult = loadStagePayload(workingDirPath, storeKind!, {
+		requirePrdFileHash: publishedPrdBeforePublish !== null,
+	});
 	if (!skipDbPublish && payloadResult && !payloadResult.ok) {
 		ctx.ui.notify(
 			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
@@ -535,6 +554,9 @@ export async function handleApprove(
 		for (const target of dbRenderedTargets) {
 			const renderer = DB_RENDERED_KIND_TO_RENDERER[target.fileArtifact];
 			if (!renderer) continue;
+			// Phase 12 Fix 1: remember the reviewed working copy BEFORE the
+			// DB view replaces it (the gates below validate gateContent).
+			target.gateContent = target.content;
 			target.content = renderer(renderRows);
 			// Sidecar files retire as sources — drop any sidecar
 			// assignment from the old loop (§14.3); the YAML is
@@ -598,7 +620,10 @@ export async function handleApprove(
 		if (!target.publishedPath) continue; // fresh publish — no gate
 		const publishedContent = readFileSync(target.publishedPath, "utf8");
 		if (target.fileArtifact === "PRD") {
-			const comparison = comparePsrs(publishedContent, target.content);
+			// Phase 12 Fix 1: compare the REVIEWED revision, not the DB
+			// render — validatePsrs over the render fails (21 errors), so
+			// every PRD revision used to be blocked in DB-era projects.
+			const comparison = comparePsrs(publishedContent, target.gateContent ?? target.content);
 			if (!comparison.ok) {
 				for (const issue of comparison.issues) {
 					revisionIssues.push(`[${target.file}] ${issue.code}: ${issue.message}`);
@@ -632,7 +657,9 @@ export async function handleApprove(
 	for (const target of targets) {
 		const gate = runPublishGate({
 			artifact: target.fileArtifact,
-			workingContent: target.content,
+			// Phase 12 Fix 1: DB-rendered kinds gate on the LLM working copy
+			// (the reviewed artifact); the render is only written/exported.
+			workingContent: target.gateContent ?? target.content,
 			// RTM-specific publish-gate checks (fingerprint binding +
 			// phase consistency) read from a minimal RtmData built from
 			// the payload rows above (Phase 6 §14.3). For non-RTM kinds
@@ -808,7 +835,10 @@ export async function handleApprove(
 			envelope,
 			payload: rows,
 			publishedPaths: markdownWrites ? targets.map((t) => t.groupedAbs) : [],
-			...(storeKind === "prd" ? { prdPublishedPath: publishedPrdPath(projectName, cwd) ?? undefined } : {}),
+			// Phase 12 Fix 2b: the pre-write snapshot (see above) — G8 must
+			// compare against the revision the payload mirrored, not the file
+			// this publish just re-stamped.
+			...(storeKind === "prd" ? { prdPublishedPath: publishedPrdBeforePublish ?? undefined } : {}),
 		});
 		for (const w of dbOutcome.warnings) ctx.ui.notify(w, "warning");
 		if (!dbOutcome.ok) {

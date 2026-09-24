@@ -60,12 +60,22 @@ Tier 2 additionally requires:
 
 | Test                              | Tier | What it proves                                                                              |
 | --------------------------------- | ---- | ------------------------------------------------------------------------------------------- |
-| `registration.e2e.test.ts`        | 1    | Extension loads into Pi + every one of the 27 `COMMAND_NAMES` appears in `get_commands`     |
+| `registration.e2e.test.ts`        | 1    | Extension loads into Pi + every `COMMAND_NAMES` entry (imported from the source, so the count can never drift) appears in `get_commands` |
 | `doctor.e2e.test.ts`              | 1    | Extension loads + `runDoctor` writes its on-disk report and emits the expected `## ` sections |
 | `config.e2e.test.ts`              | 1    | files.json v3→v4 migration on load; `discoverProjectFiles` honours excludedPaths; agents.json absent = all defaults (never auto-created); save→load→resolve→validate round-trip; `discoverAgents` dedup across project/user/bundled sources |
 | `stage-gates.e2e.test.ts`         | 1    | Walking `STAGE_TRANSITIONS` from `brainstorming` reaches `handoff-ready` (19 states) with on-disk state in sync; illegal jumps throw `Cannot transition`; all 6 core stage commands hard-block at the wrong stage with nothing handed to the LLM; `runStage("prd")` gate-pass hands off exactly one prompt |
 | `brainstorm-gates.e2e.test.ts`    | 1    | Mutation lock blocks edit/write outside the brainstorm folder and lifts after approve; approve hard-blocks on unconfirmed understanding / open question / `_TBD_` notes; happy path publishes + writes audit log + clears session fields + chains into PRD |
 | `ops-doctor.e2e.test.ts`          | 1    | Doctor agent-mapping section renders; status appendEntry + footer setStatus; reset cancel/confirm; show-prd legacy-flat fallback; handoff hard-blocks at the wrong stage and writes a schema-valid `.pi/senai/architect-inputs.json` at `planned-tests` |
+| `generate-sub-agents.e2e.test.ts` | 1    | `/velpari-generate-sub-agents` registers (L3 wiring intact) + the doctor's generator-completeness / generated-agent-freshness / verifier-verdict sections render |
+| `migrate-store.e2e.test.ts`       | 1    | `/velpari-migrate-store` through a real `pi`: `migrateDryRun` writes nothing, `migrateExecute` creates the store DB + the exported YAML beside it and commits `velpari(migrate): <project> (run migrated)`, then the doctor's store/data checks are clean on the migrated project |
+| `tier2-brainstorm-only.test.ts`   | 2    | Tier 2 scaffold: the harness precondition (LLM flag + real key) for a `/velpari-brainstorm` run — the LLM flow itself is not exercised yet |
+
+**Shipped publish default (DB-only).** Since Phase 11 an approve publishes to
+the **store DB + the exported YAML beside it + a git commit** and writes **no
+markdown** to `Doc/` — the `Doc/` markdown you may still see is legacy history
+or the opt-in write-alongside hatch (`files.json:velpari.markdownWrites`), and
+`/velpari-export` is the way to download a human view. E2E suites that assert
+on `Doc/` markdown must therefore either enable that hatch or expect no files.
 
 The doctor command was chosen as the smoke test because it has **no
 interview loop, no LLM call, and no subagent fan-out** — it just runs
@@ -74,7 +84,7 @@ right first target for validating the e2e infrastructure itself.
 
 ## What the stage suites cover (and what they cannot)
 
-The eight stage handlers (`/velpari-prd`, `/velpari-rtm`, ...,
+The nine stage handlers (`/velpari-prd`, `/velpari-rtm`, ...,
 `/velpari-development-order`) hand off to the parent LLM, which drives the
 scout fan-out per the stage skill. The brainstorm handler (lifecycle v2) no
 longer runs a `ctx.ui.input` / `ctx.ui.confirm` interview — the interview

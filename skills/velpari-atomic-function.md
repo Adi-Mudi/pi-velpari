@@ -130,7 +130,10 @@ After all 4 scouts complete:
 5. Render the markdown table FROM the YAML and write it to `<workingCopy>`
    (`atomic-functions_<projectName>.md`). The publish gate re-generates
    the published markdown from the YAML — the published table is always
-   derived from the data, never from hand-written markdown.
+   derived from the data, never from hand-written markdown. (The DB-only
+   publish default writes NOTHING to `Doc/` — the published view comes from
+   `/velpari-export`; the working-copy markdown + YAML stay the review
+   surface.)
 
 ## Output Format
 

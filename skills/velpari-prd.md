@@ -419,9 +419,13 @@ Shape (unknown fields are rejected; enums must match exactly):
 }
 ```
 
-PRD ONLY (G8 mirror check): `inputs` MUST include
-`"prd-file": "<sha256 hex of the published PRD markdown>"` — the gate
-recomputes that hash at publish time and aborts on mismatch.
+PRD ONLY (G8 mirror check): when a PRD markdown is ALREADY published
+(`Doc/requirements/PRD_<project>.md` — a revision; write-alongside mode or a
+legacy project), `inputs` MUST include
+`"prd-file": "<sha256 hex of that already-published PRD markdown>"` — the
+gate recomputes that hash BEFORE the publish rewrites the file and aborts on
+mismatch. On a first publish (no such file yet) the key is optional and the
+mirror check is skipped.
 
 Every row must trace to the working copy content (zero hallucination).
 

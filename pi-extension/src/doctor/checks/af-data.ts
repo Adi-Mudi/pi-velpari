@@ -19,6 +19,7 @@ import { readLatestPublishedRows } from "../../io/store.js";
 import { deriveAtomicProfile } from "../../core/atomic-tier.js";
 import { loadFilesConfig } from "../../core/config.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
+import { markdownWritesEnabled } from "../../core/config.js";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
@@ -65,7 +66,12 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 			return { title: "Atomic-functions data sidecar", items };
 		}
 		const dbMd = resolveDocArtifact("atomic-functions", projectName, cwd);
-		if (dbMd) {
+		// Phase 12 Fix F7 — DB-only awareness: with markdown writes retired
+		// (the default) the published markdown is a legacy VIEW the publish
+		// chain never rewrites; comparing a re-render against it would error
+		// on every republish of a migrated project.
+		const viewMaintained = markdownWritesEnabled(cwd);
+		if (dbMd && viewMaintained) {
 			// View drift (DB-path): deterministic re-render of the DB rows
 			// must match the published body (G5 renderers).
 			const renderedBody = parseFrontmatterBlock(renderAfMarkdownFromRows(fromDb.rows))?.body ?? "";
@@ -83,7 +89,13 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 		}
 		items.push({
 			status: "ok",
-			message: `Atomic-functions store rows valid — ${afRows.length} function(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			message: `Atomic-functions store rows valid — ${afRows.length} function(s)${
+				dbMd
+					? viewMaintained
+						? ", published view matches the store"
+						: " (legacy published view — markdown writes retired, drift not checked)"
+					: " (no published view yet)"
+			}.`,
 			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
 		});
 		return { title: "Atomic-functions data sidecar", items };

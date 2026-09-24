@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
+import { markdownWritesEnabled } from "../../core/config.js";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { renderRtmMarkdown, resolveRtmSidecar, validateRtmData, type RtmData } from "../../core/rtm-data.js";
 import { renderRtmMarkdown as renderRtmMarkdownFromRows } from "../../ops/export-doc.js";
@@ -57,7 +58,14 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 			return { title: "RTM data sidecar", items };
 		}
 		const dbMd = resolveDocArtifact("RTM", projectName, cwd);
-		if (dbMd) {
+		// Phase 12 Fix F7 — DB-only awareness: with markdown writes retired
+		// (the default) a published markdown is a legacy human VIEW that the
+		// publish chain never rewrites, so a deterministic re-render can only
+		// differ from it — comparing anyway errored on every republish of a
+		// migrated project. Drift is checked only while the markdown is still
+		// maintained (write-alongside ON).
+		const viewMaintained = markdownWritesEnabled(cwd);
+		if (dbMd && viewMaintained) {
 			// View drift (DB-path): the publish chain rendered the published
 			// view from the same rows the store holds, so a deterministic
 			// re-render of the DB rows must match the published body (G5).
@@ -76,7 +84,13 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 		}
 		items.push({
 			status: "ok",
-			message: `RTM store rows valid — ${rtmRows.length} row(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			message: `RTM store rows valid — ${rtmRows.length} row(s)${
+				dbMd
+					? viewMaintained
+						? ", published view matches the store"
+						: " (legacy published view — markdown writes retired, drift not checked)"
+					: " (no published view yet)"
+			}.`,
 			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
 		});
 		return { title: "RTM data sidecar", items };

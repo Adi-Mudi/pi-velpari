@@ -22,6 +22,7 @@ import {
 import { renderDevelopmentOrderMarkdown as renderDevOrderMarkdownFromRows } from "../../ops/export-doc.js";
 import { readLatestPublishedRows } from "../../io/store.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
+import { markdownWritesEnabled } from "../../core/config.js";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
@@ -66,7 +67,11 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 			return { title: "Development-order data sidecar", items };
 		}
 		const dbMd = resolveDocArtifact("development-order", projectName, cwd);
-		if (dbMd) {
+		// Phase 12 Fix F7 — DB-only awareness (see the RTM check's note): the
+		// published markdown is a legacy VIEW under the default mode, so the
+		// drift comparison only runs while markdown writes are maintained.
+		const viewMaintained = markdownWritesEnabled(cwd);
+		if (dbMd && viewMaintained) {
 			const renderedBody = parseFrontmatterBlock(renderDevOrderMarkdownFromRows(fromDb.rows))?.body ?? "";
 			const publishedText = readFileSync(dbMd.path, "utf8");
 			const publishedBody = parseFrontmatterBlock(publishedText)?.body ?? publishedText;
@@ -82,7 +87,13 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 		}
 		items.push({
 			status: "ok",
-			message: `Development-order store rows valid — ${doRows.length} step(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			message: `Development-order store rows valid — ${doRows.length} step(s)${
+				dbMd
+					? viewMaintained
+						? ", published view matches the store"
+						: " (legacy published view — markdown writes retired, drift not checked)"
+					: " (no published view yet)"
+			}.`,
 			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
 		});
 		return { title: "Development-order data sidecar", items };

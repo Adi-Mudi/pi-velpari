@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DB-primary storage Phase 12 — shipped-path fixes + integration proof (2026-09-24)
+
+The shipped DB-only default had never been executed end-to-end, and doing so exposed three real defects — all fixed here. `ops/approve.ts` now gates DB-rendered kinds on the **LLM working copy** (the artifact the user reviewed) instead of the lossy DB render, so a PRD publish and a PRD **revision** pass their gates under the default (before: 21 `psrs-*` errors, nothing could publish). The G8 `prd-file` mirror hash is required only when a PRD markdown is **already published** and is compared against that pre-publish file, so a first publish in write-alongside mode no longer fails on a hash the caller cannot predict. The three DB-rendered doctor drift checks are DB-only aware, so a migrated project's legacy markdown no longer reports phantom drift. Coverage: an approve-level suite for the shipped default, a migrated-project end-to-end suite, a Tier-1 e2e through a real `pi`, and the e2e README refresh. No new dependencies.
+
+#### Added
+
+- **`test/integration/db-era-publish.test.ts`** — the first approve-level test of the shipped default (no `velpari` key → markdown OFF) plus the flag-ON hatch and both G8 revision directions.
+- **`test/integration/migrated-project.test.ts`** — migrated project end-to-end: DB-primary reads, slice + `## DB Input Slices` prompt block, DB-era approve commit set, export renderer, doctor classification, rebuild-from-YAML checksum verified.
+- **`test/e2e/migrate-store.e2e.test.ts`** — Tier-1: `/velpari-migrate-store` dry-run/execute + the `velpari(migrate)` commit driven through a real `pi`.
+- **`test/doctor/db-only-view-drift.test.ts`** — drift semantics for RTM / atomic-functions / development-order with markdown writes OFF and ON.
+
+#### Changed
+
+- **`ops/approve.ts`** — content gates validate the LLM working copy for DB-rendered kinds; the G8 mirror check and the `prd-file` requirement use a pre-publish snapshot.
+- **`ops/stage-payloads.ts`** — `loadStagePayload(..., { requirePrdFileHash })` (default: required, so the legacy contract is unchanged).
+- **`doctor/checks/{rtm-data,af-data,dev-order-data}.ts`** — the render-drift comparison runs only while markdown writes are maintained.
+- **`skills/velpari-prd.md`**, **`skills/velpari-{rtm,atomic-function,development-order}.md`** — the G8 hash rule and the "published markdown" wording now state the DB-only default.
+- **`pi-extension/test/e2e/README.md`** — dynamic command-count wording, the 9-suite table, and the shipped-default note.
+
 ### DB-primary storage Phase 11 — one-time migration + markdown-write retirement (2026-09-24)
 
 RES-3 lands: `/velpari-migrate-store` (45th command) imports every legacy-published `Doc/` document into its project's store DB exactly once — `--dry-run` first (writes NOTHING), then a confirm-gated `--execute` that is idempotent on re-run (already-published kinds are no-op skips), re-exporting one `<Artifact>_<project>.yaml` beside each DB (the Phase 9 runbook rebuild source, including for kinds previously imported by `/velpari-backfill`, which never exported) and committing per project (`velpari(migrate): <project> (run migrated)`, explicit paths only — DB + YAML + registry + healed git files; legacy markdown is never committed). Q3 lands in the same phase: the markdown publish write is RETIRED and DEFAULT OFF — approve now writes DB rows + YAML + git commit and NOTHING to `Doc/`; the `.IDE_Plans/velpari/runs/<run-id>/<stage>/*.md` working copies are untouched (the mandated temp `.md` review surface) and existing `Doc/` markdown stays on disk as readable history (never rewritten, never deleted). Write-alongside is the explicit opt-IN rollback hatch via `files.json` `"velpari": {"markdownWrites": true}` (absent key = OFF). Three retirement-blast-radius fixes land with it: freshness inputs hash the exported YAML bytes for DB-era projects (so `input-changed` keeps firing when markdown never changes), handoff renders the design payload from the store (file read = legacy fallback), and `/velpari-reconfirm` appends its audit line to the store envelope's `changeLog` column when no published file exists. No new dependencies.
