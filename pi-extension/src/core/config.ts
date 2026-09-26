@@ -37,6 +37,13 @@ export interface FilesConfig {
 		 *  writes DB ONLY (rows + YAML + git commit; nothing to Doc/).
 		 *  Flip ON to restore write-alongside — the rollback hatch. */
 		markdownWrites?: boolean;
+		/** Retention (N7/N10, Foundation 2026-09-27). revisions: "all"
+		 *  (default, keep forever) or keep-last-N per kind. backups: FIFO
+		 *  count for Backup/velpari/<project>/, default 10. */
+		retention?: {
+			revisions?: number | "all";
+			backups?: number;
+		};
 	};
 }
 
@@ -91,6 +98,37 @@ function defaultConfig(): FilesConfig {
 export function markdownWritesEnabled(cwd: string = process.cwd(), opts?: { skipDbPublish?: boolean }): boolean {
 	if (opts?.skipDbPublish === true) return true;
 	return loadFilesConfig(cwd).velpari?.markdownWrites === true;
+}
+
+/** Resolved retention settings (defaults + files.json overrides). */
+export interface RetentionConfig {
+	/** Keep-forever default ("all") or keep-last-N revisions per kind (N7). */
+	revisions: number | "all";
+	/** FIFO backup count under Backup/velpari/<project>/ (N10). Default 10. */
+	backups: number;
+}
+
+/**
+ * N7/N10 (Foundation 2026-09-27): read the retention block with defaults
+ * applied. Throws on a malformed block (a positive-integer or "all"
+ * revisions value and a positive-integer backups value are the only legal
+ * shapes) — a typo'd retention config must surface, not silently default.
+ */
+export function retentionConfig(cwd: string = process.cwd()): RetentionConfig {
+	const raw = loadFilesConfig(cwd).velpari?.retention;
+	if (raw === undefined) return { revisions: "all", backups: 10 };
+	const revisions = raw.revisions ?? "all";
+	const backups = raw.backups ?? 10;
+	const revisionsOk =
+		revisions === "all" || (typeof revisions === "number" && Number.isInteger(revisions) && revisions > 0);
+	const backupsOk = typeof backups === "number" && Number.isInteger(backups) && backups > 0;
+	if (!revisionsOk || !backupsOk) {
+		throw new Error(
+			`files.json velpari.retention is invalid: revisions must be "all" or a positive integer, ` +
+				`backups a positive integer (got revisions=${JSON.stringify(raw.revisions)}, backups=${JSON.stringify(raw.backups)}).`,
+		);
+	}
+	return { revisions, backups };
 }
 
 /** Pre-v4 shape, kept for migration. */

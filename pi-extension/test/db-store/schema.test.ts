@@ -20,8 +20,11 @@ import { STORE_DB_DIR, buildStoreDbPath, buildStoreYamlPath } from "../../src/co
 const EXPECTED_TABLES = [
 	"adr",
 	"approach",
+	"artifact_revisions",
 	"artifacts",
 	"atomic_function",
+	"audit_ledger",
+	"baselines",
 	"design_module",
 	"dev_step",
 	"diagram",
@@ -41,6 +44,7 @@ const EXPECTED_TABLES = [
 	"store_meta",
 	"tc_trace",
 	"test_case",
+	"tx_log",
 ];
 
 /** Insert an envelope row (defaults: draft status, empty inputs/change_log). */
@@ -61,7 +65,7 @@ describe("db-schema — v001 core schema", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	test("v001 applied: user_version >= 1 (v3 after the v002 prose + v003 store_meta migrations), all tables + G6 indexes present", () => {
+	test("v001 applied: user_version >= 1 (v4 after the v002 prose + v003 store_meta + v004 revision migrations), all tables + G6 indexes present", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
@@ -79,7 +83,7 @@ describe("db-schema — v001 core schema", () => {
 					.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name")
 					.all() as Array<{ name: string }>
 			).map((r) => r.name);
-			assert.deepEqual(idx, ["idx_links_from", "idx_links_to"]);
+			assert.deepEqual(idx, ["idx_links_from", "idx_links_to", "idx_revisions_kind"]);
 		} finally {
 			closeStoreDb(db);
 		}
@@ -415,13 +419,13 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		["dev_step", "description"],
 	];
 
-	test("v002 applies on a fresh open: user_version = 3 (v002 + v003 store_meta), all 14 prose columns present + nullable", () => {
+	test("v002 applies on a fresh open: user_version = 4 (v002 + v003 store_meta + v004 revision model), all 14 prose columns present + nullable", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 3, "v002 + v003 migrations applied → user_version = 3");
+			assert.equal(v.user_version, 4, "v002 + v003 + v004 migrations applied → user_version = 4");
 			for (const [table, col] of V002_COLUMNS) {
 				const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
 					name: string;
@@ -450,23 +454,23 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			const v = db2.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 3);
+			assert.equal(v.user_version, 4);
 		} finally {
 			closeStoreDb(db2);
 		}
 	});
 
-	test("G3 downgrade guard: user_version > 3 refuses to open", async () => {
+	test("G3 downgrade guard: user_version > 4 refuses to open", async () => {
 		const path = join(dir, "index.db");
 		const seed = openStoreDb(path);
 		closeStoreDb(seed);
-		// Bump to v4 — a future, unknown migration. This extension only knows up to v3.
+		// Bump to v5 — a future, unknown migration. This extension only knows up to v4.
 		// Uses dynamic import (ESM-friendly) to reach node:sqlite without polluting
 		// the registered lazy loader. The test proves the downgrade guard reads
 		// PRAGMA user_version directly and refuses an opening from an older extension.
 		const sqlite = (await import("node:sqlite")) as typeof import("node:sqlite");
 		const bump = new sqlite.DatabaseSync(path);
-		bump.exec("PRAGMA user_version = 4");
+		bump.exec("PRAGMA user_version = 5");
 		bump.close();
 		assert.throws(() => openStoreDb(path), /schema version|Upgrade your extension/);
 	});
@@ -512,6 +516,160 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			assert.ok(adrCols.includes("rationale"));
 			const linksCols = (db.prepare("PRAGMA table_info(links)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.equal(linksCols.length, 6, "links table still has 6 columns (no adds)");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+});
+
+/**
+ * Foundation (2026-09-27): v004 revision model + audit core. Immutable
+ * full-snapshot history lives in `artifact_revisions` (no artifacts rebuild);
+ * freeze lives on `artifacts`; audit_ledger/tx_log are hash-chained.
+ */
+describe("db-schema — v004 revision model (Foundation)", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "velpari-schema-v004-"));
+	});
+
+	after(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	function columnNames(db: DatabaseSync, table: string): string[] {
+		return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((r) => r.name);
+	}
+
+	test("artifacts gains head_revision_id / frozen / freeze_reason; frozen defaults to 0", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const cols = columnNames(db, "artifacts");
+			assert.ok(cols.includes("head_revision_id"));
+			assert.ok(cols.includes("frozen"));
+			assert.ok(cols.includes("freeze_reason"));
+			insertEnvelope(db, "r1", "prd");
+			const row = db
+				.prepare("SELECT frozen, freeze_reason, head_revision_id FROM artifacts WHERE run_id = 'r1' AND kind = 'prd'")
+				.get() as {
+				frozen: number;
+				freeze_reason: unknown;
+				head_revision_id: unknown;
+			};
+			assert.equal(row.frozen, 0, "new artifacts rows are unfrozen by default");
+			assert.equal(row.freeze_reason, null);
+			assert.equal(row.head_revision_id, null);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("artifact_revisions: UNIQUE(kind, revision_number), status CHECK rejects 'frozen', STRICT mode", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const insert = db.prepare(
+				"INSERT INTO artifact_revisions (kind, run_id, revision_number, version, stage, generated_at, published_at, sha256_fingerprint, yaml_bytes) VALUES (?, ?, ?, 1, 'stage', '2026-09-27T00:00:00Z', '2026-09-27T00:00:01Z', 'fp', 'yaml: bytes')",
+			);
+			insert.run("prd", "r1", 1);
+			assert.throws(() => insert.run("prd", "r2", 1), /UNIQUE/i, "duplicate (kind, revision_number) rejected");
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO artifact_revisions (kind, run_id, revision_number, status, version, stage, generated_at, published_at, sha256_fingerprint, yaml_bytes) VALUES ('rtm', 'r1', 1, 'frozen', 1, 'stage', '2026-09-27T00:00:00Z', '2026-09-27T00:00:01Z', 'fp', 'y')",
+						)
+						.run(),
+				/CHECK/i,
+				"status 'frozen' rejected — freeze lives on artifacts, not revisions",
+			);
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO artifact_revisions (kind, run_id, revision_number, version, stage, generated_at, published_at, sha256_fingerprint, yaml_bytes) VALUES ('design', 'r1', 1, 'not-a-number', 'stage', '2026-09-27T00:00:00Z', '2026-09-27T00:00:01Z', 'fp', 'y')",
+						)
+						.run(),
+				/STRICT|datatype|cannot store/i,
+				"STRICT mode rejects wrong types",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("artifact_revisions: supersedes_revision_id is a real FK to artifact_revisions", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const insert = db.prepare(
+				"INSERT INTO artifact_revisions (kind, run_id, revision_number, supersedes_revision_id, version, stage, generated_at, published_at, sha256_fingerprint, yaml_bytes) VALUES (?, ?, ?, ?, 1, 'stage', '2026-09-27T00:00:00Z', '2026-09-27T00:00:01Z', 'fp', 'y')",
+			);
+			insert.run("prd", "r1", 1, null);
+			const first = db
+				.prepare("SELECT revision_id FROM artifact_revisions WHERE kind = 'prd' AND revision_number = 1")
+				.get() as {
+				revision_id: number;
+			};
+			insert.run("prd", "r1", 2, first.revision_id);
+			assert.throws(
+				() => insert.run("rtm", "r1", 1, 999999),
+				/FOREIGN KEY/i,
+				"dangling supersedes_revision_id rejected",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("baselines: composite PK (kind, consumer_stage) + FK to artifact_revisions", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			db.prepare(
+				"INSERT INTO artifact_revisions (kind, run_id, revision_number, version, stage, generated_at, published_at, sha256_fingerprint, yaml_bytes) VALUES ('prd', 'r1', 1, 1, 'stage', '2026-09-27T00:00:00Z', '2026-09-27T00:00:01Z', 'fp', 'y')",
+			).run();
+			const rev = db.prepare("SELECT revision_id FROM artifact_revisions WHERE kind = 'prd'").get() as {
+				revision_id: number;
+			};
+			const insert = db.prepare(
+				"INSERT INTO baselines (kind, consumer_stage, revision_id, baselined_at) VALUES (?, ?, ?, ?)",
+			);
+			insert.run("prd", "building-rtm", rev.revision_id, "2026-09-27T00:00:02Z");
+			assert.throws(
+				() => insert.run("prd", "building-rtm", rev.revision_id, "2026-09-27T00:00:03Z"),
+				/UNIQUE|PRIMARY/i,
+				"duplicate (kind, consumer_stage) rejected",
+			);
+			assert.throws(
+				() => insert.run("rtm", "designing", 999999, "2026-09-27T00:00:04Z"),
+				/FOREIGN KEY/i,
+				"dangling revision_id rejected",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("audit_ledger + tx_log: entry_hash UNIQUE, tx_log outcome CHECK", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const insertAudit = db.prepare(
+				"INSERT INTO audit_ledger (at, actor, action, prev_hash, entry_hash) VALUES ('2026-09-27T00:00:00Z', 'test', 'publish', ?, ?)",
+			);
+			insertAudit.run("0".repeat(64), "aa");
+			assert.throws(() => insertAudit.run("aa", "aa"), /UNIQUE/i, "duplicate entry_hash rejected");
+			db.prepare(
+				"INSERT INTO tx_log (at, actor, operation, outcome, prev_hash, entry_hash) VALUES ('2026-09-27T00:00:00Z', 'test', 'publish', 'commit', ?, 'bb')",
+			).run("0".repeat(64));
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO tx_log (at, actor, operation, outcome, prev_hash, entry_hash) VALUES ('2026-09-27T00:00:01Z', 'test', 'reset', 'maybe', 'bb', 'cc')",
+						)
+						.run(),
+				/CHECK/i,
+				"outcome outside commit/rollback rejected",
+			);
 		} finally {
 			closeStoreDb(db);
 		}

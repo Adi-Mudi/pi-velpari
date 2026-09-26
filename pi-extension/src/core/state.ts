@@ -40,6 +40,12 @@ export interface RunState {
 	 *  (continue → resume it; restart-prd → land at "brainstormed"), and
 	 *  cleared by `resumeFromBrainstorm`/`discardBrainstormSession`. */
 	pausedStage?: Stage;
+	/** N5/N6 — git branch the run started on (worktree-scope enforcement,
+	 *  Phase 5). Stamped when the run starts; a downstream consumer that
+	 *  detects a foreign-run move forces a separate worktree. */
+	runBranch?: string;
+	/** N5/N6 — absolute path of the git worktree the run started in. */
+	runWorktree?: string;
 	/** Hard lock for the brainstorm lifecycle: true only after the user has
 	 *  confirmed the parent's one-paragraph understanding. */
 	understandingConfirmed?: boolean;
@@ -483,6 +489,32 @@ export function setActiveSubagents(
 				docCode: handles.docCode,
 				spawnedAt: handles.spawnedAt ?? new Date().toISOString(),
 			},
+			updatedAt: new Date().toISOString(),
+		};
+		saveState(next, cwd);
+		return next;
+	});
+}
+
+/**
+ * N5/N6 — bind the run to its git branch + worktree path (worktree-scope
+ * enforcement, Phase 5). Stamped once when the run starts; later reads
+ * compare the caller's cwd/branch against these fields.
+ */
+export function setRunWorktreeBranch(
+	state: RunState,
+	branch: string,
+	worktree: string,
+	cwd: string = process.cwd(),
+): RunState {
+	if (branch.trim() === "" || worktree.trim() === "") {
+		throw new Error("setRunWorktreeBranch needs a non-empty branch and worktree path.");
+	}
+	return withRunLock(cwd, "setRunWorktreeBranch", () => {
+		const next: RunState = {
+			...state,
+			runBranch: branch,
+			runWorktree: worktree,
 			updatedAt: new Date().toISOString(),
 		};
 		saveState(next, cwd);

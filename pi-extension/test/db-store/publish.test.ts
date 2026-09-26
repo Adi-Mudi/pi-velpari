@@ -731,4 +731,3 @@ describe("prd payload — G8 hash requirement is mode-aware (Phase 12 Fix 2)", (
 		assert.equal(loadStagePayload(bad, "prd", { requirePrdFileHash: true }).ok, false);
 	});
 });
-

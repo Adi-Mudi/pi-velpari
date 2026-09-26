@@ -21,12 +21,21 @@
 // v002 = prose columns ADD COLUMN (Phase 6, decision §14): 14 nullable
 // TEXT additions across fr / nfr / prd_section / pseudocode_block /
 // test_case / design_module / atomic_function / dev_step.
+// v003 = store_meta table (Phase 7 doctor bookkeeping).
+// v004 = revision model + audit core (Foundation, 2026-09-27):
+// artifact_revisions snapshots, baselines, hash-chained audit_ledger +
+// tx_log, artifacts.head_revision_id/frozen/freeze_reason.
 // ============================================================================
 
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_V001_DDL, SCHEMA_V002_ADDITIONS, SCHEMA_V003_STORE_META } from "./db-schema.js";
+import {
+	SCHEMA_V001_DDL,
+	SCHEMA_V002_ADDITIONS,
+	SCHEMA_V003_STORE_META,
+	SCHEMA_V004_REVISION_MODEL,
+} from "./db-schema.js";
 import { PORTFOLIO_USER_VERSION } from "./portfolio-schema.js";
 import { applyPortfolioSchema } from "./portfolio.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -97,6 +106,13 @@ export const MIGRATIONS: readonly Migration[] = [
 		name: "store_meta table — Phase 7 doctor bookkeeping (review v1.1 decision 1)",
 		up: (db: DatabaseSync) => {
 			db.exec(SCHEMA_V003_STORE_META);
+		},
+	},
+	{
+		version: 4,
+		name: "revision model — artifact_revisions, baselines, audit_ledger, tx_log (Foundation)",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V004_REVISION_MODEL);
 		},
 	},
 ];
