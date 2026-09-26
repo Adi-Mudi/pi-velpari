@@ -41,7 +41,30 @@ async function runModuleScript<T>(client: RpcClient, script: string): Promise<T>
 	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
-	return JSON.parse(output) as T;
+	return parseFirstJson(output) as T;
+}
+
+/**
+ * Parse the FIRST JSON value from a captured output stream, tolerating
+ * trailing bytes. The pi bash channel can merge a later execution's capture
+ * with an earlier execution's stdout in the same session (observed 2026-09-27:
+ * the handoff script's JSON followed by the doctor test's `{"report": …}`
+ * payload), so a strict JSON.parse of the whole stream flakes. Every module
+ * script writes exactly one JSON document at the START of its output — parse
+ * that and ignore the rest.
+ * @param {string} text - Raw captured output (first value = a JSON doc).
+ * @returns {unknown} The first JSON value in the stream.
+ */
+function parseFirstJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch (err) {
+		const m = /position (\d+)/.exec(err instanceof Error ? err.message : "");
+		if (!m) throw err;
+		const cut = Number(m[1]);
+		if (!Number.isFinite(cut) || cut <= 0) throw err;
+		return JSON.parse(text.slice(0, cut).trimEnd());
+	}
 }
 
 const STATE_JS = JSON.stringify(distModuleUrl("core/state.js"));
