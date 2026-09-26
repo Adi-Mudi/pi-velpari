@@ -9,12 +9,16 @@
 //   2. Markdown publish — handled by approve.ts (Q3: markdown stays
 //      read-authoritative; this module never touches it).
 //   3. DB write: openStoreDb → writeArtifact (draft) → checksum verify →
-//      publishArtifact (Q2 draft→published flip, one txn).
+//      CAS head read → publishArtifactCas (F8/F9/F11: draft→published flip,
+//      revision snapshot + supersession + head move, one txn).
 //   4. Export + verify: exportArtifactYaml → atomic write beside the DB
 //      (RES-1) → verifyExportChecksum must be ok.
-//   5. G8 PRD mirror check (prd kind): published PRD file hash must equal
-//      envelope.inputs["prd-file"].
+//   5. G8 PRD mirror check (prd kind): the payload's inputs["prd-file"] must
+//      match the published PRD file hash (markdown mode) or the stored head
+//      digest (DB-only mode, re-pointed in Phase 1).
 //   6. Checkpoint (G1): wal_checkpoint(TRUNCATE) right before the commit.
+//   6b. Backup trigger (N9): createBackupSnapshot({trigger:"publish"}) —
+//       no-op (null) until Phase 3; null = continue, never blocks.
 //   7. Git commit (Q6c): explicit paths ONLY (DB + YAML + published
 //      markdown targets), message `velpari(<artifact>): <project> v<N> (run <runId>)`.
 //   8. Failure after the DB write → revertPublish + YAML deleted + error
@@ -29,9 +33,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { relative } from "node:path";
 import {
+	appendAuditEntry,
+	appendTxEntry,
 	checkpointNow,
 	exportArtifactYaml,
-	publishArtifact,
+	FrozenArtifactError,
+	getHeadRevision,
+	HeadMovedError,
+	publishArtifactCas,
 	revertPublish,
 	verifyExportChecksum,
 	writeArtifact,
@@ -42,6 +51,7 @@ import { ensureStoreGitIntegration } from "./git-attributes.js";
 import { syncPortfolioRegistry, repairPortfolioRegistry } from "./portfolio.js";
 import { openStoreDb } from "../io/db.js";
 import { buildStoreDbPath, buildStoreYamlPath, buildPortfolioDbPath } from "../core/paths.js";
+import { createBackupSnapshot } from "../core/backup.js";
 import { hashFileContent } from "../core/fingerprints.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { resolveDocArtifact } from "../core/paths.js";
@@ -73,12 +83,36 @@ export interface DbPublishOutcome {
 	warnings: string[];
 	/** Absolute DB path when the store was opened. */
 	dbPath?: string;
+	/**
+	 * Revision identity of the flip (N2) — null on failure/rollback. When the
+	 * publish supersedes a prior revision, `warnings` carries the line
+	 * "Superseded <kind> revision <priorN>; head is now revision <newN>."
+	 */
+	revision: {
+		revisionId: number;
+		revisionNumber: number;
+		supersededRevisionId: number | null;
+		supersededRevisionNumber: number | null;
+	} | null;
 }
 
 /** Result of the pre-checks that run BEFORE anything is written. */
 export interface DbPrecheckResult {
 	ok: boolean;
 	problems: string[];
+}
+
+/**
+ * Real actor name for call-site audit entries (F17: who/what/when/why).
+ * The chain is deterministic approve-flow code — the actor is the extension
+ * publishing this run's artifact, never the generic "velpari-store" (that
+ * name stays in io/store.ts reference wiring).
+ * @param {string} runId - Owning run.
+ * @param {ArtifactKind} kind - Artifact kind being published.
+ * @returns {string} e.g. "velpari:publish:prd:<runId>".
+ */
+function publishActor(runId: string, kind: ArtifactKind): string {
+	return `velpari:publish:${kind}:${runId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +175,7 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 	let db: ReturnType<typeof openStoreDb> | null = null;
 	let dbWriteLanded = false;
 	let yamlWritten = false;
+	let revisionInfo: DbPublishOutcome["revision"] = null;
 
 	try {
 		// --- 3. DB write (draft) ---
@@ -157,9 +192,89 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 			);
 		}
 
-		// --- Q2 flip (one txn) ---
+		// CAS head read (F11) — AFTER the draft write (writeArtifact's upsert
+		// never touches head_revision_id/frozen, so this is still the head the
+		// caller's payload mirrors) and BEFORE the flip.
+		const expectedHead = getHeadRevision(db, input.runId, input.kind);
+
+		// --- 5. G8 PRD mirror check (re-pointed to the stored digest, N2) —
+		// PRE-flip: every input (payload digest, pre-flip head, published-file
+		// snapshot) is available before the CAS, so a mirror mismatch refuses
+		// BEFORE anything publishes (Q6a — nothing is ever half-published, and
+		// no revision number is burned on a refused publish).
+		if (problems.length === 0 && input.kind === "prd") {
+			const expected = input.envelope.inputs
+				? (JSON.parse(input.envelope.inputs as string) as Record<string, string>)["prd-file"]
+				: undefined;
+			if (input.prdPublishedPath) {
+				// Markdown mode — Phase 12 Fix 2b contract unchanged: the payload
+				// mirrors the already-published PRD markdown file.
+				const actual = hashFileContent(input.prdPublishedPath);
+				if (!expected || expected !== actual) {
+					problems.push(
+						`G8 mirror check failed: payload inputs["prd-file"] (${expected ?? "missing"}) does not match ` +
+							`the published PRD hash (${actual ?? "unreadable"}). Re-hash the published markdown and fix the payload.`,
+					);
+				}
+			} else if (expected !== undefined && expectedHead) {
+				// DB-only mode — the comparison source is the stored digest of the
+				// current head revision (discussion §3.12 step 10). Lenient when
+				// the payload omits prd-file (Phase 12 contract), strict when it
+				// names one.
+				if (expected !== expectedHead.sha256Fingerprint) {
+					problems.push(
+						`G8 mirror check failed (DB-only): payload inputs["prd-file"] does not match the stored digest of ` +
+							`${input.kind} revision ${expectedHead.revisionNumber}. Re-read the store head and fix the payload.`,
+					);
+				}
+			}
+		}
+
+		// --- Q2 flip (one txn) — CAS on head is the ONLY publish door (F8/F9/F11) ---
 		if (problems.length === 0) {
-			publishArtifact(db, input.runId, input.kind);
+			try {
+				const head = publishArtifactCas(db, input.runId, input.kind, expectedHead ? expectedHead.revisionId : null);
+				revisionInfo = {
+					revisionId: head.revisionId,
+					revisionNumber: head.revisionNumber,
+					supersededRevisionId: expectedHead ? expectedHead.revisionId : null,
+					supersededRevisionNumber: expectedHead ? expectedHead.revisionNumber : null,
+				};
+				if (expectedHead) {
+					warnings.push(
+						`Superseded ${input.kind} revision ${expectedHead.revisionNumber}; head is now revision ${head.revisionNumber}.`,
+					);
+				}
+			} catch (err) {
+				if (err instanceof HeadMovedError) {
+					problems.push(
+						`CAS refusal: head moved for '${input.kind}' (expected revision_id ${err.expected ?? "none"}, ` +
+							`actual ${err.actual ?? "none"}). Another publish landed first — re-read the store head ` +
+							`and re-run the approve. Draft rows reverted.`,
+					);
+				} else if (err instanceof FrozenArtifactError) {
+					problems.push(
+						`Publish refused: '${input.kind}' is frozen${err.reason ? ` — ${err.reason}` : ""}. ` +
+							`Resolve the freeze before republishing. Draft rows reverted.`,
+					);
+				} else {
+					throw err;
+				}
+			}
+		}
+
+		// Call-site audit entry (F17) with the real actor — the store-level
+		// publish/supersede entries carry the reference actor; this one names
+		// the run that published. The commit tx entry is written inside
+		// publishArtifactCas (no duplicate here).
+		if (revisionInfo) {
+			appendAuditEntry(db, {
+				actor: publishActor(input.runId, input.kind),
+				action: "publish",
+				artifactKind: input.kind,
+				revisionNumber: revisionInfo.revisionNumber,
+				detail: { runId: input.runId, revisionId: revisionInfo.revisionId, surface: "approve-flow" },
+			});
 		}
 
 		// --- 4. Export + verify (RES-1) ---
@@ -179,26 +294,34 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 			}
 		}
 
-		// --- 5. G8 PRD mirror check ---
-		if (problems.length === 0 && input.kind === "prd" && input.prdPublishedPath) {
-			const expected = input.envelope.inputs
-				? (JSON.parse(input.envelope.inputs as string) as Record<string, string>)["prd-file"]
-				: undefined;
-			const actual = hashFileContent(input.prdPublishedPath);
-			if (!expected || expected !== actual) {
-				problems.push(
-					`G8 mirror check failed: payload inputs["prd-file"] (${expected ?? "missing"}) does not match ` +
-						`the published PRD hash (${actual ?? "unreadable"}). Re-hash the published markdown and fix the payload.`,
-				);
-			}
-		}
-
 		// --- 6. Checkpoint (G1) before the commit ---
 		if (problems.length === 0 && db) {
 			const cp = checkpointNow(db);
 			if (cp.busy !== 0) {
 				warnings.push(
 					`wal_checkpoint reported busy=${cp.busy} — committed index.db may lag; retry the publish if the commit looks stale.`,
+				);
+			}
+		}
+
+		// --- 6b. Snapshot backup before the commit (N9) — no-op until Phase 3 ---
+		// Success path ONLY: a failed publish never snapshots. Fail-open by
+		// contract (core/backup.ts): null = subsystem not installed = continue.
+		if (problems.length === 0) {
+			try {
+				const backup = createBackupSnapshot({
+					cwd: input.cwd,
+					projectName: input.projectName,
+					trigger: "publish",
+					dbPath,
+				});
+				if (backup) {
+					warnings.push(`Backup snapshot written: ${backup.backupPath} (quickCheckOk=${String(backup.quickCheckOk)}).`);
+				}
+			} catch (backupErr) {
+				warnings.push(
+					`Backup snapshot failed (publish continues — N9 is fail-open): ` +
+						`${backupErr instanceof Error ? backupErr.message : String(backupErr)}`,
 				);
 			}
 		}
@@ -235,7 +358,9 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 			if (add.error || add.status !== 0) {
 				problems.push(`git add failed: ${(add.stderr ?? add.error?.message ?? "unknown").trim()}`);
 			} else {
-				const message = `velpari(${input.yamlArtifact}): ${input.projectName} v${input.envelope.version} (run ${input.runId})`;
+				const message = revisionInfo
+					? `velpari(${input.yamlArtifact}): ${input.projectName} v${input.envelope.version} rev ${revisionInfo.revisionNumber} (run ${input.runId})`
+					: `velpari(${input.yamlArtifact}): ${input.projectName} v${input.envelope.version} (run ${input.runId})`;
 				const commit = spawnSync("git", ["commit", "-m", message, "--", ...addPaths], {
 					cwd: input.cwd,
 					encoding: "utf-8",
@@ -270,6 +395,23 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 					// Rows still draft → clean delete; already flipped → revert.
 					const draftGone = deleteDraftIfDraft(rdb, input.runId, input.kind);
 					if (!draftGone) revertPublish(rdb, input.runId, input.kind);
+					// Call-site rollback bookkeeping (F17/F18) — best-effort, never
+					// masks the original failure or a rollback failure.
+					try {
+						appendAuditEntry(rdb, {
+							actor: publishActor(input.runId, input.kind),
+							action: "publish-failed",
+							artifactKind: input.kind,
+							detail: { problems: [...problems] },
+						});
+						appendTxEntry(rdb, {
+							actor: publishActor(input.runId, input.kind),
+							operation: "rollback",
+							outcome: "rollback",
+						});
+					} catch {
+						// audit must never mask the rollback
+					}
 				} finally {
 					rdb.close();
 				}
@@ -285,26 +427,43 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 				);
 			}
 		}
-		return { ok: false, problems, warnings, dbPath };
+		return { ok: false, problems, warnings, dbPath, revision: null };
 	}
 
-	return { ok: true, problems: [], warnings, dbPath };
+	return { ok: true, problems: [], warnings, dbPath, revision: revisionInfo };
 }
 
 /**
  * Try deleteRunDrafts-style cleanup for one run/kind when the rows never
- * flipped. Returns true when the draft envelope existed and was deleted.
+ * flipped. Returns true when the draft envelope existed and was HANDLED
+ * (deleted, or deliberately kept — see below).
+ *
+ * Phase 1 (revision model): a draft that carries a head_revision_id is a
+ * REVISION of a published chain — deleting it would orphan the prior
+ * published revision (the pointer lives only on this row). Such a draft is
+ * KEPT (the normal update-mode resting state); the retry re-uses it and the
+ * CAS read still sees the correct head. Only a first-publish draft (never
+ * flipped, no head) is deleted as before.
+ *
+ * A flip that landed and then failed the chain (commit etc.) leaves a
+ * published artifact_revisions row behind (F8: the flip committed, so it
+ * WAS published); revertPublish restores the draft row with its head still
+ * pointing at that revision, and the retry's CAS read supersedes it — the
+ * chain stays linear without extra bookkeeping here.
  *
  * @param {ReturnType<typeof openStoreDb>} db - Open store connection.
  * @param {string} runId - Owning run.
  * @param {ArtifactKind} kind - Artifact kind to clean.
- * @returns {boolean} true when a draft envelope was found + deleted.
+ * @returns {boolean} true when a draft envelope was found + handled.
  */
 function deleteDraftIfDraft(db: ReturnType<typeof openStoreDb>, runId: string, kind: ArtifactKind): boolean {
-	const row = db.prepare("SELECT status FROM artifacts WHERE run_id = ? AND kind = ?").get(runId, kind) as
-		| { status: string }
-		| undefined;
+	const row = db
+		.prepare("SELECT status, head_revision_id FROM artifacts WHERE run_id = ? AND kind = ?")
+		.get(runId, kind) as { status: string; head_revision_id: number | null } | undefined;
 	if (row?.status !== "draft") return false;
+	if (row.head_revision_id !== null && row.head_revision_id !== undefined) {
+		return true; // revision draft — keep (head pointer must survive)
+	}
 	db.prepare("DELETE FROM artifacts WHERE run_id = ? AND kind = ? AND status = 'draft'").run(runId, kind);
 	return true;
 }

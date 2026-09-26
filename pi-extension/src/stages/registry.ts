@@ -28,7 +28,13 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
-import { computeStaleSet, manifestKey, resolveDeclaredInputs, type StaleItem } from "../core/freshness.js";
+import {
+	computeStaleSet,
+	manifestKey,
+	recordStageBaselines,
+	resolveDeclaredInputs,
+	type StaleItem,
+} from "../core/freshness.js";
 import { computeLegalCommands, type StageLockSpec } from "./transition-lock.js";
 import { loadOverlay } from "../core/standards-overlay.js";
 import { bootstrapOverlayScouts } from "../io/agents-install.js";
@@ -867,6 +873,12 @@ export async function runStage(
 		updateMode,
 		atomicProfile,
 	};
+
+	// F7 baseline stamp (Phase 1): the starting stage adopts the current head
+	// revision of every upstream artifact (queryable baselines table). One
+	// best-effort call at the single funnel point — never blocks the stage.
+	const baselineErr = recordStageBaselines(cwd, projectName, state.runId!, spec.stageEnum);
+	if (baselineErr) ctx.ui.notify(`Baseline stamp failed (stage continues): ${baselineErr}`, "warning");
 
 	await runStageWithScouts(stageConfig, ctx, pi);
 }
