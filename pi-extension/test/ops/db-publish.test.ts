@@ -309,7 +309,10 @@ describe("Phase 1 publish chain — CAS door, revision surfacing, audit wiring",
 			closeStoreDb(db);
 		}
 
-		// Wrong digest → refused with the DB-only variant of the message.
+		// Wrong digest → refused with the DB-only variant of the message. Per
+		// the CONFIRMED post-flip G8 position (discussion §3.12: flip → G8),
+		// the flip already committed — the refusal leaves an immutable snapshot
+		// as the forensic record and the NEXT honest retry supersedes it.
 		const refused = runDbPublish({
 			cwd: dir,
 			projectName: PROJECT,
@@ -326,19 +329,31 @@ describe("Phase 1 publish chain — CAS door, revision surfacing, audit wiring",
 			`the DB-only G8 branch must fire: ${refused.problems.join("; ")}`,
 		);
 
-		// Correct stored digest → publishes (revision 2).
+		// The forensic snapshot exists and is the new head (F8: the flip = published).
+		const db2 = openDb();
+		let headAfterRefusal: string;
+		try {
+			headAfterRefusal = getHeadRevision(db2, RUN_ID, "prd")!.sha256Fingerprint;
+		} finally {
+			closeStoreDb(db2);
+		}
+		assert.notEqual(headAfterRefusal, storedDigest, "the refused attempt's snapshot became the head");
+
+		// Honest retry mirroring the CURRENT head → publishes (revision 3,
+		// superseding the forensic revision 2).
 		const ok = runDbPublish({
 			cwd: dir,
 			projectName: PROJECT,
 			runId: RUN_ID,
 			kind: "prd",
 			yamlArtifact: "PRD",
-			envelope: envelope(2, { "prd-file": storedDigest }),
+			envelope: envelope(3, { "prd-file": headAfterRefusal }),
 			payload: rows(),
 			publishedPaths: [],
 		});
 		assert.equal(ok.ok, true, `the honest DB-only revision must publish: ${ok.problems.join("; ")}`);
-		assert.equal(ok.revision!.revisionNumber, 2);
+		assert.equal(ok.revision!.revisionNumber, 3);
+		assert.equal(ok.revision!.supersededRevisionNumber, 2);
 	});
 
 	test("backup contract: publish proceeds unblocked with the Foundation no-op (null)", () => {

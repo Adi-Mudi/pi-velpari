@@ -197,39 +197,6 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 		// caller's payload mirrors) and BEFORE the flip.
 		const expectedHead = getHeadRevision(db, input.runId, input.kind);
 
-		// --- 5. G8 PRD mirror check (re-pointed to the stored digest, N2) —
-		// PRE-flip: every input (payload digest, pre-flip head, published-file
-		// snapshot) is available before the CAS, so a mirror mismatch refuses
-		// BEFORE anything publishes (Q6a — nothing is ever half-published, and
-		// no revision number is burned on a refused publish).
-		if (problems.length === 0 && input.kind === "prd") {
-			const expected = input.envelope.inputs
-				? (JSON.parse(input.envelope.inputs as string) as Record<string, string>)["prd-file"]
-				: undefined;
-			if (input.prdPublishedPath) {
-				// Markdown mode — Phase 12 Fix 2b contract unchanged: the payload
-				// mirrors the already-published PRD markdown file.
-				const actual = hashFileContent(input.prdPublishedPath);
-				if (!expected || expected !== actual) {
-					problems.push(
-						`G8 mirror check failed: payload inputs["prd-file"] (${expected ?? "missing"}) does not match ` +
-							`the published PRD hash (${actual ?? "unreadable"}). Re-hash the published markdown and fix the payload.`,
-					);
-				}
-			} else if (expected !== undefined && expectedHead) {
-				// DB-only mode — the comparison source is the stored digest of the
-				// current head revision (discussion §3.12 step 10). Lenient when
-				// the payload omits prd-file (Phase 12 contract), strict when it
-				// names one.
-				if (expected !== expectedHead.sha256Fingerprint) {
-					problems.push(
-						`G8 mirror check failed (DB-only): payload inputs["prd-file"] does not match the stored digest of ` +
-							`${input.kind} revision ${expectedHead.revisionNumber}. Re-read the store head and fix the payload.`,
-					);
-				}
-			}
-		}
-
 		// --- Q2 flip (one txn) — CAS on head is the ONLY publish door (F8/F9/F11) ---
 		if (problems.length === 0) {
 			try {
@@ -289,6 +256,40 @@ export function runDbPublish(input: DbPublishInput): DbPublishOutcome {
 				if (!postVerify.ok) {
 					problems.push(
 						`store checksum mismatch after publish (expected ${postVerify.expected}, got ${postVerify.actual}).`,
+					);
+				}
+			}
+		}
+
+		// --- 5. G8 PRD mirror check (re-pointed to the stored digest, N2) —
+		// POST-flip per the CONFIRMED sequence (discussion §3.12 table A:
+		// step 9 flip → step 10 G8). A refusal here rolls back like any other
+		// failure (step 13): the draft row is restored (revertPublish keeps the
+		// head pointer), and the flip's immutable snapshot stays as the forensic
+		// record of the refused publish — the next honest retry supersedes it.
+		if (problems.length === 0 && input.kind === "prd") {
+			const expected = input.envelope.inputs
+				? (JSON.parse(input.envelope.inputs as string) as Record<string, string>)["prd-file"]
+				: undefined;
+			if (input.prdPublishedPath) {
+				// Markdown mode — Phase 12 Fix 2b contract unchanged: the payload
+				// mirrors the already-published PRD markdown file.
+				const actual = hashFileContent(input.prdPublishedPath);
+				if (!expected || expected !== actual) {
+					problems.push(
+						`G8 mirror check failed: payload inputs["prd-file"] (${expected ?? "missing"}) does not match ` +
+							`the published PRD hash (${actual ?? "unreadable"}). Re-hash the published markdown and fix the payload.`,
+					);
+				}
+			} else if (expected !== undefined && expectedHead) {
+				// DB-only mode — the comparison source is the stored digest of the
+				// pre-flip head revision (discussion §3.12 step 10). Lenient when
+				// the payload omits prd-file (Phase 12 contract), strict when it
+				// names one.
+				if (expected !== expectedHead.sha256Fingerprint) {
+					problems.push(
+						`G8 mirror check failed (DB-only): payload inputs["prd-file"] does not match the stored digest of ` +
+							`${input.kind} revision ${expectedHead.revisionNumber}. Re-read the store head and fix the payload.`,
 					);
 				}
 			}
