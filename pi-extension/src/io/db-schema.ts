@@ -357,3 +357,81 @@ CREATE TABLE IF NOT EXISTS store_meta (
 	value TEXT NOT NULL
 ) STRICT;
 `;
+
+/**
+ * v004 — revision model + audit core (Foundation, 2026-09-27).
+ *
+ * Immutable full-snapshot revision history (F6–F10): `artifacts` stays the
+ * working/head table; every publish flip writes a complete snapshot row into
+ * `artifact_revisions` (the deterministic YAML export bytes are the snapshot).
+ * `baselines` records which exact revision a consumer stage adopted (F7).
+ * `audit_ledger` (F17) and `tx_log` (F18) are hash-chained append-only logs
+ * (N15) — `prev_hash`/`entry_hash` make tampering detectable by the doctor.
+ *
+ * Freeze lives on `artifacts` (N4), NOT on revisions — a frozen artifact
+ * refuses new publishes; its existing revisions stay readable history.
+ *
+ * Guard: envelope/export mappings in io/store.ts (`readEnvelope` /
+ * `buildExportObject`) are column-whitelisted, so the new `artifacts` columns
+ * (`head_revision_id`, `frozen`, `freeze_reason`) can never leak into export
+ * YAML or fingerprints.
+ */
+export const SCHEMA_V004_REVISION_MODEL = `
+ALTER TABLE artifacts ADD COLUMN head_revision_id INTEGER;
+ALTER TABLE artifacts ADD COLUMN frozen INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE artifacts ADD COLUMN freeze_reason TEXT;
+
+CREATE TABLE IF NOT EXISTS artifact_revisions (
+	revision_id INTEGER PRIMARY KEY,
+	kind TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	revision_number INTEGER NOT NULL,
+	supersedes_revision_id INTEGER REFERENCES artifact_revisions(revision_id),
+	status TEXT NOT NULL DEFAULT 'published'
+		CHECK (status IN ('published','superseded','withdrawn')),
+	version INTEGER NOT NULL,
+	stage TEXT NOT NULL,
+	generated_at TEXT NOT NULL,
+	published_at TEXT NOT NULL,
+	sha256_fingerprint TEXT NOT NULL,
+	inputs TEXT NOT NULL DEFAULT '{}',
+	reviewer_verdict TEXT,
+	change_log TEXT NOT NULL DEFAULT '[]',
+	yaml_bytes TEXT NOT NULL,
+	UNIQUE (kind, revision_number)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_revisions_kind ON artifact_revisions (kind, revision_number);
+
+CREATE TABLE IF NOT EXISTS baselines (
+	kind TEXT NOT NULL,
+	consumer_stage TEXT NOT NULL,
+	revision_id INTEGER NOT NULL REFERENCES artifact_revisions(revision_id),
+	baselined_at TEXT NOT NULL,
+	PRIMARY KEY (kind, consumer_stage)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS audit_ledger (
+	entry_id INTEGER PRIMARY KEY,
+	at TEXT NOT NULL,
+	actor TEXT NOT NULL,
+	action TEXT NOT NULL,
+	artifact_kind TEXT,
+	revision_number INTEGER,
+	reason TEXT,
+	detail_json TEXT NOT NULL DEFAULT '{}',
+	prev_hash TEXT NOT NULL,
+	entry_hash TEXT NOT NULL UNIQUE
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS tx_log (
+	tx_id INTEGER PRIMARY KEY,
+	at TEXT NOT NULL,
+	actor TEXT NOT NULL,
+	operation TEXT NOT NULL,
+	before_digest TEXT,
+	after_digest TEXT,
+	outcome TEXT NOT NULL CHECK (outcome IN ('commit','rollback')),
+	prev_hash TEXT NOT NULL,
+	entry_hash TEXT NOT NULL UNIQUE
+) STRICT;
+`;

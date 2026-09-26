@@ -37,6 +37,10 @@ export const PORTFOLIO_ATTR_LINE = "Doc/store/portfolio.db binary";
 /** .gitignore patterns for the REGISTRY's WAL sidecar files (registry G1). */
 export const PORTFOLIO_IGNORE_LINES: readonly string[] = ["Doc/store/portfolio.db-wal", "Doc/store/portfolio.db-shm"];
 
+/** N10 (Foundation 2026-09-27): the local-only backup folder — snapshots
+ *  under Backup/velpari/<project>/ are never committed or pushed. */
+export const BACKUP_IGNORE_LINES: readonly string[] = ["Backup/"];
+
 /** Result of one ensureStoreGitIntegration call. */
 export interface GitIntegrationResult {
 	/** true when at least one line was appended to at least one file. */
@@ -113,7 +117,7 @@ export function ensureStoreGitIntegration(cwd: string): GitIntegrationResult {
 			}
 		}
 		const ignoreContent = existsSync(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
-		const missingIgnores = [...STORE_IGNORE_LINES, ...PORTFOLIO_IGNORE_LINES].filter(
+		const missingIgnores = [...STORE_IGNORE_LINES, ...PORTFOLIO_IGNORE_LINES, ...BACKUP_IGNORE_LINES].filter(
 			(line) => !hasLine(ignoreContent, line),
 		);
 		if (missingIgnores.length > 0) {

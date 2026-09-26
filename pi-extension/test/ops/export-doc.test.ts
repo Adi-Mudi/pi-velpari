@@ -279,6 +279,9 @@ describe("renderEnvelopeHeader", () => {
 			reviewerVerdict: "pass",
 			changeLog: '[{"action":"create"}]',
 			status: "published",
+			headRevisionId: null,
+			frozen: false,
+			freezeReason: null,
 		});
 		assert.ok(
 			md.includes(
@@ -303,6 +306,9 @@ describe("renderEnvelopeHeader", () => {
 			reviewerVerdict: null,
 			changeLog: "[]",
 			status: "published",
+			headRevisionId: null,
+			frozen: false,
+			freezeReason: null,
 		});
 		assert.ok(md.includes("_none recorded_"));
 		assert.ok(md.includes("_no changes recorded_"));

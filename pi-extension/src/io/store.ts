@@ -37,6 +37,8 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
+import { GENESIS_HASH, computeEntryHash } from "../core/hashchain.js";
+import type { Stage } from "../core/constants.js";
 import { openStoreDb, closeStoreDb } from "./db.js";
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */
@@ -240,6 +242,12 @@ export interface ArtifactEnvelope {
 	reviewerVerdict: string | null;
 	changeLog: string;
 	status: "draft" | "published";
+	/** v004 — revision-model internals (Foundation). Deliberately EXCLUDED from
+	 * buildExportObject: they must never leak into export YAML or fingerprints
+	 * (byte-stability contract, db-schema.ts v004 guard note). */
+	headRevisionId: number | null;
+	frozen: boolean;
+	freezeReason: string | null;
 }
 
 /** readArtifact result — `rows` is keyed by payload key, camelCase fields. */
@@ -370,6 +378,9 @@ function readEnvelope(db: DatabaseSync, runId: string, kind: ArtifactKind): Arti
 		reviewerVerdict: row.reviewer_verdict === null ? null : String(row.reviewer_verdict),
 		changeLog: String(row.change_log),
 		status: String(row.status) as "draft" | "published",
+		headRevisionId: row.head_revision_id === null ? null : Number(row.head_revision_id),
+		frozen: Number(row.frozen) === 1,
+		freezeReason: row.freeze_reason === null ? null : String(row.freeze_reason),
 	};
 }
 
@@ -398,6 +409,10 @@ function readRows(db: DatabaseSync, runId: string, kind: ArtifactKind): Record<s
  * The deterministic export object (G5): envelope identity fields (fingerprint
  * and status excluded — see header) + non-empty row sets in KIND_TABLES order.
  * `inputs`/`changeLog` stay raw JSON strings — their shape is Phase 4's call.
+ *
+ * v004 note (Foundation): `headRevisionId` / `frozen` / `freezeReason` are
+ * deliberately NOT picked up here — export bytes and fingerprints must stay
+ * byte-identical across the schema change (no mass-staling, A5 rule).
  */
 function buildExportObject(envelope: ArtifactEnvelope, rows: Record<string, unknown>): Record<string, unknown> {
 	const rowSets: Record<string, unknown> = {};
@@ -953,25 +968,36 @@ export function revertPublish(db: DatabaseSync, runId: string, kind: ArtifactKin
 }
 
 /**
+ * Flip one artifact draft→published: envelope + every non-edge child table.
+ * NO transaction management — the caller owns BEGIN/COMMIT (publishArtifact
+ * wraps this; publishArtifactCas inlines it into its wider CAS txn). Throws
+ * when there is no DRAFT envelope for the run/kind — a silent no-op would
+ * hide caller bugs.
+ */
+function flipToPublished(db: DatabaseSync, runId: string, kind: ArtifactKind): void {
+	const specs = KIND_TABLES[kind];
+	const result = db
+		.prepare("UPDATE artifacts SET status = 'published' WHERE run_id = ? AND kind = ? AND status = 'draft'")
+		.run(runId, kind);
+	if (Number(result.changes) === 0) {
+		throw new Error(`store: no draft artifact to publish (${runId}/${kind})`);
+	}
+	for (const spec of specs) {
+		if (spec.edge) continue; // edge tables carry no status column
+		db.prepare(`UPDATE ${spec.table} SET status = 'published' WHERE run_id = ? AND kind = ?`).run(runId, kind);
+	}
+}
+
+/**
  * Flip one artifact draft→published: envelope + every non-edge child table,
  * in ONE transaction (Q2 approve semantics). Throws when there is no DRAFT
  * envelope for the run/kind — a silent no-op would hide caller bugs. YAML
  * export + git are NOT here: they are Phase 4's publish-gate steps (RES-1).
  */
 export function publishArtifact(db: DatabaseSync, runId: string, kind: ArtifactKind): void {
-	const specs = KIND_TABLES[kind];
 	db.exec("BEGIN IMMEDIATE;");
 	try {
-		const result = db
-			.prepare("UPDATE artifacts SET status = 'published' WHERE run_id = ? AND kind = ? AND status = 'draft'")
-			.run(runId, kind);
-		if (Number(result.changes) === 0) {
-			throw new Error(`store: no draft artifact to publish (${runId}/${kind})`);
-		}
-		for (const spec of specs) {
-			if (spec.edge) continue; // edge tables carry no status column
-			db.prepare(`UPDATE ${spec.table} SET status = 'published' WHERE run_id = ? AND kind = ?`).run(runId, kind);
-		}
+		flipToPublished(db, runId, kind);
 		db.exec("COMMIT;");
 	} catch (err) {
 		try {
@@ -981,4 +1007,353 @@ export function publishArtifact(db: DatabaseSync, runId: string, kind: ArtifactK
 		}
 		throw err;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Revision model (v004, Foundation 2026-09-27) — F6–F11, F7, N4
+// ---------------------------------------------------------------------------
+
+/** Thrown by publishArtifactCas when the caller's expected head is stale (F11 CAS). */
+export class HeadMovedError extends Error {
+	constructor(
+		public readonly kind: ArtifactKind,
+		public readonly expected: number | null,
+		public readonly actual: number | null,
+	) {
+		super(
+			`store: head moved for '${kind}' — expected revision_id ${expected ?? "none"}, actual ${actual ?? "none"}. ` +
+				`Re-read the head and retry.`,
+		);
+		this.name = "HeadMovedError";
+	}
+}
+
+/** Thrown when a publish is attempted on a frozen artifact (N4). */
+export class FrozenArtifactError extends Error {
+	constructor(
+		public readonly kind: ArtifactKind,
+		public readonly reason: string | null,
+	) {
+		super(`store: artifact '${kind}' is frozen${reason ? ` — ${reason}` : ""}. Unfreeze before publishing.`);
+		this.name = "FrozenArtifactError";
+	}
+}
+
+/** Pointer to the current head revision of a kind. */
+export interface HeadRevision {
+	revisionId: number;
+	revisionNumber: number;
+	sha256Fingerprint: string;
+}
+
+/**
+ * Current head for a kind = the artifacts.head_revision_id pointer (null when
+ * never published via the revision model). Reads the envelope for the given
+ * run — the head pointer lives on the run's working row.
+ */
+export function getHeadRevision(db: DatabaseSync, runId: string, kind: ArtifactKind): HeadRevision | null {
+	const envelope = readEnvelope(db, runId, kind);
+	if (!envelope || envelope.headRevisionId === null) return null;
+	const row = db
+		.prepare("SELECT revision_id, revision_number, sha256_fingerprint FROM artifact_revisions WHERE revision_id = ?")
+		.get(envelope.headRevisionId) as Record<string, SqlValue> | undefined;
+	if (!row) return null;
+	return {
+		revisionId: Number(row.revision_id),
+		revisionNumber: Number(row.revision_number),
+		sha256Fingerprint: String(row.sha256_fingerprint),
+	};
+}
+
+/** Next revision number for a kind = max(revision_number) + 1 across artifact_revisions (1 when none). */
+export function nextRevisionNumber(db: DatabaseSync, kind: ArtifactKind): number {
+	const row = db
+		.prepare("SELECT COALESCE(MAX(revision_number), 0) + 1 AS n FROM artifact_revisions WHERE kind = ?")
+		.get(kind) as { n: number };
+	return Number(row.n);
+}
+
+/**
+ * CAS publish (F8/F9/F11): flips draft→published only when the current head
+ * matches `expectedHeadRevisionId` (null = caller expects no prior head). On
+ * mismatch throws HeadMovedError naming kind + expected + actual. On success,
+ * in the SAME BEGIN IMMEDIATE txn:
+ *   1. flip envelope + children draft→published (flipToPublished)
+ *   2. INSERT the artifact_revisions full snapshot (envelope columns +
+ *      exportArtifactYaml bytes + published_at) — the immutable revision (F6/F9)
+ *   3. mark the previous head revision 'superseded' and link supersedes_revision_id
+ *   4. move artifacts.head_revision_id to the new revision
+ * Frozen guard (N4): artifacts.frozen = 1 → FrozenArtifactError (freeze_reason
+ * included). Audit/tx entries are appended by the F3 helpers (reference wiring
+ * lives here — see appendAuditEntry/appendTxEntry below).
+ */
+export function publishArtifactCas(
+	db: DatabaseSync,
+	runId: string,
+	kind: ArtifactKind,
+	expectedHeadRevisionId: number | null,
+): HeadRevision {
+	db.exec("BEGIN IMMEDIATE;");
+	try {
+		const envelope = readEnvelope(db, runId, kind);
+		if (!envelope || envelope.status !== "draft") {
+			throw new Error(`store: no draft artifact to publish (${runId}/${kind})`);
+		}
+		if (envelope.frozen) {
+			throw new FrozenArtifactError(kind, envelope.freezeReason);
+		}
+		const actualHead = envelope.headRevisionId;
+		if (actualHead !== expectedHeadRevisionId) {
+			throw new HeadMovedError(kind, expectedHeadRevisionId, actualHead);
+		}
+
+		flipToPublished(db, runId, kind);
+
+		const yamlBytes = exportArtifactYaml(db, runId, kind);
+		if (yamlBytes === null) {
+			throw new Error(`store: export vanished mid-publish (${runId}/${kind})`);
+		}
+		const revisionNumber = nextRevisionNumber(db, kind);
+		let supersedesId: number | null = null;
+		if (actualHead !== null) {
+			const sup = db
+				.prepare("UPDATE artifact_revisions SET status = 'superseded' WHERE revision_id = ? AND status = 'published'")
+				.run(actualHead);
+			if (Number(sup.changes) === 0) {
+				throw new Error(`store: prior head revision ${actualHead} for '${kind}' not in 'published' state`);
+			}
+			supersedesId = actualHead;
+		}
+		const inserted = db
+			.prepare(
+				`INSERT INTO artifact_revisions
+				 (kind, run_id, revision_number, supersedes_revision_id, status, version, stage,
+				  generated_at, published_at, sha256_fingerprint, inputs, reviewer_verdict, change_log, yaml_bytes)
+				 VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				kind,
+				runId,
+				revisionNumber,
+				supersedesId,
+				envelope.version,
+				envelope.stage,
+				envelope.generatedAt,
+				new Date().toISOString(),
+				envelope.sha256Fingerprint,
+				envelope.inputs,
+				envelope.reviewerVerdict,
+				envelope.changeLog,
+				yamlBytes,
+			);
+		const revisionId = Number(inserted.lastInsertRowid);
+		db.prepare("UPDATE artifacts SET head_revision_id = ? WHERE run_id = ? AND kind = ?").run(revisionId, runId, kind);
+
+		// Reference wiring for the F3 audit/tx helpers (F17/F18): publish +
+		// supersede audit entries, one commit tx entry. before/after digests are
+		// the prior head fingerprint and the new snapshot fingerprint.
+		let beforeDigest: string | undefined;
+		if (supersedesId !== null) {
+			const prior = db
+				.prepare("SELECT sha256_fingerprint FROM artifact_revisions WHERE revision_id = ?")
+				.get(supersedesId) as { sha256_fingerprint: string };
+			beforeDigest = prior.sha256_fingerprint;
+			appendAuditEntry(db, {
+				actor: "velpari-store",
+				action: "supersede",
+				artifactKind: kind,
+				revisionNumber: revisionNumber - 1,
+				detail: { supersededRevisionId: supersedesId, byRevisionId: revisionId },
+			});
+		}
+		appendAuditEntry(db, {
+			actor: "velpari-store",
+			action: "publish",
+			artifactKind: kind,
+			revisionNumber,
+			detail: { runId, revisionId },
+		});
+		appendTxEntry(db, {
+			actor: "velpari-store",
+			operation: "publish",
+			beforeDigest,
+			afterDigest: envelope.sha256Fingerprint,
+			outcome: "commit",
+		});
+
+		db.exec("COMMIT;");
+		return { revisionId, revisionNumber, sha256Fingerprint: envelope.sha256Fingerprint };
+	} catch (err) {
+		try {
+			db.exec("ROLLBACK;");
+		} catch {
+			// Txn already closed — the original error is the one that matters.
+		}
+		// F18: record the failed mutation as a rollback entry. Never mask the
+		// original error if the log write itself fails.
+		try {
+			appendTxEntry(db, { actor: "velpari-store", operation: "publish", outcome: "rollback" });
+		} catch {
+			// Logging must never hide the caller's error.
+		}
+		throw err;
+	}
+}
+
+/**
+ * Baselined stamp (F7): upsert into baselines — the consumer stage adopted
+ * this exact revision. One row per (kind, consumer_stage); re-adoption moves
+ * the row to the newer revision.
+ */
+export function recordBaseline(db: DatabaseSync, kind: ArtifactKind, consumerStage: Stage, revisionId: number): void {
+	db.prepare(
+		`INSERT INTO baselines (kind, consumer_stage, revision_id, baselined_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(kind, consumer_stage) DO UPDATE SET
+		   revision_id = excluded.revision_id, baselined_at = excluded.baselined_at`,
+	).run(kind, consumerStage, revisionId, new Date().toISOString());
+}
+
+/**
+ * Freeze/unfreeze (N4): status-only update on artifacts. Unfreezing REQUIRES
+ * a non-empty reason (the audit trail must say why the lock was lifted);
+ * freezing stores the reason when given. Throws when no artifact row exists.
+ */
+export function setFrozen(db: DatabaseSync, runId: string, kind: ArtifactKind, frozen: boolean, reason: string): void {
+	if (!frozen && reason.trim() === "") {
+		throw new Error(`store: unfreezing '${kind}' requires a reason`);
+	}
+	const result = db
+		.prepare("UPDATE artifacts SET frozen = ?, freeze_reason = ? WHERE run_id = ? AND kind = ?")
+		.run(frozen ? 1 : 0, reason.trim() === "" ? null : reason, runId, kind);
+	if (Number(result.changes) === 0) {
+		throw new Error(`store: no artifact to freeze/unfreeze (${runId}/${kind})`);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Audit ledger + tx log append helpers (v004, F17/F18/N15)
+// ---------------------------------------------------------------------------
+
+/** Canonical JSON: keys sorted (deep), so the same content always hashes the same. */
+function canonicalJson(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+	const rec = value as Record<string, unknown>;
+	const keys = Object.keys(rec).sort();
+	return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(rec[k])}`).join(",")}}`;
+}
+
+/** Canonical payload covering one audit_ledger row's content fields (hash input). */
+export function auditCanonicalPayload(row: {
+	at: string;
+	actor: string;
+	action: string;
+	artifact_kind: string | null;
+	revision_number: number | null;
+	reason: string | null;
+	detail_json: string;
+}): string {
+	return canonicalJson(row);
+}
+
+/** Canonical payload covering one tx_log row's content fields (hash input). */
+export function txCanonicalPayload(row: {
+	at: string;
+	actor: string;
+	operation: string;
+	before_digest: string | null;
+	after_digest: string | null;
+	outcome: string;
+}): string {
+	return canonicalJson(row);
+}
+
+/**
+ * Append one audit-ledger entry (F17: who/what/when/why). Chain-anchored
+ * (N15): prev_hash = the table's last entry_hash (GENESIS_HASH when empty).
+ * Runs inside the caller's transaction when one is open.
+ * @returns {number} The new entry_id.
+ */
+export function appendAuditEntry(
+	db: DatabaseSync,
+	entry: {
+		actor: string;
+		action: string;
+		artifactKind?: ArtifactKind;
+		revisionNumber?: number;
+		reason?: string;
+		detail?: Record<string, unknown>;
+	},
+): number {
+	const last = db.prepare("SELECT entry_hash FROM audit_ledger ORDER BY entry_id DESC LIMIT 1").get() as
+		| { entry_hash: string }
+		| undefined;
+	const prevHash = last?.entry_hash ?? GENESIS_HASH;
+	const row = {
+		at: new Date().toISOString(),
+		actor: entry.actor,
+		action: entry.action,
+		artifact_kind: entry.artifactKind ?? null,
+		revision_number: entry.revisionNumber ?? null,
+		reason: entry.reason ?? null,
+		detail_json: JSON.stringify(entry.detail ?? {}),
+	};
+	const entryHash = computeEntryHash(prevHash, auditCanonicalPayload(row));
+	const inserted = db
+		.prepare(
+			`INSERT INTO audit_ledger (at, actor, action, artifact_kind, revision_number, reason, detail_json, prev_hash, entry_hash)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.run(
+			row.at,
+			row.actor,
+			row.action,
+			row.artifact_kind,
+			row.revision_number,
+			row.reason,
+			row.detail_json,
+			prevHash,
+			entryHash,
+		);
+	return Number(inserted.lastInsertRowid);
+}
+
+/**
+ * Append one tx-log entry (F18: every store mutation, before/after digests,
+ * outcome). Chain-anchored like audit_ledger. A 'rollback' entry is appended
+ * AFTER the failed transaction rolled back (its own write commits separately —
+ * a rollback entry inside the failed txn would vanish with it).
+ * @returns {number} The new tx_id.
+ */
+export function appendTxEntry(
+	db: DatabaseSync,
+	entry: {
+		actor: string;
+		operation: string;
+		beforeDigest?: string;
+		afterDigest?: string;
+		outcome: "commit" | "rollback";
+	},
+): number {
+	const last = db.prepare("SELECT entry_hash FROM tx_log ORDER BY tx_id DESC LIMIT 1").get() as
+		| { entry_hash: string }
+		| undefined;
+	const prevHash = last?.entry_hash ?? GENESIS_HASH;
+	const row = {
+		at: new Date().toISOString(),
+		actor: entry.actor,
+		operation: entry.operation,
+		before_digest: entry.beforeDigest ?? null,
+		after_digest: entry.afterDigest ?? null,
+		outcome: entry.outcome,
+	};
+	const entryHash = computeEntryHash(prevHash, txCanonicalPayload(row));
+	const inserted = db
+		.prepare(
+			`INSERT INTO tx_log (at, actor, operation, before_digest, after_digest, outcome, prev_hash, entry_hash)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.run(row.at, row.actor, row.operation, row.before_digest, row.after_digest, row.outcome, prevHash, entryHash);
+	return Number(inserted.lastInsertRowid);
 }

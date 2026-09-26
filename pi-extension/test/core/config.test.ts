@@ -17,6 +17,7 @@ import { join } from "node:path";
 import {
 	DEFAULT_EXCLUDED_PATHS,
 	loadFilesConfig,
+	retentionConfig,
 	saveFilesConfig,
 	validateFilesConfig,
 	type FilesConfig,
@@ -210,5 +211,46 @@ describe("buildFilesConfig", () => {
 		});
 		assert.equal(out.projectName, "");
 		assert.deepEqual(out.projectNames, ["alpha", "beta"]);
+	});
+});
+
+/**
+ * N7/N10 retention block (Foundation 2026-09-27): defaults when absent,
+ * "all" or positive-int revisions, positive-int backups; malformed values
+ * throw (a typo must surface, not silently default).
+ */
+describe("retentionConfig (N7/N10)", () => {
+	it("defaults when files.json is missing", () => {
+		assert.deepEqual(retentionConfig(tmp()), { revisions: "all", backups: 10 });
+	});
+
+	it("defaults when the velpari block has no retention key", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { markdownWrites: true } });
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 10 });
+	});
+
+	it("accepts 'all' and positive integers", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { retention: { revisions: "all", backups: 5 } } });
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 5 });
+		const cwd2 = tmp();
+		writeRaw(cwd2, { ...VALID_V4, velpari: { retention: { revisions: 10 } } });
+		assert.deepEqual(retentionConfig(cwd2), { revisions: 10, backups: 10 }, "backups defaults to 10 when omitted");
+	});
+
+	it("rejects 0 / negative / wrong types", () => {
+		for (const bad of [
+			{ revisions: 0 },
+			{ revisions: -3 },
+			{ revisions: "everything" },
+			{ backups: 0 },
+			{ backups: -1 },
+			{ backups: "ten" },
+		]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { retention: bad } });
+			assert.throws(() => retentionConfig(cwd), /retention is invalid/, JSON.stringify(bad));
+		}
 	});
 });

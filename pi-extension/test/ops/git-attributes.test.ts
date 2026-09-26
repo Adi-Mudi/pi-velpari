@@ -17,6 +17,7 @@ import {
 	STORE_IGNORE_LINES,
 	PORTFOLIO_ATTR_LINE,
 	PORTFOLIO_IGNORE_LINES,
+	BACKUP_IGNORE_LINES,
 } from "../../src/ops/git-attributes.js";
 
 let dirs: string[] = [];
@@ -74,6 +75,28 @@ describe("ensureStoreGitIntegration", () => {
 		assert.deepEqual(second.changedPaths, []);
 		assert.equal(readFileSync(join(dir, ".gitattributes"), "utf8"), before);
 		assert.equal(readFileSync(join(dir, ".gitignore"), "utf8"), ignoreBefore);
+	});
+
+	test("N10: Backup/ heals into .gitignore once, idempotent (Foundation)", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const first = ensureStoreGitIntegration(dir);
+		assert.equal(first.changed, true);
+		const ignore = readFileSync(join(dir, ".gitignore"), "utf8");
+		for (const line of BACKUP_IGNORE_LINES) assert.ok(ignore.includes(line), `${line} must heal`);
+		const occurrences = ignore.split("\n").filter((l) => l.trim() === "Backup/").length;
+		assert.equal(occurrences, 1, "Backup/ appears exactly once");
+		// Pre-existing Backup/ line → nothing appended for it.
+		const dir2 = mkdtempSync(join(tmpdir(), "velpari-git-attrs-bak-"));
+		dirs.push(dir2);
+		writeFileSync(join(dir2, ".gitignore"), "node_modules/\nBackup/\n", "utf8");
+		const second = ensureStoreGitIntegration(dir2);
+		const ignore2 = readFileSync(join(dir2, ".gitignore"), "utf8");
+		assert.equal(
+			ignore2.split("\n").filter((l) => l.trim() === "Backup/").length,
+			1,
+			"pre-existing Backup/ line is not duplicated",
+		);
+		assert.equal(second.changed, true, "store ignore lines still heal on that repo");
 	});
 
 	test("partial heal: BOTH attrs present but ignores missing → only .gitignore changes", () => {

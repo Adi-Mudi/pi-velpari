@@ -8,7 +8,7 @@ The extension source is organised in 4 layers (official Pi extension orchestrato
 
 | Layer | Folder | Purpose | May import from |
 |---|---|---|---|
-| 0 — Domain | `core/`, `io/` | Stage state, paths, constants, stage-runner, prompt, config, profiles, psrs, compaction, logging-plan, standards-overlay; atomic-write + agents-install | nothing else in `src/` |
+| 0 — Domain | `core/`, `io/` | Stage state, paths, constants, stage-runner, prompt, config, profiles, psrs, compaction, logging-plan, standards-overlay, hashchain (N15 chain primitives), backup (N9/N10/N11 contract, no-op until Phase 3); atomic-write + agents-install | nothing else in `src/` |
 | 1 — Stage logic | `stages/`, `ops/`, `doctor/`, `view/` | Per-stage handlers + registry; ops commands; diagnostics; read-only display | Layer 0 |
 | 2 — Presentation | `ui/`, `hooks/` | TUI widgets; Pi lifecycle hooks (one file per event) | Layer 0, 1 |
 | 3 — Composition | `commands/`, `index.ts` | 43 slash commands; extension entry point | Layer 0, 1, 2 |
