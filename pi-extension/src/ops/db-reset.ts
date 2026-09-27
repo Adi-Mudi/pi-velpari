@@ -221,7 +221,12 @@ export async function handleDbReset(
 				trigger: "db-reset",
 				dbPath: target.dbPath,
 			});
-			if (backup) warnings.push(`pre-reset backup: ${backup.backupPath}`);
+			if (backup) {
+				// Phase 3 returns a repo-relative path + the N11 self-test result;
+				// the Foundation no-op returns null, so nothing is reported yet.
+				const selfTest = backup.quickCheckOk === null ? "not run" : backup.quickCheckOk ? "ok" : "FAILED";
+				warnings.push(`pre-reset backup: ${backup.backupPath} (quick_check: ${selfTest})`);
+			}
 			const db = openStoreDb(target.dbPath);
 			try {
 				const removed = deleteRunDrafts(db, runId);

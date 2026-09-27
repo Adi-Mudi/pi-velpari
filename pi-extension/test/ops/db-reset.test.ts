@@ -11,6 +11,7 @@ import { join } from "node:path";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { buildStoreDbPath } from "../../src/core/paths.js";
+import { createBackupSnapshot } from "../../src/core/backup.js";
 import { createRun, loadState } from "../../src/core/state.js";
 import { closeStoreDb, openStoreDb } from "../../src/io/db.js";
 import { publishArtifactCas, type ArtifactPayload, writeArtifact } from "../../src/io/store.js";
@@ -167,7 +168,21 @@ describe("ops/db-reset — handleDbReset", () => {
 
 		assert.match(allMessages(), /DB reset for run r1: 1 draft row\(s\) deleted \(TestApp=1\)\./);
 		assert.match(allMessages(), /Published rows and revisions kept/);
-		assert.ok(!/backup failed/i.test(allMessages()), "the N9 no-op trigger is never reported as a failure");
+		// N9 trigger contract — shape-tolerant ON PURPOSE so this test stays green
+		// when Phase 3 replaces the no-op: `createBackupSnapshot` returns null
+		// ("no backup happened" — Phase 3 rule 1) or a BackupRecord (real
+		// snapshot, repo-relative backupPath). Either is valid here; only a
+		// failure claim would be wrong.
+		const record = createBackupSnapshot({ cwd, projectName: "TestApp", trigger: "db-reset", dbPath });
+		assert.ok(
+			record === null || (typeof record === "object" && typeof record.backupPath === "string"),
+			"createBackupSnapshot returns null (pre-Phase-3) or a BackupRecord",
+		);
+		for (const notice of notices.filter((entry) => /backup/i.test(entry.message))) {
+			assert.match(notice.message, /^pre-reset backup: /, "a backup line carries the snapshot path");
+			assert.equal(notice.level, "info", "a backup line is informational, never a failure");
+		}
+		assert.ok(!/backup failed/i.test(allMessages()), "the summary never claims a backup failure");
 	});
 
 	test("multi-project: both stores cleaned; an unreadable DB is reported and the other still cleans", async () => {
