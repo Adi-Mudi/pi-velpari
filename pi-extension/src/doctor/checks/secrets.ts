@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { getEffectiveProjectNames } from "../../core/projectnames.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { buildStoreDbPath } from "../../core/paths.js";
-import { openStoreDb, closeStoreDb } from "../../io/db.js";
+import { openStoreDbReadOnly } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -109,7 +109,7 @@ interface DbSecretHit {
 function sweepDbTextColumns(dbPath: string): DbSecretHit[] {
 	const hits: DbSecretHit[] = [];
 	if (!existsSync(dbPath)) return hits;
-	const db = openStoreDb(dbPath);
+	const db = openStoreDbReadOnly(dbPath);
 	try {
 		for (const entry of DB_TEXT_COLUMNS) {
 			let rows: Array<Record<string, unknown>>;
@@ -138,7 +138,7 @@ function sweepDbTextColumns(dbPath: string): DbSecretHit[] {
 			}
 		}
 	} finally {
-		closeStoreDb(db);
+		db.close();
 	}
 	return hits;
 }
@@ -260,6 +260,12 @@ interface FileEntry {
 	abs: string;
 }
 
+/**
+ * Recursively collect files under a directory whose name ends with one of the given extensions.
+ * @param {string} dir - Directory to walk (unreadable dirs are skipped silently).
+ * @param {ReadonlyArray<string>} exts - Filename suffixes to include (e.g. ".md").
+ * @returns {FileEntry[]} Matching files with POSIX-style relative paths and absolute paths.
+ */
 function walkFiles(dir: string, exts: ReadonlyArray<string>): FileEntry[] {
 	const out: FileEntry[] = [];
 	let entries: import("node:fs").Dirent[];

@@ -214,12 +214,16 @@ describe("Phase 1 publish chain — CAS door, revision surfacing, audit wiring",
 		const db = openDb();
 		try {
 			const rev = db
-				.prepare("SELECT revision_number, supersedes_revision_id, status FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number")
-				.all() as Array<{ revision_number: number; supersedes_revision_id: number | null; status: string }>;
+				.prepare(
+					"SELECT revision_id, revision_number, supersedes_revision_id, status FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number",
+				)
+				.all() as Array<{ revision_id: number; revision_number: number; supersedes_revision_id: number | null; status: string }>;
 			assert.equal(rev.length, 2);
 			assert.equal(rev[0]!.status, "superseded");
 			assert.equal(rev[1]!.status, "published");
-			assert.equal(rev[1]!.supersedes_revision_id, rev[0]!.revision_number === 2 ? rev[0]!.revision_number : rev[0]!.revision_number);
+			// The FK points at the superseded revision's revision_id
+			// (io/store.ts: supersedesId = actualHead, a revision_id).
+			assert.equal(rev[1]!.supersedes_revision_id, rev[0]!.revision_id);
 		} finally {
 			closeStoreDb(db);
 		}

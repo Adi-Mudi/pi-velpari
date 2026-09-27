@@ -2,8 +2,8 @@
  * /velpari-freeze command (N4 — freeze / unfreeze; L3, Phase 2).
  *
  * Flow: action (freeze|unfreeze) → project → artifact kind → run → reason →
- * confirm → `ops/protection.ts:applySingleKindFreeze` (freeze) or Phase 1's
- * canonical `ops/freeze.ts:unfreezeArtifact` + `finalizeUnfreeze` (unfreeze).
+ * confirm → `ops/freeze.ts:applySingleKindFreeze` (freeze) or canonical
+ * `ops/freeze.ts:unfreezeArtifact` + `finalizeUnfreeze` (unfreeze).
  * Frozen artifacts refuse publish (publishArtifactCas), supersession and the
  * F16 tombstone; unfreezing always needs a typed reason (N4).
  *
@@ -16,47 +16,19 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
-import { loadFilesConfig } from "../core/config.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { loadState } from "../core/state.js";
 import type { ArtifactKind } from "../io/store.js";
-import { unfreezeArtifact } from "../ops/freeze.js";
-import { applySingleKindFreeze, finalizeUnfreeze, freezeStateOf, runsForKind, storeKinds } from "../ops/protection.js";
+import { applySingleKindFreeze, finalizeUnfreeze, unfreezeArtifact } from "../ops/freeze.js";
+import { freezeStateOf, runsForKind, storeKinds } from "../ops/protection.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
+import { resolveProjectName } from "../ui/resolve-project-name.js";
 
 /** Freeze action menu (N4). */
 const ACTION_ITEMS = [
 	{ id: "freeze", label: "freeze", hint: "lock the artifact — no publish, no supersession, no tombstone" },
 	{ id: "unfreeze", label: "unfreeze", hint: "lift the lock — requires a typed reason" },
 ];
-
-/**
- * Resolve the project to act on (approve.ts precedence + multi-design picker,
- * re-implemented locally — commands/export.ts is Phase 4-owned).
- * @param {ExtensionContext} ctx - UI context for the picker.
- * @param {string} cwd - Working directory root.
- * @returns {Promise<string | undefined>} projectName, or undefined on cancel.
- */
-async function resolveProjectName(ctx: ExtensionContext, cwd: string): Promise<string | undefined> {
-	const state = loadState(cwd);
-	const config = loadFilesConfig(cwd);
-	const configured = config.projectNames ?? (config.projectName ? [config.projectName] : []);
-	const archProject = state.archSubCycle?.projectName;
-	if (configured.length > 1) {
-		return await runSimplePicker(ctx, {
-			title: "Freeze — pick project",
-			subtitle: "Multi-design run — whose store should be locked or unlocked?",
-			items: configured.map((name) => ({
-				id: name,
-				label: name,
-				hint: name === archProject ? "active architecture cycle" : undefined,
-			})),
-		});
-	}
-	if (archProject) return archProject;
-	// `||` (not `??`): an empty-string mission must fall through to "Project".
-	return configured[0] || state.mission || "Project";
-}
 
 /**
  * The full freeze/unfreeze flow. Exported for tests (mock ctx.ui); the command
@@ -77,7 +49,10 @@ export async function runFreezeFlow(ctx: ExtensionContext, cwd: string): Promise
 	}
 	const frozen = action === "freeze";
 
-	const projectName = await resolveProjectName(ctx, cwd);
+	const projectName = await resolveProjectName(ctx, cwd, {
+		title: "Freeze — pick project",
+		subtitle: "Multi-design run — whose store should be locked or unlocked?",
+	});
 	if (!projectName) {
 		ctx.ui.notify("Freeze cancelled.", "info");
 		return;

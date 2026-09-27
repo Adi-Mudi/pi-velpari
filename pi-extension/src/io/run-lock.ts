@@ -35,7 +35,7 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PATHS } from "../core/constants.js";
 import { atomicWriteJson } from "./atomic-write.js";
 
@@ -68,10 +68,21 @@ export function runLockDir(cwd: string): string {
 	return join(cwd, PATHS.RUN_STATE_DIR, ".lock");
 }
 
+/**
+ * Absolute path of the lock's meta.json (inside the lock directory).
+ * @param {string} cwd - Project root holding `.pi/velpari/.lock/`.
+ * @returns {string} Path to `meta.json`.
+ */
 function runLockFile(cwd: string): string {
 	return join(runLockDir(cwd), "meta.json");
 }
 
+/**
+ * Read and validate meta.json. Any read/parse/shape error returns null
+ * (a missing or corrupt meta is treated as "no holder info", never thrown).
+ * @param {string} filePath - Absolute path to `meta.json`.
+ * @returns {RunLockMeta | null} The parsed holder metadata, or null.
+ */
 function readMeta(filePath: string): RunLockMeta | null {
 	try {
 		const raw = fs.readFileSync(filePath, "utf8");
@@ -102,14 +113,26 @@ export function readLockInfo(cwd: string): RunLockMeta | null {
  * Read-only stale test for the reset path + the Phase 6 doctor check (N13):
  * a lock is stale when the holder pid is dead/inactive or its heartbeat is
  * older than STALE_MS. Never steals — reading only.
+ *
+ * I11.3: `corrupt` = the lock directory exists but meta.json is missing or
+ * unparseable/invalid. One corrupt-lock semantic across surfaces: a corrupt
+ * lock is NEVER reported as "free" (it is a warning for the doctor, not an
+ * error — it can be a half-written file from a crash). `core/backup.ts`
+ * keeps refusing on the same state (the conservative side).
  * @param {string} cwd - Project root holding `.pi/velpari/.lock/`.
- * @returns {{ holder: RunLockMeta | null; stale: boolean }} Holder info + stale verdict.
+ * @returns {{ holder: RunLockMeta | null; stale: boolean; corrupt: boolean }} Holder info + stale verdict + corrupt flag.
  */
-export function readLockStatus(cwd: string): { holder: RunLockMeta | null; stale: boolean } {
+export function readLockStatus(cwd: string): {
+	holder: RunLockMeta | null;
+	stale: boolean;
+	corrupt: boolean;
+} {
+	const dirExists = fs.existsSync(runLockDir(cwd));
 	const holder = readLockInfo(cwd);
-	if (!holder) return { holder: null, stale: false };
+	const corrupt = dirExists && holder === null;
+	if (!holder) return { holder: null, stale: false, corrupt };
 	const stale = !isPidAlive(holder.pid) || !isFresh(holder);
-	return { holder, stale };
+	return { holder, stale, corrupt };
 }
 
 /**
@@ -131,6 +154,13 @@ export function clearStaleRunLock(cwd: string): boolean {
 	}
 }
 
+/**
+ * Probe whether a pid is alive in this host namespace.
+ * ESRCH = dead; EPERM = alive but owned by another user (counts alive —
+ * we cannot verify it is ours); any other error = not alive.
+ * @param {number} pid - Process id to probe (≤ 0 is never alive).
+ * @returns {boolean} true when the process exists.
+ */
 function isPidAlive(pid: number): boolean {
 	if (pid <= 0) return false;
 	try {
@@ -147,11 +177,21 @@ function isPidAlive(pid: number): boolean {
 	}
 }
 
+/**
+ * Freshness test: the holder's heartbeat must be within STALE_MS.
+ * @param {RunLockMeta} meta - Holder metadata to test.
+ * @returns {boolean} true when `heartbeatAt` is within the staleness window.
+ */
 function isFresh(meta: RunLockMeta): boolean {
 	const age = Date.now() - Date.parse(meta.heartbeatAt);
 	return Number.isFinite(age) && age >= 0 && age <= STALE_MS;
 }
 
+/**
+ * Format holder metadata for the human-readable "Lock busy" reason.
+ * @param {RunLockMeta | null} meta - Holder metadata, or null when unknown.
+ * @returns {string} `pid=… host=… command=… startedAt=… heartbeatAt=… (Ns ago)`.
+ */
 function formatHolder(meta: RunLockMeta | null): string {
 	if (!meta) return "(no holder info)";
 	const ageSec = Math.max(0, Math.floor((Date.now() - Date.parse(meta.heartbeatAt)) / 1000));
@@ -164,6 +204,11 @@ function formatHolder(meta: RunLockMeta | null): string {
 	].join(", ");
 }
 
+/**
+ * Build this process's lock metadata with identical timestamps.
+ * @param {string} command - The command/turn name acquiring the lock.
+ * @returns {RunLockMeta} Fresh metadata stamped with the current time.
+ */
 function makeMeta(command: string): RunLockMeta {
 	const now = new Date().toISOString();
 	return {
@@ -175,6 +220,14 @@ function makeMeta(command: string): RunLockMeta {
 	};
 }
 
+/**
+ * Start the heartbeat timer that refreshes `heartbeatAt` every
+ * HEARTBEAM_MS while we hold the lock. No-ops if meta.json changed pid
+ * (we already lost the lock); the timer is unref'd so it never keeps the
+ * process alive.
+ * @param {string} file - Absolute path to the held `meta.json`.
+ * @returns {NodeJS.Timeout} Timer handle the release path must clear.
+ */
 function startHeartbeat(file: string): NodeJS.Timeout {
 	const interval = setInterval(() => {
 		try {
@@ -190,6 +243,14 @@ function startHeartbeat(file: string): NodeJS.Timeout {
 	return interval;
 }
 
+/**
+ * Release our lock: rewrite meta.json with the pid=-1 sentinel first
+ * (survives a crash between the rewrite and the removal), then remove
+ * the lock directory. Both steps are best-effort.
+ * @param {string} file - Absolute path to `meta.json`.
+ * @param {string} dir - The lock directory to remove.
+ * @returns {void}
+ */
 function releaseLockDir(file: string, dir: string): void {
 	// Step 1: sentinel (pid=-1) so a future acquirer can detect a crash
 	// between this rewrite and the directory removal.
@@ -209,16 +270,35 @@ function releaseLockDir(file: string, dir: string): void {
 	}
 }
 
+/**
+ * One lock-claim attempt: ensure the parent chain, take the atomic
+ * (non-recursive) mkdir claim, then decide from meta.json — fresh live
+ * holder ⇒ busy, missing meta ⇒ we hold it, stale/dead/sentinel ⇒ steal.
+ * @param {string} dir - The lock directory (`.pi/velpari/.lock`).
+ * @param {string} file - Absolute path to `meta.json` inside `dir`.
+ * @param {RunLockMeta} meta - This process's metadata to write on success.
+ * @returns {{ acquired: boolean; holder: RunLockMeta | null }} Whether we acquired, plus the blocking holder when busy.
+ */
 function tryAcquire(dir: string, file: string, meta: RunLockMeta): { acquired: boolean; holder: RunLockMeta | null } {
-	// Atomic mkdir: success means we are the holder. EEXIST means someone
-	// else holds it (or held it a moment ago — the race window is µs).
+	// Ensure the parent chain first (`.pi/velpari` may not exist yet on a
+	// fresh cwd) — recursive is fine THERE: it is not the claim.
+	fs.mkdirSync(dirname(dir), { recursive: true });
+	// Atomic mkdir (NON-recursive): success means we are the holder.
+	// EEXIST means someone else holds it (or held it a moment ago — the
+	// race window is µs); we then read meta.json and take the
+	// steal-vs-wait path below. The previous `recursive: true` made this
+	// EEXIST unreachable (an existing dir is a SUCCESS there), so two
+	// processes could both "succeed" in the mkdir→meta.json window.
 	try {
-		fs.mkdirSync(dir, { recursive: true });
+		fs.mkdirSync(dir);
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException | null)?.code !== "EEXIST") throw err;
 	}
 	const existing = readMeta(file);
 	if (!existing) {
+		// Missing OR unreadable meta ⇒ claim it here. Acquisition treats a
+		// corrupt meta as stealable; readLockStatus().corrupt is REPORTING
+		// only (I11.3 — the doctor warns, tryAcquire still replaces).
 		atomicWriteJson(file, meta);
 		return { acquired: true, holder: null };
 	}

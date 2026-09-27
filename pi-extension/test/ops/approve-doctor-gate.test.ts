@@ -270,6 +270,27 @@ function rtmJsonAsPayload(json: string): string {
 	return rtmPayload(ids, phases);
 }
 
+/**
+ * Like enterBuildingRtm but seeds NO store DB — the Phase I9.1
+ * side-effect pin: the gate's RTM block must build its data from the
+ * payload without materialising `Doc/store/<project>/index.db` (the
+ * removed openStoreDb on this read path used to create it).
+ * @param {string} json - Legacy sidecar JSON text (adapted like the seeded path).
+ * @returns {void}
+ */
+function enterBuildingRtmNoStore(json: string): void {
+	const run = createRun("TestApp", tmpDir);
+	saveState({ ...run, currentStage: "building-rtm" }, tmpDir);
+	const docDir = path.join(tmpDir, "Doc", "requirements");
+	fs.mkdirSync(docDir, { recursive: true });
+	fs.writeFileSync(path.join(docDir, "PRD_TestApp.md"), PSRS, "utf8");
+	const dir = path.join(runDir(), "rtm");
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM preview\n", "utf8");
+	fs.mkdirSync(path.join(dir, "payload"), { recursive: true });
+	fs.writeFileSync(path.join(dir, "payload", "rtm-payload.json"), rtmJsonAsPayload(json), "utf8");
+}
+
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-gate-"));
 	// v1.2.1: the full doctor audit now runs after every approve. These
@@ -304,6 +325,18 @@ describe("publish — publish gate", () => {
 		assert.match(allMessages(), /FR-99: no such requirement in the PSRS/);
 		assert.equal(fs.existsSync(path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md")), false);
 		assert.equal(loadState(tmpDir).currentStage, "building-rtm");
+	});
+
+	it("RTM approve runs the gate without materialising the store DB (Phase I9.1 side-effect pin)", async () => {
+		enterBuildingRtmNoStore(rtmJson(["FR-01", "FR-02", "NFR-01", "FR-99"]));
+		const dbPath = path.join(tmpDir, "Doc", "store", "TestApp", "index.db");
+		assert.equal(fs.existsSync(dbPath), false, "precondition: no store DB");
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
+
+		// The gate ran (it blocked on the PSRS file — no DB involved).
+		assert.match(allMessages(), /Publish gate blocked the publish/);
+		assert.match(allMessages(), /FR-99: no such requirement in the PSRS/);
+		assert.equal(fs.existsSync(dbPath), false, "approve must not create the store DB on this read path");
 	});
 
 	it("blocks an RTM sidecar that misses a PSRS requirement (orphan)", async () => {

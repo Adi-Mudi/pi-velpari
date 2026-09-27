@@ -22,6 +22,13 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+/** Per-test temp dirs created by the suites below; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 import {
 	createBackupSnapshot,
 	listBackupFiles,
@@ -39,6 +46,11 @@ import { auditCanonicalPayload, publishArtifactCas, writeArtifact, type Artifact
 
 const PROJECT = "TestApp";
 
+/**
+ * Compute the SHA-256 hex digest of a file's bytes.
+ * @param {string} path - File path to hash.
+ * @returns {string} Hex digest string.
+ */
 function sha256File(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -67,6 +79,11 @@ function makeFixtureStore(cwd: string, rows = 3): string {
 	return dbPath;
 }
 
+/**
+ * Count rows in the backup_fixture table of a fixture store DB.
+ * @param {string} dbPath - Path to the store database.
+ * @returns {number} Row count.
+ */
 function countFixtureRows(dbPath: string): number {
 	const db = openStoreDbReadOnly(dbPath);
 	try {
@@ -100,6 +117,11 @@ function auditChain(db: DatabaseSync): ChainedRow[] {
 	}));
 }
 
+/**
+ * Read SQLite user_version from a store DB (read-only handle).
+ * @param {string} dbPath - Path to the store database.
+ * @returns {number} The user_version value.
+ */
 function readUserVersion(dbPath: string): number {
 	const db = openStoreDbReadOnly(dbPath);
 	try {
@@ -109,6 +131,11 @@ function readUserVersion(dbPath: string): number {
 	}
 }
 
+/**
+ * Check whether the audit_ledger table exists in a store DB.
+ * @param {string} dbPath - Path to the store database.
+ * @returns {boolean} True when the table exists.
+ */
 function hasAuditLedger(dbPath: string): boolean {
 	const db = openStoreDbReadOnly(dbPath);
 	try {
@@ -126,10 +153,7 @@ describe("backup — snapshot creation (N9/N10/N11, G-3)", () => {
 
 	beforeEach(() => {
 		cwd = mkdtempSync(join(tmpdir(), "velpari-backup-"));
-	});
-
-	after(() => {
-		// per-test dirs are tiny; clean the whole prefix on suite exit
+		tempDirs.push(cwd);
 	});
 
 	test("1: happy path — snapshot under Backup/velpari with matching manifest line", () => {
@@ -286,6 +310,7 @@ describe("backup — FIFO prune (N10)", () => {
 
 	beforeEach(() => {
 		cwd = mkdtempSync(join(tmpdir(), "velpari-fifo-"));
+		tempDirs.push(cwd);
 	});
 
 	test("1: 12 snapshots → exactly 10 kept, the 2 oldest gone, 2 trim lines", () => {
@@ -449,6 +474,11 @@ function envelopeOf(dbPath: string, runId: string): { version: number; stage: st
 	}
 }
 
+/**
+ * Run PRAGMA quick_check on a store DB and report whether it passed.
+ * @param {string} path - Path to the store database.
+ * @returns {boolean} True when quick_check reports "ok".
+ */
 function quickOk(path: string): boolean {
 	const db = openStoreDbReadOnly(path);
 	try {
@@ -477,6 +507,7 @@ describe("backup — restore (G-2 mandatory proof)", () => {
 
 	beforeEach(() => {
 		cwd = mkdtempSync(join(tmpdir(), "velpari-restore-"));
+		tempDirs.push(cwd);
 	});
 
 	test("1: round trip on a healthy target — content, envelope, safety copy, audit", () => {

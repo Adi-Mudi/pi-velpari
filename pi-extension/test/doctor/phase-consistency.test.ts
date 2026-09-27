@@ -7,13 +7,31 @@
  *   - error when a row's phase differs from the PRD
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkPhaseConsistencySection } from "../../src/doctor/checks/phase-consistency.js";
 import type { RtmData, RtmRow } from "../../src/core/rtm-data.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const PSRS = [
 	"# PSRS",
@@ -33,6 +51,12 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build an RtmRow fixture for phase-consistency tests.
+ * @param {string} id - Requirement id (e.g. "FR-01").
+ * @param {number} phase - Phase number for the row.
+ * @returns {RtmRow} The constructed row.
+ */
 function row(id: string, phase: number): RtmRow {
 	return {
 		id,
@@ -46,6 +70,11 @@ function row(id: string, phase: number): RtmRow {
 	};
 }
 
+/**
+ * Create a temp project dir with PRD/RTM fixtures for phase-consistency checks.
+ * @param {RtmRow[]} rows - Rows to write into the RTM sidecar.
+ * @returns {string} Absolute path of the temp project root.
+ */
 function setup(rows: RtmRow[]): string {
 	const cwd = mkdtempSync(join(tmpdir(), "velpari-phase-"));
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });

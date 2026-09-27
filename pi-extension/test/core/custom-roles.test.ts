@@ -9,7 +9,7 @@
 
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -25,6 +25,24 @@ import {
 	type CustomRole,
 	type CustomRolesConfig,
 } from "../../src/core/custom-roles.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 let cwd: string;
 

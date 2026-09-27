@@ -32,6 +32,11 @@ after(() => {
 	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Write `.pi/velpari/state.json` with defaults merged under the given fields.
+ * @param {Record<string, unknown>} state - Fields to override on the default state object.
+ * @returns {void}
+ */
 function writeState(state: Record<string, unknown>): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(
@@ -41,6 +46,12 @@ function writeState(state: Record<string, unknown>): void {
 	);
 }
 
+/**
+ * Write one run's `run-binding.json` record under `.IDE_Plans/velpari/runs/`.
+ * @param {string} runId - Run id (also the run directory name).
+ * @param {unknown} binding - Record to serialize, or a raw string (e.g. corrupt JSON).
+ * @returns {void}
+ */
 function writeBinding(runId: string, binding: unknown): void {
 	const dir = join(cwd, ".IDE_Plans", "velpari", "runs", runId);
 	mkdirSync(dir, { recursive: true });
@@ -103,6 +114,7 @@ describe("checkWorktreeRemovalSection", () => {
 			runId: "2026-09-27-00-04-sibling",
 			branch: "velpari/sibling",
 			worktree: join(cwd, "wt-dead"),
+			startedAt: "2026-09-27T00:00:00.000Z",
 			status: "active",
 		});
 		const section = checkWorktreeRemovalSection(cwd);
@@ -117,7 +129,9 @@ describe("checkWorktreeRemovalSection", () => {
 		writeState({ runId: "2026-09-27-00-05-active" });
 		writeBinding("closed-run", {
 			runId: "closed-run",
+			branch: "velpari/closed",
 			worktree: join(cwd, "wt-dead"),
+			startedAt: "2026-09-27T00:00:00.000Z",
 			status: "closed",
 		});
 		writeBinding("broken-run", "{not json");
@@ -135,7 +149,9 @@ describe("checkWorktreeRemovalSection", () => {
 		});
 		writeBinding("2026-09-27-00-06-once", {
 			runId: "2026-09-27-00-06-once",
+			branch: "velpari/once",
 			worktree: gone,
+			startedAt: "2026-09-27T00:00:00.000Z",
 			status: "active",
 		});
 		const section = checkWorktreeRemovalSection(cwd);

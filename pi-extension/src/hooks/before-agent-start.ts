@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { STAGE_FOLDERS } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
 import { classifyStaleItem } from "../core/change-report.js";
-import { computeStaleSet } from "../core/freshness.js";
+import type { StaleItem } from "../core/freshness.js";
 import { buildRunDir } from "../core/paths.js";
 import { foreignLinesInWorktree } from "../core/run-binding.js";
 import { loadState, type RunState } from "../core/state.js";
@@ -30,15 +30,14 @@ import { computeLegalCommands } from "../stages/transition-lock.js";
 /**
  * Cheap upstream-move summary for the per-turn status block (N8-B).
  *
- * Cost rule (user watch item, 2026-09-27): `before_agent_start` fires EVERY
- * turn, so this reads ONE small JSON file first (`freshness.json` via
- * computeStaleSet) and only then touches the store — and only for the stale
- * entries, never for the whole chain. A clean run costs one file read and
+ * Phase I10.3: takes the stale set PRECOMPUTED by the transition lock — the
+ * one staleness computation per turn (computeLegalCommands in the hook
+ * below already read freshness.json). Classifies only those stale entries
+ * and touches the store only for them; a clean run costs nothing and
  * returns []. Never throws.
  */
-function upstreamMoveLines(cwd: string, state: RunState): string[] {
+function upstreamMoveLines(cwd: string, state: RunState, stale: readonly StaleItem[]): string[] {
 	try {
-		const stale = computeStaleSet(cwd);
 		if (stale.length === 0) return [];
 		const projectName = loadFilesConfig(cwd).projectName ?? "";
 		if (projectName === "") return [];
@@ -129,7 +128,7 @@ export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 						`BLOCKED: run line ${foreign[0]!.runId} is active in this folder — ${worktreeAddHint(foreign[0]!.runId)}`,
 					);
 				}
-				const moves = upstreamMoveLines(ctx.cwd, state);
+				const moves = upstreamMoveLines(ctx.cwd, state, lock.staleSet);
 				if (moves.length > 0) {
 					lines.push(`upstream-moved: ${moves.join(", ")} — re-read / rebase / re-confirm (N8-B)`);
 				}

@@ -23,10 +23,14 @@
  *     RPC e2e harness (test/e2e/).
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { existsSync } from "node:fs";
 import { text } from "pi-coding-agent-test";
-import { EXTENSION_ENTRY, makeTest } from "./harness.js";
+import { cleanupHarnessWorkspaces, EXTENSION_ENTRY, makeTest } from "./harness.js";
+
+after(() => {
+	cleanupHarnessWorkspaces();
+});
 
 const hasPi = existsSync(EXTENSION_ENTRY);
 const isEnabled = process.env.RUN_L3_E2E === "1";

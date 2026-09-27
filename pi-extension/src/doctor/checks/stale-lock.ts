@@ -10,7 +10,11 @@
  *
  * The staleness predicate itself lives in L0 (`readLockStatus` —
  * pid-alive OR fresh heartbeat); this check never re-implements it and
- * never probes git. Duplicates the gate-wiring lock line's *detail*
+ * never probes git. I11.3: a CORRUPT lock (dir exists, meta.json missing
+ * or unparseable) is reported as a warning — never "free", never an error
+ * (it can be a half-written file from a crash) — and recovery is the same
+ * sanctioned path, `/velpari-reset` (confirm + audit). Duplicates the
+ * gate-wiring lock line's *detail*
  * (decision D5: that line drops to an info pointer so one defect is
  * reported once, with recovery attached).
  *
@@ -28,7 +32,21 @@ const SECTION_TITLE = "Run lock (N13)";
 export function checkRunLockSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	try {
-		const { holder, stale } = readLockStatus(cwd);
+		const { holder, stale, corrupt } = readLockStatus(cwd);
+
+		// I11.3: corrupt BEFORE the free branch — holder is null there too,
+		// and "free" would be a lie (one corrupt-lock semantic across surfaces).
+		if (corrupt) {
+			items.push({
+				status: "warning",
+				message:
+					"Run lock exists but its meta.json is unreadable (missing or corrupt) — " +
+					"clear it via `/velpari-reset` (confirm + audit, N13); never hand-delete `.lock/`.",
+				details: [`lock=${runLockDir(cwd)}`],
+				suggestion: suggestionFor("stale-lock-reset"),
+			});
+			return { title: SECTION_TITLE, items };
+		}
 
 		if (!holder) {
 			items.push({ status: "ok", message: "Run lock: free." });

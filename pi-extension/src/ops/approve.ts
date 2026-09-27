@@ -2,7 +2,7 @@
  * Publish handler for Stages 2–10 (v1.6.0).
  *
  * Per CHANGELOG v1.6.0:
- * - `/velpari-prd-approve-brainstorm` handles the brainstorm stage (separate
+ * - `/velpari-approve-brainstorm` handles the brainstorm stage (separate
  *   bespoke command).
  * - `/velpari-<stage>-approve` is the per-stage fall-back publish command
  *   for each of Stages 2–10 (prd, rtm, feasibility, design, atomic-
@@ -13,7 +13,7 @@
  *
  * Flow:
  * 1. Read current state; refuse if current stage is `brainstorming` /
- *    `brainstormed` (use `/velpari-rtm-approve-brainstorm` for those).
+ *    `brainstormed` (use `/velpari-approve-brainstorm` for those).
  * 2. Map current stage → working-copy dir name and published artifact
  *    name via `stageToArtifact`.
  * 3. Read working copy from the grouped working-copy path; if missing,
@@ -70,8 +70,6 @@ import type {
 	DevStepRow,
 	StepDepRow,
 } from "../io/store.js";
-import { openStoreDb, closeStoreDb } from "../io/db.js";
-import { buildStoreDbPath } from "../core/paths.js";
 import {
 	renderAtomicFunctionsMarkdown,
 	renderDevelopmentOrderMarkdown,
@@ -186,6 +184,21 @@ export function stageToArtifact(stage: Stage): {
 }
 
 /**
+ * Map ANY current stage (in-progress or rest state) to the approve
+ * command the user should re-run. Used by the gate-blocking messages so
+ * a stage is never told to re-run a DIFFERENT stage's command (the
+ * hard-coded literals used to do exactly that for 8 of 9 stages).
+ * Falls back to the bespoke brainstorm command — the real name
+ * (`COMMAND_NAMES` has `velpari-approve-brainstorm`, not
+ * `velpari-brainstorm-approve`) — for stages outside STAGE_APPROVE_MAP.
+ * Exported for the table-driven regression guard in
+ * test/ops/approve-command-names.test.ts.
+ */
+export function approveCommandForStage(stage: Stage): string {
+	return STAGE_APPROVE_MAP.find((r) => r.stages.includes(stage))?.command ?? "/velpari-approve-brainstorm";
+}
+
+/**
  * Map the current in-progress stage to its v1.6.0 per-stage approve
  * command. Used as the actor string passed to `advanceStage` (and
  * therefore recorded in state.json:history). STAGE_TRANSITIONS rows
@@ -194,7 +207,7 @@ export function stageToArtifact(stage: Stage): {
  * (`stages[0]`) only, so rest-state lookups keep the legacy default.
  */
 function perStageApproveCommand(stage: Stage): string {
-	return STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ?? "/velpari-brainstorm-approve";
+	return STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ?? "/velpari-approve-brainstorm";
 }
 
 /**
@@ -749,42 +762,41 @@ export async function handleApprove(
 	// (title/design/implementation/tests/status/coverage) are
 	// repointed in Subphase 2.4 when the engines flip to DB reads.
 	if (storeKind === "rtm" && payloadResult && payloadResult.ok && payloadResult.payload && payloadResult.envelope) {
-		const rtmDb = openStoreDb(buildStoreDbPath(projectName, cwd));
-		try {
-			// Build the RtmData from the payload rows directly — do
-			// NOT writeArtifact yet, so the gate can validate before
-			// the DB FK chain fires (the gate's "unknown id" message
-			// must surface, not a raw FOREIGN KEY constraint failure).
-			const rtmRowsIn =
-				(
-					payloadResult.payload as {
-						rtmRow?: Array<{ id: string; phase: number }>;
-					}
-				).rtmRow ?? [];
-			const rtmRows = rtmRowsIn;
-			if (rtmRows.length > 0) {
-				// Minimal RtmData — the gate only reads id + phase from
-				// each row. Other fields stay empty defaults (the
-				// gate's checkRowFingerprints treats missing
-				// fingerprint as "untracked", which the gate
-				// explicitly ignores per its policy comment).
-				rtmDataForGate = {
-					project: projectName,
-					version: payloadResult.envelope.version.toString(),
-					rows: rtmRows.map((r) => ({
-						id: r.id,
-						title: "",
-						phase: r.phase,
-						design: "",
-						implementation: "",
-						tests: [],
-						status: "proposed" as const,
-						coverage: "covered" as const,
-					})),
-				};
-			}
-		} finally {
-			closeStoreDb(rtmDb);
+		// No store handle here: the rows come from the payload (the gate
+		// validates data; the publish chain is separate). The previous
+		// openStoreDb/closeStoreDb pair never queried the DB — it only
+		// created an empty index.db as a side-effect of this READ path.
+		// Build the RtmData from the payload rows directly — do
+		// NOT writeArtifact yet, so the gate can validate before
+		// the DB FK chain fires (the gate's "unknown id" message
+		// must surface, not a raw FOREIGN KEY constraint failure).
+		const rtmRowsIn =
+			(
+				payloadResult.payload as {
+					rtmRow?: Array<{ id: string; phase: number }>;
+				}
+			).rtmRow ?? [];
+		const rtmRows = rtmRowsIn;
+		if (rtmRows.length > 0) {
+			// Minimal RtmData — the gate only reads id + phase from
+			// each row. Other fields stay empty defaults (the
+			// gate's checkRowFingerprints treats missing
+			// fingerprint as "untracked", which the gate
+			// explicitly ignores per its policy comment).
+			rtmDataForGate = {
+				project: projectName,
+				version: payloadResult.envelope.version.toString(),
+				rows: rtmRows.map((r) => ({
+					id: r.id,
+					title: "",
+					phase: r.phase,
+					design: "",
+					implementation: "",
+					tests: [],
+					status: "proposed" as const,
+					coverage: "covered" as const,
+				})),
+			};
 		}
 	}
 
@@ -813,7 +825,7 @@ export async function handleApprove(
 	}
 	if (revisionIssues.length > 0) {
 		ctx.ui.notify(
-			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-pseudocode-approve:\n` +
+			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
 				revisionIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -849,7 +861,7 @@ export async function handleApprove(
 	}
 	if (gateIssues.length > 0) {
 		ctx.ui.notify(
-			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-testplan-approve:\n` +
+			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
 				gateIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -1108,7 +1120,7 @@ export async function handleApprove(
 			ctx.ui.notify(
 				`Doctor stopped the advance. ${doctorReport.summary.error} error(s), ` +
 					`${doctorReport.summary.warning} warning(s) found across ${groupedLines.length} section(s). ` +
-					`Fix and re-run /velpari-development-order-approve.\n` +
+					`Fix and re-run ${approveCommandForStage(state.currentStage)}.\n` +
 					`\n${capped.join("\n")}${more}\n\n` +
 					`Full report: ${doctorReportPath}.`,
 				"error",

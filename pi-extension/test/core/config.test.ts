@@ -9,9 +9,9 @@
  *   - save → load round-trip
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -26,10 +26,38 @@ import {
 import { getEffectiveProjectNames, isMultiProject } from "../../src/core/projectnames.js";
 import { buildFilesConfig } from "../../src/ops/configure-inputs.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-config-"));
 }
 
+/**
+ * Write a raw JSON value to files.json (bypassing saveFilesConfig).
+ * @param {string} cwd - Project root to write into.
+ * @param {unknown} value - JSON-serializable value to write.
+ * @returns {void}
+ */
 function writeRaw(cwd: string, value: unknown): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify(value), "utf8");

@@ -8,9 +8,9 @@
  *   - stampFingerprints: stamps known ids, leaves unknown ids unstamped
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -24,6 +24,24 @@ import {
 	stripChangeLogSection,
 } from "../../src/core/fingerprints.js";
 import type { RtmRow } from "../../src/core/rtm-data.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const PSRS = [
 	"# PSRS",
@@ -43,6 +61,12 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build an RtmRow fixture with optional fingerprint.
+ * @param {string} id - Requirement id (e.g. "FR-1").
+ * @param {string} fingerprint - Optional stamped fingerprint value.
+ * @returns {RtmRow} The constructed row.
+ */
 function rtmRow(id: string, fingerprint?: string): RtmRow {
 	return {
 		id,
@@ -140,6 +164,12 @@ describe("stampFingerprints", () => {
 });
 
 describe("countTraceIssues (Phase 6)", () => {
+	/**
+	 * Create a temp project dir with PRD/RTM fixtures for fingerprint checks.
+	 * @param {ReturnType<typeof rtmRow>[]} rows - Rows to write into the RTM sidecar.
+	 * @param {string} psrs - PRD fixture content.
+	 * @returns {string} Absolute path of the temp project root.
+	 */
 	function setup(rows: ReturnType<typeof rtmRow>[], psrs: string = PSRS): string {
 		const cwd = mkdtempSync(join(tmpdir(), "velpari-cti-"));
 		mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });
@@ -239,6 +269,11 @@ describe("stripChangeLogSection (A5/D3)", () => {
 });
 
 describe("hashFileContentNormalized (A5/D3)", () => {
+	/**
+	 * Write an artifact markdown file in a fresh tracked temp dir.
+	 * @param {string} content - File content to write.
+	 * @returns {string} Absolute path of the created file.
+	 */
 	function tmpFile(content: string): string {
 		const cwd = mkdtempSync(join(tmpdir(), "velpari-hnorm-"));
 		const p = join(cwd, "artifact.md");

@@ -9,17 +9,41 @@
  * Skipped by default — set RUN_PERF=1 to enable.
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runDoctor } from "../../src/doctor/index.js";
 import { PSRS_FM } from "../helpers/full-cwd.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 const PERF_ENABLED = process.env.RUN_PERF === "1";
 
+/**
+ * Write a minimal files.json v4 config under cwd.
+ * @param {string} cwd - Project root to write into.
+ * @param {string} projectName - Project name for the config.
+ * @returns {void}
+ */
 function seedFilesConfig(cwd: string, projectName = "TestApp") {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(
@@ -36,6 +60,12 @@ function seedFilesConfig(cwd: string, projectName = "TestApp") {
 	);
 }
 
+/**
+ * Seed n PRD fixture files under Doc/requirements.
+ * @param {string} cwd - Project root to write into.
+ * @param {number} n - Number of PRD files to create.
+ * @returns {void}
+ */
 function seedNPRDFiles(cwd: string, n: number) {
 	const docDir = join(cwd, "Doc", "requirements");
 	mkdirSync(docDir, { recursive: true });

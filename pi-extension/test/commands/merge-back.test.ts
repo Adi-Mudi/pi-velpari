@@ -15,13 +15,21 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { registerMergeBackCommand, runMergeBackFlow } from "../../src/commands/merge-back.js";
-import { divergent, git, mkErrorCleanRepo } from "../helpers/fixture-repo.js";
+import { cleanupFixtureRepos, FIXTURE_PROJECT, commitAll, divergent, git, mkErrorCleanRepo } from "../helpers/fixture-repo.js";
+import { closeStoreDb, openStoreDb } from "../../src/io/db.js";
+import { publishArtifact, writeArtifact, type ArtifactEnvelopeInput } from "../../src/io/store.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 
 interface NotifyRecord {
 	message: string;
 	severity: string;
 }
 
+/**
+ * Build a mock ExtensionContext whose ui.notify records messages and ui.confirm returns the given result.
+ * @param {boolean} confirmResult - What ui.confirm resolves to.
+ * @returns {{ctx: ExtensionContext; notifications: NotifyRecord[]; confirmCalls: () => number}} The mock ctx + recorders.
+ */
 function makeCtx(confirmResult: boolean): {
 	ctx: ExtensionContext;
 	notifications: NotifyRecord[];
@@ -31,6 +39,7 @@ function makeCtx(confirmResult: boolean): {
 	let confirmCalls = 0;
 	const ctx = {
 		ui: {
+			/** Record one notification with its severity (defaults to "info"). */
 			notify(message: string, severity?: string) {
 				notifications.push({ message, severity: severity ?? "info" });
 			},
@@ -51,12 +60,14 @@ beforeEach(() => {
 
 after(() => {
 	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+	cleanupFixtureRepos();
 });
 
 describe("commands/merge-back (Phase 6 6.8.3)", () => {
 	test("1. registration: name + non-empty description + callable handler", () => {
 		const commands = new Map<string, { description?: string; handler?: unknown }>();
 		const pi = {
+			/** Capture the registered command spec by name. */
 			registerCommand(name: string, spec: { description?: string; handler?: unknown }) {
 				commands.set(name, spec);
 			},
@@ -119,5 +130,50 @@ describe("commands/merge-back (Phase 6 6.8.3)", () => {
 		assert.notEqual(git(dir, ["rev-parse", "HEAD"]), headBefore);
 		// The audit commit carries the mandated subject and store-only paths.
 		assert.equal(git(dir, ["log", "-1", "--format=%s"]), "velpari(merge-back): feat — audit trail");
+	});
+
+	test("6. post-merge step failure → error summary, never 'merge-back complete' (I11.2)", async () => {
+		const dir = mkErrorCleanRepo();
+		// Recipe: test/ops/merge-back.test.ts case 10 — seed a published PRD,
+		// then commit hand-merge damage (fingerprint no longer matches rows).
+		const dbPath = buildStoreDbPath(FIXTURE_PROJECT, dir);
+		const seeded = openStoreDb(dbPath);
+		try {
+			const envelope: ArtifactEnvelopeInput = {
+				version: 1,
+				stage: "drafting-prd",
+				generatedAt: "2026-09-26T00:00:00.000Z",
+				inputs: "{}",
+				reviewerVerdict: null,
+				changeLog: "[]",
+			};
+			writeArtifact(seeded, "prd", "run-orig", envelope, {
+				fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3", text: "The system shall parse input." }],
+			});
+			publishArtifact(seeded, "run-orig", "prd");
+		} finally {
+			closeStoreDb(seeded);
+		}
+		commitAll(dir, "seed published prd");
+		divergent(dir);
+		const damaged = openStoreDb(dbPath);
+		try {
+			damaged
+				.prepare("UPDATE artifacts SET sha256_fingerprint = ? WHERE run_id = 'run-orig' AND kind = 'prd'")
+				.run("0".repeat(64));
+		} finally {
+			closeStoreDb(damaged);
+		}
+		commitAll(dir, "simulate store damage");
+
+		const { ctx, notifications } = makeCtx(true);
+		await runMergeBackFlow(ctx, dir, "feat --execute");
+
+		const text = notifications.map((n) => n.message).join("\n");
+		assert.match(text, /step 2 \[error\]/, "the failing step is rendered");
+		const summary = notifications.find((n) => n.message.includes("merge-back finished with errors"));
+		assert.ok(summary, `expected the error summary, got: ${text}`);
+		assert.equal(summary.severity, "error");
+		assert.ok(!text.includes("merge-back complete"), "the complete-success summary must not print on failure (I11.2)");
 	});
 });

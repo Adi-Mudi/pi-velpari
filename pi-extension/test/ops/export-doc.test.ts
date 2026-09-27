@@ -497,6 +497,17 @@ describe("mdToHtml", () => {
 		assert.ok(html.includes("<tbody>"));
 	});
 
+	test("escaped pipes in a cell stay one cell (Phase I9.5)", () => {
+		// The md renderer escapes `|` → `\|`; the HTML parser must not
+		// treat that as a column separator or the row misaligns.
+		const md = "| Req | Notes |\n| --- | --- |\n| FR-01 | A \\\| B and C |";
+		const html = mdToHtml(md);
+		const tbody = html.slice(html.indexOf("<tbody>"));
+		const tds = tbody.match(/<td>/g) ?? [];
+		assert.equal(tds.length, 2, "escaped pipe must not split the cell into two <td>s");
+		assert.ok(html.includes("A | B and C"), "cell text un-escapes \\| to |");
+	});
+
 	test("fenced code blocks escape content, keep language class", () => {
 		const md = "```mermaid\ngraph TD; A-->B\n```";
 		const html = mdToHtml(md);

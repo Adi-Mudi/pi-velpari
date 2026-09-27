@@ -11,7 +11,7 @@
 
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
@@ -32,6 +32,11 @@ after(() => {
 	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Seed `.pi/velpari/files.json` in the current fixture cwd.
+ * @param {Record<string, unknown>} config - Config keys spread over `{version:4}`.
+ * @returns {void}
+ */
 function seedConfig(config: Record<string, unknown>): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify({ version: 4, ...config }), "utf8");
@@ -75,6 +80,11 @@ describe("checkDbLinkOrphansSection", () => {
 		assert.equal(section.items.length, 1);
 		assert.equal(section.items[0]?.status, "info");
 		assert.match(section.items[0]?.message ?? "", /No store DB/);
+		assert.equal(
+			existsSync(buildStoreDbPath("TodoApp", cwd)),
+			false,
+			"a read-only doctor check must not create the store DB (I11.1 side-effect pin)",
+		);
 	});
 
 	test("store DB with empty links table → ok (nothing to audit)", () => {

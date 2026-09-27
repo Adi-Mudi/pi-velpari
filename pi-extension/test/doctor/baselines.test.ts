@@ -10,7 +10,7 @@
 
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
@@ -32,6 +32,11 @@ after(() => {
 	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Seed `.pi/velpari/files.json` in the current fixture cwd.
+ * @param {Record<string, unknown>} [config] - Extra config keys merged over `{version:4, projectName:"TodoApp"}`.
+ * @returns {void}
+ */
 function seedConfig(config: Record<string, unknown> = {}): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(
@@ -41,6 +46,10 @@ function seedConfig(config: Record<string, unknown> = {}): void {
 	);
 }
 
+/**
+ * Open the TodoApp store DB through the writer handle (fixture seeding).
+ * @returns {ReturnType<typeof openStoreDb>} An open store connection (caller closes it).
+ */
 function openStore(): ReturnType<typeof openStoreDb> {
 	return openStoreDb(buildStoreDbPath("TodoApp", cwd));
 }
@@ -75,6 +84,11 @@ describe("checkBaselinesSection", () => {
 		assert.equal(section.items.length, 1);
 		assert.equal(section.items[0]?.status, "info");
 		assert.match(section.items[0]?.message ?? "", /No store DB yet/);
+		assert.equal(
+			existsSync(buildStoreDbPath("TodoApp", cwd)),
+			false,
+			"a read-only doctor check must not create the store DB (I11.1 side-effect pin)",
+		);
 	});
 
 	test("store with no baselines → ok", () => {

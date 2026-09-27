@@ -18,9 +18,9 @@ import { join, dirname } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import type { DatabaseSync } from "node:sqlite";
-import { writeArtifact, publishArtifactCas } from "../../src/io/store.js";
+import { writeArtifact, publishArtifactCas, type ArtifactKind } from "../../src/io/store.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
-import { runExportFlow } from "../../src/commands/export.js";
+import { runExportFlow, headExportPath } from "../../src/commands/export.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /** Scripted responses consumed in order by the mock ctx.ui. */
@@ -47,9 +47,18 @@ function makeMockCtx(script: Script): ExtensionContext & {
 	inputCalls: number;
 } {
 	const notifications: NotifyRecord[] = [];
+	/**
+	 * Count of ctx.ui.input calls made through the mock's input getter
+	 * (lets a test assert how many prompts the flow opened).
+	 * @type {number}
+	 */
 	let inputCalls = 0;
 	const ctx = {
 		notifications,
+		/**
+		 * Current count of ctx.ui.input calls made through this mock.
+		 * @returns {number} How many input prompts the flow opened so far.
+		 */
 		get inputCalls() {
 			return inputCalls;
 		},
@@ -170,7 +179,13 @@ describe("runExportFlow (revision-aware)", () => {
 		const offered: string[][] = [];
 		const ctx = makeMockCtx({ selects: [], confirms: [] });
 		// Select recorder: answer the kind picker, capture + cancel the version picker.
-		const ui = (ctx as unknown as { ui: { select: (t: string, o: string[]) => Promise<string | undefined> } }).ui;
+		/**
+	 * The mock context's `ui` object, re-cast to the narrow shape this
+	 * test overrides: its `select` is replaced with a recorder that
+	 * captures every picker row, then cancels the version picker.
+	 * @returns {{ select: (title: string, options: string[]) => Promise<string | undefined> }} The ui object with a replaceable `select`.
+	 */
+	const ui = (ctx as unknown as { ui: { select: (t: string, o: string[]) => Promise<string | undefined> } }).ui;
 		ui.select = async (title: string, options: string[]) => {
 			offered.push([title, ...options]);
 			return title === "Export — pick artifact kind" ? "prd" : undefined;
@@ -278,7 +293,13 @@ describe("runExportFlow (revision-aware)", () => {
 			}
 		).revision_id;
 		const ctx = makeMockCtx({ selects: ["prd", HEAD_REV_LABEL, "md"], confirms: [] });
-		const ui = (ctx as unknown as { ui: { select: (t: string, o: string[]) => Promise<string | undefined> } }).ui;
+		/**
+	 * The mock context's `ui` object, re-cast to the narrow shape this
+	 * test overrides: `select` is wrapped so the format picker's
+	 * arrival triggers a mid-flow revision withdrawal.
+	 * @returns {{ select: (title: string, options: string[]) => Promise<string | undefined> }} The ui object with a replaceable `select`.
+	 */
+	const ui = (ctx as unknown as { ui: { select: (t: string, o: string[]) => Promise<string | undefined> } }).ui;
 		const originalSelect = ui.select.bind(ui);
 		ui.select = async (title: string, options: string[]) => {
 			const answer = await originalSelect(title, options);
@@ -291,5 +312,31 @@ describe("runExportFlow (revision-aware)", () => {
 		const note = ctx.notifications.at(-1)!;
 		assert.equal(note.severity, "error");
 		assert.ok(note.message.includes("Export failed"));
+	});
+});
+
+describe("headExportPath golden list (Phase I9.3 — one shared KIND_LABELS map)", () => {
+	test("all 9 kinds export to their grouped destination", () => {
+		// Golden strings captured from the pre-I9.3 code (the local
+		// KIND_TO_GROUPED duplicate was byte-identical to KIND_LABELS —
+		// this list is what pins them from ever diverging again).
+		const golden: Record<string, string> = {
+			prd: "Doc/requirements/PRD_Proj.md",
+			rtm: "Doc/requirements/RTM_Proj.md",
+			feasibility: "Doc/feasibility/feasibility-study_Proj.md",
+			design: "Doc/design/design_Proj.md",
+			"atomic-functions": "Doc/atomic-functions/atomic-functions_Proj.md",
+			pseudocode: "Doc/pseudocode/pseudocode_Proj.md",
+			testplan: "Doc/tests/test-plan_Proj.md",
+			"development-order": "Doc/development-order/development-order_Proj.md",
+			"final-design": "Doc/design/final-design_Proj.md",
+		};
+		for (const [kind, expected] of Object.entries(golden)) {
+			assert.equal(
+				headExportPath("/W", "Proj", kind as ArtifactKind, "md"),
+				join("/W", expected),
+				`kind ${kind}`,
+			);
+		}
 	});
 });

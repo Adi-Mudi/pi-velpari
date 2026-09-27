@@ -1,12 +1,16 @@
 /**
- * Integration: Command registration (Phase 8 + v1.6.0 per-stage approve).
+ * Integration: Command registration — the single integration-time count pin.
  *
- * Verifies all 41 commands register without conflict:
- *  - Phase 1-3 additions (rename, new configure-standards command)
- *  - Phase 8 /velpari-generate-sub-agents addition
- *  - v1.4.0: +velpari-design-logging + velpari-show-logging
+ * Verifies all 51 commands register without conflict (Phase I reconciliation;
+ * the marked per-phase blocks are folded into the canonical registry):
  *  - v1.6.0: per-stage approve split (dropped the legacy generic
- *    add 9 per-stage /velpari-<stage>-approve commands)
+ *    command, added 9 per-stage /velpari-<stage>-approve commands)
+ *  - A5: +velpari-reconfirm; Phase 5: +velpari-export
+ *  - Phase 6 backfill + Phase 10 portfolio + Phase 11 migrate-store
+ *  - protection phase (46th–49th): +db-reset/freeze/tombstone/rollback
+ *  - export/retention phase (50th): +velpari-retention-prune
+ *  - Phase 6 doctor (51st): +velpari-merge-back
+ * This file owns the ONLY hard-coded command count in the test tree.
  */
 
 import { describe, it } from "node:test";

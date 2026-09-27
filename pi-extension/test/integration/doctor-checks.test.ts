@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,6 +12,10 @@ import { runDoctor } from "../../src/doctor/index.js";
 import { writeDoctorReport } from "../../src/doctor/report.js";
 import { TEST_PROJECT, setupFullCwd } from "../helpers/full-cwd.js";
 
+/**
+ * Create a fresh temp fixture cwd for one doctor integration test.
+ * @returns {string} Absolute path of the new `velpari-doctor-it-*` directory.
+ */
 function makeCwd(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-doctor-it-"));
 }
@@ -178,5 +182,34 @@ describe("doctor integration — working/published separation", () => {
 		const report = runDoctor(cwd);
 		const sep = report.sections.find((s) => /separation|working.published/i.test(s.title));
 		assert.ok(sep);
+	});
+});
+
+describe("doctor integration — pre-store cwd (I11.1 read-only store opens)", () => {
+	it("store sections report no errors and runDoctor never creates the store DB", () => {
+		const cwd = makeCwd();
+		try {
+			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+			writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify({ version: 4, projectName: "TodoApp" }), "utf8");
+			const report = runDoctor(cwd);
+			for (const title of [
+				"Audit hash chain (N15)",
+				"Baselines vs revisions (F7)",
+				"Secret scan (NFR-04)",
+				"Store DB link orphans",
+			]) {
+				const section = report.sections.find((s) => s.title === title);
+				assert.ok(section, `section "${title}" present`);
+				const errors = section.items.filter((i) => i.status === "error");
+				assert.deepEqual(errors, [], `no errors in "${title}" on a pre-store cwd`);
+			}
+			assert.equal(
+				existsSync(join(cwd, "Doc/store/TodoApp/index.db")),
+				false,
+				"runDoctor must not create the store DB on a pre-store cwd (I11.1 side-effect pin)",
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 });

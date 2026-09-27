@@ -8,10 +8,10 @@ The extension source is organised in 4 layers (official Pi extension orchestrato
 
 | Layer | Folder | Purpose | May import from |
 |---|---|---|---|
-| 0 — Domain | `core/`, `io/` | Stage state, paths, constants, stage-runner, prompt, config, profiles, psrs, compaction, logging-plan, standards-overlay, hashchain (N15 chain primitives), backup (N9/N10/N11 contract, no-op until Phase 3); atomic-write + agents-install | nothing else in `src/` |
-| 1 — Stage logic | `stages/`, `ops/`, `doctor/`, `view/` | Per-stage handlers + registry; ops commands; diagnostics; read-only display | Layer 0 |
+| 0 — Domain | `core/`, `io/` | Stage state, paths, constants, stage-runner, prompt, config, profiles, psrs, compaction, logging-plan, standards-overlay, hashchain (N15 chain primitives), backup (N9/N10/N11 snapshot/restore/FIFO + manifest), worktree, run-binding, upstream, change-report (N5/N6/N8/N14 enforcement); atomic-write + agents-install | nothing else in `src/` |
+| 1 — Stage logic | `stages/`, `ops/`, `doctor/`, `view/` | Per-stage handlers + registry; ops commands; diagnostics; read-only display; `stages/worktree-lock` (N5/N6 worktree/branch gate) | Layer 0 |
 | 2 — Presentation | `ui/`, `hooks/` | TUI widgets; Pi lifecycle hooks (one file per event) | Layer 0, 1 |
-| 3 — Composition | `commands/`, `index.ts` | 43 slash commands; extension entry point | Layer 0, 1, 2 |
+| 3 — Composition | `commands/`, `index.ts` | 51 slash commands; extension entry point | Layer 0, 1, 2 |
 
 **Rule:** a file in layer N may import from any layer < N. Files in the same layer may import each other freely. **Never import upward.** Enforced by `pi-extension/test/architecture-alignment.test.ts`. Full map in [`layers.ts`](./layers.ts).
 
