@@ -17,11 +17,9 @@
  */
 import { describe, test, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { executeMergeBack, planMergeBack } from "../../src/ops/merge-back.js";
 import { closeStoreDb, openStoreDb } from "../../src/io/db.js";
@@ -31,73 +29,26 @@ import {
 	writeArtifact,
 	type ArtifactEnvelopeInput,
 } from "../../src/io/store.js";
-import { buildStoreDbPath, findPackageRoot } from "../../src/core/paths.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 import { verifyChain, type ChainedRow } from "../../src/core/hashchain.js";
+import {
+	cleanupFixtureRepos,
+	commitAll,
+	divergent,
+	divergentConflict,
+	git,
+	mkErrorCleanRepo,
+} from "../helpers/fixture-repo.js";
 
 const PROJECT = "MergeApp";
-const REPO_ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 const AUDIT_MESSAGE = "velpari(merge-back): feat — audit trail";
 
 const dirs: string[] = [];
 after(() => {
 	for (const d of dirs) rmSync(d, { recursive: true, force: true });
+	cleanupFixtureRepos();
 });
 
-/** Run git; throws on non-zero exit. */
-function git(cwd: string, args: string[]): string {
-	const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-	if (r.error) throw r.error;
-	if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed (${r.status}): ${r.stderr?.trim() ?? ""}`);
-	return (r.stdout ?? "").trim();
-}
-
-function commitAll(cwd: string, message: string): void {
-	git(cwd, ["add", "-A"]);
-	git(cwd, ["commit", "-q", "-m", message]);
-}
-
-/** Bare error-clean git fixture (probe: runDoctor reports 0 errors). */
-function mkFixture(): string {
-	const dir = mkdtempSync(join(tmpdir(), "velpari-mergeback-"));
-	dirs.push(dir);
-	cpSync(join(REPO_ROOT, "skills"), join(dir, "skills"), { recursive: true });
-	copyFileSync(join(REPO_ROOT, "package.json"), join(dir, "package.json"));
-	mkdirSync(join(dir, ".pi", "velpari"), { recursive: true });
-	writeFileSync(join(dir, ".pi", "velpari", "files.json"), JSON.stringify({ projectName: PROJECT }, null, 2));
-	writeFileSync(join(dir, ".gitignore"), "Doc/store/**/index.db-wal\nDoc/store/**/index.db-shm\n");
-	writeFileSync(join(dir, "f.txt"), "base line\n");
-	const dbPath = buildStoreDbPath(PROJECT, dir);
-	mkdirSync(dirname(dbPath), { recursive: true });
-	const db = openStoreDb(dbPath);
-	closeStoreDb(db);
-	git(dir, ["init", "-q", "-b", "main"]);
-	git(dir, ["config", "user.email", "t@example.com"]);
-	git(dir, ["config", "user.name", "merge-back test"]);
-	commitAll(dir, "init");
-	return dir;
-}
-
-/** Divergent history: feat edits feat.txt, main edits main.txt (no conflict). */
-function divergent(dir: string): void {
-	const base = git(dir, ["rev-parse", "HEAD"]);
-	git(dir, ["checkout", "-q", "-b", "feat", base]);
-	writeFileSync(join(dir, "feat.txt"), "feat side\n");
-	commitAll(dir, "feat work");
-	git(dir, ["checkout", "-q", "main"]);
-	writeFileSync(join(dir, "main.txt"), "main side\n");
-	commitAll(dir, "main work");
-}
-
-/** Divergent history that conflicts on f.txt (same line, both sides). */
-function divergentConflict(dir: string): void {
-	const base = git(dir, ["rev-parse", "HEAD"]);
-	git(dir, ["checkout", "-q", "-b", "feat", base]);
-	writeFileSync(join(dir, "f.txt"), "feat version\n");
-	commitAll(dir, "feat edits f");
-	git(dir, ["checkout", "-q", "main"]);
-	writeFileSync(join(dir, "f.txt"), "main version\n");
-	commitAll(dir, "main edits f");
-}
 
 /** One audit_ledger row, selected for the chain verifier. */
 interface AuditRow {
@@ -145,7 +96,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("2. plan: dirty tree blocked and the tree stays untouched", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergent(dir);
 		writeFileSync(join(dir, "dirty.txt"), "uncommitted\n");
 		const statusBefore = git(dir, ["status", "--porcelain"]);
@@ -160,7 +111,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("3. plan: unknown branch blocked", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergent(dir);
 		const plan = planMergeBack(dir, "no-such-branch");
 		assert.ok(
@@ -170,7 +121,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("4. plan: clean divergent merge converges with zero doctor errors and zero writes", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergent(dir);
 		const headBefore = git(dir, ["rev-parse", "HEAD"]);
 		const plan = planMergeBack(dir, "feat");
@@ -190,7 +141,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("5. plan: conflict preview names f.txt, step 1 error, steps 3–5 still counted", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergentConflict(dir);
 		const plan = planMergeBack(dir, "feat");
 		assert.deepEqual(plan.blocked, []);
@@ -206,7 +157,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("6. execute without confirmed refuses — nothing touched (never automatic)", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergent(dir);
 		const headBefore = git(dir, ["rev-parse", "HEAD"]);
 		const res = executeMergeBack(dir, "feat", { confirmed: false });
@@ -222,7 +173,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("7. execute confirmed (clean): merge + 5 audit rows + chain intact + D4 audit commit", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergent(dir);
 		const headBefore = git(dir, ["rev-parse", "HEAD"]);
 		const res = executeMergeBack(dir, "feat", { confirmed: true });
@@ -275,7 +226,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("8. execute confirmed (conflict): step 1 error, steps 2–5 skipped, no audit, no auto-abort", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		divergentConflict(dir);
 		const headBefore = git(dir, ["rev-parse", "HEAD"]);
 		const res = executeMergeBack(dir, "feat", { confirmed: true });
@@ -317,7 +268,7 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 	});
 
 	test("10. store checksum damage → step 2 error naming the kind; the attempt is still recorded + committed", () => {
-		const dir = mkFixture();
+		const dir = mkErrorCleanRepo();
 		// Seed a published PRD (recipe: test/commands/backfill.test.ts).
 		const dbPath = buildStoreDbPath(PROJECT, dir);
 		const seeded = openStoreDb(dbPath);
@@ -353,6 +304,11 @@ describe("ops/merge-back (Phase 6 6.7 — N12 guided merge-back)", () => {
 		const res = executeMergeBack(dir, "feat", { confirmed: true });
 		const s2 = res.steps.find((s) => s.step === 2);
 		assert.equal(s2?.status, "error", `step 2 should fail: ${JSON.stringify(res.steps)}`);
+		assert.equal(
+			res.ok,
+			false,
+			"a post-merge step-2 error must not report ok (I11.2 — every step counts)",
+		);
 		assert.ok(
 			`${s2?.message ?? ""} ${JSON.stringify(s2?.details ?? [])}`.includes("prd"),
 			`step 2 must name the divergent kind: ${JSON.stringify(s2)}`,

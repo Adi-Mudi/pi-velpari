@@ -14,7 +14,7 @@
  * Skipped by default — set RUN_PERF=1 to enable.
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -26,11 +26,29 @@ import { createRun, advanceStage, saveState } from "../../src/core/state.js";
 import { readApprovedArtifacts } from "../../src/ops/handoff.js";
 import { setupFullCwd } from "../helpers/full-cwd.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = fs.mkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
 const PERF_ENABLED = process.env.RUN_PERF === "1";
 
 describe("performance — full pipeline operations", () => {
 	it("walkToFinalizedDesign (21 transitions) finishes under 500ms", { skip: !PERF_ENABLED }, () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-perf-pipeline-"));
+		const cwd = mkdtempSync(path.join(os.tmpdir(), "velpari-perf-pipeline-"));
 		// Seed the minimal config so files.json is present.
 		fs.mkdirSync(path.join(cwd, ".pi", "velpari"), { recursive: true });
 		fs.writeFileSync(
@@ -68,7 +86,7 @@ describe("performance — full pipeline operations", () => {
 	});
 
 	it("runHandoff on a 10-doc fixture finishes under 250ms", { skip: !PERF_ENABLED }, () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-perf-handoff-"));
+		const cwd = mkdtempSync(path.join(os.tmpdir(), "velpari-perf-handoff-"));
 		// setupFullCwd seeds files.json + PRD + RTM + RTM.json. We add the
 		// remaining 8 docs required by the post-Option-B handoff so the
 		// perf path covers a realistic 10-doc load.

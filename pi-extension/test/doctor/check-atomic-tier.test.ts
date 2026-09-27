@@ -12,18 +12,46 @@
  *   - Per-issue location + rule + suggestion appear in messages
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadReviewerVerdict } from "../../src/doctor/checks/atomic-tier.js";
 import { DEFAULT_ATOMIC_PROFILE } from "../../src/core/atomic-tier.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-verdict-"));
 }
 
+/**
+ * Write a reviewer verdict JSON file at the atomic-function scout path.
+ * @param {string} cwd - Project root to write into.
+ * @param {object} verdict - Verdict object to serialize.
+ * @returns {string} Absolute path of the written verdict file.
+ */
 function writeVerdict(cwd: string, verdict: object): string {
 	const runId = "2026-09-16-1200-test";
 	const dir = join(cwd, ".IDE_Plans", "velpari", "runs", runId, "atomic-function", "scouts");

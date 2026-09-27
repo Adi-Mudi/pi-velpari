@@ -8,14 +8,32 @@
  *   - coverage counting (X/Y fully covered)
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkMvpCoverage } from "../../src/core/mvp-coverage.js";
 import { checkMvpCoverageSection } from "../../src/doctor/checks/mvp-coverage.js";
 import type { RtmData, RtmRow } from "../../src/core/rtm-data.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const PSRS = [
 	"# PSRS",
@@ -35,6 +53,12 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build an RtmRow fixture for MVP coverage tests.
+ * @param {string} id - Requirement id (e.g. "FR-1").
+ * @param {Partial<RtmRow>} overrides - Fields to override on the default row.
+ * @returns {RtmRow} The constructed row.
+ */
 function row(id: string, overrides: Partial<RtmRow> = {}): RtmRow {
 	return {
 		id,
@@ -49,6 +73,11 @@ function row(id: string, overrides: Partial<RtmRow> = {}): RtmRow {
 	};
 }
 
+/**
+ * Create a temp project dir with a PRD fixture and an RTM sidecar for rows.
+ * @param {RtmRow[]} rows - Rows to write into the RTM sidecar.
+ * @returns {string} Absolute path of the temp project root.
+ */
 function setup(rows: RtmRow[]): string {
 	const cwd = mkdtempSync(join(tmpdir(), "velpari-mvp-"));
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });

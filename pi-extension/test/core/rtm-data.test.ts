@@ -8,9 +8,9 @@
  *   - renderRtmMarkdown: frontmatter, summary counts, gaps, table, change log
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -23,6 +23,29 @@ import {
 	type RtmData,
 } from "../../src/core/rtm-data.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Build an RTM row fixture with optional field overrides.
+ * @param {Record<string, unknown>} overrides - Fields to override on the default row.
+ * @returns {Record<string, unknown>} The constructed row.
+ */
 function row(overrides: Record<string, unknown> = {}) {
 	return {
 		id: "FR-1",
@@ -37,6 +60,11 @@ function row(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+/**
+ * Build an RTM data document fixture with a single default row.
+ * @param {Record<string, unknown>} overrides - Fields to override on the default document.
+ * @returns {RtmData} The constructed RTM document.
+ */
 function data(overrides: Record<string, unknown> = {}): RtmData {
 	return {
 		project: "TestApp",
@@ -183,6 +211,10 @@ describe("renderRtmMarkdown", () => {
 });
 
 describe("resolveRtmSidecar + loadRtmSidecarData (B3/D4 dual-read)", () => {
+	/**
+	 * Create a fresh temp dir for the dual-read sidecar tests.
+	 * @returns {string} Absolute path of the tracked temp dir.
+	 */
 	function tmp(): string {
 		return mkdtempSync(join(tmpdir(), "velpari-rtm-dual-"));
 	}

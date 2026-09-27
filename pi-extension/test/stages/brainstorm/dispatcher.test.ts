@@ -8,9 +8,9 @@
  * artifact path containment, and the prepared payload shape.
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { saveAgentConfig } from "../../../src/core/agents-config.js";
@@ -27,6 +27,24 @@ import {
 	SCAN_TYPE_DISPATCH_CAP,
 	SCAN_TYPE_ROLES,
 } from "../../../src/stages/brainstorm/dispatcher.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const RUN_DIR = path.resolve("/tmp/velpari-dispatcher-test/runs/run-1");
 
@@ -190,6 +208,10 @@ describe("prepareDispatch", () => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("prepareDispatch v3 — persistent mode", () => {
+	/**
+	 * Create a fresh tracked temp dir for the persistent-mode tests.
+	 * @returns {string} Absolute path of the tracked temp dir.
+	 */
 	function tmpCwd(): string {
 		return mkdtempSync(path.join(tmpdir(), "velpari-dispatcher-persistent-"));
 	}
@@ -390,6 +412,10 @@ describe("formatScanPlanLines + formatPreparedDispatch", () => {
 });
 
 describe("role → agent-name resolution (agents.json)", () => {
+	/**
+	 * Create a fresh tracked temp dir for the agents.json resolution tests.
+	 * @returns {string} Absolute path of the tracked temp dir.
+	 */
 	function tmpCwd(): string {
 		return mkdtempSync(path.join(tmpdir(), "velpari-dispatcher-agents-"));
 	}

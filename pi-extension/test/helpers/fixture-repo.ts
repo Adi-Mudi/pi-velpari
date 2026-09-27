@@ -12,7 +12,7 @@
  * breaks SQLite WAL.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,18 @@ export function git(cwd: string, args: string[]): string {
 	return (r.stdout ?? "").trim();
 }
 
+/** Temp dirs created by mkErrorCleanRepo; drained by cleanupFixtureRepos(). */
+const createdDirs: string[] = [];
+
+/**
+ * Remove every temp dir this module created since the last cleanup call.
+ * Consumers call this from their after()/teardown hook (I12.1 sweep).
+ * @returns {void}
+ */
+export function cleanupFixtureRepos(): void {
+	for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+}
+
 /** Stage everything and commit. */
 export function commitAll(cwd: string, message: string): void {
 	git(cwd, ["add", "-A"]);
@@ -45,6 +57,7 @@ export function commitAll(cwd: string, message: string): void {
  */
 export function mkErrorCleanRepo(): string {
 	const dir = mkdtempSync(join(tmpdir(), "velpari-fixture-repo-"));
+	createdDirs.push(dir);
 	cpSync(join(REPO_ROOT, "skills"), join(dir, "skills"), { recursive: true });
 	copyFileSync(join(REPO_ROOT, "package.json"), join(dir, "package.json"));
 	mkdirSync(join(dir, ".pi", "velpari"), { recursive: true });
@@ -74,4 +87,19 @@ export function divergent(dir: string): void {
 	git(dir, ["checkout", "-q", "main"]);
 	writeFileSync(join(dir, "main.txt"), "main side\n");
 	commitAll(dir, "main work");
+}
+
+/**
+ * Divergent history that conflicts on f.txt (same line, both sides).
+ * @param {string} dir - Fixture repo path.
+ * @returns {void}
+ */
+export function divergentConflict(dir: string): void {
+	const base = git(dir, ["rev-parse", "HEAD"]);
+	git(dir, ["checkout", "-q", "-b", "feat", base]);
+	writeFileSync(join(dir, "f.txt"), "feat version\n");
+	commitAll(dir, "feat edits f");
+	git(dir, ["checkout", "-q", "main"]);
+	writeFileSync(join(dir, "f.txt"), "main version\n");
+	commitAll(dir, "main edits f");
 }

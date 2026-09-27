@@ -9,17 +9,45 @@
  *   - top-level file classification and sorted output
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { discoverProjectFiles, formatSuggestion, looksLikeTestPath } from "../../src/core/files-discovery.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-files-discovery-"));
 }
 
+/**
+ * Create an empty file at rel under cwd, making parent dirs as needed.
+ * @param {string} cwd - Project root to write into.
+ * @param {string} rel - Path relative to cwd.
+ * @returns {void}
+ */
 function touch(cwd: string, rel: string): void {
 	const full = join(cwd, rel);
 	mkdirSync(dirname(full), { recursive: true });
