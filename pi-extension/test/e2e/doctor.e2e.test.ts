@@ -16,7 +16,9 @@
  *      LLM. Tier 1 therefore needs no real API key.
  *   3. Drive `runDoctor(cwd)` directly via the RPC `bash` channel: the
  *      server runs `node --input-type=module -e "import { runDoctor }
- *      from '<built module>'; process.stdout.write(runDoctor(process.cwd()))"`.
+ *      from '<built module>'; ..."` — the rendered report is written to
+ *      a transport FILE (pi's bash channel head-truncates stdout near
+ *      50KB, which the full report exceeds) and read back here.
  *   4. Write the report to disk by importing `writeDoctorReport` from
  *      the same module, then assert on the `.IDE_Plans/velpari/doctor-report.md`
  *      file directly.
@@ -71,21 +73,30 @@ describe("e2e/doctor", () => {
 		// script sees our temp project (and the .pi/velpari/files.json
 		// the fixture wrote). runDoctor returns a structured
 		// DiagnosticReport; formatDiagnosticReport renders the markdown.
-		// We JSON-encode the rendered string via JSON.stringify so
-		// quoting issues in the markdown cannot break the bash round trip.
+		// The report is transported via a FILE, not stdout: pi's bash
+		// tool head-truncates output near DEFAULT_MAX_BYTES (50KB), and
+		// the Phase 6 doctor report's JSON exceeds that on stdout.
 		const result = await client.request<any>("bash", {
 			command: [
 				"node --input-type=module -e",
 				JSON.stringify(
-					`import { runDoctor, formatDiagnosticReport } from ${JSON.stringify(distModuleUrl("doctor/index.js"))}; ` +
-						`process.stdout.write(JSON.stringify(formatDiagnosticReport(runDoctor(process.cwd()))));`,
+					`import { writeFileSync } from "node:fs"; ` +
+						`import { runDoctor, formatDiagnosticReport } from ${JSON.stringify(distModuleUrl("doctor/index.js"))}; ` +
+						`const md = formatDiagnosticReport(runDoctor(process.cwd())); ` +
+						`writeFileSync(process.cwd() + "/e2e-doctor-report.md", md); ` +
+						`process.stdout.write("WROTE " + md.length);`,
 				),
 			].join(" "),
 		});
 		assert.ok(result.success === true, `runDoctor subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 		const output: string = result.data?.output ?? result.output ?? "";
-		assert.ok(output.length > 0, "runDoctor subprocess produced no output");
-		const report = JSON.parse(output) as string;
+		assert.ok(
+			output.startsWith("WROTE "),
+			`runDoctor subprocess produced unexpected output: ${JSON.stringify(output)}`,
+		);
+		const transportPath = `${home.cwd}/e2e-doctor-report.md`;
+		assert.ok(existsSync(transportPath), `e2e transport file was not written to ${transportPath}`);
+		const report = readFileSync(transportPath, "utf8");
 
 		// Top-level sections Doctor always emits (section titles in
 		// src/doctor/index.ts + src/doctor/checks/{profile,agents}.ts,

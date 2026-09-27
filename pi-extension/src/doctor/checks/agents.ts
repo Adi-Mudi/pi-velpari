@@ -109,7 +109,12 @@ export const STAGES_WITH_SKILL_MARKDOWN = [
 	"rtm",
 	"feasibility",
 	"architecture-generator",
-	"design",
+	// Phase 6 execution finding: this entry was the stale pre-rename
+	// suffix "design" — skills/velpari-design.md was renamed to
+	// velpari-final-design.md on 2026-09-14, so every doctor run
+	// reported 2 phantom errors (section + action-items). Checked as
+	// "final-design" now; the skill passes the same contract below.
+	"final-design",
 	"pseudocode",
 	"testplan",
 	"atomic-function",

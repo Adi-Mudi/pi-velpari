@@ -24,7 +24,7 @@
 
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { RpcClient } from "./helpers/rpc-client.js";
@@ -114,9 +114,13 @@ describe("e2e/ops-doctor", () => {
 			"utf8",
 		);
 
+		// The report is transported via a FILE: pi's bash channel
+		// head-truncates stdout near DEFAULT_MAX_BYTES (50KB) and the
+		// Phase 6 doctor report's JSON exceeds that.
 		const out = await runModuleScript<any>(
 			client,
-			"import { saveAgentConfig } from " +
+			"import { writeFileSync } from 'node:fs'; " +
+				"import { saveAgentConfig } from " +
 				AGENTS_JS +
 				"; " +
 				"import { runDoctor, formatDiagnosticReport } from " +
@@ -125,14 +129,13 @@ describe("e2e/ops-doctor", () => {
 				"const cwd = process.cwd(); " +
 				"saveAgentConfig(cwd, { version: 1, agents: { extractor: 'test-scout' } }); " +
 				"const report = formatDiagnosticReport(runDoctor(cwd)); " +
-				"process.stdout.write(JSON.stringify({ report }));",
+				"writeFileSync(cwd + '/e2e-agent-report.md', report); " +
+				"process.stdout.write(JSON.stringify({ file: 'e2e-agent-report.md' }));",
 		);
 
-		assert.ok(
-			out.report.includes("## Agent mapping (agents.json)"),
-			"doctor report is missing the agent-mapping section",
-		);
-		assert.ok(out.report.includes("test-scout"), "agent-mapping section should mention the mapped custom agent");
+		const report = readFileSync(join(home.cwd, out.file), "utf8");
+		assert.ok(report.includes("## Agent mapping (agents.json)"), "doctor report is missing the agent-mapping section");
+		assert.ok(report.includes("test-scout"), "agent-mapping section should mention the mapped custom agent");
 	});
 
 	it("status: no run notifies; with a run it appends a velpari-status entry and sets the footer", {

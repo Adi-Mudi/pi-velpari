@@ -98,3 +98,49 @@ YAML diff is the intended review surface and needs no extra tools.
    (`git checkout <commit> -- Doc/store/`).
 3. **Store DB links** — orphan trace edges after a hand-merged rebuild
    (re-import the affected kinds in the § 3 order).
+4. **Audit hash chain (N15)** — a broken `audit_ledger`/`tx_log` chain (the
+   report names the row): treat it as tampering — the trail can no longer be
+   trusted; investigate before rebuilding anything.
+5. **Baselines vs revisions (F7)** — a consumer's adopted baseline points at
+   a `WITHDRAWN` revision (error: content was pulled) or a superseded
+   revision (info: non-head adoption); re-adopt the head revision by
+   re-running the consumer stage.
+6. **Last verified backup (N11)** — no backup yet (the next publish,
+   `/velpari-db-reset` or `/velpari-migrate-store` writes one) or the newest
+   backup failed verification (restore from git per § 2 or an older snapshot).
+7. **Run lock (N13)** — a stale run lock from a crashed session; the ONLY
+   sanctioned clear is `/velpari-reset` (confirm + audit event) — never
+   hand-delete `.lock/`.
+8. **Run worktree (N14)** — a run is bound to a worktree path that no longer
+   exists (removed while the run was active): restore the worktree or reset
+   the run before continuing.
+
+## 7. Guided merge-back (`/velpari-merge-back`, N12)
+
+The hand-driven procedure above also has one deliberate command surface
+(Phase 6). **Never automatic (G-4):** the command plans first; only
+`--execute` **plus** one confirmation prompt runs anything.
+
+1. **Dry-run (default):** `/velpari-merge-back <branch>` prints the
+   read-only plan — branch/merge-base, file overlap (and any `Doc/store/`
+   overlap), the `git merge-tree` conflict preview, current doctor counts,
+   stale consumers, and the 5 planned steps. It writes nothing.
+2. **`--execute`** runs the fixed N12 chain after the confirmation:
+   1. `git merge --no-ff <branch>` — a conflict **stops here** (steps 2–5
+      skipped, no audit rows, no auto-abort): resolve per §2/§3 or
+      `git merge --abort`, then **re-run the same command** — the
+      already-merged path finishes steps 2–5 only.
+   2. Store verification — every published artifact re-checksums from its
+      rows; a mismatch names the kind ⇒ hand-merge damage ⇒ rebuild per §3.
+   3. Doctor audit (embedded — writes nothing).
+   4. Staleness recompute.
+   5. Downstream consumers flagged stale per F14.
+3. **Audit trail:** each step appends one row per project store to
+   `audit_ledger` (`actor=velpari-merge-back`, `action=merge-back`,
+   reason `step <N>: <title>`, detail `{step, branch, status, message, …}`),
+   then the store DB is committed
+   explicitly as `velpari(merge-back): <branch> — audit trail` — never
+   bundled into the merge commit. A conflicted run writes nothing (step 1
+   stops first).
+4. Re-running on an already-merged branch is safe (idempotent — steps 2–5
+   re-verify and re-stamp the trail).
