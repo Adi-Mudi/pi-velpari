@@ -10,12 +10,18 @@
 // Conventions: temp dirs under TMPDIR + real git repos + real store DBs.
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-import { MIGRATE_RUN_ID, migrateDryRun, migrateExecute, migratePrecheck } from "../../src/ops/migrate.js";
+import {
+	MIGRATE_RUN_ID,
+	migrateDryRun,
+	migrateExecute,
+	migratePrecheck,
+	renderMigrateReport,
+} from "../../src/ops/migrate.js";
 import {
 	readLatestPublishedRows,
 	writeArtifact,
@@ -25,7 +31,8 @@ import {
 } from "../../src/io/store.js";
 import { runDbPublish } from "../../src/ops/db-publish.js";
 import { openPortfolioDb, openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import { buildPortfolioDbPath, buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
+import { readBackupManifest } from "../../src/core/backup.js";
+import { buildBackupDir, buildPortfolioDbPath, buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
 import { listProjects } from "../../src/io/portfolio.js";
 import { computeStaleSet, recordPublish } from "../../src/core/freshness.js";
 import { hashFileContentNormalized } from "../../src/core/fingerprints.js";
@@ -317,6 +324,65 @@ describe("ops/migrate execute", () => {
 		);
 		assert.ok(existsSync(buildStoreYamlPath(PROJECT, "PRD", dir)), "the runbook rebuild source must exist");
 		assert.ok(project.commitSha, "the YAML backfill joins a commit");
+	});
+
+	test("N9: pre-existing store DB gets a pre-migration backup before the first open", () => {
+		const dir = currentDir();
+		gitInit(dir);
+		writeDoc(dir, "requirements", "PRD", PRD_MD);
+		writeDoc(dir, "requirements", "RTM", RTM_MD);
+		// Seed the store so the trigger has something to protect.
+		const seeded = openStoreDb(buildStoreDbPath(PROJECT, dir));
+		try {
+			seeded.exec("CREATE TABLE IF NOT EXISTS seed_marker(id INTEGER PRIMARY KEY);");
+			seeded.prepare("INSERT INTO seed_marker DEFAULT VALUES").run();
+		} finally {
+			closeStoreDb(seeded);
+		}
+
+		const report = migrateExecute(dir);
+		assert.equal(report.ok, true, JSON.stringify(report.projects[0]?.kinds ?? report.precheckProblems));
+
+		const backupDir = buildBackupDir(PROJECT, dir);
+		const files = readdirSync(backupDir).filter((f) => /^index-.*\.db$/.test(f));
+		assert.equal(files.length, 1, "exactly one snapshot for the pre-migration DB");
+		assert.match(files[0]!, /^index-\d{8}T\d{6}Z-([0-9a-f]{7}|nogit)(-\d+)?\.db$/);
+
+		const lines = readBackupManifest(dir, PROJECT);
+		const line = lines.find((l) => l.type === "backup");
+		assert.ok(line, "manifest backup line written");
+		assert.equal(line.trigger, "migrate");
+		assert.equal(line.quickCheck, true, "N11 self-test recorded");
+
+		const rendered = renderMigrateReport(report, false);
+		assert.match(rendered, /note: pre-migration backup: Backup\/velpari\//);
+	});
+
+	test("N9: pre-store project migrates with NO Backup folder created", () => {
+		const dir = currentDir();
+		gitInit(dir);
+		writeDoc(dir, "requirements", "PRD", PRD_MD);
+		assert.equal(existsSync(buildStoreDbPath(PROJECT, dir)), false, "pre-store fixture");
+
+		const report = migrateExecute(dir);
+		assert.equal(report.ok, true, JSON.stringify(report.projects[0]?.kinds ?? report.precheckProblems));
+		assert.equal(existsSync(join(dir, "Backup")), false, "no source → no backup, no folder");
+	});
+
+	test("N9: migrateDryRun never triggers a backup (execute-only)", () => {
+		const dir = currentDir();
+		gitInit(dir);
+		writeDoc(dir, "requirements", "PRD", PRD_MD);
+		const seeded = openStoreDb(buildStoreDbPath(PROJECT, dir));
+		try {
+			seeded.exec("CREATE TABLE IF NOT EXISTS seed_marker(id INTEGER PRIMARY KEY);");
+		} finally {
+			closeStoreDb(seeded);
+		}
+
+		const dry = migrateDryRun(dir);
+		assert.ok(dry.ok, JSON.stringify(dry.precheckProblems));
+		assert.equal(existsSync(join(dir, "Backup")), false, "dry-run writes nothing at all");
 	});
 });
 

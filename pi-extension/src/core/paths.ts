@@ -303,6 +303,25 @@ export function buildStoreDbPath(projectName: string, cwd: string = process.cwd(
 }
 
 /**
+ * N10 — dedicated top-level, LOCAL-ONLY backup root (never inside Doc/).
+ * `Backup/velpari/<projectName>/` is git-ignored via BACKUP_IGNORE_LINES
+ * (ops/git-attributes.ts) — never committed, never pushed.
+ */
+export const BACKUP_ROOT_DIR = "Backup/velpari";
+
+/**
+ * Backup folder for one project (N10): `<cwd>/Backup/velpari/<projectName>/`.
+ * Sanitisation identical to `buildStoreDbPath` so the folder name always
+ * matches the store it protects. Consumed by `core/backup.ts` and (Phase 6)
+ * the doctor's last-verified-backup report.
+ * Example: buildBackupDir("TodoApp", cwd) === "<cwd>/Backup/velpari/TodoApp".
+ */
+export function buildBackupDir(projectName: string, cwd: string = process.cwd()): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	return join(cwd, BACKUP_ROOT_DIR, safeProject);
+}
+
+/**
  * Build the portfolio REGISTRY path (Phase 10 - D6 hub-and-spoke, user-locked
  * home): Doc/store/portfolio.db under the cwd. Committed raw (D2/D7) - the
  * git patterns live in ops/git-attributes.ts (PORTFOLIO_ATTR_LINE et al).

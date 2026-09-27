@@ -196,6 +196,29 @@ export function closeStoreDb(db: DatabaseSync): void {
 	}
 }
 
+/**
+ * Open an EXISTING database READ-ONLY: no migrations, no creation, no
+ * journal_mode/synchronous mutation (connection pragmas only). Added by the
+ * Phase 3 backup subsystem (N9/N11): it is the handle for `VACUUM INTO`
+ * (snapshot source) and for `PRAGMA quick_check` on a snapshot.
+ *
+ * Why not `openStoreDb`: that function MIGRATES and CREATES and switches to
+ * WAL — a migrating open would pre-migrate the DB before the "migrate"
+ * trigger fires (defeating backup-before-migrate), and a WAL-mode open would
+ * rewrite the bytes we are about to digest.
+ *
+ * D9 note: stays inside this file (the sole `node:sqlite` importer).
+ *
+ * @param dbPath - Path to an existing database file.
+ * @returns A read-only connection (busy_timeout set; close with `db.close()`).
+ * @throws when the file is missing or unreadable (callers treat as "no DB").
+ */
+export function openStoreDbReadOnly(dbPath: string): DatabaseSync {
+	const db = new (databaseSyncCtor())(dbPath, { readOnly: true });
+	db.exec("PRAGMA busy_timeout = 5000;");
+	return db;
+}
+
 // ---------------------------------------------------------------------------
 // portfolio REGISTRY (Phase 10 — D6 hub-and-spoke; a SECOND SQLite file with
 // its own schema module, version ceiling, and pin test — see io/portfolio.ts)
