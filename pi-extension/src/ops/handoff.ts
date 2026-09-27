@@ -172,7 +172,9 @@ const REQUIRED_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = 
 	{ type: "Final Design", artifact: "final-design" },
 ];
 
-const OPTIONAL_TYPES: ReadonlyArray<{ type: DocumentType; artifact: string }> = [];
+// (No optional-documents list: OPTIONAL_TYPES was `[]` — the loop in
+// readApprovedArtifacts could never run — and was removed in Phase I9.
+// The grouped→legacy fallback lives in resolveDocArtifact.)
 
 /**
  * Read all approved Doc/ artifacts. Returns the documents array.
@@ -194,13 +196,6 @@ export function readApprovedArtifacts(projectName: string, cwd: string = process
 			missing.push(
 				`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))})`,
 			);
-		}
-	}
-
-	for (const { type, artifact } of OPTIONAL_TYPES) {
-		const resolved = resolveDocArtifact(artifact, projectName, cwd);
-		if (resolved) {
-			docs.push({ type, path: resolved.path });
 		}
 	}
 

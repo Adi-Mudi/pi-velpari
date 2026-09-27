@@ -70,8 +70,6 @@ import type {
 	DevStepRow,
 	StepDepRow,
 } from "../io/store.js";
-import { openStoreDb, closeStoreDb } from "../io/db.js";
-import { buildStoreDbPath } from "../core/paths.js";
 import {
 	renderAtomicFunctionsMarkdown,
 	renderDevelopmentOrderMarkdown,
@@ -764,42 +762,41 @@ export async function handleApprove(
 	// (title/design/implementation/tests/status/coverage) are
 	// repointed in Subphase 2.4 when the engines flip to DB reads.
 	if (storeKind === "rtm" && payloadResult && payloadResult.ok && payloadResult.payload && payloadResult.envelope) {
-		const rtmDb = openStoreDb(buildStoreDbPath(projectName, cwd));
-		try {
-			// Build the RtmData from the payload rows directly — do
-			// NOT writeArtifact yet, so the gate can validate before
-			// the DB FK chain fires (the gate's "unknown id" message
-			// must surface, not a raw FOREIGN KEY constraint failure).
-			const rtmRowsIn =
-				(
-					payloadResult.payload as {
-						rtmRow?: Array<{ id: string; phase: number }>;
-					}
-				).rtmRow ?? [];
-			const rtmRows = rtmRowsIn;
-			if (rtmRows.length > 0) {
-				// Minimal RtmData — the gate only reads id + phase from
-				// each row. Other fields stay empty defaults (the
-				// gate's checkRowFingerprints treats missing
-				// fingerprint as "untracked", which the gate
-				// explicitly ignores per its policy comment).
-				rtmDataForGate = {
-					project: projectName,
-					version: payloadResult.envelope.version.toString(),
-					rows: rtmRows.map((r) => ({
-						id: r.id,
-						title: "",
-						phase: r.phase,
-						design: "",
-						implementation: "",
-						tests: [],
-						status: "proposed" as const,
-						coverage: "covered" as const,
-					})),
-				};
-			}
-		} finally {
-			closeStoreDb(rtmDb);
+		// No store handle here: the rows come from the payload (the gate
+		// validates data; the publish chain is separate). The previous
+		// openStoreDb/closeStoreDb pair never queried the DB — it only
+		// created an empty index.db as a side-effect of this READ path.
+		// Build the RtmData from the payload rows directly — do
+		// NOT writeArtifact yet, so the gate can validate before
+		// the DB FK chain fires (the gate's "unknown id" message
+		// must surface, not a raw FOREIGN KEY constraint failure).
+		const rtmRowsIn =
+			(
+				payloadResult.payload as {
+					rtmRow?: Array<{ id: string; phase: number }>;
+				}
+			).rtmRow ?? [];
+		const rtmRows = rtmRowsIn;
+		if (rtmRows.length > 0) {
+			// Minimal RtmData — the gate only reads id + phase from
+			// each row. Other fields stay empty defaults (the
+			// gate's checkRowFingerprints treats missing
+			// fingerprint as "untracked", which the gate
+			// explicitly ignores per its policy comment).
+			rtmDataForGate = {
+				project: projectName,
+				version: payloadResult.envelope.version.toString(),
+				rows: rtmRows.map((r) => ({
+					id: r.id,
+					title: "",
+					phase: r.phase,
+					design: "",
+					implementation: "",
+					tests: [],
+					status: "proposed" as const,
+					coverage: "covered" as const,
+				})),
+			};
 		}
 	}
 

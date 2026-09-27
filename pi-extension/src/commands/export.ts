@@ -21,27 +21,17 @@ import { loadFilesConfig } from "../core/config.js";
 import { buildStoreDbPath, buildGroupedPath } from "../core/paths.js";
 import { listExportableKinds, type ArtifactKind } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
-import type { ExportFormat } from "../ops/export-doc.js";
+import { KIND_LABELS, type ExportFormat } from "../ops/export-doc.js";
 import { buildRevisionExportPath, listExportableRevisions, runRevisionExport } from "../ops/export-revision.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
 
-/** kind → buildGroupedPath label (mirrors ops/export-doc.ts:KIND_LABELS +
- * core/paths.ts:GROUPED_CATEGORIES; N3 grouped destination per kind). */
-const KIND_TO_GROUPED: Record<ArtifactKind, string> = {
-	prd: "PRD",
-	rtm: "RTM",
-	feasibility: "feasibility-study",
-	design: "design",
-	"atomic-functions": "atomic-functions",
-	pseudocode: "pseudocode",
-	testplan: "test-plan",
-	"development-order": "development-order",
-	"final-design": "final-design",
-};
-
-/** N3 head-export destination: the grouped `Doc/<category>/<A>_<p>.<ext>` path. */
-function headExportPath(cwd: string, projectName: string, kind: ArtifactKind, format: ExportFormat): string {
-	return join(cwd, buildGroupedPath(KIND_TO_GROUPED[kind], projectName)).replace(/\.md$/, `.${format}`);
+/** N3 head-export destination: the grouped `Doc/<category>/<A>_<p>.<ext>` path.
+ * Uses the shared `KIND_LABELS` map (ops/export-doc.ts) — the local
+ * duplicate `KIND_TO_GROUPED` was removed in Phase I9 (one source of
+ * truth for the kind → grouped-path label). Exported for the golden
+ * path assertions in test/commands/export.test.ts. */
+export function headExportPath(cwd: string, projectName: string, kind: ArtifactKind, format: ExportFormat): string {
+	return join(cwd, buildGroupedPath(KIND_LABELS[kind], projectName)).replace(/\.md$/, `.${format}`);
 }
 
 /** Export format menu (user decision 1). */

@@ -641,15 +641,19 @@ export function mdToHtml(markdown: string): string {
 		// Pipe table: header row followed by a |---| separator.
 		if (line.startsWith("|") && i + 1 < srcLines.length && /^\|[\s|:-]+\|$/.test(srcLines[i + 1]!)) {
 			/**
-			 * Split a pipe-table row into trimmed cells.
+			 * Split a pipe-table row into trimmed cells. A pipe escaped in
+			 * markdown as `\|` is cell TEXT (the md renderer escapes it),
+			 * not a column separator — split only on unescaped pipes, then
+			 * unescape `\|` → `|` and `\\` → `\` (Phase I9: an FR/NFR cell
+			 * containing a pipe used to render as two `<td>`s).
 			 * @param {string} row - Raw row line without the leading/trailing pipe.
 			 * @returns {string[]} The row's trimmed cell values.
 			 */
 			const parseCells = (row: string): string[] =>
 				row
 					.slice(1, -1)
-					.split("|")
-					.map((c) => c.trim());
+					.split(/(?<!\\)\|/) // a pipe preceded by a backslash is escaped text
+					.map((c) => c.trim().replace(/\\\|/g, "|").replace(/\\\\/g, "\\"));
 			const headers = parseCells(line);
 			i += 2;
 			const rows: string[][] = [];
