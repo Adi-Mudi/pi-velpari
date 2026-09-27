@@ -14,8 +14,8 @@ import { strict as assert } from "node:assert";
 import { COMMAND_NAMES, CommandName } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 49 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill; Phase 10: +velpari-portfolio; Phase 11: +velpari-migrate-store; protection phase: +db-reset/freeze/tombstone/rollback)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 49);
+	it("exports 50 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill; Phase 10: +velpari-portfolio; Phase 11: +velpari-migrate-store; protection phase: +db-reset/freeze/tombstone/rollback; export/retention phase: +velpari-retention-prune)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 50);
 	});
 
 	it("contains all expected user-facing commands", () => {
