@@ -10,7 +10,11 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { findPackageRoot } from "../../../src/core/paths.js";
 import {
 	ALL_STAGE_SCOUTS,
 	KNOWN_TOOL_NAMES,
@@ -86,8 +90,16 @@ describe("doctor/checks/agents constants", () => {
 
 	it("STAGES_WITH_SKILL_MARKDOWN lists stages that ship a skill markdown", () => {
 		assert.ok(STAGES_WITH_SKILL_MARKDOWN.length > 0);
+		const repoRoot = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 		for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
 			assert.ok(typeof stage === "string");
+			// Phase 6: every listed suffix must name a file that actually
+			// ships under skills/ (guards the stale "design" entry that
+			// made every doctor run report 2 phantom errors).
+			assert.ok(
+				existsSync(join(repoRoot, "skills", `velpari-${stage}.md`)),
+				`skills/velpari-${stage}.md must exist for the STAGES_WITH_SKILL_MARKDOWN entry "${stage}"`,
+			);
 		}
 	});
 });

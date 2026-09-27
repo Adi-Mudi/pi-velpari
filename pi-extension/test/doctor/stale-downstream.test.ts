@@ -152,7 +152,7 @@ describe("checkGateWiringSection", () => {
 		assert.match(section.items[2]?.message ?? "", /Run lock: free/);
 	});
 
-	it("flags a stale run lock as a warning (never an error)", () => {
+	it("stale run lock → info pointer to the N13 section (never an error)", () => {
 		const lockDir = path.join(tmpDir, ".pi", "velpari", ".lock");
 		fs.mkdirSync(lockDir, { recursive: true });
 		const old = new Date(Date.now() - 120_000).toISOString();
@@ -170,7 +170,10 @@ describe("checkGateWiringSection", () => {
 
 		const section = checkGateWiringSection(tmpDir);
 		const lockItem = section.items.find((i) => i.message.startsWith("Run lock:"));
-		assert.equal(lockItem?.status, "warning");
+		// Phase 6 / D5: gate-wiring drops to an info pointer — the N13
+		// section owns the warning + recovery path (one defect, one severity).
+		assert.equal(lockItem?.status, "info");
 		assert.match(lockItem?.message ?? "", /STALE/);
+		assert.match(lockItem?.message ?? "", /Run lock \(N13\)/);
 	});
 });

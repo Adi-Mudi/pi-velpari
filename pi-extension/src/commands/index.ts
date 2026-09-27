@@ -54,6 +54,10 @@ import { registerRollbackCommand } from "./rollback.js";
 // Phase I owns this registry. Rebase/merge this block; do not duplicate it.
 import { registerRetentionPruneCommand } from "./retention-prune.js";
 // ==== END PHASE 4 BLOCK ====
+// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
+// Phase I owns this registry: rebase/merge this block as a unit; do not duplicate it.
+import { registerMergeBackCommand } from "./merge-back.js";
+// ==== END PHASE 6 BLOCK ====
 
 /**
  * All 43 user-facing commands. v1.6.0 replaced the generic
@@ -144,6 +148,9 @@ export const COMMAND_NAMES = [
 	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK (50th command) ====
 	"velpari-retention-prune", // N7 — keep-last-N retention cleanup (confirmed + audited)
 	// ==== END PHASE 4 BLOCK ====
+	// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK (51st command) ====
+	"velpari-merge-back", // N12 — guided merge-back (N12/G-4)
+	// ==== END PHASE 6 BLOCK ====
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -216,4 +223,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK ====
 	registerRetentionPruneCommand(pi);
 	// ==== END PHASE 4 BLOCK ====
+	// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK ====
+	registerMergeBackCommand(pi);
+	// ==== END PHASE 6 BLOCK ====
 }

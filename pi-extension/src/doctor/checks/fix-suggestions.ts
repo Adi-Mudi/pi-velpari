@@ -212,6 +212,24 @@ export const SUGGESTIONS = {
 		"A design diagram references an image asset that is not on disk. Commit the asset beside the project DB (Doc/store/<project>/) or fix the image: path, then re-run /velpari-doctor.",
 	"portfolio-asset-invalid":
 		"A design diagram's image: path escapes the project DB directory (..) — paths must stay inside Doc/store/<project>/. Fix the diagram text via the design stage and republish.",
+
+	// Phase 6 — versioning/locking/recovery visibility (N15, F7, N11, N13, N14)
+	"hash-chain-broken":
+		"A stored ledger row no longer matches its chain. Restore the store DB from git history (`git checkout -- Doc/store/<project>/index.db`) or rebuild from export (`/velpari-backfill <kind> --from-export`) — skills/db-store-merge-runbook.md §5. Never hand-edit audit_ledger/tx_log.",
+	"baseline-superseded":
+		"The consumer stage adopted a revision that has since been superseded. Run `/velpari-reconfirm` when there is no impact, or re-run the consumer stage to re-adopt the head revision.",
+	"baseline-withdrawn":
+		"The adopted revision was withdrawn — downstream content rests on pulled material. Re-run the consumer stage against the current head before publishing anything downstream.",
+	"backup-missing":
+		"The first snapshot is written by the next publish, `/velpari-db-reset` or `/velpari-migrate-store` (N9). Until then there is nothing to restore — skills/db-store-merge-runbook.md.",
+	"backup-verify-failed":
+		"Treat the newest snapshot as untrusted: fix the manifest/file mismatch (or take a fresh snapshot at the next publish) and prefer an older verified snapshot. Restore steps: skills/db-store-merge-runbook.md §4.",
+	"backup-restore-hint":
+		"Restore with `restoreBackupSnapshot` per skills/db-store-merge-runbook.md §4 — the pre-restore safety copy and post-restore quick_check are automatic.",
+	"stale-lock-reset":
+		"Clear it with `/velpari-reset` (confirm + audit, N13) — never delete `.pi/velpari/.lock/` by hand.",
+	"worktree-removal":
+		"Recreate the worktree (`git worktree add <path> <branch>`) to keep the run, or `/velpari-reset` to retire it. A bash-side removal cannot be blocked — doctor reports it instead (N14).",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;

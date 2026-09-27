@@ -61,9 +61,16 @@ import { checkVerifierVerdictsSection } from "./checks/reviewer-verdict.js";
 import { checkDesignReadiness } from "./checks/design-readiness.js";
 import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
 import { checkGateWiringSection, checkStaleDownstreamSection } from "./checks/stale-downstream.js";
+import { checkRunLockSection } from "./checks/stale-lock.js";
+import { checkWorktreeRemovalSection } from "./checks/worktree-removal.js";
 import { checkFreshnessSection } from "./checks/freshness.js";
 import { checkDbIntegritySection } from "./checks/integrity.js";
 import { checkDbLinkOrphansSection } from "./checks/db-link-orphans.js";
+// Phase 6 — versioning/locking/recovery visibility (N15 hash chain,
+// F7 baselines, N11 last verified backup).
+import { checkHashChainSection } from "./checks/hash-chain.js";
+import { checkBaselinesSection } from "./checks/baselines.js";
+import { checkLastBackupSection } from "./checks/last-backup.js";
 import { checkGitIntegrationSection } from "./checks/git-integration.js";
 import { checkPortfolioSection } from "./checks/portfolio.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
@@ -322,6 +329,12 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		// never writes — the DB file was just git-committed (Phase 7).
 		checkDbIntegritySection(cwd, { embedded: opts.embedded === true }),
 		checkDbLinkOrphansSection(cwd),
+		// Phase 6 — store-level recovery visibility: broken hash chain is
+		// an ERROR naming the row (N15), drifted baselines report (F7),
+		// and the newest snapshot is proven on the spot (N11).
+		checkHashChainSection(cwd),
+		checkBaselinesSection(cwd),
+		checkLastBackupSection(cwd),
 		// Phase 9 — G2a visibility: user-repo git protection for the raw
 		// store DB (binary attr + WAL ignores). Warnings only; the next
 		// publish auto-heals via ops/git-attributes.ts.
@@ -331,6 +344,11 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		checkPortfolioSection(cwd),
 		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
+		// Phase 6 — run-level recovery visibility: N13 stale lock (with the
+		// /velpari-reset path) + N14 worktree-removal warning. Gate-wiring's
+		// lock line is an info pointer to these (D5 — one defect, one severity).
+		checkRunLockSection(cwd),
+		checkWorktreeRemovalSection(cwd),
 		buildMultiplexerSection(cwd),
 		checkSubagentExtension(),
 		checkStrayFiles(cwd),

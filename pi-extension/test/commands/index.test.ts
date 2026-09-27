@@ -129,6 +129,10 @@ describe("commands/index — COMMAND_NAMES invariants", () => {
 		assert.ok(COMMAND_NAMES.includes("velpari-retention-prune" as (typeof COMMAND_NAMES)[number]));
 	});
 
+	it("contains the Phase 6 merge-back command (N12, 51st command)", () => {
+		assert.ok(COMMAND_NAMES.includes("velpari-merge-back"));
+	});
+
 	it("contains the headline /velpari-generate-sub-agents + /velpari-final-design", () => {
 		assert.ok(COMMAND_NAMES.includes("velpari-generate-sub-agents"));
 		assert.ok(COMMAND_NAMES.includes("velpari-final-design"));
