@@ -24,12 +24,22 @@ interface Notice {
 let tmpDir: string;
 let notices: Notice[];
 let confirmAnswer: boolean;
+/** Per-call confirm answers (F23 + N13 flows ask twice); empty = fall back to confirmAnswer. */
+let confirmQueue: boolean[];
 
 function writeFilesConfig() {
 	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
 	fs.writeFileSync(
 		path.join(tmpDir, ".pi", "velpari", "files.json"),
-		JSON.stringify({ version: 4, projectName: "TestApp" }),
+		JSON.stringify({
+			version: 4,
+			projectName: "TestApp",
+			codePaths: ["."],
+			inputDocuments: [],
+			testPaths: [],
+			outputPaths: {},
+			excludedPaths: [],
+		}),
 	);
 }
 
@@ -41,7 +51,7 @@ function makeCtx(): ExtensionCommandContext {
 				notices.push({ message, level });
 			},
 			setStatus: () => {},
-			confirm: async () => confirmAnswer,
+			confirm: async () => (confirmQueue.length > 0 ? confirmQueue.shift()! : confirmAnswer),
 		},
 	} as unknown as ExtensionCommandContext;
 }
@@ -52,6 +62,7 @@ function allMessages(): string {
 
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-reset-"));
+	confirmQueue = [];
 });
 
 afterEach(() => {
@@ -83,9 +94,11 @@ describe("/velpari-reset handler", () => {
 		assert.equal(after.currentStage, "none");
 		assert.equal(after.runId, "");
 
-		// User notified.
-		assert.equal(notices.length, 1);
-		assert.match(allMessages(), /reset\. State is now empty\./i);
+		// User notified (the reset info line, plus the no-DB audit warning).
+		assert.ok(
+			notices.some((notice) => notice.level === "info" && /reset\. State is now empty\./i.test(notice.message)),
+			"the reset info line is reported",
+		);
 	});
 
 	it("reports 'Reset cancelled' when user declines; state unchanged", async () => {
@@ -129,7 +142,7 @@ describe("/velpari-reset handler", () => {
 		assert.equal(fs.readFileSync(workFile, "utf8"), "# User notes\n");
 	});
 
-	it("deletes the run's DRAFT store rows but keeps PUBLISHED rows (Q2, Phase 8)", async () => {
+	it("leaves the store rows UNTOUCHED and audits the reset (F23 split, Phase 2)", async () => {
 		writeFilesConfig();
 		const run = createRun("DraftCleanup", tmpDir);
 		const runId = run.runId!;
@@ -160,35 +173,142 @@ describe("/velpari-reset handler", () => {
 		confirmAnswer = true;
 		await handleReset(makeCtx(), tmpDir);
 
-		// Draft rows gone; published rows survive (append-only history).
+		// F23 split: /velpari-reset is orchestration only — the store is untouched.
 		const after = openStoreDb(buildStoreDbPath("TestApp", tmpDir));
 		try {
-			const rtm = after
+			const draft = after
 				.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE run_id = ? AND status = 'draft'")
 				.get(runId) as { n: number };
-			assert.equal(rtm.n, 0, "draft envelopes must be deleted by reset");
+			assert.equal(draft.n, 1, "draft envelopes SURVIVE — /velpari-db-reset owns them (F23)");
 			const pub = after
 				.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE run_id = ? AND status = 'published'")
 				.get(runId) as { n: number };
-			assert.equal(pub.n, 1, "published envelope must survive reset");
+			assert.equal(pub.n, 1, "published envelope survives");
 			const fr = after.prepare("SELECT COUNT(*) AS n FROM fr WHERE run_id = ?").get(runId) as { n: number };
 			assert.equal(fr.n, 1, "published child rows survive");
 			const rtmRow = after.prepare("SELECT COUNT(*) AS n FROM rtm_row WHERE run_id = ?").get(runId) as { n: number };
-			assert.equal(rtmRow.n, 0, "draft child rows cascade away with the draft envelope");
+			assert.equal(rtmRow.n, 1, "draft child rows survive too — no cascade ran");
+
+			// D1(a): the reset is audited in the chained ledger.
+			const audit = after
+				.prepare("SELECT actor, action, detail_json FROM audit_ledger WHERE action = 'reset'")
+				.get() as { actor: string; action: string; detail_json: string };
+			assert.equal(audit.actor, "velpari-reset");
+			assert.match(audit.detail_json, new RegExp(runId));
+			const tx = after.prepare("SELECT COUNT(*) AS n FROM tx_log WHERE operation = 'reset'").get() as { n: number };
+			assert.equal(tx.n, 1, "one commit tx entry for the reset");
 		} finally {
 			closeStoreDb(after);
 		}
-		// Notify mentions the cleanup count.
-		assert.match(allMessages(), /draft store row\(s\) deleted/);
+		// Notify states the split explicitly.
+		assert.match(allMessages(), /No store DB rows were touched/);
 	});
 
-	it("skips DB cleanup silently when no store DB exists (state reset still completes)", async () => {
+	it("warns (not fails) when no store DB exists to audit the reset into", async () => {
 		writeFilesConfig();
 		createRun("NoDbReset", tmpDir);
 		confirmAnswer = true;
 		await handleReset(makeCtx(), tmpDir);
-		assert.equal(loadState(tmpDir).currentStage, "none");
-		assert.equal(notices.length, 1);
+		assert.equal(loadState(tmpDir).currentStage, "none", "the state reset still completes");
 		assert.match(allMessages(), /reset\. State is now empty\./i);
+		assert.match(allMessages(), /no store DB exists — the reset audit event was recorded nowhere/);
+	});
+
+	it("N13 — clears a confirmed STALE run lock and reports the audit", async () => {
+		writeFilesConfig();
+		createRun("StaleLock", tmpDir);
+		const { openStoreDb, closeStoreDb } = await import("../../src/io/db.js");
+		const { buildStoreDbPath } = await import("../../src/core/paths.js");
+		const { writeArtifact, publishArtifactCas } = await import("../../src/io/store.js");
+		const dbPath = buildStoreDbPath("TestApp", tmpDir);
+		const seed = openStoreDb(dbPath);
+		try {
+			writeArtifact(
+				seed,
+				"prd",
+				loadState(tmpDir).runId,
+				{ version: 1, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+				{ fr: [{ id: "FR-1", phase: 1, textHash: "h", text: "p" }] },
+			);
+			publishArtifactCas(seed, loadState(tmpDir).runId, "prd", null);
+		} finally {
+			closeStoreDb(seed);
+		}
+		const lockDir = path.join(tmpDir, ".pi", "velpari", ".lock");
+		fs.mkdirSync(lockDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(lockDir, "meta.json"),
+			JSON.stringify({
+				pid: 999999,
+				host: "test-host",
+				command: "createRun",
+				startedAt: "2020-01-01T00:00:00Z",
+				heartbeatAt: "2020-01-01T00:00:00Z",
+			}),
+		);
+
+		confirmQueue = [true, true]; // reset + stale-lock clearing
+		await handleReset(makeCtx(), tmpDir);
+
+		assert.match(allMessages(), /Stale run lock cleared \(audited\)\./);
+		const audit = openStoreDb(dbPath);
+		try {
+			const row = audit.prepare("SELECT detail_json FROM audit_ledger WHERE action = 'reset'").get() as {
+				detail_json: string;
+			};
+			assert.match(row.detail_json, /"staleLockCleared":true/);
+		} finally {
+			closeStoreDb(audit);
+		}
+		assert.equal(loadState(tmpDir).currentStage, "none");
+	});
+
+	it("N13 — a declined stale-lock clearing is recorded as not-cleared and never claimed", async () => {
+		writeFilesConfig();
+		createRun("StaleKeep", tmpDir);
+		const { openStoreDb, closeStoreDb } = await import("../../src/io/db.js");
+		const { buildStoreDbPath } = await import("../../src/core/paths.js");
+		const { writeArtifact } = await import("../../src/io/store.js");
+		const dbPath = buildStoreDbPath("TestApp", tmpDir);
+		const seed = openStoreDb(dbPath);
+		try {
+			writeArtifact(
+				seed,
+				"prd",
+				loadState(tmpDir).runId,
+				{ version: 1, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+				{ fr: [{ id: "FR-1", phase: 1, textHash: "h", text: "p" }] },
+			);
+		} finally {
+			closeStoreDb(seed);
+		}
+		const lockDir = path.join(tmpDir, ".pi", "velpari", ".lock");
+		fs.mkdirSync(lockDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(lockDir, "meta.json"),
+			JSON.stringify({
+				pid: 999999,
+				host: "test-host",
+				command: "createRun",
+				startedAt: "2020-01-01T00:00:00Z",
+				heartbeatAt: "2020-01-01T00:00:00Z",
+			}),
+		);
+
+		confirmQueue = [true, false]; // reset yes, clearing no
+		await handleReset(makeCtx(), tmpDir);
+
+		// The declined clearing is recorded as such and never claimed in the notify.
+		const audit = openStoreDb(dbPath);
+		try {
+			const row = audit.prepare("SELECT detail_json FROM audit_ledger WHERE action = 'reset'").get() as {
+				detail_json: string;
+			};
+			assert.match(row.detail_json, /"staleLockCleared":false/);
+		} finally {
+			closeStoreDb(audit);
+		}
+		assert.ok(!/Stale run lock cleared/.test(allMessages()), "no clearing claim");
+		assert.equal(loadState(tmpDir).currentStage, "none");
 	});
 });

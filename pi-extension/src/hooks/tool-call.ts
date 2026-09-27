@@ -26,9 +26,19 @@
  *      blocked ALWAYS — between stages included. Every legitimate store
  *      write is code-side (publish tool, backfill, reconfirm, export);
  *      a hand edit of the committed DB would corrupt the single source
- *      of truth (D2/D7). Accepted boundary: bash writes are not covered
- *      (same as guards 1–3) — checksums + the doctor's integrity/orphan
- *      audits are the backstop.
+ *      of truth (D2/D7).
+ *   5. Store DELETE hard-lock (F12, phase 2): destructive bash verbs
+ *      (`rm`, `rmdir`, `shred`, `truncate`, `git rm`, `mv`) that name a
+ *      store path are blocked with the guided correction
+ *      (`ops/tombstone.ts:deleteAttemptGuidance` → /velpari-tombstone,
+ *      /velpari-rollback, /velpari-export). Published revisions are
+ *      immutable (F16): a delete is a tracked modification, never a
+ *      removal.
+ *
+ * Accepted boundaries (recorded, not oversights): non-destructive bash
+ * writes to the store, and deletes of the legacy `Doc/*.md` views
+ * (design rule 12 — the DB is the source of truth, git + the doctor's
+ * integrity/orphan audits are the backstop). Checksums backstop everything.
  *
  * The runner does not catch handler errors for tool_call — a throw
  * propagates and blocks the tool entirely. So every step is wrapped in
@@ -39,6 +49,7 @@ import { relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { STAGE_FOLDERS } from "../core/constants.js";
 import { buildRunDir, STORE_DB_DIR } from "../core/paths.js";
+import { deleteAttemptGuidance } from "../ops/tombstone.js";
 import { loadState, type RunState } from "../core/state.js";
 import { guardBrainstormMutation } from "../stages/brainstorm/guard.js";
 
@@ -107,11 +118,45 @@ export function guardStoreDbMutation(
 
 	return {
 		block: true,
-		reason:
-			`Locked: Doc/store/ is the project's SQLite store + export views — never edited by hand.\n` +
-			`The store is written only by the stage publish tool, /velpari-backfill, /velpari-reconfirm, ` +
-			`and /velpari-export (code paths).`,
+		reason: deleteAttemptGuidance(target),
 	};
+}
+
+/**
+ * Store DELETE hard-lock (F12, Phase 2): a destructive shell verb aimed at
+ * Doc/store/** is blocked with the guided correction from ops/tombstone.ts.
+ * Published content is immutable (F16) — the legitimate paths are
+ * /velpari-tombstone (with a reason), /velpari-rollback and /velpari-export.
+ * Edits/writes stay covered by guardStoreDbMutation; other bash writes remain
+ * outside the accepted boundary, and so do non-store files such as the legacy
+ * `Doc/*.md` views (design rule 12 — the DB is the source of truth and git +
+ * the doctor's integrity audits are the backstop).
+ *
+ * Fail-open like its siblings: anything unreadable/malformed is allowed.
+ */
+export function guardStoreDeleteAttempt(
+	toolName: string,
+	input: Record<string, unknown> | undefined,
+	cwd: string,
+): { block: true; reason: string } | undefined {
+	if (toolName !== "bash") return undefined;
+	const command = typeof input?.command === "string" ? input.command.trim() : "";
+	if (command === "") return undefined;
+	if (!/\b(rm|rmdir|shred|truncate)\b/.test(command) && !/\bgit\s+rm\b/.test(command) && !/\bmv\b/.test(command)) {
+		return undefined;
+	}
+	// Path-boundary match: `Doc/store` must be followed by a separator, a
+	// quote or end-of-command — `Doc/storekeeper/x` must NOT match.
+	const storeRoot = resolve(cwd, STORE_DB_DIR);
+	const relativeStore = relative(cwd, storeRoot) || STORE_DB_DIR;
+	const atBoundary = (value: string): boolean => new RegExp(`${escapeRegExp(value)}(?=[/\\s'"]|$)`).test(command);
+	if (!atBoundary(relativeStore) && !atBoundary(storeRoot)) return undefined;
+	return { block: true, reason: deleteAttemptGuidance(command) };
+}
+
+/** Escape a literal for safe use inside a RegExp. */
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -163,6 +208,11 @@ export function registerToolCallHook(pi: ExtensionAPI): void {
 			// 4. Store DB scope lock (Phase 8) — runs last, store paths only.
 			const storeBlock = guardStoreDbMutation(event.toolName, input, ctx.cwd);
 			if (storeBlock) return storeBlock;
+
+			// 5. Store DELETE hard-lock (F12, phase 2) — destructive bash verbs on
+			//    store paths, with the self-healing guidance instead of a dead end.
+			const deleteBlock = guardStoreDeleteAttempt(event.toolName, input, ctx.cwd);
+			if (deleteBlock) return deleteBlock;
 		} catch {
 			// Fail open — never wedge edits on a guard bug.
 		}

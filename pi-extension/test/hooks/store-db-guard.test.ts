@@ -30,8 +30,11 @@ describe("guardStoreDbMutation", () => {
 	it("blocks write into the store DB file — even with NO state (between-stages gap)", () => {
 		const block = guardStoreDbMutation("write", { path: path.join(cwd, "Doc", "store", "TodoApp", "index.db") }, cwd);
 		assert.ok(block, "expected a block for the store DB path");
-		assert.match(block.reason, /never edited by hand/);
-		assert.match(block.reason, /velpari-backfill/);
+		assert.match(block.reason, /is inside Doc\/store\//);
+		assert.match(block.reason, /immutable \(F16\)/);
+		assert.match(block.reason, /\/velpari-tombstone/);
+		assert.match(block.reason, /\/velpari-rollback/);
+		assert.match(block.reason, /\/velpari-export/);
 	});
 
 	it("blocks edit into an exported YAML view beside the DB", () => {
