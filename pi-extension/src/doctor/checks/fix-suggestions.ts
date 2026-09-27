@@ -6,8 +6,8 @@
  * here means one place to author + maintain them; checks call
  * `suggestionFor("missing:scout-agent")` instead of duplicating prose.
  *
- * Adding a new check = add a new fingerprint to `SUGGESTIONS` and a
- * corresponding assertion in `test/doctor-fix-suggestions.test.ts`.
+ * Adding a new check = add a new fingerprint to `SUGGESTIONS` and keep
+ * `test/doctor/checks/fix-suggestions.test.ts` (the coverage guard) green.
  */
 
 export const SUGGESTIONS = {
@@ -25,7 +25,6 @@ export const SUGGESTIONS = {
 
 	// PSRS / RTM
 	"psrs-missing": "Run `/velpari-brainstorm <mission>` first, then `/velpari-prd`.",
-	"psrs-invalid": "Fix the listed issues in the PSRS.",
 	"fr-wording":
 		"Rewrite the flagged FR rows in EARS shape with an RFC 2119 keyword, e.g. \"When a user submits X, the system SHALL save X\" — see skills/velpari-prd.md 'Requirement Wording'.",
 	"psrs-legacy-only": "Rerun `/velpari-prd` to regenerate the grouped PSRS with current schema.",
@@ -83,8 +82,6 @@ export const SUGGESTIONS = {
 		"The downstream doc is a pre-A4 format (no parseable id references) — regenerate or revise its stage to gain ID traceability. Nothing is blocked; this is a traceability upgrade path.",
 	"rtm-deprecated-ref":
 		"Mark the RTM rows for deprecated requirements as `deprecated` (never delete them), or re-run `/velpari-rtm` in update mode.",
-	"stale-run-lock":
-		"The lock holder is gone. It is auto-stolen on the next state mutation; if it persists, delete `.pi/velpari/.lock/`.",
 
 	// Multiplexer / subagent provider
 	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, or cmux.",
@@ -147,25 +144,6 @@ export const SUGGESTIONS = {
 	// v1.x — atomic-tier doctor (ISO/IEC 29110 + IEC 61508/IEC 62304)
 	"atomic-rows-missing":
 		"Re-run /velpari-atomic-function. The working copy must carry at least one AF row in the Atomic Functions table.",
-	"atomic-base-core-missing":
-		"Fill the missing base-core field (afId, name, purpose, signature, source, cohesion, verification, testable). Base-core fields are required at every tier.",
-	"atomic-tier-missing":
-		"Fill the missing tier-required field. See skills/velpari-atomic-function.md § Output Format for the tier-aware schema. Run /velpari-configure-inputs to change the tier if it's wrong.",
-	"atomic-cohesion-invalid":
-		"Set cohesion to `perfect-atomic` (leaf) or `functional` (one task). Per Yourdon & Constantine 1979, lower cohesion (coincidental/logical/temporal) is a code smell.",
-	"atomic-verification-invalid":
-		"Set verification to one of {Test, Demonstration, Inspection, Analysis} per IEEE 29148 §6.4.9.3.",
-	"atomic-testable-invalid":
-		"Set testable=yes. Atomic functions are leaf-level testable units (Clean Code, ISO 25010 testability).",
-	"atomic-complexity-exceeded":
-		"Reduce complexity to ≤ 10 (ISO 25010 modifiability threshold). Refactor: split into smaller pure functions.",
-	"atomic-ears-invalid":
-		"Set earsPattern to one of {Ubiquitous, Event-driven, State-driven, Unwanted, Optional} per Mavin EARS 2009.",
-	"atomic-arg-count-high": "Reduce argCount to 0-2 (Clean Code rule). Wrap related arguments in a parameter object.",
-	"atomic-coupling-high":
-		"Reduce coupling=high — refactor dependencies into separate atomic functions or introduce an interface boundary.",
-	"atomic-risk-missing":
-		"Set risk to {low, medium, high} per PMBOK. Advanced tier (regulated industry) requires explicit risk classification.",
 
 	// B3 — YAML sidecars (D6/D7)
 	"af-data-missing":
@@ -215,7 +193,7 @@ export const SUGGESTIONS = {
 
 	// Phase 6 — versioning/locking/recovery visibility (N15, F7, N11, N13, N14)
 	"hash-chain-broken":
-		"A stored ledger row no longer matches its chain. Restore the store DB from git history (`git checkout -- Doc/store/<project>/index.db`) or rebuild from export (`/velpari-backfill <kind> --from-export`) — skills/db-store-merge-runbook.md §5. Never hand-edit audit_ledger/tx_log.",
+		"A stored ledger row no longer matches its chain. Restore the store DB from git history (`git checkout -- Doc/store/<project>/index.db`) or rebuild from export (`/velpari-backfill <kind> --from-export`) — skills/db-store-merge-runbook.md § 2 / § 3. Never hand-edit audit_ledger/tx_log.",
 	"baseline-superseded":
 		"The consumer stage adopted a revision that has since been superseded. Run `/velpari-reconfirm` when there is no impact, or re-run the consumer stage to re-adopt the head revision.",
 	"baseline-withdrawn":

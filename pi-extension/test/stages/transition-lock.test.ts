@@ -59,6 +59,12 @@ const SPECS: StageLockSpec[] = [
 	},
 ];
 
+/**
+ * Build an in-memory RunState for pure-core tests (never persisted).
+ * @param {Stage} stage - The state's currentStage.
+ * @param {Partial<RunState>} [extra] - Fields overriding the defaults (runId, pausedStage, ...).
+ * @returns {RunState} A minimal run state.
+ */
 function makeState(stage: Stage, extra?: Partial<RunState>): RunState {
 	return {
 		version: 1,
@@ -71,6 +77,13 @@ function makeState(stage: Stage, extra?: Partial<RunState>): RunState {
 	};
 }
 
+/**
+ * Build a StaleItem fixture for pure-core tests.
+ * @param {string} key - Manifest key (`<artifactKind>:<id>`).
+ * @param {string} artifact - Published artifact name (`prd`, `rtm`, ...).
+ * @param {StaleItem["reason"]} [reason] - Staleness reason (default "input-changed").
+ * @returns {StaleItem} A stale manifest entry (no-stamp items carry no changed inputs).
+ */
 function stale(key: string, artifact: string, reason: StaleItem["reason"] = "input-changed"): StaleItem {
 	return {
 		key,
@@ -348,6 +361,31 @@ describe("transition lock — computeLegalCommands(cwd) integration", () => {
 		assert.equal(lock.pausedStage, "drafting-prd");
 		assert.match(lock.reasonFor("/velpari-prd")!, /paused at "drafting-prd"/);
 		assert.equal(loadState(tmpDir).currentStage, "brainstorming");
+	});
+
+	it("returns the stale set it computed (Phase I10.3)", () => {
+		createRun("Test mission", tmpDir);
+		fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
+		fs.writeFileSync(
+			path.join(tmpDir, ".pi", "velpari", "freshness.json"),
+			JSON.stringify({
+				version: 1,
+				artifacts: {
+					"prd:TestApp": {
+						artifact: "prd",
+						projectName: "TestApp",
+						path: "Doc/requirements/PRD_TestApp.md",
+						publishedAt: "2026-09-27T00:00:00.000Z",
+						// Stamped input resolves nowhere → input-missing stale.
+						inputs: { "brainstorm:test-mission": "0".repeat(64) },
+					},
+				},
+			}),
+		);
+		const lock = computeLegalCommands(tmpDir, STAGE_LOCK_SPECS);
+		assert.equal(lock.staleSet.length, 1, JSON.stringify(lock.staleSet));
+		assert.equal(lock.staleSet[0]!.key, "prd:TestApp");
+		assert.equal(lock.staleSet[0]!.reason, "input-missing");
 	});
 
 	it("registry STAGE_LOCK_SPECS covers every stage in execution order", () => {

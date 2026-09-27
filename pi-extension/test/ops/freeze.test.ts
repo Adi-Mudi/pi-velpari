@@ -5,9 +5,10 @@
 // run resolution without state.json (rule 11 / GAP 2) and the cancel path.
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { buildStoreDbPath } from "../../src/core/paths.js";
@@ -196,7 +197,7 @@ describe("ops/protection — single-kind freeze (N4)", () => {
 		assert.equal(countRows(dbPath, "tx_log", " WHERE operation = 'unfreeze'"), 0, "…and no F18 tx row");
 
 		// Phase 2's finalizer adds the F18 tx entry (the command calls it right after).
-		finalizeUnfreeze({
+		const warnings = finalizeUnfreeze({
 			cwd,
 			dbPath,
 			projectName: PROJECT,
@@ -205,6 +206,53 @@ describe("ops/protection — single-kind freeze (N4)", () => {
 			reason: "user retracted the handoff lock",
 		});
 		assert.equal(countRows(dbPath, "tx_log", " WHERE operation = 'unfreeze'"), 1);
+		// This fixture is not a git repo, so a "git commit skipped" warning
+		// is correct here (rule 7); what must NOT appear is the I10.2
+		// catch-path marker ([]) — the [] assertion itself lives in the
+		// git-ready happy-path test below.
+		assert.doesNotMatch(warnings.join("\n"), /unfreeze audit\/commit skipped/);
+	});
+
+	test("finalizeUnfreeze never throws: a failed audit write becomes a warning (Phase I10.2)", () => {
+		const dbPath = seedPublishedPrd("r1");
+		const storeDir = dirname(dbPath);
+		// Read-only store dir ⇒ the SQLite audit append (WAL/journal
+		// creation) fails at the filesystem level.
+		chmodSync(storeDir, 0o555);
+		let warnings: string[];
+		try {
+			warnings = finalizeUnfreeze({
+				cwd,
+				dbPath,
+				projectName: PROJECT,
+				runId: "r1",
+				kind: "prd",
+				reason: "audit write forced to fail",
+			});
+		} finally {
+			chmodSync(storeDir, 0o755); // let the suite's cleanup remove the fixture
+		}
+		assert.ok(Array.isArray(warnings), "must return a warnings array instead of throwing");
+		assert.ok(warnings.length > 0, "the audit failure surfaces as a warning");
+		assert.match(warnings.join("\n"), /unfreeze audit\/commit skipped/);
+	});
+
+	test("finalizeUnfreeze happy path in a git-ready fixture returns [] (Phase I10.2)", () => {
+		// commitProtectionChange's precheck passes only inside a work tree
+		// with an identity configured (db-publish.ts precheckGitForPublish).
+		execFileSync("git", ["init", "-q"], { cwd });
+		execFileSync("git", ["config", "user.email", "test@example.com"], { cwd });
+		execFileSync("git", ["config", "user.name", "test"], { cwd });
+		const dbPath = seedPublishedPrd("r1");
+		const warnings = finalizeUnfreeze({
+			cwd,
+			dbPath,
+			projectName: PROJECT,
+			runId: "r1",
+			kind: "prd",
+			reason: "happy path",
+		});
+		assert.deepEqual(warnings, [], `expected no warnings, got: ${warnings.join(" | ")}`);
 	});
 
 	test("applySingleKindFreeze refuses a (run, kind) with no artifact row and writes no audit", () => {

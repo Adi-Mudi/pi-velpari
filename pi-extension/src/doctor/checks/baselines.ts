@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { buildStoreDbPath } from "../../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { getEffectiveProjectNames } from "../../core/projectnames.js";
-import { openStoreDb, closeStoreDb } from "../../io/db.js";
+import { openStoreDbReadOnly } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -40,7 +40,7 @@ interface DriftedBaseline {
 }
 
 /** Max revision_number per kind (for "head is rN" context). */
-function heads(db: ReturnType<typeof openStoreDb>): Map<string, number> {
+function heads(db: ReturnType<typeof openStoreDbReadOnly>): Map<string, number> {
 	const rows = db
 		.prepare("SELECT kind, MAX(revision_number) AS n FROM artifact_revisions GROUP BY kind")
 		.all() as unknown as Array<{ kind: string; n: number }>;
@@ -101,7 +101,7 @@ export function checkBaselinesSection(cwd: string): DiagnosticSection {
 				});
 				continue;
 			}
-			const db = openStoreDb(dbPath);
+			const db = openStoreDbReadOnly(dbPath);
 			try {
 				const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'baselines'").get() as
 					| { name: string }
@@ -164,7 +164,7 @@ export function checkBaselinesSection(cwd: string): DiagnosticSection {
 					}
 				}
 			} finally {
-				closeStoreDb(db);
+				db.close();
 			}
 		}
 	} catch (err) {

@@ -23,7 +23,7 @@ import { existsSync } from "node:fs";
 import { buildStoreDbPath } from "../../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { getEffectiveProjectNames } from "../../core/projectnames.js";
-import { openStoreDb, closeStoreDb } from "../../io/db.js";
+import { openStoreDbReadOnly } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -66,7 +66,7 @@ WITH endpoints(run_id, kind, node_id) AS (
 /** Count + list orphan links (dangling from/to endpoints) for one DB. */
 function findOrphans(dbPath: string): { total: number; orphans: OrphanLink[] } | null {
 	if (!existsSync(dbPath)) return null;
-	const db = openStoreDb(dbPath);
+	const db = openStoreDbReadOnly(dbPath);
 	try {
 		const countRow = db
 			.prepare(
@@ -90,19 +90,19 @@ function findOrphans(dbPath: string): { total: number; orphans: OrphanLink[] } |
 			.all() as unknown as OrphanLink[];
 		return { total: countRow.n, orphans };
 	} finally {
-		closeStoreDb(db);
+		db.close();
 	}
 }
 
 /** Total links row count for one DB (null when the DB is absent). */
 function countLinks(dbPath: string): number | null {
 	if (!existsSync(dbPath)) return null;
-	const db = openStoreDb(dbPath);
+	const db = openStoreDbReadOnly(dbPath);
 	try {
 		const row = db.prepare("SELECT COUNT(*) AS n FROM links").get() as { n: number };
 		return row.n;
 	} finally {
-		closeStoreDb(db);
+		db.close();
 	}
 }
 

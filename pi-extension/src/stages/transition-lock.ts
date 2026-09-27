@@ -89,6 +89,11 @@ export interface LegalCommands {
 	 *  while a brainstorm is open, the earliest-stale remedy when stale,
 	 *  else the forward table. */
 	nextCommands: string[];
+	/** The stale set this computation was built from (Phase I10.3): what the
+	 *  wrapper computed and the core consumed — returned so callers (the
+	 *  per-turn status hook, doctor, re-confirm) never recompute it. Empty
+	 *  when there is no active run or everything is fresh. */
+	staleSet: StaleItem[];
 }
 
 /** Inputs for the pure core (tests + callers that already hold state). */
@@ -177,6 +182,11 @@ export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCo
 		const spec = specs.find((s) => s.workingCopyArtifact.toLowerCase() === item.artifact);
 		if (spec) staleStages.push({ stage: spec.key, command: spec.command, item });
 	}
+	/**
+	 * Pipeline position of an earliest-stale candidate (sort key).
+	 * @param {EarliestStale} e - Candidate stale stage.
+	 * @returns {number} Its index in pipeline order; brainstorm sorts first (-1).
+	 */
 	const orderOf = (e: EarliestStale): number =>
 		e.stage === "brainstorm" ? -1 : specs.findIndex((s) => s.key === e.stage);
 	staleStages.sort((a, b) => orderOf(a) - orderOf(b));
@@ -213,9 +223,20 @@ export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCo
 		return out;
 	};
 
+	/**
+	 * Human remedy for one stale item — the republish pair, plus the
+	 * re-confirm alternative when the change may have no impact (A5/D4).
+	 * @param {StaleItem} item - The stale manifest entry to explain.
+	 * @returns {string} The command sequence that clears this stale item.
+	 */
 	const remedyFor = (item: StaleItem): string => {
 		// A5/D4: input-changed items may also be re-confirmed (reviewed — no
 		// impact); input-missing / no-stamp stay republish-only.
+		/**
+		 * The republish command pair for the item's owning artifact.
+		 * @returns {string} `/<stage>, then /<stage>-approve` (brainstorm-aware),
+		 *   or a generic `republish <key>` fallback for unknown artifacts.
+		 */
 		const republish = (() => {
 			if (item.artifact === "brainstorm") {
 				return `${BRAINSTORM_COMMAND}, then ${APPROVE_BRAINSTORM_COMMAND}`;
@@ -245,6 +266,13 @@ export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCo
 
 	// ── reasonFor ────────────────────────────────────────────────────────
 
+	/**
+	 * Why `cmd` is blocked right now — the single source of block wording
+	 * (A1): self-healing routing that always names the correct command.
+	 * @param {string} cmd - The slash command being asked about.
+	 * @returns {string | null} The block reason, or null when the command is
+	 *   legal or ungoverned.
+	 */
 	const reasonFor = (cmd: string): string | null => {
 		if (cmd === BRAINSTORM_COMMAND) {
 			return brainstormOpen ? "A brainstorm is already open — approve or discard it before starting a new one." : null;
@@ -336,5 +364,6 @@ export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCo
 		brainstormOpen,
 		pausedStage,
 		nextCommands,
+		staleSet,
 	};
 }

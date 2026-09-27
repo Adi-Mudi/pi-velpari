@@ -240,7 +240,9 @@ export function applySingleKindFreeze(input: SingleKindFreezeInput): SingleKindF
  * F18 tx entry, WAL-checkpoints and commits the store DB locally (design rules
  * 2/7 — the executor writes the audit row, which stays the canonical N4
  * record). Call ONLY after `unfreezeArtifact` returned ok.
- * @returns {string[]} Commit warnings (never throws).
+ * Never throws (Phase I10.2): any audit append / checkpoint / commit failure
+ * is returned as a warning — the unfreeze itself already stands.
+ * @returns {string[]} Commit warnings (never throws — a failure becomes one warning).
  */
 export function finalizeUnfreeze(params: {
 	cwd: string;
@@ -251,21 +253,31 @@ export function finalizeUnfreeze(params: {
 	reason: string;
 	actor?: string;
 }): string[] {
-	const db = openStoreDb(params.dbPath);
 	try {
-		appendTxEntry(db, {
-			actor: params.actor ?? "velpari-freeze",
-			operation: "unfreeze",
-			outcome: "commit",
+		const db = openStoreDb(params.dbPath);
+		try {
+			appendTxEntry(db, {
+				actor: params.actor ?? "velpari-freeze",
+				operation: "unfreeze",
+				outcome: "commit",
+			});
+			checkpointNow(db);
+		} finally {
+			closeStoreDb(db);
+		}
+		// commitProtectionChange is inside the same guard: it is
+		// warning-based today, but catching here makes "never throws"
+		// structural rather than a property of its current body.
+		return commitProtectionChange({
+			cwd: params.cwd,
+			projectName: params.projectName,
+			paths: [params.dbPath],
+			message: `velpari(unfreeze): ${params.projectName} ${params.kind} (run ${params.runId})`,
 		});
-		checkpointNow(db);
-	} finally {
-		closeStoreDb(db);
+	} catch (err) {
+		return [
+			`unfreeze audit/commit skipped: ${err instanceof Error ? err.message : String(err)} — the ` +
+				"unfreeze itself stands (N4); retry the audit append + commit manually.",
+		];
 	}
-	return commitProtectionChange({
-		cwd: params.cwd,
-		projectName: params.projectName,
-		paths: [params.dbPath],
-		message: `velpari(unfreeze): ${params.projectName} ${params.kind} (run ${params.runId})`,
-	});
 }

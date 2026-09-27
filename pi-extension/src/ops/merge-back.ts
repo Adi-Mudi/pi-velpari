@@ -516,6 +516,10 @@ export function executeMergeBack(cwd: string, branch: string, opts: { confirmed:
 			/* unreadable store is reported by step 2's empty verification */
 		}
 	}
+/**
+ * Close every open store connection (checkpoint + close), best-effort per connection.
+ * @returns {void}
+ */
 	const closeAll = (): void => {
 		for (const c of conns) {
 			try {
@@ -551,7 +555,7 @@ export function executeMergeBack(cwd: string, branch: string, opts: { confirmed:
 	// ---- Step 1 recorded (first row: steps[] order = step 1 first) --------
 	record(1, "ok", step1Message, step1Details);
 
-	// ---- Step 2: store merge verification (runbook §4) --------------------
+	// ---- Step 2: store merge verification (runbook § 3) --------------------
 	try {
 		if (conns.length === 0) {
 			record(2, "ok", "pre-store project — no store to verify");
@@ -663,7 +667,10 @@ export function executeMergeBack(cwd: string, branch: string, opts: { confirmed:
 		}
 	}
 
-	const step1Failed = steps.find((s) => s.step === 1)?.status === "error";
-	const ok = !step1Failed && doctorErrors === 0;
+	// I11.2: `ok` requires EVERY recorded step to be clean (step 1's
+	// explicit check is subsumed — a conflict at step 1 also short-circuits
+	// steps 2–5) AND a clean doctor audit. A step-4/5 failure must no longer
+	// print "merge-back complete".
+	const ok = steps.every((s) => s.status !== "error") && doctorErrors === 0;
 	return { ok, steps, auditEntries, mergeCommit, auditCommit, commitWarnings };
 }

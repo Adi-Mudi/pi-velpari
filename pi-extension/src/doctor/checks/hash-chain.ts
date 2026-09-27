@@ -13,9 +13,11 @@
  * history, YAML checksums, backup manifests) catch that class.
  *
  * Reads store rows directly (Phase 7 doctor discipline) and writes
- * nothing: no stamp, no audit row, no migration of its own — the
- * `openStoreDb`/`closeStoreDb` discipline of `checkDbIntegritySection`
- * (R3). Every path is wrapped: doctor must always render.
+ * nothing: no stamp, no audit row, no migration of its own — it opens
+ * with `openStoreDbReadOnly` and closes with a plain `db.close()` (a
+ * doctor read must never create/migrate/checkpoint the store; the
+ * writer handle of `checkDbIntegritySection` (R3) stamps, this check
+ * does not). Every path is wrapped: doctor must always render.
  *
  * L1 (doctor) → L0 (core/paths, core/config, core/projectnames,
  * core/hashchain, io/db, io/store) — legal direction.
@@ -26,7 +28,7 @@ import { buildStoreDbPath } from "../../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { getEffectiveProjectNames } from "../../core/projectnames.js";
 import { GENESIS_HASH, computeEntryHash, verifyChain, type ChainedRow } from "../../core/hashchain.js";
-import { openStoreDb, closeStoreDb } from "../../io/db.js";
+import { openStoreDbReadOnly } from "../../io/db.js";
 import { auditCanonicalPayload, txCanonicalPayload } from "../../io/store.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -48,7 +50,7 @@ interface ChainRead {
  * Read `audit_ledger` rows in storage order as verifier rows.
  * Returns null when the table does not exist (pre-v004 store).
  */
-function readAuditChain(db: ReturnType<typeof openStoreDb>): ChainRead | null {
+function readAuditChain(db: ReturnType<typeof openStoreDbReadOnly>): ChainRead | null {
 	const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_ledger'").get() as
 		| { name: string }
 		| undefined;
@@ -91,7 +93,7 @@ function readAuditChain(db: ReturnType<typeof openStoreDb>): ChainRead | null {
 }
 
 /** Read `tx_log` rows in storage order as verifier rows (same shape). */
-function readTxChain(db: ReturnType<typeof openStoreDb>): ChainRead | null {
+function readTxChain(db: ReturnType<typeof openStoreDbReadOnly>): ChainRead | null {
 	const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tx_log'").get() as
 		| { name: string }
 		| undefined;
@@ -225,7 +227,7 @@ export function checkHashChainSection(cwd: string): DiagnosticSection {
 				});
 				continue;
 			}
-			const db = openStoreDb(dbPath);
+			const db = openStoreDbReadOnly(dbPath);
 			try {
 				const audit = readAuditChain(db);
 				const tx = readTxChain(db);
@@ -259,7 +261,7 @@ export function checkHashChainSection(cwd: string): DiagnosticSection {
 					});
 				}
 			} finally {
-				closeStoreDb(db);
+				db.close();
 			}
 		}
 	} catch (err) {
