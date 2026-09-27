@@ -27,6 +27,9 @@
 // Export body excludes `sha256_fingerprint` (no self-reference — plan Risks
 // note 2) AND `status` (the draft→published flip must not invalidate the
 // fingerprint: Phase 4 verifies AFTER publishArtifact, per RES-1's flow).
+// Sole exception (Phase 7 / N16): a table flagged `domainStatus` (dev_lane)
+// EXPORTS its status — the values are domain data (LaneStatus), never the
+// draft→published flip, so the bytes stay stable across publish anyway.
 //
 // Scope guard: L0 only. No publish-path logic, no git, no doctor (Phases
 // 4/9/7). Nothing above Layer 0 imports this module yet.
@@ -39,6 +42,7 @@ import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { GENESIS_HASH, computeEntryHash } from "../core/hashchain.js";
 import type { Stage } from "../core/constants.js";
+import type { LaneStatus } from "../core/dev-lanes.js";
 import { openStoreDb, closeStoreDb } from "./db.js";
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */
@@ -191,6 +195,22 @@ export interface StepDepRow {
 	stepId: string;
 	dependsOnId: string;
 }
+/** v005 — one (lane, step) cell of the Stage 9 execution-lane map. */
+export interface DevLaneRow {
+	laneId: string;
+	stepId: string;
+	position: number;
+	worktree: string;
+	branch: string;
+	/** v005 — LaneStatus (domain data, NOT the draft/published lifecycle). */
+	status?: LaneStatus;
+}
+/** v005 — a recorded cross-lane dependency edge + its boundary level. */
+export interface DevLaneXdepRow {
+	stepId: string;
+	dependsOnId: string;
+	boundaryLevel: number;
+}
 export interface FinalSectionRow {
 	no: number;
 	title: string;
@@ -217,7 +237,13 @@ export type ArtifactPayload =
 	| { atomicFunction?: AtomicFunctionRow[] } // atomic-functions
 	| { pseudocodeBlock?: PseudocodeBlockRow[] } // pseudocode
 	| { testCase?: TestCaseRow[]; tcTrace?: TcTraceRow[] } // testplan
-	| { devStep?: DevStepRow[]; stepAf?: StepAfRow[]; stepDep?: StepDepRow[] } // development-order
+	| {
+			devStep?: DevStepRow[];
+			stepAf?: StepAfRow[];
+			stepDep?: StepDepRow[];
+			devLane?: DevLaneRow[];
+			devLaneXdep?: DevLaneXdepRow[];
+	  } // development-order
 	| { finalSection?: FinalSectionRow[] }; // final-design
 
 /** Envelope fields for writeArtifact (status + fingerprint are store-managed). */
@@ -284,8 +310,16 @@ interface TableSpec {
 	key: string;
 	/** Single-row table (feasibility_decision) instead of an array. */
 	single?: boolean;
-	/** No `status` column (pure edge table). */
+	/** No store-managed `status` column (pure edge table) — the write, publish
+	 *  and revert paths skip it. A domain-status table (dev_lane) sets BOTH:
+	 *  `edge` keeps the draft→published flip away from its values, and
+	 *  `domainStatus` keeps `readRows` from stripping them. */
 	edge?: boolean;
+	/** v005 (Phase 7 / N16): the table's `status` column holds DOMAIN data
+	 *  (dev_lane → LaneStatus), not the store lifecycle — so it is READ back,
+	 *  exported, and rendered instead of being stripped like every other
+	 *  table's draft/published marker. */
+	domainStatus?: boolean;
 	orderBy: string;
 }
 
@@ -318,6 +352,10 @@ const KIND_TABLES: Record<ArtifactKind, readonly TableSpec[]> = {
 		{ table: "dev_step", key: "devStep", orderBy: "id" },
 		{ table: "step_af", key: "stepAf", edge: true, orderBy: "step_id, af_id" },
 		{ table: "step_dep", key: "stepDep", edge: true, orderBy: "step_id, depends_on_id" },
+		// dev_lane: `edge` = no draft/published flip (LaneStatus CHECK would
+		// reject it); `domainStatus` = read its status back for render/export.
+		{ table: "dev_lane", key: "devLane", edge: true, domainStatus: true, orderBy: "lane_id, position" },
+		{ table: "dev_lane_xdep", key: "devLaneXdep", edge: true, orderBy: "step_id, depends_on_id" },
 	],
 	"final-design": [{ table: "final_section", key: "finalSection", orderBy: "no" }],
 };
@@ -395,7 +433,11 @@ function readRows(db: DatabaseSync, runId: string, kind: ArtifactKind): Record<s
 		const mapped = raw.map((row) => {
 			const rec: Record<string, SqlValue> = {};
 			for (const [col, value] of Object.entries(row)) {
-				if (col === "run_id" || col === "kind" || col === "status") continue;
+				if (col === "run_id" || col === "kind") continue;
+				// The store lifecycle marker is not export data — except where
+				// `status` is domain data (dev_lane: LaneStatus), which must
+				// reach the renderer, the slices, and the YAML export.
+				if (col === "status" && !spec.domainStatus) continue;
 				rec[camel(col)] = value;
 			}
 			return rec;

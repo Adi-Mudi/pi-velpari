@@ -36,6 +36,7 @@ import { checkTraceLinkConsistencySection } from "./checks/trace-link-consistenc
 import { checkAfDataSection } from "./checks/af-data.js";
 import { checkTestCasesDataSection } from "./checks/test-cases-data.js";
 import { checkDevOrderDataSection } from "./checks/dev-order-data.js";
+import { checkDevLanesSection } from "./checks/dev-lanes.js";
 import { checkFeasibilityRecordSection } from "./checks/feasibility-record.js";
 import { checkFingerprintsSection } from "./checks/fingerprints.js";
 import { checkPhaseConsistencySection } from "./checks/phase-consistency.js";
@@ -317,6 +318,10 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		checkAfDataSection(cwd, projectName),
 		checkTestCasesDataSection(cwd, projectName),
 		checkDevOrderDataSection(cwd, projectName),
+		// Phase 7 (N16) — execution-lane integrity: step-in-one-lane,
+		// cross-lane deps without an integration point, DAG acyclicity,
+		// name-match. Legacy artifacts (no lane rows) stay not-checkable.
+		checkDevLanesSection(cwd, projectName),
 		checkFingerprintsSection(cwd, projectName),
 		checkPhaseConsistencySection(cwd, projectName),
 		checkMvpCoverageSection(cwd, projectName),

@@ -306,7 +306,7 @@ export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknow
 			const deps = rowsOf(rows, "stepDep").sort((a, b) =>
 				`${a.stepId} ${a.dependsOnId}`.localeCompare(`${b.stepId} ${b.dependsOnId}`),
 			);
-			return (
+			const base =
 				table(
 					"Development Steps",
 					["ID", "Module", "Description"],
@@ -321,8 +321,36 @@ export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknow
 					"Step Dependencies",
 					["Step", "Depends On"],
 					deps.map((r) => [r.stepId, r.dependsOnId]),
-				)
+				);
+			// Phase 7 / N16 — lanes are CONDITIONAL: a pre-Phase-7 (or
+			// lane-less) development-order slice stays byte-for-byte identical
+			// (no mass-staling of declared-input hashes downstream).
+			const lanes = rowsOf(rows, "devLane");
+			if (lanes.length === 0) return base;
+			const laneNumber = (laneId: string): number => {
+				const m = /^lane-(\d+)/.exec(laneId);
+				return m?.[1] === undefined ? Number.MAX_SAFE_INTEGER : Number(m[1]);
+			};
+			const ordered = [...lanes].sort(
+				(a, b) =>
+					laneNumber(String(a.laneId)) - laneNumber(String(b.laneId)) ||
+					Number(a.position ?? 0) - Number(b.position ?? 0),
 			);
+			const grouped = new Map<string, RowLike[]>();
+			for (const row of ordered) {
+				const key = String(row.laneId);
+				const bucket = grouped.get(key) ?? [];
+				bucket.push(row);
+				grouped.set(key, bucket);
+			}
+			const laneRows = [...grouped.entries()].map(([laneId, cells]) => [
+				laneId,
+				cells[0]?.status ?? "active",
+				cells.map((c) => String(c.stepId)).join(", "),
+				cells[0]?.worktree ?? "",
+				cells[0]?.branch ?? "",
+			]);
+			return base + table("Execution Lanes", ["Lane", "Status", "Steps", "Worktree", "Branch"], laneRows);
 		}
 		case "final-design": {
 			const list = sortedBy(rowsOf(rows, "finalSection"), "no", true);

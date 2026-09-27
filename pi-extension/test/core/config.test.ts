@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	DEFAULT_EXCLUDED_PATHS,
+	devLaneConfig,
 	loadFilesConfig,
 	retentionConfig,
 	saveFilesConfig,
@@ -251,6 +252,39 @@ describe("retentionConfig (N7/N10)", () => {
 			const cwd = tmp();
 			writeRaw(cwd, { ...VALID_V4, velpari: { retention: bad } });
 			assert.throws(() => retentionConfig(cwd), /retention is invalid/, JSON.stringify(bad));
+		}
+	});
+});
+
+/**
+ * Phase 7 / N16 — `velpari.maxLanes` lane cap. Same contract as retention:
+ * default when absent, round-trip an override, throw on a malformed value
+ * (a typo'd cap must surface, not silently default).
+ */
+describe("devLaneConfig (Phase 7 / N16)", () => {
+	it("defaults to 4 when files.json is missing", () => {
+		assert.deepEqual(devLaneConfig(tmp()), { maxLanes: 4 });
+	});
+
+	it("defaults to 4 when the velpari block has no maxLanes key", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { markdownWrites: true } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 4 });
+	});
+
+	it("round-trips a positive-integer override", () => {
+		for (const maxLanes of [1, 2, 8]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes } });
+			assert.deepEqual(devLaneConfig(cwd), { maxLanes }, JSON.stringify(maxLanes));
+		}
+	});
+
+	it("rejects 0 / negative / non-integer / wrong types", () => {
+		for (const bad of [0, -1, 2.5, "eight", null]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: bad } });
+			assert.throws(() => devLaneConfig(cwd), /maxLanes is invalid/, JSON.stringify(bad));
 		}
 	});
 });

@@ -48,6 +48,9 @@ read 4 reports
 merge rankings into final order (weighted average of rank positions)
         │
         ▼
+derive the execution-lane map from the dependsOn graph (Merge steps 6–8)
+        │
+        ▼
 write working copy <workingCopy>
         │
         ▼
@@ -56,6 +59,12 @@ AskUserQuestion "Publish preview?"
         ▼ (yes)
 call velpari_stage_publish tool (no parameters)
 ```
+
+**Lane-hint track (Phase 7 / N16):** each scout *additionally* proposes a
+**lane hint** in `proposals[].payload.laneHint` (optional, see the scout
+templates) — which of its ranked items can run concurrently. The hints may
+inform your lane derivation (Merge step 6) but never override the dependency
+graph: publish-time code verifies and finalizes the map.
 
 ## Subagent conventions
 
@@ -133,13 +142,42 @@ After all 4 scouts complete:
    below) and write it to `<workingCopy>`
    (`development-order_<projectName>.yaml`). The YAML is the source of
    truth.
-6. Render the markdown FROM the YAML and write it to `<workingCopy>`
+6. Derive the **execution-lane map** from the final order + the `dependsOn`
+   edges — deterministic algorithm, 4 rules:
+   - **Levels** — `level = 0` for a step with no deps, else
+     `1 + max(level(deps))`. Levels ARE the series boundaries; same-level
+     steps are the parallel candidates.
+   - **Greedy lane assignment (dependency handoff)** — levels in order
+     0,1,2,…; within a level, steps sorted by id. Each step joins the first
+     lane whose last assigned step is its direct predecessor; else the first
+     lane not yet used at this level; else a new lane `lane-<n+1>`.
+     (You may use each scout's `laneHint` to pick a lane's `slug` — never to
+     change the graph.)
+   - **Cap** — `velpari.maxLanes` (files.json, default 4). Over the cap, the
+     smallest lane merges into its most-connected neighbour; steps inside a
+     lane are never reordered.
+   - **Name-match** — every lane gets
+     `worktree === branch === <projectSlug>/lane-<x>-<slug>`
+     (e.g. `myapp/lane-1-auth`), the exact string used by
+     `git worktree add ../<string> -b <string>`.
+7. Record every **cross-lane** dependency as an integration point: one row
+   per edge that spans lanes, `boundaryLevel` = the dependent step's level —
+   the published Integration Plan and the doctor's lane-integrity check both
+   read it.
+8. **Code has the final word.** You may compute the map yourself, but the
+   payload's `devLane` rows MUST match the algorithm — publish-time code
+   verifies and finalizes; an invalid proposal blocks publish with the exact
+   problems, and a cycle is never silently fixed. (Omit `devLane` from the
+   payload entirely and the publish step computes it for you.)
+9. Render the markdown FROM the YAML and write it to `<workingCopy>`
    (`development-order_<projectName>.md`). The publish gate re-generates
    the published markdown from the YAML — the published doc is always
    derived from the data, never from hand-written markdown. (The DB-only
    publish default writes NOTHING to `Doc/` — the published view comes from
    `/velpari-export`; the working-copy markdown + YAML stay the review
-   surface.)
+   surface.) The working copy's `## Execution Lanes` section must mirror the
+   lane map you put in the payload — at publish the renderer regenerates it
+   from the rows.
 
 ## Output Format
 
@@ -226,6 +264,55 @@ updated: <ISO timestamp>
 1. M-1 (auth-service) — must-have, blocks all flows
 ...
 
+## Execution Lanes
+
+| Lane | Status | Steps (in order) | Worktree | Branch |
+|---|---|---|---|---|
+| lane-1 | active | DO-1, DO-3, DO-5 | <projectSlug>/lane-1-core | <projectSlug>/lane-1-core |
+| lane-2 | active | DO-2, DO-4 | <projectSlug>/lane-2-integrations | <projectSlug>/lane-2-integrations |
+
+- `git worktree add ../<projectSlug>/lane-1-core -b <projectSlug>/lane-1-core`
+- `git worktree add ../<projectSlug>/lane-2-integrations -b <projectSlug>/lane-2-integrations`
+
+lane-1: DO-1, DO-3, DO-5 … — parallel at levels 0 and 2, series handoff at
+level 1. lane-2: DO-2, DO-4 … — picks up DO-4 only after DO-1 (lane-1)
+merges at the level-1 boundary. State the project's real parallel groups
+here — which steps run together and why — never a generic sentence.
+
+## Integration Plan
+
+| Order | Lane | Merge level | Gates |
+|---|---|---|---|
+| 1 | lane-2 | 1 | tests green + doctor audit |
+| 2 | lane-1 | 2 | tests green + doctor audit |
+
+Lane ready before its series boundary ⇒ `parked` (locked for edit); re-verify
+(rebuild + tests + doctor) against the integration branch before merge.
+Gate per merge: tests green + doctor audit. Lane locked for edit from merge
+start until the merge commit lands.
+
+## Lock Rules
+
+- A lane is locked for edit once its merge starts; it unlocks when the merge
+  commit lands on the integration branch.
+- A lane whose steps complete before its series boundary enters `parked`
+  (locked for edit) and must re-verify — rebuild + tests + doctor audit —
+  against the current integration branch before it may merge.
+- Every merge is gated by tests green + a doctor audit; a lane never merges
+  ahead of its integration order.
+- Files outside every lane's declared ownership merge only at an
+  integration boundary, never inside a lane.
+- A level-(N+1) step cannot start until every level-N lane it depends on
+  has merged; a feeding lane with an open dependency stays blocked.
+
+## Lane Shape
+
+Shape: parallel (2 lanes) → series (1 step) → parallel (2 lanes) → series
+(1 step) — derived from the step dependency graph, not a template.
+
+Steps at the same level run in parallel across lanes; dependent steps stay
+sequential inside one lane.
+
 ## Recommended Execution Plan
 
 1. **Week 1-2:** M-3 (database schema) + spike on M-5 (external integration)
@@ -236,7 +323,8 @@ updated: <ISO timestamp>
 
 Each step carries a mandatory `AFs: AF-N, …` list (Layer-2 ID coverage)
 naming the atomic functions that step delivers. Every `AF-N` from the
-published atomic-functions doc must appear in exactly one step.
+published atomic-functions doc must appear in exactly one step — for BOTH
+shapes (lane-shaped and legacy no-lane docs).
 ```
 
 ## Zero-Hallucination Rule (FR-22)
@@ -260,6 +348,11 @@ exists), revise the baseline instead of regenerating:
 2. Mark superseded entries `deprecated` with a reason.
 3. Bump the version and add a new Change Log entry.
    The `velpari_stage_publish` tool (which same gate chain as `/velpari-development-order-approve`) blocks publishing without it.
+4. **Lanes follow the graph.** The lane map is derived from the current
+   `stepDep` edges on every publish — a re-run never renumbers step ids,
+   and lane ids stay stable for unchanged levels (append-only spirit: new
+   steps may open `lane-<n+1>`, existing lanes keep their ids and
+   name-match strings unless the graph itself changed).
 
 ## Publish (auto on working-copy ready)
 
@@ -304,7 +397,18 @@ Shape (unknown fields are rejected):
   "rows": {
     "devStep": [{ "id": "S1", "module": "core" }],
     "stepAf":  [{ "stepId": "S1", "afId": "AF-1" }],
-    "stepDep": [{ "stepId": "S2", "dependsOnId": "S1" }]
+    "stepDep": [{ "stepId": "S2", "dependsOnId": "S1" }],
+    "devLane": [
+      { "laneId": "lane-1", "stepId": "S1", "position": 0,
+        "worktree": "<projectSlug>/lane-1-core", "branch": "<projectSlug>/lane-1-core",
+        "status": "active" },
+      { "laneId": "lane-1", "stepId": "S2", "position": 1,
+        "worktree": "<projectSlug>/lane-1-core", "branch": "<projectSlug>/lane-1-core",
+        "status": "active" }
+    ],
+    "devLaneXdep": [
+      { "stepId": "S3", "dependsOnId": "S2", "boundaryLevel": 2 }
+    ]
   }
 }
 ```
@@ -313,6 +417,15 @@ Shape (unknown fields are rejected):
 rejected). `afId` must reference an atomic function that exists in the
 store. Every row must trace to the working copy content (zero
 hallucination).
+
+`devLane` and `devLaneXdep` are **optional** row-sets: omit `devLane` and
+the publish step computes it; include it only when it matches the algorithm
+(the publish-time verifier checks coverage, topology, the lane cap, the
+worktree/branch name-match and every recorded `boundaryLevel` — an invalid
+proposal blocks the publish with the exact problem codes, e.g.
+`step-in-two-lanes`, `lane-cap`, `bad-boundary`). `worktree` and `branch`
+must be identical strings (name-match rule); `status` is one of
+`active`/`complete`/`parked`/`merged` (publish stamps `active`).
 
 ## Known issue: zellij `close-pane` bug
 

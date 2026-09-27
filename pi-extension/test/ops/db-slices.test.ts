@@ -4,6 +4,8 @@
 // ordering), the three LOUD refusal reasons (no-store-db / kind-unpublished /
 // rows-lack-prose, each naming /velpari-backfill), and the prd empty-slice
 // exception (brainstorm is the sole file-based input).
+// Phase 7 / N16: the development-order lanes table renders only when devLane
+// rows exist — lane-less slices stay byte-identical (no downstream re-staling).
 // Conventions: temp dirs + real openStoreDb/closeStoreDb — no mocks.
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -249,5 +251,73 @@ describe("ops/db-slices", () => {
 			assert.ok(!slice.block.includes("v1 text"));
 			assert.ok(slice.block.includes("r2"));
 		}
+	});
+
+	test("11. development-order lanes table is conditional on devLane rows (Phase 7)", () => {
+		const steps = {
+			devStep: [
+				{ id: "A", module: "core", description: "step A" },
+				{ id: "B", module: "core", description: "step B" },
+			],
+			stepAf: [],
+			stepDep: [],
+		};
+
+		// Lane-less (pre-Phase-7 shape) must not gain the table.
+		const base = renderStageSlice("development-order", steps);
+		assert.ok(!base.includes("Execution Lanes"), "lane-less slice must stay byte-identical");
+
+		const rows = {
+			...steps,
+			devLane: [
+				// deliberately unsorted input + lane-10 to prove numeric ordering
+				{
+					laneId: "lane-10",
+					stepId: "Z",
+					position: 0,
+					worktree: "alpha/lane-10-z",
+					branch: "alpha/lane-10-z",
+					status: "active",
+				},
+				{
+					laneId: "lane-2",
+					stepId: "E",
+					position: 0,
+					worktree: "alpha/lane-2-e",
+					branch: "alpha/lane-2-e",
+					status: "parked",
+				},
+				{
+					laneId: "lane-1",
+					stepId: "A",
+					position: 1,
+					worktree: "alpha/lane-1-a",
+					branch: "alpha/lane-1-a",
+					status: "active",
+				},
+				{
+					laneId: "lane-1",
+					stepId: "B",
+					position: 0,
+					worktree: "alpha/lane-1-a",
+					branch: "alpha/lane-1-a",
+					status: "active",
+				},
+			],
+		};
+		const a = renderStageSlice("development-order", rows);
+		const b = renderStageSlice("development-order", rows);
+		assert.strictEqual(a, b, "slice must be deterministic (G5)");
+
+		assert.ok(a.includes("#### Execution Lanes"));
+		assert.ok(a.includes("| B, A |"), "steps inside a lane must be position-ordered");
+		assert.ok(a.includes("| parked |"), "status column must carry the lane status");
+		assert.ok(a.includes("| alpha/lane-1-a |"));
+
+		const i1 = a.indexOf("| lane-1 |");
+		const i2 = a.indexOf("| lane-2 |");
+		const i10 = a.indexOf("| lane-10 |");
+		assert.ok(i1 >= 0 && i2 >= 0 && i10 >= 0, "all three lanes must appear");
+		assert.ok(i1 < i2 && i2 < i10, "lanes must sort numerically (lane-2 before lane-10)");
 	});
 });
