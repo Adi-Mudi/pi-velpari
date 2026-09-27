@@ -98,6 +98,39 @@ export function readLockInfo(cwd: string): RunLockMeta | null {
 	return readMeta(file);
 }
 
+/**
+ * Read-only stale test for the reset path + the Phase 6 doctor check (N13):
+ * a lock is stale when the holder pid is dead/inactive or its heartbeat is
+ * older than STALE_MS. Never steals — reading only.
+ * @param {string} cwd - Project root holding `.pi/velpari/.lock/`.
+ * @returns {{ holder: RunLockMeta | null; stale: boolean }} Holder info + stale verdict.
+ */
+export function readLockStatus(cwd: string): { holder: RunLockMeta | null; stale: boolean } {
+	const holder = readLockInfo(cwd);
+	if (!holder) return { holder: null, stale: false };
+	const stale = !isPidAlive(holder.pid) || !isFresh(holder);
+	return { holder, stale };
+}
+
+/**
+ * Remove a lock directory the caller has CONFIRMED stale (N13: clearing is
+ * always an explicit, confirmed, audited action). Refuses — no-op, returns
+ * false — while the current holder is alive + fresh, and when no lock exists.
+ * @param {string} cwd - Project root holding `.pi/velpari/.lock/`.
+ * @returns {boolean} true when a stale lock directory was removed.
+ */
+export function clearStaleRunLock(cwd: string): boolean {
+	const { holder, stale } = readLockStatus(cwd);
+	if (!holder || !stale) return false;
+	const dir = runLockDir(cwd);
+	try {
+		fs.rmSync(dir, { recursive: true, force: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function isPidAlive(pid: number): boolean {
 	if (pid <= 0) return false;
 	try {

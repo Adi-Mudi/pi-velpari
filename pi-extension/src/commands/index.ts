@@ -43,6 +43,13 @@ import { registerExportCommand } from "./export.js";
 import { registerBackfillCommand } from "./backfill.js";
 import { registerPortfolioCommand } from "./portfolio.js";
 import { registerMigrateCommand } from "./migrate.js";
+// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
+// Phase I owns this registry. Rebase/merge this block; do not duplicate it.
+import { registerDbResetCommand } from "./db-reset.js";
+import { registerFreezeCommand } from "./freeze.js";
+import { registerTombstoneCommand } from "./tombstone.js";
+import { registerRollbackCommand } from "./rollback.js";
+// ==== END PHASE 2 BLOCK ====
 
 /**
  * All 43 user-facing commands. v1.6.0 replaced the generic
@@ -124,6 +131,12 @@ export const COMMAND_NAMES = [
 	"velpari-portfolio",
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	"velpari-migrate-store",
+	// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK (46th–49th commands) ====
+	"velpari-db-reset", // F23 — DB-only reset (draft rows of one run)
+	"velpari-freeze", // N4 — freeze/unfreeze with a mandatory unfreeze reason
+	"velpari-tombstone", // F16 — delete-as-modification (withdraw a revision)
+	"velpari-rollback", // F21 — rollback-as-new-revision
+	// ==== END PHASE 2 BLOCK ====
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -187,4 +200,10 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerPortfolioCommand(pi);
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	registerMigrateCommand(pi);
+	// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK ====
+	registerDbResetCommand(pi);
+	registerFreezeCommand(pi);
+	registerTombstoneCommand(pi);
+	registerRollbackCommand(pi);
+	// ==== END PHASE 2 BLOCK ====
 }

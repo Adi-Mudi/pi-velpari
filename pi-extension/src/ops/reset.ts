@@ -1,18 +1,18 @@
 /**
- * /velpari-reset handler (FR-10).
+ * /velpari-reset handler (FR-10; Phase 2 split — F23).
  *
- * Destructive: confirms with the user before discarding the current
- * run state. On confirm, calls clearRun(cwd) and notifies.
+ * Orchestration ONLY: confirms, clears the run state + history, and (N13) can
+ * clear a confirmed STALE run lock. No store DB is opened for draft data and no
+ * artifact/revision row is read or written — the one DB effect is the reset
+ * audit row per existing project store (D1 option (a): the chained
+ * `audit_ledger` is the single audit sink). Draft cleanup lives in the separate
+ * `/velpari-db-reset` command.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { clearRun, loadState } from "../core/state.js";
-import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
-import { getEffectiveProjectNames } from "../core/projectnames.js";
-import { buildStoreDbPath } from "../core/paths.js";
-import { existsSync } from "node:fs";
-import { openStoreDb, closeStoreDb } from "../io/db.js";
-import { deleteRunDrafts } from "../io/store.js";
+import { clearStaleRunLock, readLockStatus } from "../io/run-lock.js";
+import { auditResetEvent } from "./db-reset.js";
 
 export async function handleReset(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const state = loadState(cwd);
@@ -25,56 +25,42 @@ export async function handleReset(ctx: ExtensionCommandContext, cwd: string = pr
 		"Reset run?",
 		`Discard run ${state.runId} (mission: ${state.mission || "(none)"})? ` +
 			`Working copies in .IDE_Plans/velpari/runs/${state.runId}/ will remain on disk; ` +
-			`state.json and the run's history are cleared, and the run's DRAFT store rows are deleted ` +
-			`(published rows stay — append-only history).`,
+			`state.json and the run's history are cleared. NO store DB row is touched — ` +
+			`use /velpari-db-reset to delete this run's draft rows (published rows and revisions always stay).`,
 	);
 	if (!confirmed) {
 		ctx.ui.notify("Reset cancelled.", "info");
 		return;
 	}
 
-	// Q2 (Phase 8) — delete the run's DRAFT store rows BEFORE clearRun:
-	// clearRun wipes state.json, and with it the runId the cleanup needs.
-	// Order (locked): capture runId → delete drafts per project DB →
-	// clearRun → notify with the count. Multi-design: one DB per
-	// projectName; per-DB try/catch — a missing/corrupt DB never wedges
-	// the state reset.
-	let draftsDeleted = 0;
+	// N13 — a stale run lock (dead holder / old heartbeat) is cleared only here,
+	// only after an explicit confirmation, and always with an audit event.
 	const runId = state.runId;
-	try {
-		const cfg = loadFilesConfig(cwd);
-		if (validateFilesConfig(cfg)) {
-			for (const projectName of getEffectiveProjectNames(cfg)) {
-				const dbPath = buildStoreDbPath(projectName, cwd);
-				if (!existsSync(dbPath)) continue;
-				try {
-					const db = openStoreDb(dbPath);
-					try {
-						draftsDeleted += deleteRunDrafts(db, runId);
-					} finally {
-						closeStoreDb(db);
-					}
-				} catch (err) {
-					ctx.ui.notify(
-						`Store draft cleanup failed for ${projectName} (state reset continues): ` +
-							`${err instanceof Error ? err.message : String(err)}`,
-						"warning",
-					);
-				}
-			}
+	let clearedStaleLock = false;
+	const lock = readLockStatus(cwd);
+	if (lock.stale) {
+		clearedStaleLock = await ctx.ui.confirm(
+			"Stale run lock found",
+			`The run lock is held by an inactive holder (pid ${lock.holder?.pid ?? "?"}, ` +
+				`command ${lock.holder?.command ?? "?"}, heartbeat ${lock.holder?.heartbeatAt ?? "?"}). ` +
+				"Clear it as part of this reset? The clearing is recorded in the store audit ledger.",
+		);
+		if (clearedStaleLock) {
+			clearedStaleLock = clearStaleRunLock(cwd);
 		}
-	} catch {
-		// Config missing/invalid — skip DB cleanup silently; state reset proceeds.
 	}
 
 	clearRun(cwd);
+	// F17 — the reset itself is audited (who/what/when/why), one row per store DB.
+	const warnings = auditResetEvent(cwd, runId, {
+		staleLockCleared: clearedStaleLock,
+		holder: lock.holder ? { pid: lock.holder.pid, command: lock.holder.command } : null,
+	});
 	ctx.ui.notify(
-		`Run ${runId} reset. State is now empty.` +
-			(draftsDeleted > 0 ? ` ${draftsDeleted} draft store row(s) deleted.` : "") +
-			// Phase 11 (§15.6): migration-aware note — published rows
-			// (including the one-time migration's run 'migrated' rows)
-			// survive a reset; only the reset run's DRAFT rows are deleted.
-			` Published store rows (including run 'migrated') stay.`,
+		`Run ${runId} reset. State is now empty. No store DB rows were touched ` +
+			`(draft cleanup: /velpari-db-reset).` +
+			(clearedStaleLock ? " Stale run lock cleared (audited)." : ""),
 		"info",
 	);
+	for (const warning of warnings) ctx.ui.notify(warning, "warning");
 }
