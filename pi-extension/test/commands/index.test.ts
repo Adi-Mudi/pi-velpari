@@ -130,6 +130,10 @@ describe("commands/index — COMMAND_NAMES invariants", () => {
 		}
 	});
 
+	it("contains the retention command (phase 4: N7 keep-last-N cleanup)", () => {
+		assert.ok(COMMAND_NAMES.includes("velpari-retention-prune" as (typeof COMMAND_NAMES)[number]));
+	});
+
 	it("contains the headline /velpari-generate-sub-agents + /velpari-final-design", () => {
 		assert.ok(COMMAND_NAMES.includes("velpari-generate-sub-agents"));
 		assert.ok(COMMAND_NAMES.includes("velpari-final-design"));
