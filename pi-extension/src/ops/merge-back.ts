@@ -516,10 +516,10 @@ export function executeMergeBack(cwd: string, branch: string, opts: { confirmed:
 			/* unreadable store is reported by step 2's empty verification */
 		}
 	}
-/**
- * Close every open store connection (checkpoint + close), best-effort per connection.
- * @returns {void}
- */
+	/**
+	 * Close every open store connection (checkpoint + close), best-effort per connection.
+	 * @returns {void}
+	 */
 	const closeAll = (): void => {
 		for (const c of conns) {
 			try {
