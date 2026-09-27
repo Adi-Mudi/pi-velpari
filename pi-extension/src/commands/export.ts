@@ -22,11 +22,7 @@ import { buildStoreDbPath, buildGroupedPath } from "../core/paths.js";
 import { listExportableKinds, type ArtifactKind } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import type { ExportFormat } from "../ops/export-doc.js";
-import {
-	buildRevisionExportPath,
-	listExportableRevisions,
-	runRevisionExport,
-} from "../ops/export-revision.js";
+import { buildRevisionExportPath, listExportableRevisions, runRevisionExport } from "../ops/export-revision.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
 
 /** kind → buildGroupedPath label (mirrors ops/export-doc.ts:KIND_LABELS +
@@ -112,7 +108,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 	// re-opens it independently for the render/write.
 	const db = openStoreDb(dbPath);
 	let kind: ArtifactKind | undefined;
-	let pickedRevision: (ReturnType<typeof listExportableRevisions>[number]) | undefined;
+	let pickedRevision: ReturnType<typeof listExportableRevisions>[number] | undefined;
 	try {
 		const kinds = listExportableKinds(db);
 		if (kinds.length === 0) {

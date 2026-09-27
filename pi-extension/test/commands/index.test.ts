@@ -120,12 +120,7 @@ describe("commands/index — COMMAND_NAMES invariants", () => {
 	});
 
 	it("contains the protection commands (phase 2: F23/N4/F16/F21)", () => {
-		for (const required of [
-			"velpari-db-reset",
-			"velpari-freeze",
-			"velpari-tombstone",
-			"velpari-rollback",
-		]) {
+		for (const required of ["velpari-db-reset", "velpari-freeze", "velpari-tombstone", "velpari-rollback"]) {
 			assert.ok(COMMAND_NAMES.includes(required as (typeof COMMAND_NAMES)[number]), `${required} missing`);
 		}
 	});

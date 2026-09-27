@@ -101,13 +101,7 @@ let db: DatabaseSync;
  * picker lists). Returns the revision id.
  */
 function seedRevision(version: number, textHash: string, expectedHead: number | null): number {
-	writeArtifact(
-		db,
-		"prd",
-		"r1",
-		{ ...ENV, version },
-		{ fr: [{ id: "FR-1", phase: 1, textHash }] },
-	);
+	writeArtifact(db, "prd", "r1", { ...ENV, version }, { fr: [{ id: "FR-1", phase: 1, textHash }] });
 	return publishArtifactCas(db, "r1", "prd", expectedHead).revisionId;
 }
 
@@ -278,7 +272,11 @@ describe("runExportFlow (revision-aware)", () => {
 		// Tombstone the head when the format picker fires — mimicking a
 		// revision flipping to withdrawn between the picker and the export.
 		const { withdrawRevision } = await import("../../src/ops/protection.js");
-		const revId = (db.prepare("SELECT revision_id FROM artifact_revisions ORDER BY revision_number DESC LIMIT 1").get() as { revision_id: number }).revision_id;
+		const revId = (
+			db.prepare("SELECT revision_id FROM artifact_revisions ORDER BY revision_number DESC LIMIT 1").get() as {
+				revision_id: number;
+			}
+		).revision_id;
 		const ctx = makeMockCtx({ selects: ["prd", HEAD_REV_LABEL, "md"], confirms: [] });
 		const ui = (ctx as unknown as { ui: { select: (t: string, o: string[]) => Promise<string | undefined> } }).ui;
 		const originalSelect = ui.select.bind(ui);

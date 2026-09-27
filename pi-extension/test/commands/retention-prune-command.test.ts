@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
-import { writeArtifact, publishArtifactCas, type ArtifactPayload } from "../../src/io/store.js";
+import { writeArtifact, publishArtifactCas } from "../../src/io/store.js";
 import type { DatabaseSync } from "node:sqlite";
 import { buildStoreDbPath } from "../../src/core/paths.js";
 import { runRetentionPruneFlow } from "../../src/commands/retention-prune.js";
@@ -65,8 +65,6 @@ function makeMockCtx(script: Script): ExtensionContext & { notifications: Notify
 	return ctx as unknown as ExtensionContext & { notifications: NotifyRecord[] };
 }
 
-const PRD_PAYLOAD: ArtifactPayload = { fr: [{ id: "FR-1", phase: 1, textHash: "a1b2c3" }] };
-
 let dir: string;
 let dbPath: string;
 let db: DatabaseSync;
@@ -79,9 +77,15 @@ function seedRevisions(count: number): number[] {
 	const ids: number[] = [];
 	let head: number | null = null;
 	for (let i = 1; i <= count; i++) {
-		writeArtifact(db, "prd", "r1", { version: i, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" }, {
-			fr: [{ id: "FR-1", phase: 1, textHash: `hash-${i}` }],
-		});
+		writeArtifact(
+			db,
+			"prd",
+			"r1",
+			{ version: i, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+			{
+				fr: [{ id: "FR-1", phase: 1, textHash: `hash-${i}` }],
+			},
+		);
 		head = publishArtifactCas(db, "r1", "prd", head).revisionId;
 		ids.push(head);
 	}
@@ -152,7 +156,9 @@ describe("runRetentionPruneFlow", () => {
 		const note = ctx.notifications.at(-1)!;
 		assert.ok(note.message.includes("Pruned 3 revision(s) beyond keep-last-2"));
 		const remaining = (
-			db.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number").all() as {
+			db
+				.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number")
+				.all() as {
 				revision_number: number;
 			}[]
 		).map((r) => r.revision_number);

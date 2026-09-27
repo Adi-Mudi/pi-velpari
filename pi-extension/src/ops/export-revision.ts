@@ -121,13 +121,7 @@ export function buildRevisionExportPath(
 	cwd: string,
 ): string {
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
-	return join(
-		cwd,
-		"Doc",
-		"export",
-		safeProject,
-		`${KIND_LABELS[kind]}_${safeProject}_rev${revisionNumber}.${format}`,
-	);
+	return join(cwd, "Doc", "export", safeProject, `${KIND_LABELS[kind]}_${safeProject}_rev${revisionNumber}.${format}`);
 }
 
 /**
@@ -242,7 +236,12 @@ export function runRevisionExport(input: ExportRevisionInput): ExportRevisionRes
 				action: "export",
 				artifactKind: kind,
 				revisionNumber: snapshot.revisionNumber,
-				detail: { runId: snapshot.runId, revisionId: snapshot.revisionId, format: input.format, outputPath: input.outputPath },
+				detail: {
+					runId: snapshot.runId,
+					revisionId: snapshot.revisionId,
+					format: input.format,
+					outputPath: input.outputPath,
+				},
 			});
 		} catch (err) {
 			warnings.push(`export audit entry failed: ${err instanceof Error ? err.message : String(err)}`);

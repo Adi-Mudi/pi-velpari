@@ -8,18 +8,14 @@
 // (tests written from driver behavior).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { writeArtifact, publishArtifactCas, exportArtifactYaml, type ArtifactPayload } from "../../src/io/store.js";
 import type { DatabaseSync } from "node:sqlite";
-import {
-	listExportableRevisions,
-	runRevisionExport,
-	buildRevisionExportPath,
-} from "../../src/ops/export-revision.js";
+import { listExportableRevisions, runRevisionExport, buildRevisionExportPath } from "../../src/ops/export-revision.js";
 import { withdrawRevision } from "../../src/ops/protection.js";
 
 /** Minimal PRD payload; textHash varies per revision (content change proof). */
@@ -32,8 +28,20 @@ function prdPayload(textHash: string): ArtifactPayload {
 }
 
 /** Write + CAS-publish one PRD revision for `runId`. */
-function publishSeed(db: DatabaseSync, runId: string, textHash: string, version: number, expectedHead: number | null): number {
-	writeArtifact(db, "prd", runId, { version, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" }, prdPayload(textHash));
+function publishSeed(
+	db: DatabaseSync,
+	runId: string,
+	textHash: string,
+	version: number,
+	expectedHead: number | null,
+): number {
+	writeArtifact(
+		db,
+		"prd",
+		runId,
+		{ version, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+		prdPayload(textHash),
+	);
 	return publishArtifactCas(db, runId, "prd", expectedHead).revisionId;
 }
 
@@ -107,9 +115,9 @@ describe("listExportableRevisions", () => {
 describe("runRevisionExport — yaml", () => {
 	test("exports the EXACT stored snapshot bytes (never re-rendered)", () => {
 		const { rev1 } = seedTwoRevisions();
-		const stored = db
-			.prepare("SELECT yaml_bytes FROM artifact_revisions WHERE revision_id = ?")
-			.get(rev1) as { yaml_bytes: string };
+		const stored = db.prepare("SELECT yaml_bytes FROM artifact_revisions WHERE revision_id = ?").get(rev1) as {
+			yaml_bytes: string;
+		};
 		const outPath = join(dir, "out.yaml");
 		const result = runRevisionExport({ dbPath, revisionId: rev1, format: "yaml", outputPath: outPath });
 		assert.equal(result.ok, true);
@@ -212,7 +220,13 @@ describe("runRevisionExport — refusals + audit", () => {
 		const refused = runRevisionExport({ dbPath, revisionId: rev1, format: "yaml", outputPath: outPath });
 		assert.equal(refused.ok, false);
 		assert.match(refused.problem ?? "", /already exists/);
-		const overwritten = runRevisionExport({ dbPath, revisionId: rev1, format: "yaml", outputPath: outPath, overwrite: true });
+		const overwritten = runRevisionExport({
+			dbPath,
+			revisionId: rev1,
+			format: "yaml",
+			outputPath: outPath,
+			overwrite: true,
+		});
 		assert.equal(overwritten.ok, true);
 	});
 
@@ -223,7 +237,9 @@ describe("runRevisionExport — refusals + audit", () => {
 			true,
 		);
 		const row = db
-			.prepare("SELECT action, revision_number, actor FROM audit_ledger WHERE action = 'export' ORDER BY entry_id DESC LIMIT 1")
+			.prepare(
+				"SELECT action, revision_number, actor FROM audit_ledger WHERE action = 'export' ORDER BY entry_id DESC LIMIT 1",
+			)
 			.get() as { action: string; revision_number: number; actor: string };
 		assert.equal(row.action, "export");
 		assert.equal(row.revision_number, 1);

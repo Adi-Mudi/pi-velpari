@@ -10,7 +10,7 @@ import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { execSync } from "node:child_process";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
@@ -48,7 +48,13 @@ function seedRevisions(count: number): number[] {
 	const ids: number[] = [];
 	let head: number | null = null;
 	for (let i = 1; i <= count; i++) {
-		writeArtifact(db, "prd", "r1", { version: i, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" }, prdPayload(`hash-${i}`));
+		writeArtifact(
+			db,
+			"prd",
+			"r1",
+			{ version: i, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+			prdPayload(`hash-${i}`),
+		);
 		head = publishArtifactCas(db, "r1", "prd", head).revisionId;
 		ids.push(head);
 	}
@@ -143,7 +149,9 @@ describe("pruneRetentions", () => {
 		assert.equal(result.ok, true);
 		assert.equal(result.pruned, 2, "revs 1 and 3 pruned; rev 2 baselined-protected");
 		const remaining = (
-			db.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number").all() as {
+			db
+				.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number")
+				.all() as {
 				revision_number: number;
 			}[]
 		).map((r) => r.revision_number);
@@ -152,24 +160,37 @@ describe("pruneRetentions", () => {
 			db.prepare("SELECT COUNT(*) AS n FROM audit_ledger WHERE action = 'retention-prune'").get() as { n: number }
 		).n;
 		assert.equal(auditCount, 2, "one audit entry per prune (F17)");
-		const txCount = (db.prepare("SELECT COUNT(*) AS n FROM tx_log WHERE operation = 'retention-prune' AND outcome = 'commit'").get() as { n: number }).n;
+		const txCount = (
+			db
+				.prepare("SELECT COUNT(*) AS n FROM tx_log WHERE operation = 'retention-prune' AND outcome = 'commit'")
+				.get() as { n: number }
+		).n;
 		assert.equal(txCount, 2);
 	});
 
 	test("head is never pruned; already-withdrawn rows are skipped silently", () => {
 		const ids = seedRevisions(4);
-		assert.equal(withdrawRevision(db, { kind: "prd", revisionId: ids[0]!, reason: "manual tombstone", actor: "test" }).ok, true);
+		assert.equal(
+			withdrawRevision(db, { kind: "prd", revisionId: ids[0]!, reason: "manual tombstone", actor: "test" }).ok,
+			true,
+		);
 		writeRetentionConfig(2);
 		// Live non-withdrawn: revs 2,3,4 (head 4). keep-2 keeps 3,4 → prunable: rev 2.
 		const result = pruneRetentions(dir, "Project");
 		assert.equal(result.ok, true);
 		assert.equal(result.pruned, 1);
 		const remaining = (
-			db.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number").all() as {
+			db
+				.prepare("SELECT revision_number FROM artifact_revisions WHERE kind = 'prd' ORDER BY revision_number")
+				.all() as {
 				revision_number: number;
 			}[]
 		).map((r) => r.revision_number);
-		assert.deepEqual(remaining, [1, 3, 4], "rev 2 pruned; rev 1's F16 tombstone row survives (only prune deletes rows)");
+		assert.deepEqual(
+			remaining,
+			[1, 3, 4],
+			"rev 2 pruned; rev 1's F16 tombstone row survives (only prune deletes rows)",
+		);
 	});
 
 	test("kind below the window → nothing prunable, nothing pruned", () => {
@@ -215,7 +236,11 @@ describe("pruneRetentions", () => {
 				}
 			}
 		}, /FOREIGN KEY/);
-		assert.equal((db.prepare("SELECT COUNT(*) AS n FROM artifact_revisions WHERE revision_id = ?").get(ids[0]!) as { n: number }).n, 1);
+		assert.equal(
+			(db.prepare("SELECT COUNT(*) AS n FROM artifact_revisions WHERE revision_id = ?").get(ids[0]!) as { n: number })
+				.n,
+			1,
+		);
 	});
 
 	test("Fix 2: the prune git-commits the store DB with the retention message", () => {
@@ -223,7 +248,10 @@ describe("pruneRetentions", () => {
 		writeRetentionConfig(1);
 		// Prepare a real local git repo around the temp project (F24: local commits).
 		try {
-			execSync("git init -q && git config user.email t@t.local && git config user.name t", { cwd: dir, stdio: "ignore" });
+			execSync("git init -q && git config user.email t@t.local && git config user.name t", {
+				cwd: dir,
+				stdio: "ignore",
+			});
 			execSync("git add -- .pi/files.json && git commit -qm init", { cwd: dir, stdio: "ignore" });
 		} catch {
 			// git unusable in this environment — the warnings-only contract
@@ -232,14 +260,16 @@ describe("pruneRetentions", () => {
 		const result = pruneRetentions(dir, "Project");
 		assert.equal(result.ok, true);
 		assert.equal(result.pruned, 3);
-		const gitAvailable = existsSync(join(dir, ".git")) && (() => {
-			try {
-				const log = execSync("git log --format=%s -1", { cwd: dir, encoding: "utf-8" });
-				return log.includes("velpari(retention): prune 3 revision(s) beyond keep-last-1 (Project)");
-			} catch {
-				return false;
-			}
-		})();
+		const gitAvailable =
+			existsSync(join(dir, ".git")) &&
+			(() => {
+				try {
+					const log = execSync("git log --format=%s -1", { cwd: dir, encoding: "utf-8" });
+					return log.includes("velpari(retention): prune 3 revision(s) beyond keep-last-1 (Project)");
+				} catch {
+					return false;
+				}
+			})();
 		if (existsSync(join(dir, ".git"))) {
 			assert.ok(gitAvailable, "explicit retention commit present in git log");
 		} else {

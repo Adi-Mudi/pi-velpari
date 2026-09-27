@@ -103,7 +103,8 @@ function computePrunePlan(
 	keepN: number,
 ): { kinds: Array<{ kind: ArtifactKind; candidates: RetentionCandidate[]; protectedCount: number; total: number }> } {
 	const protectedIds = protectedRevisionIds(db);
-	const kinds: Array<{ kind: ArtifactKind; candidates: RetentionCandidate[]; protectedCount: number; total: number }> = [];
+	const kinds: Array<{ kind: ArtifactKind; candidates: RetentionCandidate[]; protectedCount: number; total: number }> =
+		[];
 	for (const kind of KIND_ORDER) {
 		// listRevisions is newest-first by revision_number (Phase 2).
 		const revisions = listRevisions(db, kind).filter((r) => r.status !== "withdrawn");
@@ -280,7 +281,11 @@ function pruneOneRevision(
  * @param {string} [actor] - Audit actor (defaults to "velpari-retention-prune").
  * @returns {RetentionPruneResult} pruned count + problems + git warnings.
  */
-export function pruneRetentions(cwd: string, projectName: string, actor: string = "velpari-retention-prune"): RetentionPruneResult {
+export function pruneRetentions(
+	cwd: string,
+	projectName: string,
+	actor: string = "velpari-retention-prune",
+): RetentionPruneResult {
 	const problems: string[] = [];
 	const warnings: string[] = [];
 	const dbPath = buildStoreDbPath(projectName, cwd);
@@ -317,7 +322,9 @@ export function pruneRetentions(cwd: string, projectName: string, actor: string 
 						actor,
 					});
 					if (outcome === "skipped") {
-						problems.push(`skipped ${entry.kind} rev ${candidate.revisionNumber}: raced (head move or concurrent withdraw)`);
+						problems.push(
+							`skipped ${entry.kind} rev ${candidate.revisionNumber}: raced (head move or concurrent withdraw)`,
+						);
 					} else {
 						pruned += 1;
 					}
