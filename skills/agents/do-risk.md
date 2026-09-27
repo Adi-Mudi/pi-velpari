@@ -36,6 +36,7 @@ Write a JSON file to `<scoutReportPath>`:
         "name": "external-integration",
         "riskScore": 9,
         "riskFactors": ["unfamiliar API", "no local sandbox", "rate limit unknown"],
+        "laneHint": true,
         "rationale": "High technical novelty + external dep — spike first to de-risk"
       }
     },
@@ -68,6 +69,9 @@ Write a JSON file to `<scoutReportPath>`:
 - Risk score: low (1-3) → high (8-10).
 - Spike-based: do high-risk modules first as throwaway prototypes.
 - After spike, fall back to topological order for the rest.
+- If two ranked items have no dependency between them, they can be
+  concurrent — record `laneHint: true` (optional; the topology scout's
+  `dependsOn` edges decide the final lane map).
 
 ## Hard rules
 

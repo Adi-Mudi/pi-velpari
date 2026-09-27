@@ -248,6 +248,167 @@ describe("kind renderers", () => {
 		assert.ok(md.includes("| S-2 | S-1 |"));
 	});
 
+	// --- Phase 7 / N16 — lane sections (plan 7.5.2) -------------------------
+
+	/** Golden captured from the PRE-Phase-7 renderer (legacy byte-stability). */
+	const LEGACY_GOLDEN =
+		"## Development Steps\n" +
+		"\n" +
+		"| ID | Module |\n" +
+		"| --- | --- |\n" +
+		"| S-1 | Store |\n" +
+		"## Step Atomic Functions\n" +
+		"\n" +
+		"| Step | AF |\n" +
+		"| --- | --- |\n" +
+		"| S-1 | AF-1 |\n" +
+		"## Step Dependencies\n" +
+		"\n" +
+		"| Step | Depends On |\n" +
+		"| --- | --- |\n" +
+		"| S-2 | S-1 |\n";
+
+	/** The worked example: A,B independent → C → D,E → F, canonical 2 lanes. */
+	const LANED_ROWS = {
+		devStep: [
+			{ id: "A", module: "core" },
+			{ id: "B", module: "core" },
+			{ id: "C", module: "shared" },
+			{ id: "D", module: "api" },
+			{ id: "E", module: "api" },
+			{ id: "F", module: "edge" },
+		],
+		stepDep: [
+			{ stepId: "C", dependsOnId: "A" },
+			{ stepId: "C", dependsOnId: "B" },
+			{ stepId: "D", dependsOnId: "C" },
+			{ stepId: "E", dependsOnId: "C" },
+			{ stepId: "F", dependsOnId: "D" },
+			{ stepId: "F", dependsOnId: "E" },
+		],
+		devLane: [
+			{
+				laneId: "lane-1",
+				stepId: "A",
+				position: 0,
+				worktree: "testapp/lane-1-core",
+				branch: "testapp/lane-1-core",
+				status: "active",
+			},
+			{
+				laneId: "lane-1",
+				stepId: "C",
+				position: 1,
+				worktree: "testapp/lane-1-core",
+				branch: "testapp/lane-1-core",
+				status: "active",
+			},
+			{
+				laneId: "lane-1",
+				stepId: "D",
+				position: 2,
+				worktree: "testapp/lane-1-core",
+				branch: "testapp/lane-1-core",
+				status: "active",
+			},
+			{
+				laneId: "lane-1",
+				stepId: "F",
+				position: 3,
+				worktree: "testapp/lane-1-core",
+				branch: "testapp/lane-1-core",
+				status: "active",
+			},
+			{
+				laneId: "lane-2",
+				stepId: "B",
+				position: 0,
+				worktree: "testapp/lane-2-edge",
+				branch: "testapp/lane-2-edge",
+				status: "active",
+			},
+			{
+				laneId: "lane-2",
+				stepId: "E",
+				position: 1,
+				worktree: "testapp/lane-2-edge",
+				branch: "testapp/lane-2-edge",
+				status: "active",
+			},
+		],
+	};
+
+	test("development-order legacy: no devLane renders byte-identical to the pre-Phase-7 golden", () => {
+		const rows = {
+			devStep: [{ id: "S-1", module: "Store" }],
+			stepAf: [{ stepId: "S-1", afId: "AF-1" }],
+			stepDep: [{ stepId: "S-2", dependsOnId: "S-1" }],
+		};
+		assert.equal(renderDevelopmentOrderMarkdown(rows), LEGACY_GOLDEN, "legacy shape must not gain sections");
+		// An EMPTY devLane array is legacy too (absent/empty ⇒ omit entirely).
+		assert.equal(renderDevelopmentOrderMarkdown({ ...rows, devLane: [] }), LEGACY_GOLDEN);
+	});
+
+	test("development-order lanes: Execution Lanes, Integration Plan, Lock Rules, Lane Shape", () => {
+		const md = renderDevelopmentOrderMarkdown(LANED_ROWS);
+		// 1. Execution Lanes — table + per-lane worktree/branch (name-match)
+		//    + the git worktree line.
+		assert.ok(md.includes("## Execution Lanes"), "missing Execution Lanes section");
+		assert.ok(
+			md.includes("| lane-1 | active | A, C, D, F | testapp/lane-1-core | testapp/lane-1-core |"),
+			"missing lane-1 row with in-order steps and name-match pair",
+		);
+		assert.ok(
+			md.includes("| lane-2 | active | B, E | testapp/lane-2-edge | testapp/lane-2-edge |"),
+			"missing lane-2 row",
+		);
+		assert.ok(
+			md.includes("- `git worktree add ../testapp/lane-1-core -b testapp/lane-1-core`"),
+			"missing git worktree line",
+		);
+		// 2. Integration Plan — merge order from the DAG (lane-2 feeds C at
+		//    level 1 ⇒ order 1; lane-1 next) + gates + the parked note.
+		assert.ok(md.includes("## Integration Plan"), "missing Integration Plan section");
+		assert.ok(md.includes("| 1 | lane-2 | 1 | tests green + doctor audit |"), "missing merge order row 1");
+		assert.ok(md.includes("| 2 | lane-1 | 2 | tests green + doctor audit |"), "missing merge order row 2");
+		assert.ok(md.includes("⇒ `parked` (locked for edit)"), "missing the parked/re-gate note");
+		// 3. Lock Rules — the dev-lanes.ts constants, verbatim.
+		assert.ok(md.includes("## Lock Rules"), "missing Lock Rules section");
+		assert.ok(md.includes("A lane is locked for edit once its merge starts"), "missing the edit-lock rule text");
+		// 4. Lane Shape — the level narrative for the worked example.
+		assert.ok(md.includes("## Lane Shape"), "missing Lane Shape section");
+		assert.ok(
+			md.includes(
+				"Shape: parallel (2 lanes) → series (1 step) → parallel (2 lanes) → series (1 step) — derived from the step dependency graph, not a template.",
+			),
+			"wrong shape narrative",
+		);
+		assert.ok(
+			md.includes(
+				"Steps at the same level run in parallel across lanes; dependent steps stay sequential inside one lane.",
+			),
+			"missing the worked-example sentence",
+		);
+		// The base three tables still come first.
+		assert.ok(md.indexOf("## Development Steps") < md.indexOf("## Execution Lanes"));
+	});
+
+	test("development-order lanes: per-lane status renders (parked)", () => {
+		const rows = {
+			...LANED_ROWS,
+			devLane: LANED_ROWS.devLane.map((r) => (r.laneId === "lane-2" ? { ...r, status: "parked" } : r)),
+		};
+		const md = renderDevelopmentOrderMarkdown(rows);
+		assert.ok(md.includes("| lane-2 | parked |"), "parked status must reach the lane table");
+		assert.ok(md.includes("| lane-1 | active |"), "other lanes keep their status");
+	});
+
+	test("G5: lane sections render byte-identically twice", () => {
+		const first = renderDevelopmentOrderMarkdown(LANED_ROWS);
+		const second = renderDevelopmentOrderMarkdown(LANED_ROWS);
+		assert.equal(first, second, "lane rendering must be deterministic");
+	});
+
 	test("final-design renders consolidated sections", () => {
 		const md = renderFinalDesignMarkdown({
 			finalSection: [{ no: 1, title: "Overview", sourceArtifact: "design", sourceIds: '["M-1"]' }],

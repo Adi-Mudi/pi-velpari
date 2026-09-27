@@ -35,6 +35,7 @@ Write a JSON file to `<scoutReportPath>`:
         "name": "auth-service",
         "coveredFRs": ["FR-1"],
         "uncoveredCriticalFRs": ["FR-2", "FR-5"],
+        "laneHint": true,
         "rationale": "Critical auth path has 2 uncovered FRs — prioritize to close coverage"
       }
     }
@@ -49,6 +50,9 @@ Write a JSON file to `<scoutReportPath>`:
 - Count uncovered FR-Ns per module (FRs without any TC).
 - Prioritize modules where uncovered FRs are critical (security, data integrity).
 - Modules with full coverage can come later.
+- If two ranked items have no dependency between them, they can be
+  concurrent — record `laneHint: true` (optional; the topology scout's
+  `dependsOn` edges decide the final lane map).
 
 ## Hard rules
 

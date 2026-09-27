@@ -25,6 +25,8 @@
 // v004 = revision model + audit core (Foundation, 2026-09-27):
 // artifact_revisions snapshots, baselines, hash-chained audit_ledger +
 // tx_log, artifacts.head_revision_id/frozen/freeze_reason.
+// v005 = dev lanes (Phase 7, 2026-09-27): dev_lane + dev_lane_xdep —
+// the Stage 9 execution-lane map and its recorded integration points.
 // ============================================================================
 
 import { createRequire } from "node:module";
@@ -35,6 +37,7 @@ import {
 	SCHEMA_V002_ADDITIONS,
 	SCHEMA_V003_STORE_META,
 	SCHEMA_V004_REVISION_MODEL,
+	SCHEMA_V005_DEV_LANES,
 } from "./db-schema.js";
 import { PORTFOLIO_USER_VERSION } from "./portfolio-schema.js";
 import { applyPortfolioSchema } from "./portfolio.js";
@@ -113,6 +116,13 @@ export const MIGRATIONS: readonly Migration[] = [
 		name: "revision model — artifact_revisions, baselines, audit_ledger, tx_log (Foundation)",
 		up: (db: DatabaseSync) => {
 			db.exec(SCHEMA_V004_REVISION_MODEL);
+		},
+	},
+	{
+		version: 5,
+		name: "dev lanes — execution lanes (dev_lane, dev_lane_xdep)",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V005_DEV_LANES);
 		},
 	},
 ];

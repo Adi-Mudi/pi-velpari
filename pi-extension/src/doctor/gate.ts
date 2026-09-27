@@ -41,7 +41,8 @@ import { gateADR } from "./checks/adr.js";
 import { gateDesignReadiness } from "./checks/design-readiness.js";
 import { loadReviewerVerdictForStage, verifierSpecForArtifact } from "./checks/reviewer-verdict.js";
 import { deriveAtomicProfile } from "../core/atomic-tier.js";
-import { loadFilesConfig } from "../core/config.js";
+import { loadFilesConfig, devLaneConfig } from "../core/config.js";
+import { verifyLaneProposal, type DevLanesGateData } from "../core/dev-lanes.js";
 import type { RtmData } from "../core/rtm-data.js";
 
 interface PublishGateInput {
@@ -51,6 +52,8 @@ interface PublishGateInput {
 	workingContent: string;
 	/** Parsed + validated working RTM JSON, when the sidecar exists. */
 	rtmData?: RtmData | null;
+	/** Phase 7 / N16: finalized Stage 9 lane rows (approve-time finalization). */
+	devLanes?: DevLanesGateData | null;
 	cwd: string;
 	projectName: string;
 }
@@ -135,6 +138,30 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 					);
 				}
 			}
+		}
+	}
+
+	// Phase 7 / N16: development-order lanes are finalized at approve time
+	// (ops/approve.ts:finalizeDevLanes) and re-asserted here — a cheap pure
+	// verifyLaneProposal over the payload rows, no store. Mirrors the RTM
+	// rtmData precedent above; legacy payloads without steps pass null and
+	// skip. Every problem is a hard error (cycle, coverage, cap, name-match,
+	// bad-boundary all block the publish).
+	if (input.artifact === "development-order" && input.devLanes) {
+		let maxLanes: number;
+		try {
+			maxLanes = devLaneConfig(input.cwd).maxLanes;
+		} catch (err) {
+			errors.push(err instanceof Error ? err.message : String(err));
+			maxLanes = 4;
+		}
+		const problems = verifyLaneProposal(input.devLanes.proposal, input.devLanes.steps, input.devLanes.deps, {
+			maxLanes,
+			projectSlug: input.projectName,
+			xdeps: input.devLanes.xdeps,
+		});
+		for (const p of problems) {
+			errors.push(`${p.code}: ${p.message}`);
 		}
 	}
 

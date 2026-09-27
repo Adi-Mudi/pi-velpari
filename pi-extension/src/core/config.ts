@@ -44,6 +44,9 @@ export interface FilesConfig {
 			revisions?: number | "all";
 			backups?: number;
 		};
+		/** Phase 7 / N16: lane cap for development-order execution lanes.
+		 *  Absent = 4 (core/dev-lanes.ts DEFAULT_MAX_LANES). */
+		maxLanes?: number;
 	};
 }
 
@@ -129,6 +132,32 @@ export function retentionConfig(cwd: string = process.cwd()): RetentionConfig {
 		);
 	}
 	return { revisions, backups };
+}
+
+/** Resolved lane-cap setting for Stage 9 execution lanes (Phase 7 / N16). */
+export interface DevLaneConfig {
+	/** Maximum number of parallel worktree lanes. Default 4. */
+	maxLanes: number;
+}
+
+/**
+ * Phase 7 / N16 (N16 step 3.4): read `velpari.maxLanes` with the default
+ * applied. Same throw-on-invalid idiom as `retentionConfig` — a typo'd cap
+ * must surface, not silently default (0, negative, or non-integer values are
+ * rejected; absent key = default 4).
+ * @param {string} cwd - Project root holding files.json.
+ * @returns {DevLaneConfig} The resolved `{ maxLanes }`.
+ * @throws {Error} When `velpari.maxLanes` is present but not a positive integer.
+ */
+export function devLaneConfig(cwd: string = process.cwd()): DevLaneConfig {
+	const raw = loadFilesConfig(cwd).velpari?.maxLanes;
+	if (raw === undefined) return { maxLanes: 4 };
+	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+		throw new Error(
+			`files.json velpari.maxLanes is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
+		);
+	}
+	return { maxLanes: raw };
 }
 
 /** Pre-v4 shape, kept for migration. */

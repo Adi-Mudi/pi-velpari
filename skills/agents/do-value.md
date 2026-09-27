@@ -36,6 +36,7 @@ Write a JSON file to `<scoutReportPath>`:
         "valueScore": 10,
         "mustFRs": ["FR-1", "FR-2"],
         "usersAffected": "all users",
+        "laneHint": true,
         "rationale": "Signup is a must-have, blocks all other user flows"
       }
     }
@@ -50,6 +51,9 @@ Write a JSON file to `<scoutReportPath>`:
 - Value = (priority weight) × (number of users affected).
 - Must-priority FRs are heavy weights; could-priority is light.
 - Modules that block other modules (e.g. auth) are first.
+- If two ranked items have no dependency between them, they can be
+  concurrent — record `laneHint: true` (optional; the topology scout's
+  `dependsOn` edges decide the final lane map).
 
 ## Hard rules
 

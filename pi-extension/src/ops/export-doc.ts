@@ -28,6 +28,15 @@ import type { DatabaseSync } from "node:sqlite";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { readArtifact, exportArtifactYaml, type ArtifactEnvelope, type ArtifactKind } from "../io/store.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
+import {
+	LANE_LOCK_RULES,
+	LANE_MERGE_GATES,
+	laneViewFromRows,
+	type LaneDepInput,
+	type LaneProposal,
+	type LaneStatus,
+	type LaneStepInput,
+} from "../core/dev-lanes.js";
 
 /** The three export formats (user decision 1). */
 export type ExportFormat = "md" | "yaml" | "html";
@@ -437,7 +446,7 @@ export function renderDevelopmentOrderMarkdown(rows: Record<string, unknown>): s
 	const steps = sorted((rows.devStep as RowLikeAlias[] | undefined) ?? [], (r) => String(r.id));
 	const afs = sorted((rows.stepAf as RowLikeAlias[] | undefined) ?? [], (r) => `${r.stepId} ${r.afId}`);
 	const deps = sorted((rows.stepDep as RowLikeAlias[] | undefined) ?? [], (r) => `${r.stepId} ${r.dependsOnId}`);
-	return (
+	const base =
 		table(
 			"Development Steps",
 			["ID", "Module"],
@@ -452,8 +461,86 @@ export function renderDevelopmentOrderMarkdown(rows: Record<string, unknown>): s
 			"Step Dependencies",
 			["Step", "Depends On"],
 			deps.map((r) => [r.stepId, r.dependsOnId]),
-		)
+		);
+	// Phase 7 / N16 — lane sections appear ONLY when the rows carry devLane
+	// data; a pre-Phase-7 artifact renders byte-identical to the 3 tables.
+	const laneRows = rows.devLane;
+	if (!Array.isArray(laneRows) || laneRows.length === 0) return base;
+	return base + renderLaneSections(rows);
+}
+
+/**
+ * Phase 7 / N16 — the four deterministic lane sections appended to the
+ * development-order view: Execution Lanes (table + per-lane worktree line),
+ * Integration Plan (merge order from the DAG + fixed parked/re-gate note),
+ * Lock Rules (the `dev-lanes.ts` constants, verbatim) and Lane Shape (the
+ * level narrative derived from the graph). Returns "" when the rows cannot
+ * form a graph — degenerate input never renders invented data (the doctor's
+ * lane-integrity check reports the violation instead).
+ * @param rows - development-order payload rows (devStep/stepDep/devLane).
+ * @returns Markdown sections, or "" when no lane view is derivable.
+ */
+function renderLaneSections(rows: Record<string, unknown>): string {
+	const stepInputs: LaneStepInput[] = ((rows.devStep as RowLikeAlias[] | undefined) ?? []).map((r) => ({
+		stepId: String(r.id),
+		...(typeof r.module === "string" && r.module.length > 0 ? { module: r.module } : {}),
+	}));
+	const depInputs: LaneDepInput[] = ((rows.stepDep as RowLikeAlias[] | undefined) ?? []).map((r) => ({
+		stepId: String(r.stepId),
+		dependsOnStepId: String(r.dependsOnId),
+	}));
+	const laneRows: LaneProposal[] = ((rows.devLane as RowLikeAlias[] | undefined) ?? []).map((r) => ({
+		laneId: String(r.laneId),
+		stepId: String(r.stepId),
+		position: Number(r.position),
+		worktree: String(r.worktree),
+		branch: String(r.branch),
+		status: (r.status as LaneStatus | undefined) ?? "active",
+	}));
+	const view = laneViewFromRows(laneRows, stepInputs, depInputs);
+	if (!view) return "";
+
+	const laneTable = table(
+		"Execution Lanes",
+		["Lane", "Status", "Steps (in order)", "Worktree", "Branch"],
+		view.lanes.map((lane) => [lane.laneId, lane.status, lane.steps.join(", "), lane.worktree, lane.branch]),
 	);
+	const worktreeLines = view.lanes
+		.map((lane) => "- `git worktree add ../" + lane.worktree + " -b " + lane.branch + "`")
+		.join("\n");
+
+	const planTable = table(
+		"Integration Plan",
+		["Order", "Lane", "Merge level", "Gates"],
+		view.integration.map((entry) => [entry.order, entry.laneId, entry.mergeLevel, LANE_MERGE_GATES.join(" + ")]),
+	);
+	const planNote =
+		"Lane ready before its series boundary ⇒ `parked` (locked for edit); re-verify (rebuild + tests + doctor) " +
+		"against the integration branch before merge. Gate per merge: tests green + doctor audit. " +
+		"Lane locked for edit from merge start until the merge commit lands.";
+
+	const lockRules = "## Lock Rules\n\n" + LANE_LOCK_RULES.map((rule) => `- ${rule}`).join("\n") + "\n";
+
+	const segments: string[] = [];
+	view.levelSizes.forEach((size, level) => {
+		if (size <= 1) {
+			segments.push("series (1 step)");
+			return;
+		}
+		const lanesAtLevel = new Set(
+			view.lanes.filter((lane) => lane.steps.some((id) => view.level[id] === level)).map((lane) => lane.laneId),
+		);
+		const count = lanesAtLevel.size;
+		segments.push(`parallel (${count} ${count === 1 ? "lane" : "lanes"})`);
+	});
+	const shapeLine = `Shape: ${segments.join(" → ")} — derived from the step dependency graph, not a template.`;
+	const shapeSection =
+		"## Lane Shape\n\n" +
+		shapeLine +
+		"\n\n" +
+		"Steps at the same level run in parallel across lanes; dependent steps stay sequential inside one lane.\n";
+
+	return laneTable + "\n" + worktreeLines + "\n" + planTable + "\n" + planNote + "\n" + lockRules + shapeSection;
 }
 
 /** final-design — consolidated sections with their sources. */

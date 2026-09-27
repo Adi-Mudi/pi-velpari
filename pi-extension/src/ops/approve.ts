@@ -31,7 +31,17 @@ import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
-import { loadFilesConfig, markdownWritesEnabled, validateFilesConfig } from "../core/config.js";
+import { loadFilesConfig, devLaneConfig, markdownWritesEnabled, validateFilesConfig } from "../core/config.js";
+import {
+	computeLanes,
+	type DevLanesGateData,
+	type LaneDepInput,
+	type LaneProblem,
+	type LaneProposal,
+	type LaneStepInput,
+	type LaneXdep,
+	verifyLaneProposal,
+} from "../core/dev-lanes.js";
 import { isSunsetPast } from "../core/shape.js";
 import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
@@ -52,7 +62,14 @@ import { buildFeasibilityRowsFromSession, kindForWorkingDir, loadStagePayload } 
 import { precheckGitForPublish, publishedPrdPath, runDbPublish } from "./db-publish.js";
 import { verifyRunWorktree, verifyUpstreamMoves } from "../stages/worktree-lock.js";
 import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
-import type { ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
+import type {
+	ArtifactEnvelopeInput,
+	ArtifactPayload,
+	DevLaneRow,
+	DevLaneXdepRow,
+	DevStepRow,
+	StepDepRow,
+} from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import {
@@ -288,6 +305,128 @@ export interface ApproveOpts {
 const AUTO_DOCTOR_SKIP_ENV = "VELPARI_SKIP_AUTO_DOCTOR";
 const DB_PUBLISH_SKIP_ENV = "VELPARI_SKIP_DB_PUBLISH";
 
+/** One lane problem as it reaches the payload hard-block / notify text. */
+function formatLaneProblem(problem: LaneProblem): string {
+	const detail = problem.detail?.length ? ` [${problem.detail.join(", ")}]` : "";
+	return `${problem.code}: ${problem.message}${detail}`;
+}
+
+/**
+ * Phase 7 / N16 — publish-time lane finalization (Stage 9).
+ *
+ * "Scouts propose, code verifies and finalizes." When the development-order
+ * payload carries `dev_step` rows this helper either adopts the scout's
+ * `devLane` proposal verbatim (after `verifyLaneProposal` proves it against
+ * the graph: coverage, topology, cap, name-match, recorded boundaries) or
+ * computes the canonical map with `computeLanes` and injects `devLane` +
+ * `devLaneXdep` into the payload. Recorded cross-lane edges are reconciled
+ * against the graph (missing edges injected; a wrong `boundaryLevel` is a
+ * `bad-boundary` problem). Any problem hard-blocks the publish via the
+ * existing payload-result check — nothing writes. Payloads without steps
+ * (legacy) skip entirely: no lane logic, no rows.
+ *
+ * @param payload - The validated payload rows (mutated when lanes are injected).
+ * @param cwd - Project root (reads `velpari.maxLanes` from files.json).
+ * @param projectName - Project name (lane worktree/branch prefix slug).
+ * @returns Lane problems (empty = finalized) + the publish gate's lane view.
+ */
+function finalizeDevLanes(
+	payload: Record<string, unknown>,
+	cwd: string,
+	projectName: string,
+): { problems: string[]; gate: DevLanesGateData | null } {
+	// Legacy tolerance: no devStep rows ⇒ nothing to lane.
+	if (!Array.isArray(payload.devStep) || payload.devStep.length === 0) {
+		return { problems: [], gate: null };
+	}
+	let maxLanes: number;
+	try {
+		maxLanes = devLaneConfig(cwd).maxLanes;
+	} catch (err) {
+		return { problems: [err instanceof Error ? err.message : String(err)], gate: null };
+	}
+	const steps: LaneStepInput[] = (payload.devStep as DevStepRow[]).map((step) => ({
+		stepId: step.id,
+		...(typeof step.module === "string" && step.module.length > 0 ? { module: step.module } : {}),
+	}));
+	const deps: LaneDepInput[] = (Array.isArray(payload.stepDep) ? (payload.stepDep as StepDepRow[]) : []).map((dep) => ({
+		stepId: dep.stepId,
+		dependsOnStepId: dep.dependsOnId,
+	}));
+	const proposal: LaneProposal[] = Array.isArray(payload.devLane) ? (payload.devLane as DevLaneRow[]) : [];
+	const originalXdepCount = Array.isArray(payload.devLaneXdep) ? payload.devLaneXdep.length : 0;
+	let xdeps: LaneXdep[] = (Array.isArray(payload.devLaneXdep) ? (payload.devLaneXdep as DevLaneXdepRow[]) : []).map(
+		(x) => ({ stepId: x.stepId, dependsOnStepId: x.dependsOnId, boundaryLevel: x.boundaryLevel }),
+	);
+
+	if (proposal.length > 0) {
+		// Scout proposal — verify it against the graph first (a bad graph can
+		// never be laundered by a proposal: analyze() runs inside).
+		const problems = verifyLaneProposal(proposal, steps, deps, { maxLanes, projectSlug: projectName, xdeps });
+		if (problems.length > 0) {
+			return { problems: problems.map(formatLaneProblem), gate: { steps, deps, proposal, xdeps } };
+		}
+		// Adopt verbatim; reconcile the recorded integration points.
+		const canonical = computeLanes(steps, deps, { maxLanes, projectSlug: projectName });
+		if (!canonical.ok) {
+			return { problems: canonical.problems.map(formatLaneProblem), gate: { steps, deps, proposal, xdeps } };
+		}
+		const laneOf = new Map(proposal.map((row) => [row.stepId, row.laneId]));
+		const recorded = new Set(xdeps.map((x) => `${x.stepId}<-${x.dependsOnStepId}`));
+		for (const dep of deps) {
+			const here = laneOf.get(dep.stepId);
+			const there = laneOf.get(dep.dependsOnStepId);
+			if (here === undefined || there === undefined || here === there) continue;
+			const key = `${dep.stepId}<-${dep.dependsOnStepId}`;
+			if (recorded.has(key)) continue;
+			xdeps = [
+				...xdeps,
+				{
+					stepId: dep.stepId,
+					dependsOnStepId: dep.dependsOnStepId,
+					boundaryLevel: canonical.plan.level[dep.stepId] ?? 0,
+				},
+			];
+			recorded.add(key);
+		}
+		if (xdeps.length !== originalXdepCount) {
+			payload.devLaneXdep = xdeps.map((x) => ({
+				stepId: x.stepId,
+				dependsOnId: x.dependsOnStepId,
+				boundaryLevel: x.boundaryLevel,
+			}));
+		}
+		return { problems: [], gate: { steps, deps, proposal, xdeps } };
+	}
+
+	// No proposal — compute the canonical map and inject it (status "active").
+	const canonical = computeLanes(steps, deps, { maxLanes, projectSlug: projectName });
+	if (!canonical.ok) {
+		return {
+			problems: canonical.problems.map(formatLaneProblem),
+			gate: { steps, deps, proposal: [], xdeps: [] },
+		};
+	}
+	const rows: LaneProposal[] = canonical.plan.lanes.flatMap((lane) =>
+		lane.steps.map((stepId, position) => ({
+			laneId: lane.laneId,
+			stepId,
+			position,
+			worktree: lane.worktree,
+			branch: lane.branch,
+			status: lane.status,
+		})),
+	);
+	xdeps = canonical.plan.xdeps;
+	payload.devLane = rows;
+	payload.devLaneXdep = xdeps.map((x) => ({
+		stepId: x.stepId,
+		dependsOnId: x.dependsOnStepId,
+		boundaryLevel: x.boundaryLevel,
+	}));
+	return { problems: [], gate: { steps, deps, proposal: rows, xdeps } };
+}
+
 export async function handleApprove(
 	ctx: ExtensionCommandContext,
 	pi?: ExtensionAPI,
@@ -488,9 +627,23 @@ export async function handleApprove(
 	// First publish (no file yet) → requirement and mirror check both skipped;
 	// a revision → the payload must name the current published file's hash.
 	const publishedPrdBeforePublish = publishedPrdPath(projectName, cwd);
-	const payloadResult = loadStagePayload(workingDirPath, storeKind!, {
+	let payloadResult = loadStagePayload(workingDirPath, storeKind!, {
 		requirePrdFileHash: publishedPrdBeforePublish !== null,
 	});
+	// Phase 7 / N16 — publish-time lane finalization (Stage 9). Runs before
+	// the payload hard-block below so lane problems flow through the existing
+	// "Stage payload invalid" path, and before the DB-rendered render block
+	// so the published view, the YAML export and the doctor all see the
+	// finalized `devLane`/`devLaneXdep` rows. The finalized view is handed
+	// to the publish gate for a cheap re-assert (defense in depth).
+	let devLanesForGate: DevLanesGateData | null = null;
+	if (storeKind === "development-order" && payloadResult.ok && payloadResult.payload) {
+		const finalized = finalizeDevLanes(payloadResult.payload as Record<string, unknown>, cwd, projectName);
+		devLanesForGate = finalized.gate;
+		if (finalized.problems.length > 0) {
+			payloadResult = { ok: false, problems: finalized.problems };
+		}
+	}
 	if (!skipDbPublish && payloadResult && !payloadResult.ok) {
 		ctx.ui.notify(
 			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
@@ -684,6 +837,10 @@ export async function handleApprove(
 			// the payload rows above (Phase 6 §14.3). For non-RTM kinds
 			// this is null and the gate skips RTM-specific checks.
 			rtmData: target.fileArtifact === "RTM" ? rtmDataForGate : null,
+			// Phase 7 / N16: finalized lane rows so the gate re-asserts the
+			// scout proposal (pure verifyLaneProposal — no store). Null for
+			// every other artifact and for legacy payloads without steps.
+			devLanes: target.fileArtifact === "development-order" ? devLanesForGate : null,
 			cwd,
 			projectName,
 		});

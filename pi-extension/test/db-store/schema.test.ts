@@ -26,6 +26,8 @@ const EXPECTED_TABLES = [
 	"audit_ledger",
 	"baselines",
 	"design_module",
+	"dev_lane",
+	"dev_lane_xdep",
 	"dev_step",
 	"diagram",
 	"feasibility_decision",
@@ -65,7 +67,7 @@ describe("db-schema — v001 core schema", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	test("v001 applied: user_version >= 1 (v4 after the v002 prose + v003 store_meta + v004 revision migrations), all tables + G6 indexes present", () => {
+	test("v001 applied: user_version >= 1 (v5 after the v002 prose + v003 store_meta + v004 revision + v005 dev-lanes migrations), all tables + G6 indexes present", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
@@ -419,13 +421,13 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		["dev_step", "description"],
 	];
 
-	test("v002 applies on a fresh open: user_version = 4 (v002 + v003 store_meta + v004 revision model), all 14 prose columns present + nullable", () => {
+	test("v002 applies on a fresh open: user_version = 5 (v002 + v003 store_meta + v004 revision model + v005 dev lanes), all 14 prose columns present + nullable", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 4, "v002 + v003 + v004 migrations applied → user_version = 4");
+			assert.equal(v.user_version, 5, "v002 + v003 + v004 + v005 migrations applied → user_version = 5");
 			for (const [table, col] of V002_COLUMNS) {
 				const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
 					name: string;
@@ -454,23 +456,23 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			const v = db2.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 4);
+			assert.equal(v.user_version, 5);
 		} finally {
 			closeStoreDb(db2);
 		}
 	});
 
-	test("G3 downgrade guard: user_version > 4 refuses to open", async () => {
+	test("G3 downgrade guard: user_version > 5 refuses to open", async () => {
 		const path = join(dir, "index.db");
 		const seed = openStoreDb(path);
 		closeStoreDb(seed);
-		// Bump to v5 — a future, unknown migration. This extension only knows up to v4.
+		// Bump to v6 — a future, unknown migration. This extension only knows up to v5.
 		// Uses dynamic import (ESM-friendly) to reach node:sqlite without polluting
 		// the registered lazy loader. The test proves the downgrade guard reads
 		// PRAGMA user_version directly and refuses an opening from an older extension.
 		const sqlite = (await import("node:sqlite")) as typeof import("node:sqlite");
 		const bump = new sqlite.DatabaseSync(path);
-		bump.exec("PRAGMA user_version = 5");
+		bump.exec("PRAGMA user_version = 6");
 		bump.close();
 		assert.throws(() => openStoreDb(path), /schema version|Upgrade your extension/);
 	});
@@ -670,6 +672,155 @@ describe("db-schema — v004 revision model (Foundation)", () => {
 				/CHECK/i,
 				"outcome outside commit/rollback rejected",
 			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+});
+
+/**
+ * Phase 7 (N16, 2026-09-27): v005 execution lanes. `dev_lane` = the lane map
+ * (lane_id, step_id, position, worktree/branch name-match pair, status);
+ * `dev_lane_xdep` = the recorded cross-lane integration points.
+ */
+describe("db-schema — v005 dev lanes (Phase 7 / N16)", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "velpari-schema-v005-"));
+	});
+
+	after(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	/** Seed a run with an envelope, two steps, and their dependency edge. */
+	function seedRun(db: DatabaseSync): void {
+		insertEnvelope(db, "r1", "development-order");
+		db.prepare(
+			"INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'DO-1', 'M-1 (core)')",
+		).run();
+		db.prepare(
+			"INSERT INTO dev_step (run_id, kind, id, module) VALUES ('r1', 'development-order', 'DO-2', 'M-2 (api)')",
+		).run();
+		db.prepare(
+			"INSERT INTO step_dep (run_id, kind, step_id, depends_on_id) VALUES ('r1', 'development-order', 'DO-2', 'DO-1')",
+		).run();
+	}
+
+	const LANE_ROW =
+		"INSERT INTO dev_lane (run_id, kind, lane_id, step_id, position, worktree, branch) VALUES ('r1', 'development-order', ?, ?, ?, ?, ?)";
+	const XDEP_ROW =
+		"INSERT INTO dev_lane_xdep (run_id, kind, step_id, depends_on_id, boundary_level) VALUES ('r1', 'development-order', ?, ?, ?)";
+
+	test("fresh open creates both tables, STRICT, no new index (PK prefix covers lane queries)", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			const tables = (
+				db
+					.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+					.all() as Array<{ name: string }>
+			).map((r) => r.name);
+			assert.ok(tables.includes("dev_lane"));
+			assert.ok(tables.includes("dev_lane_xdep"));
+
+			for (const table of ["dev_lane", "dev_lane_xdep"]) {
+				const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(table) as { sql: string };
+				assert.match(sql.sql, /STRICT/i, `${table} is STRICT`);
+			}
+
+			const idx = (
+				db
+					.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name")
+					.all() as Array<{ name: string }>
+			).map((r) => r.name);
+			assert.deepEqual(idx, ["idx_links_from", "idx_links_to", "idx_revisions_kind"], "no new G6 index for lanes");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("dev_lane: composite PK, status CHECK (4 states) accepts 'parked' and rejects 'parked-early'", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			seedRun(db);
+			db.prepare(LANE_ROW).run("lane-1", "DO-1", 0, "p/lane-1-m-1-core", "p/lane-1-m-1-core");
+			for (const status of ["active", "complete", "parked", "merged"]) {
+				db.prepare(
+					"INSERT INTO dev_lane (run_id, kind, lane_id, step_id, position, worktree, branch, status) VALUES ('r1', 'development-order', ?, ?, 1, 'p/lane-1-m-1-core', 'p/lane-1-m-1-core', ?)",
+				).run(`lane-1-${status}`, `DO-2`, status);
+			}
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO dev_lane (run_id, kind, lane_id, step_id, position, worktree, branch, status) VALUES ('r1', 'development-order', 'lane-9', 'DO-2', 9, 'p/lane-9-x', 'p/lane-9-x', 'parked-early')",
+						)
+						.run(),
+				/CHECK/i,
+				"status outside the LaneStatus union rejected",
+			);
+			assert.throws(
+				() => db.prepare(LANE_ROW).run("lane-1", "DO-1", 1, "p/lane-1-b", "p/lane-1-b"),
+				/PRIMARY|UNIQUE/i,
+				"duplicate (lane_id, step_id) rejected",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("dev_lane: FK to dev_step (unknown step rejected; cascade follows step delete)", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			seedRun(db);
+			assert.throws(
+				() => db.prepare(LANE_ROW).run("lane-7", "DO-99", 0, "p/lane-7-x", "p/lane-7-x"),
+				/FOREIGN KEY/i,
+				"lane row for an unknown step rejected",
+			);
+			db.prepare(LANE_ROW).run("lane-1", "DO-1", 0, "p/lane-1-m-1-core", "p/lane-1-m-1-core");
+			db.prepare("DELETE FROM artifacts WHERE run_id = 'r1' AND kind = 'development-order'").run();
+			const n = db.prepare("SELECT COUNT(*) AS n FROM dev_lane").get() as { n: number };
+			assert.equal(n.n, 0, "envelope delete cascades to dev_lane");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("dev_lane_xdep: composite FK to step_dep (unrecorded edge rejected) + boundary_level NOT NULL", () => {
+		const db = openStoreDb(join(dir, "index.db"));
+		try {
+			seedRun(db);
+			db.prepare(XDEP_ROW).run("DO-2", "DO-1", 1);
+			// The reverse edge (DO-1 before DO-2) was never recorded in step_dep.
+			assert.throws(
+				() => db.prepare(XDEP_ROW).run("DO-1", "DO-2", 0),
+				/FOREIGN KEY/i,
+				"cross-lane edge must be a real recorded dependency",
+			);
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO dev_lane_xdep (run_id, kind, step_id, depends_on_id, boundary_level) VALUES ('r1', 'development-order', 'DO-2', 'DO-1', NULL)",
+						)
+						.run(),
+				/NOT NULL/i,
+				"boundary_level is NOT NULL",
+			);
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO dev_lane_xdep (run_id, kind, step_id, depends_on_id, boundary_level) VALUES ('r1', 'development-order', 'DO-2', 'DO-1', 'first')",
+						)
+						.run(),
+				/STRICT|datatype|cannot store/i,
+				"STRICT rejects a TEXT boundary_level",
+			);
+			// duplicate integration point rejected
+			assert.throws(() => db.prepare(XDEP_ROW).run("DO-2", "DO-1", 2), /PRIMARY|UNIQUE/i);
 		} finally {
 			closeStoreDb(db);
 		}

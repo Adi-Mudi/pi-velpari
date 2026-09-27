@@ -435,3 +435,54 @@ CREATE TABLE IF NOT EXISTS tx_log (
 	entry_hash TEXT NOT NULL UNIQUE
 ) STRICT;
 `;
+
+/**
+ * v005 — execution lanes (Phase 7 / N16, 2026-09-27).
+ *
+ * One row per (lane, step): the lane map Stage 9 publishes. `worktree`/`branch`
+ * are the name-match pair (identical strings — see core/dev-lanes.ts
+ * buildLaneName); `position` is the topological order inside the lane.
+ * The instruction's logical PK `(laneId, stepId)` is scoped by `run_id` to
+ * match the store's universal `run_id + kind` convention (every row-set table
+ * does this). `dev_step.lane_id` denormalization is deliberately NOT added
+ * (decision D2 — skip); `lane_id` lives only here.
+ *
+ * `dev_lane_xdep` records every cross-lane dependency edge plus the computed
+ * boundary level — the doctor's lane-integrity check reads it. The composite
+ * FK to `step_dep` proves the edge was a real recorded dependency (lanes are
+ * computed from those same rows, so the edge always exists).
+ *
+ * Status lifecycle (Senai-side transitions; publish stamps `active` only):
+ * active → parked → complete/merged. The CHECK mirrors
+ * core/dev-lanes.ts:LaneStatus — keep the two in sync.
+ *
+ * No new index: the PK prefix `(run_id, lane_id, …)` covers lane queries.
+ */
+export const SCHEMA_V005_DEV_LANES = `
+CREATE TABLE IF NOT EXISTS dev_lane (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	lane_id TEXT NOT NULL,
+	step_id TEXT NOT NULL,
+	position INTEGER NOT NULL,
+	worktree TEXT NOT NULL,
+	branch TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'active'
+		CHECK (status IN ('active','complete','parked','merged')),
+	PRIMARY KEY (run_id, lane_id, step_id),
+	FOREIGN KEY (run_id, step_id) REFERENCES dev_step(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS dev_lane_xdep (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	step_id TEXT NOT NULL,
+	depends_on_id TEXT NOT NULL,
+	boundary_level INTEGER NOT NULL,
+	PRIMARY KEY (run_id, step_id, depends_on_id),
+	FOREIGN KEY (run_id, step_id, depends_on_id)
+		REFERENCES step_dep(run_id, step_id, depends_on_id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+`;

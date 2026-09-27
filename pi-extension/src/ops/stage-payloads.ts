@@ -270,6 +270,26 @@ const DEV_ORDER_ROWS: Record<string, RowSetSpec> = {
 	stepDep: {
 		fields: { stepId: { type: "string" }, dependsOnId: { type: "string" } },
 	},
+	// Phase 7 / N16 — OPTIONAL row-sets: a payload without lanes is still
+	// valid (legacy development-order payloads keep publishing; the store's
+	// v005 migration and publish-time finalization handle the rest).
+	devLane: {
+		fields: {
+			laneId: { type: "string" },
+			stepId: { type: "string" },
+			position: { type: "int", min: 0 },
+			worktree: { type: "string" },
+			branch: { type: "string" },
+			status: { type: "string", values: ["active", "complete", "parked", "merged"], optional: true },
+		},
+	},
+	devLaneXdep: {
+		fields: {
+			stepId: { type: "string" },
+			dependsOnId: { type: "string" },
+			boundaryLevel: { type: "int", min: 0 },
+		},
+	},
 };
 const FINAL_DESIGN_ROWS: Record<string, RowSetSpec> = {
 	finalSection: {

@@ -4,7 +4,7 @@
  * Covers: standalone stamp (store_meta.integrity_checked_at written),
  * embedded run (no stamp — the post-publish doctor must never dirty a
  * just-committed DB), pre-store info note, missing-config info note,
- * v004 migration presence (user_version 4 + store_meta STRICT).
+ * migration presence (current maxKnownVersion + store_meta STRICT).
  */
 
 import { test, describe, beforeEach, after } from "node:test";
@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openStoreDb, closeStoreDb, storeMetaGet } from "../../src/io/db.js";
+import { openStoreDb, closeStoreDb, storeMetaGet, maxKnownVersion } from "../../src/io/db.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
 import { checkDbIntegritySection } from "../../src/doctor/checks/integrity.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -57,11 +57,11 @@ describe("checkDbIntegritySection", () => {
 		assert.match(section.items[0]?.message ?? "", /No store DB/);
 	});
 
-	test("v004 migration: fresh DB reaches user_version 4 with a STRICT store_meta table", () => {
+	test("migration pin: fresh DB reaches maxKnownVersion with a STRICT store_meta table", () => {
 		const db = seedStore("TodoApp");
 		try {
 			const at = db.prepare("PRAGMA user_version").get() as { user_version: number };
-			assert.equal(at.user_version, 4);
+			assert.equal(at.user_version, maxKnownVersion());
 			// STRICT: inserting a BLOB into a TEXT column must be rejected
 			// (node:sqlite pre-converts numbers, so a BLOB is the reliable probe).
 			assert.throws(() => {
