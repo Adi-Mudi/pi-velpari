@@ -2,8 +2,8 @@
  * /velpari-freeze command (N4 — freeze / unfreeze; L3, Phase 2).
  *
  * Flow: action (freeze|unfreeze) → project → artifact kind → run → reason →
- * confirm → `ops/protection.ts:applySingleKindFreeze` (freeze) or Phase 1's
- * canonical `ops/freeze.ts:unfreezeArtifact` + `finalizeUnfreeze` (unfreeze).
+ * confirm → `ops/freeze.ts:applySingleKindFreeze` (freeze) or canonical
+ * `ops/freeze.ts:unfreezeArtifact` + `finalizeUnfreeze` (unfreeze).
  * Frozen artifacts refuse publish (publishArtifactCas), supersession and the
  * F16 tombstone; unfreezing always needs a typed reason (N4).
  *
@@ -20,8 +20,8 @@ import { loadFilesConfig } from "../core/config.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { loadState } from "../core/state.js";
 import type { ArtifactKind } from "../io/store.js";
-import { unfreezeArtifact } from "../ops/freeze.js";
-import { applySingleKindFreeze, finalizeUnfreeze, freezeStateOf, runsForKind, storeKinds } from "../ops/protection.js";
+import { applySingleKindFreeze, finalizeUnfreeze, unfreezeArtifact } from "../ops/freeze.js";
+import { freezeStateOf, runsForKind, storeKinds } from "../ops/protection.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
 
 /** Freeze action menu (N4). */

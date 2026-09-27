@@ -8,13 +8,26 @@
 // Phase 1 ships the EXECUTORS only: there is deliberately NO command
 // registration in this file (commands/index.ts is Phase-I-owned). The
 // unfreeze command surface is integration request #1 to Phase I.
+//
+// Phase I (plan subphase I2.1, N4 executor collapse): this file now owns ALL
+// N4 executors — freezeAllForHandoff, applySingleKindFreeze, unfreezeArtifact
+// and finalizeUnfreeze (+ their types). ops/protection.ts keeps only its
+// tombstone/rollback layers and the read-only picker wrappers.
 // ============================================================================
 
-import { appendAuditEntry, getHeadRevision, setFrozen, type ArtifactKind } from "../io/store.js";
-import { openStoreDb } from "../io/db.js";
+import {
+	appendAuditEntry,
+	appendTxEntry,
+	checkpointNow,
+	getHeadRevision,
+	setFrozen,
+	type ArtifactKind,
+} from "../io/store.js";
+import { closeStoreDb, openStoreDb } from "../io/db.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { loadFilesConfig } from "../core/config.js";
 import { getEffectiveProjectNames } from "../core/projectnames.js";
+import { commitProtectionChange, readFrozenState, withProtectionTxn } from "./protection.js";
 
 /** The reason stamped on every handoff freeze (visible in the audit trail). */
 export const HANDOFF_FREEZE_REASON = "handoff (N4)";
@@ -149,4 +162,110 @@ export function unfreezeArtifact(
 		}
 	}
 	return { ok: problems.length === 0, problems };
+}
+
+/** Input for freezing ONE (run, kind) from the command surface. */
+export interface SingleKindFreezeInput {
+	cwd: string;
+	dbPath: string;
+	projectName: string;
+	runId: string;
+	kind: ArtifactKind;
+	/** Optional for a freeze (N4 mandates it only for unfreeze). */
+	reason: string;
+	/** Audit actor; defaults to "velpari-freeze". */
+	actor?: string;
+}
+
+/** Outcome of a single-kind freeze. */
+export interface SingleKindFreezeOutcome {
+	ok: boolean;
+	message: string;
+	warnings?: string[];
+}
+
+/**
+ * Freeze ONE (run, kind): setFrozen(true) + audit + tx entry + checkpoint in one
+ * transaction, then a local explicit-path commit (design rules 2/7). Idempotent —
+ * re-freezing re-stamps the flag (and updates the reason). `freezeAllForHandoff`
+ * stays the handoff path; this is the manual command path.
+ * @returns {SingleKindFreezeOutcome} `{ok:false, message}` for refusals/errors.
+ */
+export function applySingleKindFreeze(input: SingleKindFreezeInput): SingleKindFreezeOutcome {
+	const reason = input.reason.trim();
+	const db = openStoreDb(input.dbPath);
+	let wasFrozen = false;
+	try {
+		const before = readFrozenState(db, input.runId, input.kind);
+		if (!before) {
+			return { ok: false, message: `no artifact row for '${input.kind}' in run ${input.runId}` };
+		}
+		wasFrozen = before.frozen;
+		withProtectionTxn(
+			db,
+			{
+				actor: input.actor ?? "velpari-freeze",
+				action: "freeze",
+				artifactKind: input.kind,
+				reason: reason === "" ? undefined : reason,
+				detail: { runId: input.runId, wasFrozen },
+			},
+			() => {
+				setFrozen(db, input.runId, input.kind, true, reason);
+			},
+		);
+	} catch (err) {
+		return { ok: false, message: `store: ${err instanceof Error ? err.message : String(err)}` };
+	} finally {
+		closeStoreDb(db);
+	}
+
+	const warnings = commitProtectionChange({
+		cwd: input.cwd,
+		projectName: input.projectName,
+		paths: [input.dbPath],
+		message: `velpari(freeze): ${input.projectName} ${input.kind} (run ${input.runId})`,
+	});
+	return {
+		ok: true,
+		message:
+			`${wasFrozen ? "Re-frozen" : "Frozen"} ${input.kind} (run ${input.runId})${reason ? ` — ${reason}` : ""}. ` +
+			"Publish, supersession and tombstones are refused until an explicit unfreeze.",
+		warnings: warnings.length > 0 ? warnings : undefined,
+	};
+}
+
+/**
+ * Finish an unfreeze performed by `unfreezeArtifact` in this file: appends the
+ * F18 tx entry, WAL-checkpoints and commits the store DB locally (design rules
+ * 2/7 — the executor writes the audit row, which stays the canonical N4
+ * record). Call ONLY after `unfreezeArtifact` returned ok.
+ * @returns {string[]} Commit warnings (never throws).
+ */
+export function finalizeUnfreeze(params: {
+	cwd: string;
+	dbPath: string;
+	projectName: string;
+	runId: string;
+	kind: ArtifactKind;
+	reason: string;
+	actor?: string;
+}): string[] {
+	const db = openStoreDb(params.dbPath);
+	try {
+		appendTxEntry(db, {
+			actor: params.actor ?? "velpari-freeze",
+			operation: "unfreeze",
+			outcome: "commit",
+		});
+		checkpointNow(db);
+	} finally {
+		closeStoreDb(db);
+	}
+	return commitProtectionChange({
+		cwd: params.cwd,
+		projectName: params.projectName,
+		paths: [params.dbPath],
+		message: `velpari(unfreeze): ${params.projectName} ${params.kind} (run ${params.runId})`,
+	});
 }

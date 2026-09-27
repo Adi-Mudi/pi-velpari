@@ -14,15 +14,8 @@ import { buildStoreDbPath } from "../../src/core/paths.js";
 import { createRun, loadState } from "../../src/core/state.js";
 import { closeStoreDb, openStoreDb } from "../../src/io/db.js";
 import { FrozenArtifactError, publishArtifactCas, type ArtifactPayload, writeArtifact } from "../../src/io/store.js";
-import {
-	applySingleKindFreeze,
-	finalizeUnfreeze,
-	freezableKinds,
-	freezeStateOf,
-	runsForKind,
-	storeKinds,
-} from "../../src/ops/protection.js";
-import { unfreezeArtifact } from "../../src/ops/freeze.js";
+import { freezableKinds, freezeStateOf, runsForKind, storeKinds } from "../../src/ops/protection.js";
+import { applySingleKindFreeze, finalizeUnfreeze, unfreezeArtifact } from "../../src/ops/freeze.js";
 import { runFreezeFlow } from "../../src/commands/freeze.js";
 
 const PROJECT = "TestApp";
@@ -78,6 +71,12 @@ function storedFrozen(dbPath: string, runId: string): { frozen: number; freeze_r
 	}
 }
 
+/**
+ * Count audit-ledger rows matching one action value.
+ * @param {string} dbPath - Path to the store DB to open.
+ * @param {string} action - The audit action to match (e.g. "freeze").
+ * @returns {number} Number of audit_ledger rows with that action.
+ */
 function countActionRows(dbPath: string, action: string): number {
 	const db = openStoreDb(dbPath);
 	try {
@@ -88,6 +87,13 @@ function countActionRows(dbPath: string, action: string): number {
 	}
 }
 
+/**
+ * Count rows in any store table, optionally filtered by a WHERE clause.
+ * @param {string} dbPath - Path to the store DB to open.
+ * @param {string} table - Table name to count.
+ * @param {string} [where] - Optional `WHERE ...` suffix (no trailing semicolon).
+ * @returns {number} Number of matching rows.
+ */
 function countRows(dbPath: string, table: string, where = ""): number {
 	const db = openStoreDb(dbPath);
 	try {
@@ -98,6 +104,10 @@ function countRows(dbPath: string, table: string, where = ""): number {
 	}
 }
 
+/**
+ * Join every recorded notify message into one string for assertion.
+ * @returns {string} All notice messages, newline-separated.
+ */
 function allMessages(): string {
 	return notices.map((n) => n.message).join("\n");
 }
