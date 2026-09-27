@@ -49,6 +49,7 @@ import {
 } from "../io/store.js";
 import { closeStoreDb, openPortfolioDb, openStoreDb } from "../io/db.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
+import { createBackupSnapshot } from "../core/backup.js";
 import { buildPortfolioDbPath, buildStoreDbPath, buildStoreYamlPath, categoryFor } from "../core/paths.js";
 import { loadState } from "../core/state.js";
 import { listProjects } from "../io/portfolio.js";
@@ -328,6 +329,14 @@ export function migrateExecute(cwd: string): MigrateReport {
 		const warnings: string[] = [];
 		const kinds: MigrateKindReport[] = [];
 		const dbPath = buildStoreDbPath(projectName, cwd);
+		// N9 trigger — snapshot BEFORE the first open/write (a pre-store project
+		// has no DB yet → null, never created by the backup). Never blocks.
+		const backup = existsSync(dbPath) ? createBackupSnapshot({ cwd, projectName, trigger: "migrate", dbPath }) : null;
+		if (backup) {
+			warnings.push(
+				`pre-migration backup: ${backup.backupPath} (quick_check ${backup.quickCheckOk ? "ok" : "FAILED"})`,
+			);
+		}
 		const db = openStoreDb(dbPath);
 		try {
 			// --- per-kind chain (FK order) ---
