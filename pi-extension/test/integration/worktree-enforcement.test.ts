@@ -43,6 +43,11 @@ function freshDir(prefix = "velpari-wt-int-"): string {
 
 function initRepo(dir: string, branch: string): void {
 	execFileSync("git", ["init", "-b", branch], { cwd: dir });
+	// Pinned REPO-LOCAL identity: `precheckGitForPublish` refuses an unset
+	// user.name/user.email, and CI runners carry no global identity (the
+	// hermeticity rule from test/ops/db-publish.test.ts).
+	execFileSync("git", ["config", "user.email", "velpari@test.local"], { cwd: dir });
+	execFileSync("git", ["config", "user.name", "Velpari Test"], { cwd: dir });
 	execFileSync("git", [...IDENT, "commit", "--allow-empty", "-m", "init"], { cwd: dir });
 }
 
