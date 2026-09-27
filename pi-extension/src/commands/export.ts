@@ -2,8 +2,11 @@
  * /velpari-export command (Phase 5 — on-demand document export; L3).
  *
  * Read-only download from the DB store (D4): pick project (multi-design
- * only) → kind → published version (newest first) → format (md/yaml/html)
- * → output path → overwrite confirm → `ops/export-doc.ts:runExport`.
+ * only) → kind → REVISION (F10 — ordered by revision_number, head first,
+ * superseded labeled) → format (md/yaml/html) → overwrite confirm →
+ * `ops/export-revision.ts:runRevisionExport` (Phase 4).
+ * N3: NO path prompt — the destination is the automatic grouped `Doc/`
+ * path (head) or the `_rev<N>` export path (older revisions).
  * No DB writes, no state mutations, no publish/approve logic (Q3).
  *
  * The pickers live here (L3) because L1 cannot import L2 UI — the
@@ -12,13 +15,34 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { loadState } from "../core/state.js";
 import { loadFilesConfig } from "../core/config.js";
-import { buildStoreDbPath } from "../core/paths.js";
-import { listExportableKinds, listPublishedVersions, type ArtifactKind } from "../io/store.js";
+import { buildStoreDbPath, buildGroupedPath } from "../core/paths.js";
+import { listExportableKinds, type ArtifactKind } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
-import { buildExportDefaultPath, runExport, type ExportFormat } from "../ops/export-doc.js";
+import type { ExportFormat } from "../ops/export-doc.js";
+import { buildRevisionExportPath, listExportableRevisions, runRevisionExport } from "../ops/export-revision.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
+
+/** kind → buildGroupedPath label (mirrors ops/export-doc.ts:KIND_LABELS +
+ * core/paths.ts:GROUPED_CATEGORIES; N3 grouped destination per kind). */
+const KIND_TO_GROUPED: Record<ArtifactKind, string> = {
+	prd: "PRD",
+	rtm: "RTM",
+	feasibility: "feasibility-study",
+	design: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	testplan: "test-plan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/** N3 head-export destination: the grouped `Doc/<category>/<A>_<p>.<ext>` path. */
+function headExportPath(cwd: string, projectName: string, kind: ArtifactKind, format: ExportFormat): string {
+	return join(cwd, buildGroupedPath(KIND_TO_GROUPED[kind], projectName)).replace(/\.md$/, `.${format}`);
+}
 
 /** Export format menu (user decision 1). */
 const FORMAT_ITEMS: ReadonlyArray<{ id: ExportFormat; label: string; hint: string }> = [
@@ -84,8 +108,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 	// re-opens it independently for the render/write.
 	const db = openStoreDb(dbPath);
 	let kind: ArtifactKind | undefined;
-	let runId: string | undefined;
-	let version: number | undefined;
+	let pickedRevision: ReturnType<typeof listExportableRevisions>[number] | undefined;
 	try {
 		const kinds = listExportableKinds(db);
 		if (kinds.length === 0) {
@@ -103,23 +126,32 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 		}
 		kind = pickedKind as ArtifactKind;
 
-		const versions = listPublishedVersions(db, kind);
-		const pickedVersion = await runSimplePicker(ctx, {
-			title: "Export — pick version",
-			subtitle: "Published versions, newest first.",
-			items: versions.map((v) => ({
-				id: `${v.runId}:${v.version}`,
-				label: `v${v.version} — run ${v.runId}`,
-				hint: `${v.generatedAt} (${v.stage})`,
+		// F10: the version picker lists REVISIONS ordered by revision_number,
+		// newest (head) first — the wrapper returns ascending, so reverse for
+		// display. Superseded revisions are clearly labeled.
+		const revisions = listExportableRevisions(db, kind).slice().reverse();
+		if (revisions.length === 0) {
+			ctx.ui.notify("No published artifacts in the store yet — drafts are never exported.", "info");
+			return;
+		}
+		const pickedId = await runSimplePicker(ctx, {
+			title: "Export — pick version (revision)",
+			subtitle: "Revisions of this artifact, newest (head) first.",
+			items: revisions.map((r) => ({
+				id: String(r.revisionId),
+				label: `rev ${r.revisionNumber} — ${r.status} (v${r.version}, run ${r.runId})`,
+				hint: `published ${r.publishedAt}${r.status === "published" ? " — head" : " — superseded"}`,
 			})),
 		});
-		if (!pickedVersion) {
+		if (!pickedId) {
 			ctx.ui.notify("Export cancelled.", "info");
 			return;
 		}
-		const [pickedRun, pickedVersionNo] = pickedVersion.split(":");
-		runId = pickedRun;
-		version = Number(pickedVersionNo);
+		pickedRevision = revisions.find((r) => String(r.revisionId) === pickedId);
+		if (!pickedRevision) {
+			ctx.ui.notify(`Export failed: revision ${pickedId} vanished between listing and pick.`, "error");
+			return;
+		}
 	} finally {
 		closeStoreDb(db);
 	}
@@ -134,9 +166,12 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 	}
 	const format = formatPick as ExportFormat;
 
-	const defaultPath = buildExportDefaultPath(projectName, kind, format, cwd);
-	const answer = await ctx.ui.input(`Output path (Enter = ${defaultPath})`);
-	const outputPath = answer && answer.trim() !== "" ? answer.trim() : defaultPath;
+	// N3: no path prompt — head revisions land at the grouped Doc/ path,
+	// older revisions at the _rev<N> export path (no filename collision).
+	const outputPath =
+		pickedRevision.status === "published"
+			? headExportPath(cwd, projectName, kind, format)
+			: buildRevisionExportPath(projectName, kind, pickedRevision.revisionNumber, format, cwd);
 
 	let overwrite = false;
 	if (existsSync(outputPath)) {
@@ -147,7 +182,7 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 		}
 	}
 
-	const result = runExport({ dbPath, runId: runId!, kind, version: version!, format, outputPath, overwrite });
+	const result = runRevisionExport({ dbPath, revisionId: pickedRevision.revisionId, format, outputPath, overwrite });
 	if (!result.ok) {
 		ctx.ui.notify(`Export failed: ${result.problem}`, "error");
 		return;
@@ -155,8 +190,11 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 	const counts = Object.entries(result.counts ?? {})
 		.map(([key, n]) => `${key}=${n}`)
 		.join(", ");
+	const warningLine = result.warnings && result.warnings.length > 0 ? `\nWarnings: ${result.warnings.join(" ")}` : "";
 	ctx.ui.notify(
-		`Exported ${kind} v${version} (run ${runId}) → ${result.path}` + (counts ? `\nRows: ${counts}` : ""),
+		`Exported ${kind} rev ${result.revisionNumber ?? pickedRevision.revisionNumber} → ${result.path}` +
+			(counts ? `\nRows: ${counts}` : "") +
+			warningLine,
 		"info",
 	);
 }

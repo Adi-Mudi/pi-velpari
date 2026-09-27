@@ -50,6 +50,10 @@ import { registerFreezeCommand } from "./freeze.js";
 import { registerTombstoneCommand } from "./tombstone.js";
 import { registerRollbackCommand } from "./rollback.js";
 // ==== END PHASE 2 BLOCK ====
+// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
+// Phase I owns this registry. Rebase/merge this block; do not duplicate it.
+import { registerRetentionPruneCommand } from "./retention-prune.js";
+// ==== END PHASE 4 BLOCK ====
 
 /**
  * All 43 user-facing commands. v1.6.0 replaced the generic
@@ -137,6 +141,9 @@ export const COMMAND_NAMES = [
 	"velpari-tombstone", // F16 — delete-as-modification (withdraw a revision)
 	"velpari-rollback", // F21 — rollback-as-new-revision
 	// ==== END PHASE 2 BLOCK ====
+	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK (50th command) ====
+	"velpari-retention-prune", // N7 — keep-last-N retention cleanup (confirmed + audited)
+	// ==== END PHASE 4 BLOCK ====
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -206,4 +213,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerTombstoneCommand(pi);
 	registerRollbackCommand(pi);
 	// ==== END PHASE 2 BLOCK ====
+	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK ====
+	registerRetentionPruneCommand(pi);
+	// ==== END PHASE 4 BLOCK ====
 }

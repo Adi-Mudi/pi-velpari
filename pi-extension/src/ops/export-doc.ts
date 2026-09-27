@@ -61,8 +61,9 @@ export interface ExportInput {
 	overwrite?: boolean;
 }
 
-/** File-name label per kind (matches buildStoreYamlPath sidecar labels). */
-const KIND_LABELS: Record<ArtifactKind, string> = {
+/** File-name label per kind (matches buildStoreYamlPath sidecar labels).
+ * Exported for ops/export-revision.ts (Phase 4) — read-only consumers. */
+export const KIND_LABELS: Record<ArtifactKind, string> = {
 	prd: "PRD",
 	rtm: "RTM",
 	feasibility: "feasibility-study",
@@ -463,6 +464,23 @@ export function renderFinalDesignMarkdown(rows: Record<string, unknown>): string
 		["No", "Title", "Source Artifact", "Source IDs"],
 		list.map((r) => [r.no, r.title, r.sourceArtifact, r.sourceIds]),
 	);
+}
+
+/**
+ * Render one kind's row-set section through the same dispatch table the
+ * head exporter uses (Phase 4 — ops/export-revision.ts renders snapshot
+ * bytes through this door so md views stay renderer-identical).
+ */
+export function renderKindMarkdown(kind: ArtifactKind, rows: Record<string, unknown>, projectSlug = ""): string {
+	return RENDERERS[kind](rows, projectSlug);
+}
+
+/**
+ * Row counts per payload key (Phase 4 — public door over countRows for
+ * ops/export-revision.ts; one implementation, two callers).
+ */
+export function countRowsOf(rows: Record<string, unknown>): Record<string, number> {
+	return countRows(rows);
 }
 
 /** Per-kind renderer dispatch (KIND_ORDER's twin — one entry per kind). Design
