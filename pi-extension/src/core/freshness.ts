@@ -27,11 +27,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../io/atomic-write.js";
+import { openStoreDb } from "../io/db.js";
+import { getHeadRevision, recordBaseline, type ArtifactKind } from "../io/store.js";
 import { loadFilesConfig, markdownWritesEnabled } from "./config.js";
-import { PATHS } from "./constants.js";
+import { PATHS, type Stage } from "./constants.js";
 import { hashFileContent, hashFileContentNormalized } from "./fingerprints.js";
 import {
 	GROUPED_CATEGORIES,
+	buildStoreDbPath,
 	buildStoreYamlPath,
 	resolveBrainstormArtifact,
 	resolveDocArtifact,
@@ -501,4 +504,80 @@ export function enumeratePublishedArtifacts(cwd: string): EnumeratedArtifact[] {
 		return ia < ib ? -1 : ia > ib ? 1 : 0;
 	});
 	return out;
+}
+
+// ---------------------------------------------------------------------------
+// Baselines on downstream adoption (F7, Phase 1 2026-09-27). A starting
+// stage adopts the current head revision of every upstream store kind —
+// first-class, queryable bookkeeping (the npm-lockfile / Terraform-pin
+// model). Best-effort: never blocks a stage start.
+// ---------------------------------------------------------------------------
+
+/**
+ * Upstream store kinds each downstream stage adopts at start (F7). A stage
+ * reads ALL prior approved artifacts, so the baseline covers every upstream
+ * kind published before it. Brainstorm has no store upstream (notes stay
+ * file-based) — no entry. Keys are the Stage enum values consumed by the
+ * stage-start funnel (stages/registry.ts:runStage).
+ */
+const UPSTREAM_KINDS_BY_STAGE: Record<string, readonly ArtifactKind[]> = {
+	"building-rtm": ["prd"],
+	"analyzing-feasibility": ["prd", "rtm"],
+	designing: ["prd", "rtm", "feasibility"],
+	"analyzing-atomic-functions": ["prd", "rtm", "feasibility", "design"],
+	"writing-pseudocode": ["prd", "rtm", "feasibility", "design", "atomic-functions"],
+	"planning-tests": ["prd", "rtm", "feasibility", "design", "atomic-functions", "pseudocode"],
+	"ordering-development": ["prd", "rtm", "feasibility", "design", "atomic-functions", "pseudocode", "testplan"],
+	"finalizing-design": [
+		"prd",
+		"rtm",
+		"feasibility",
+		"design",
+		"atomic-functions",
+		"pseudocode",
+		"testplan",
+		"development-order",
+	],
+};
+
+/**
+ * Stamp baselines for one stage start (F7): for every upstream kind with a
+ * published head in the project store, upsert (kind, consumerStage) to that
+ * head revision. Missing store/kind/upstream = silent no-op (getHeadRevision
+ * returns null); any other error is RETURNED as a message, never thrown —
+ * stage start must not block on bookkeeping.
+ *
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - files.json projectName (store DB selector).
+ * @param {string} runId - Owning run (head pointers live on the run's row).
+ * @param {Stage} consumerStage - The stage enum that is starting.
+ * @returns {string | null} Error message when stamping failed, null on success/no-op.
+ */
+export function recordStageBaselines(
+	cwd: string,
+	projectName: string,
+	runId: string,
+	consumerStage: Stage,
+): string | null {
+	const upstream = UPSTREAM_KINDS_BY_STAGE[consumerStage];
+	if (!upstream || upstream.length === 0) return null;
+	let db: ReturnType<typeof openStoreDb> | null = null;
+	try {
+		db = openStoreDb(buildStoreDbPath(projectName, cwd));
+		for (const kind of upstream) {
+			const head = getHeadRevision(db, runId, kind);
+			if (head) recordBaseline(db, kind, consumerStage, head.revisionId);
+		}
+		return null;
+	} catch (err) {
+		return err instanceof Error ? err.message : String(err);
+	} finally {
+		if (db) {
+			try {
+				db.close();
+			} catch {
+				// best-effort close
+			}
+		}
+	}
 }

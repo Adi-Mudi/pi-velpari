@@ -32,6 +32,7 @@ import { buildGroupedPath, buildOutputPath, resolveDocArtifact } from "../core/p
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
 import { computeStaleSet } from "../core/freshness.js";
+import { freezeAllForHandoff } from "./freeze.js";
 import { checkIdCoverage } from "../core/id-coverage.js";
 import { parseADRSection, type ADR } from "../core/adr.js";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
@@ -356,6 +357,22 @@ export async function runHandoff(
 
 	atomicWriteJson(targetPath, inputs);
 	ctx.ui.notify(`Handoff written to ${targetPath}`, "info");
+
+	// N4 — freeze the chain at handoff: every kind of this run with a
+	// published head becomes frozen (blocks even supersession until an
+	// audited unfreeze). MULTI-DESIGN: every project store is covered. A
+	// failed freeze leaves the chain unfrozen AND un-advanced — the user
+	// fixes the store and re-runs /velpari-handoff (the payload write is
+	// idempotent).
+	const freeze = freezeAllForHandoff(cwd, projectName, state.runId!);
+	if (!freeze.ok) {
+		ctx.ui.notify(
+			`Handoff freeze failed — stage does NOT advance (N4):\n` + freeze.problems.map((p) => `  - ${p}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	ctx.ui.notify(`Handoff freeze: ${freeze.frozen} artifact kind(s) frozen (N4).`, "info");
 
 	const next = advanceStage(state, "/velpari-handoff", cwd);
 	void next;

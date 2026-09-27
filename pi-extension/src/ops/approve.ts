@@ -849,7 +849,15 @@ export async function handleApprove(
 			);
 			return;
 		}
-		ctx.ui.notify(`Store: ${storeKind} rows published (v${envelope.version}) + YAML exported + committed.`, "info");
+		// N2 — revision identity surfaced at the shared approve surface (the
+		// publish tool AND the 9 per-stage fall-backs). Supersession details
+		// arrive via the dbOutcome.warnings loop above.
+		const rev = dbOutcome.revision;
+		ctx.ui.notify(
+			`Store: ${storeKind} published as revision ${rev ? rev.revisionNumber : "?"} ` +
+				`(v${envelope.version}) + YAML exported + committed.`,
+			"info",
+		);
 	}
 
 	// Post-publish doctor audit (v1.2.1). The publish gate above already
