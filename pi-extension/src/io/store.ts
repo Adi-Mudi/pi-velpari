@@ -851,6 +851,12 @@ export function importArtifactYaml(db: DatabaseSync, runId: string, yamlText: st
 	}
 	// inputs/changeLog stay raw JSON strings in the export shape; a
 	// hand-repaired mapping is preserved by re-serializing it.
+	/**
+	 * Coerce a value to a JSON string, preserving existing JSON strings as-is.
+	 * @param {unknown} v - Value to stringify (string, object, or missing).
+	 * @param {string} fallback - Value to return for null/undefined or on stringify failure.
+	 * @returns {string} The original string, its JSON serialization, or the fallback.
+	 */
 	const asJsonString = (v: unknown, fallback: string): string => {
 		if (typeof v === "string") return v;
 		if (v === undefined || v === null) return fallback;
@@ -1113,6 +1119,62 @@ export function nextRevisionNumber(db: DatabaseSync, kind: ArtifactKind): number
 		.prepare("SELECT COALESCE(MAX(revision_number), 0) + 1 AS n FROM artifact_revisions WHERE kind = ?")
 		.get(kind) as { n: number };
 	return Number(row.n);
+}
+
+/** Revision lifecycle status (v004 CHECK constraint, F7/F9). */
+export type RevisionStatus = "published" | "superseded" | "withdrawn";
+
+/** One revision row for the export picker (camelCase, no UI). */
+export interface RevisionRef {
+	revisionId: number;
+	revisionNumber: number;
+	status: RevisionStatus;
+	runId: string;
+	version: number;
+	stage: string;
+	generatedAt: string;
+	publishedAt: string;
+	sha256Fingerprint: string;
+	/** Always null here — see listExportableRevisions (withdrawn rows carry reasons and are excluded). */
+	tombstoneReason: string | null;
+}
+
+/**
+ * Revisions available to the export picker — a DIRECT read of
+ * `artifact_revisions`: `status != 'withdrawn'` (F16) and
+ * `ORDER BY revision_number ASC` (F10 — callers reverse for display, so the
+ * head revision is the first/default item).
+ *
+ * Added by Phase I (plan subphase I4.2 — Phase 4's deferred L0 reader):
+ * the picker's SQL now lives next to the table it reads. `tombstoneReason`
+ * is null BY CONSTRUCTION: only a tombstone write creates a reason, every
+ * tombstoned row is `withdrawn`, and withdrawn rows are excluded above. The
+ * tombstone-aware, all-status projection stays at
+ * `ops/protection.ts:listRevisions` (deliberately different projection).
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {ArtifactKind} kind - Artifact kind to list.
+ * @returns {RevisionRef[]} Ascending by revision_number; withdrawn excluded.
+ */
+export function listExportableRevisions(db: DatabaseSync, kind: ArtifactKind): RevisionRef[] {
+	const rows = db
+		.prepare(
+			`SELECT revision_id, revision_number, status, run_id, version, stage,
+			        generated_at, published_at, sha256_fingerprint
+			 FROM artifact_revisions WHERE kind = ? AND status != 'withdrawn' ORDER BY revision_number ASC`,
+		)
+		.all(kind) as Record<string, SqlValue>[];
+	return rows.map((row) => ({
+		revisionId: Number(row.revision_id),
+		revisionNumber: Number(row.revision_number),
+		status: String(row.status) as RevisionStatus,
+		runId: String(row.run_id),
+		version: Number(row.version),
+		stage: String(row.stage),
+		generatedAt: String(row.generated_at),
+		publishedAt: String(row.published_at),
+		sha256Fingerprint: String(row.sha256_fingerprint),
+		tombstoneReason: null,
+	}));
 }
 
 /**

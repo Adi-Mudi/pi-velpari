@@ -14,12 +14,11 @@
 //            the revision_number (read-only audit; never blocks the export).
 //
 // Ownership note (Master Outline §4.2): `ops/export-doc*` + `commands/export`
-// are Phase-4-owned; `io/store.ts` is Foundation-FROZEN (user review fix 1,
-// plan v1.1) and `ops/protection.ts` is Phase-2-owned — both are IMPORT-only
-// here. listExportableRevisions is deliberately a thin wrapper over
-// ops/protection.ts:listRevisions (filter withdrawn → reverse ascending); a
-// dedicated L0 reader would be a Phase-I integration request (Phase-5
-// precedent).
+// are Phase-4-owned; `ops/protection.ts` is Phase-2-owned — both IMPORT-only
+// here. The picker's data door is now the dedicated L0 reader
+// `io/store.ts:listExportableRevisions` (Phase I plan subphase I4.2 — Phase 4's
+// deferred request landed); the L1 function below delegates to it so L3
+// consumers keep their import.
 //
 // Scope guard: L1 rendering + file write + audit append only. No picker UX
 // (L3 owns ctx.ui), no status/head mutations, no publish/approve logic.
@@ -30,10 +29,14 @@ import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import type { ArtifactEnvelope, ArtifactKind } from "../io/store.js";
-import { appendAuditEntry } from "../io/store.js";
+import {
+	appendAuditEntry,
+	listExportableRevisions as listExportableRevisionsRows,
+	type RevisionRef,
+} from "../io/store.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { parseYaml } from "../core/yaml-data.js";
-import { listRevisions, readRevisionSnapshot, type RevisionRef, type RevisionSnapshot } from "./protection.js";
+import { readRevisionSnapshot, type RevisionSnapshot } from "./protection.js";
 
 /** The picker's row type, re-exported so L3 consumers import from here. */
 export type { RevisionRef };
@@ -52,21 +55,18 @@ import {
 
 /**
  * Revisions available to the export picker: everything
- * `ops/protection.ts:listRevisions` returns minus withdrawn, re-ordered
- * ASCENDING by revision_number (F10 — callers reverse for display so the
- * head revision is the first/default item).
+ * `io/store.ts:listExportableRevisions` returns — a DIRECT store read,
+ * ascending by revision_number with withdrawn excluded (F10 — callers
+ * reverse for display so the head revision is the first/default item).
  *
- * Wrapper, not a store change: `io/store.ts` is Foundation-frozen (Master
- * Outline §4.2; user review fix 1, plan v1.1). A dedicated L0 reader is a
- * Phase-I integration request (Phase-5 precedent).
+ * One-line delegate since Phase I plan subphase I4.2 (Phase 4's deferred L0
+ * reader landed); exported name/signature unchanged for L3 consumers.
  * @param {DatabaseSync} db - Open store connection (from openStoreDb).
  * @param {ArtifactKind} kind - Artifact kind to list.
  * @returns {RevisionRef[]} Ascending by revision_number; withdrawn excluded.
  */
 export function listExportableRevisions(db: DatabaseSync, kind: ArtifactKind): RevisionRef[] {
-	return listRevisions(db, kind)
-		.filter((r) => r.status !== "withdrawn")
-		.reverse();
+	return listExportableRevisionsRows(db, kind);
 }
 
 // ---------------------------------------------------------------------------
@@ -124,11 +124,13 @@ export function buildRevisionExportPath(
 	return join(cwd, "Doc", "export", safeProject, `${KIND_LABELS[kind]}_${safeProject}_rev${revisionNumber}.${format}`);
 }
 
+const KIND_SET: ReadonlySet<string> = new Set(Object.keys(KIND_LABELS));
 /**
  * Narrow a snapshot row's `kind: string` into an ArtifactKind (the v004
  * snapshot table stores kind as TEXT). Null = unknown kind → refusal.
+ * @param {string} kind - Raw kind string from the snapshot row.
+ * @returns {ArtifactKind | null} The known kind, or null when unknown.
  */
-const KIND_SET: ReadonlySet<string> = new Set(Object.keys(KIND_LABELS));
 function asKind(kind: string): ArtifactKind | null {
 	return KIND_SET.has(kind) ? (kind as ArtifactKind) : null;
 }
