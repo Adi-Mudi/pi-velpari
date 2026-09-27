@@ -36,6 +36,8 @@ import {
 	type StaleItem,
 } from "../core/freshness.js";
 import { computeLegalCommands, type StageLockSpec } from "./transition-lock.js";
+import { verifyRunStartLine, verifyRunWorktree } from "./worktree-lock.js";
+import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
 import { loadOverlay } from "../core/standards-overlay.js";
 import { bootstrapOverlayScouts } from "../io/agents-install.js";
 import {
@@ -727,6 +729,68 @@ export async function runStage(
 		return;
 	}
 	const projectName = config.projectName;
+
+	// 1c. Worktree enforcement (N5/N6) — before any scout spawns or any write:
+	//     this folder must BE the run's worktree on the run's branch, and it must
+	//     not be claimed by a different live run line. Fail-open without a stamp.
+	const wtVerdict = verifyRunWorktree(state, cwd);
+	if (!wtVerdict.ok) {
+		ctx.ui.notify(wtVerdict.reason, "error");
+		return;
+	}
+	const lineVerdict = verifyRunStartLine(state, cwd);
+	if (!lineVerdict.ok) {
+		ctx.ui.notify(lineVerdict.reason, "error");
+		return;
+	}
+
+	// 1d. Change report + developer confirmation gate (F14). Type B (a foreign
+	//     run moved an upstream input) is a hard block (N8-B) that forces a
+	//     separate worktree; Type A (own-run staleness) shows what moved and
+	//     needs an explicit confirmation before update mode proceeds. The
+	//     report is written into the run folder and named in both messages.
+	const stageInputNames = spec.inputs
+		.map((input) => (input.artifact ?? "").toLowerCase())
+		.filter((artifact) => artifact !== "");
+	const report = buildChangeReport(cwd, state, { stage: spec.stageEnum, kinds: stageInputNames });
+	const foreignEntries = report.entries.filter((entry) => entry.classification === "foreign-run");
+	if (foreignEntries.length > 0) {
+		const reportPath = writeChangeReport(cwd, report);
+		ctx.ui.notify(
+			`Upstream moved by another run line — stage "${stageKey}" blocked (N8-B). Change report: ${reportPath}\n` +
+				foreignEntries.map((entry) => `  - ${entry.detail}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (report.entries.length > 0) {
+		const reportPath = writeChangeReport(cwd, report);
+		// The confirmation surface is part of the Pi UI contract; when a host
+		// (or a test mock) does not provide it, the gate must not wedge the
+		// stage — report loudly and continue (fail-open, like every guard).
+		const confirm = ctx.ui?.confirm;
+		if (typeof confirm !== "function") {
+			ctx.ui.notify(
+				`Upstream inputs changed (${report.entries.length} entry/entries) — see ${reportPath}. ` +
+					`Continuing without a confirmation prompt (no confirm surface on this host).`,
+				"warning",
+			);
+		} else {
+			const confirmed = await confirm(
+				"Upstream inputs changed",
+				`${report.entries.length} input(s) moved since this run read them — see ${reportPath}. ` +
+					`Proceed with update mode (it revises only the affected parts)?`,
+			);
+			if (!confirmed) {
+				ctx.ui.notify(
+					`Stage "${stageKey}" not started. Change report: ${reportPath} ` +
+						`(re-read the inputs, or /velpari-reconfirm if the change has no impact).`,
+					"info",
+				);
+				return;
+			}
+		}
+	}
 
 	// 2. Resolve inputs.
 	const inputs = resolveStageInputs(spec, { cwd, projectName, mission: state.mission });

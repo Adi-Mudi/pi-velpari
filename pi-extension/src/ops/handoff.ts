@@ -28,6 +28,7 @@ import { atomicWriteJson } from "../io/atomic-write.js";
 import { readLatestPublishedRows } from "../io/store.js";
 import { renderDesignMarkdown } from "./export-doc.js";
 import { advanceStage, type RunState } from "../core/state.js";
+import { closeRunBinding } from "../core/run-binding.js";
 import { buildGroupedPath, buildOutputPath, resolveDocArtifact } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
@@ -376,6 +377,10 @@ export async function runHandoff(
 
 	const next = advanceStage(state, "/velpari-handoff", cwd);
 	void next;
+
+	// N5: the run line is finished — close its worktree binding so the next run
+	// may start in this folder. Best effort; a close failure never blocks handoff.
+	closeRunBinding(cwd, state.runId!, "handoff");
 }
 
 // ─── Phase 4 ADR export ─────────────────────────────────────────────────────

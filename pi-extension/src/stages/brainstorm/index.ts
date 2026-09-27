@@ -69,7 +69,9 @@ import { loadHistory } from "../../core/history.js";
 import { buildStagePrompt, type BrainstormExistingContext } from "../../core/prompt.js";
 import { buildRunDir, resolveDocArtifact, slugify } from "../../core/paths.js";
 import { loadRequirementsProfile } from "../../core/profile.js";
-import { createRun, loadState, openBrainstormSession, type RunState } from "../../core/state.js";
+import { createRun, loadState, openBrainstormSession, setRunWorktreeBranch, type RunState } from "../../core/state.js";
+import { ensureRunBinding } from "../../core/run-binding.js";
+import { verifyRunStartLine, verifyRunWorktree, shouldLazilyStamp } from "../worktree-lock.js";
 import { formatScanPlanLines } from "./dispatcher.js";
 import { spawnPersistentSessions } from "./spawn-sessions.js";
 import { guardSeedInput, guardStageForBrainstorm } from "./guard.js";
@@ -169,7 +171,27 @@ export async function handleBrainstorm(
 	// 2. Load state + framework. Create a new run if `currentStage === "none"`.
 	let state = loadState(cwd);
 
-	// 2b. Stage guard (brainstorm-anytime). Only a nested open blocks — a
+	// 2b. N5/N6 — worktree enforcement, BEFORE the stage guard: this is an
+	//     environment check ("is this folder even allowed to run this line?"),
+	//     so it must precede any state-based decision. Both gates fail open
+	//     (no git repo / no stamp → pass):
+	//     (a) N6: this folder must BE the run's worktree on the run's branch
+	//         (a copied/renamed folder, or driving a run from the wrong
+	//         worktree, is the real "two folders, one line" hazard);
+	//     (b) N5: a DIFFERENT live run line must not already claim this folder.
+	//     Both messages print the exact `git worktree add` fix.
+	const wtGuard = verifyRunWorktree(state, cwd);
+	if (!wtGuard.ok) {
+		ctx.ui.notify(wtGuard.reason, "error");
+		return;
+	}
+	const lineGuard = verifyRunStartLine(state, cwd);
+	if (!lineGuard.ok) {
+		ctx.ui.notify(lineGuard.reason, "error");
+		return;
+	}
+
+	// 2c. Stage guard (brainstorm-anytime). Only a nested open blocks — a
 	//     brainstorm session is already open. Every other stage is allowed:
 	//     `none` starts a fresh run; any later stage pauses the current stage
 	//     via `openBrainstormSession` (pausedStage recorded on the run) and
@@ -189,6 +211,20 @@ export async function handleBrainstorm(
 		state = openBrainstormSession(cwd);
 		ctx.ui.notify(
 			`Paused "${pausedFrom}" — brainstorm session open. Approve to resume "${pausedFrom}" or restart at the PRD; discard to resume without an artifact.`,
+			"info",
+		);
+	}
+
+	// 2d. N5/N6 — bind the run to its git worktree + branch: the per-run binding
+	//     record (so a displaced line stays detectable) plus Foundation's state
+	//     stamp. Pre-Phase-5 runs get a lazy stamp from the existing record.
+	const bindingResult = ensureRunBinding(cwd, state);
+	if (bindingResult.binding && (bindingResult.created || shouldLazilyStamp(state))) {
+		state = setRunWorktreeBranch(state, bindingResult.binding.branch, bindingResult.binding.worktree, cwd);
+		ctx.ui.notify(
+			bindingResult.created
+				? `Run bound to worktree ${bindingResult.binding.worktree} on branch ${bindingResult.binding.branch} (N5/N6).`
+				: `Run worktree stamp restored from run-binding.json: ${bindingResult.binding.worktree} @ ${bindingResult.binding.branch} (N5/N6).`,
 			"info",
 		);
 	}

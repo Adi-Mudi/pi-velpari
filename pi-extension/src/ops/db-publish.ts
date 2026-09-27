@@ -55,6 +55,7 @@ import { createBackupSnapshot } from "../core/backup.js";
 import { hashFileContent } from "../core/fingerprints.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { resolveDocArtifact } from "../core/paths.js";
+import { detectWorktree, samePaths, worktreeAddHint } from "../core/worktree.js";
 import type { ArtifactKind } from "../io/store.js";
 
 export interface DbPublishInput {
@@ -128,7 +129,10 @@ function publishActor(runId: string, kind: ArtifactKind): string {
  * @param {string} cwd - Project root (the git work tree).
  * @returns {DbPrecheckResult} ok=false with the exact refusal reasons.
  */
-export function precheckGitForPublish(cwd: string): DbPrecheckResult {
+export function precheckGitForPublish(
+	cwd: string,
+	run?: { runBranch?: string; runWorktree?: string },
+): DbPrecheckResult {
 	const problems: string[] = [];
 	const inside = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd, encoding: "utf-8" });
 	if (inside.error || inside.status !== 0 || inside.stdout.trim() !== "true") {
@@ -152,7 +156,37 @@ export function precheckGitForPublish(cwd: string): DbPrecheckResult {
 			);
 		}
 	}
+	problems.push(...worktreeProblemsOf(cwd, run));
 	return { ok: problems.length === 0, problems };
+}
+
+/**
+ * Phase 5 worktree/branch pre-check (N5/N6, §3.10 item 4). Optional: called with
+ * the run's stamped pair, it refuses a publish from a folder/branch that is not
+ * the run's. Fail-open when the run is unstamped or the folder is not a repo.
+ * @param {string} cwd - Folder the publish runs in.
+ * @param {{ runBranch?: string; runWorktree?: string }} [run] - The run's stamped pair.
+ * @returns {string[]} Problems to add (empty = fine).
+ */
+function worktreeProblemsOf(cwd: string, run?: { runBranch?: string; runWorktree?: string }): string[] {
+	if (!run || (!run.runWorktree && !run.runBranch)) return [];
+	const info = detectWorktree(cwd, { skipWorktrees: true, skipUpstream: true });
+	if (!info.isGit) return [];
+	const problems: string[] = [];
+	if (run.runWorktree && info.worktree !== "" && !samePaths(info.worktree, run.runWorktree)) {
+		problems.push(
+			`git pre-check failed: publish must run in the run's worktree ${run.runWorktree}; this folder is ` +
+				`${info.worktree} (N5/N6). Publish there — or, for a parallel line, create a separate worktree: ` +
+				worktreeAddHint(run.runBranch ?? "velpari-line"),
+		);
+	}
+	if (run.runBranch && info.branch !== run.runBranch) {
+		problems.push(
+			`git pre-check failed: the run is bound to branch '${run.runBranch}', this worktree is on ` +
+				`'${info.branch}' (N6). Switch back: git checkout ${run.runBranch} — or work in a separate worktree.`,
+		);
+	}
+	return problems;
 }
 
 // ---------------------------------------------------------------------------
