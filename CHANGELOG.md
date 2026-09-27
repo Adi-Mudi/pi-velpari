@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Versioning, locking & recovery rollout — Phases F/1–7 integration (2026-09-27)
+
+The whole foundation + Phase 1–7 rollout lands as one user-visible set: every publish creates an immutable, CAS-guarded snapshot revision; `/velpari-freeze` freezes an artifact at handoff with a typed reason (one executor home), `/velpari-tombstone` withdraws a revision without losing its bytes, `/velpari-rollback` restores older content as a NEW revision, and `/velpari-db-reset` clears only one run's draft rows. The store auto-snapshots (`VACUUM INTO`, never a raw copy) at publish / db-reset / migrate into gitignored, manifest-proven `Backup/velpari/<project>/` (FIFO keep-last-N) with a documented restore sequence, and `/velpari-retention-prune` enforces keep-last-N revisions. Runs are bound to a git worktree/branch — wrong-tree commands are gated, an upstream-moved notice surfaces every turn, and the doctor reports a worktree removed mid-run. `audit_ledger`/`tx_log` rows are hash-chained and doctor-verified; `/velpari-merge-back` guides a parallel line home; dev-order work ranks into DAG-derived execution lanes carried through the working copy, store kinds and handoff payload. The command surface is 51 (the docs still said 45). Phase I completes the integration: registry reconciliation (one canonical 51-name list, one count pin), the N4 executor collapse into `ops/freeze.ts`, a dedicated L0 export-revision reader, the worktree-removal check's L0 import swap, the docs sweep, and the review-defect fixes (approve-message, run-lock/never-throws/lock-semantics, read-only doctor opens, temp-dir hygiene). No new dependencies.
+
+#### Added
+
+- **Revisioned publish + protection (N4/F7/F16/F21)** — immutable snapshot revisions on every publish (CAS in `io/store.ts:publishArtifactCas`); `/velpari-freeze` (freeze/unfreeze, typed reason — a frozen artifact refuses publish, supersession, tombstone), `/velpari-tombstone` (withdraw: bytes stay, reason audited), `/velpari-rollback` (restore as a new revision — history never rewritten), `/velpari-db-reset` (draft store rows only; published rows/revisions survive).
+- **Automatic backups (N9–N11)** — snapshots at publish / `/velpari-db-reset` / `/velpari-migrate-store` into `Backup/velpari/<project>/` with `manifest.jsonl` (SHA-256, git commit, quick-check), FIFO keep-last-N; restore sequence documented at `skills/db-store-merge-runbook.md` §7 (close sessions → lock check → verify → confirm → `restoreBackupSnapshot` → doctor re-audit).
+- **`/velpari-retention-prune` (N7)** — keep-last-N revisions (`velpari.retention.revisions`), confirmed + audited; head and baselined revisions never pruned.
+- **`/velpari-merge-back` (N12)** — dry-run plan → confirm → `git merge --no-ff` → store verify → doctor → staleness → F14 flags, with a per-step `audit_ledger` trail (runbook §8).
+- **Run enforcement (N5/N6/N8/N14)** — run binding (`state.json` ↔ worktree/branch), the worktree/branch gate (`stages/worktree-lock.ts`), the upstream-moved notice, and the doctor's worktree-removal report.
+- **Doctor checks** — hash-chain (`audit_ledger`/`tx_log` verification), baselines (withdrawn/superseded adoption), last-verified backup (N11), stale run lock (N13), worktree removal (N14).
+- **Execution lanes (N16)** — DAG-derived lane map, integration plan and lock rules in the dev-order working copy, store kinds and handoff payload.
+- **Command surface 45 → 51** — docs reconciled with the runtime registry (Phase 2 protection ×4, Phase 4 retention, Phase 6 merge-back on top of the 45).
+
+#### Changed
+
+- **Registry reconciliation** — the Phase 2/4/6 integration-request markers folded out of `commands/index.ts`; one canonical `COMMAND_NAMES` (51 names, each once) and a single integration-time count pin in `test/integration/command-registration.test.ts` (no more per-phase 49→50→51 CI churn).
+- **N4 executor collapse** — `SingleKindFreezeInput`/`SingleKindFreezeOutcome`/`applySingleKindFreeze`/`finalizeUnfreeze` moved to `ops/freeze.ts`; gate code calls into it (one home, no duplicated mechanics).
+- **L0 export reader (Phase 4 deferred request)** — `io/store.ts:listExportableRevisions` (direct read, excludes withdrawn) behind `ops/export-revision.ts`.
+- **Worktree-removal import swap** — `doctor/checks/worktree-removal.ts` consumes the Phase-5 L0 worktree module.
+- **Docs sweep** — root `AGENTS.md` (design principles 15–20, 51-command surface + sum, `Doc/store/**` guard wording aligned with the D3 bash rejection, 10g lanes sentence), `pi-extension/src/AGENTS.md` (L0/L1/L3 layer rows), `README.md` (51 commands + versioning/locking/recovery summary), `Doc/velpari-sequence/08-command-reference.md` (15-row discipline table + “Revisions, freeze & protection” §), `skills/db-store-merge-runbook.md` (new §7 restore, cross-links).
+
+#### Fixed
+
+- **Approve surface naming the wrong command** — the post-approve message now points at the actual next command instead of a stale stage name.
+- **Run-lock / never-throws / lock semantics** — the run-lock race, the non-never-throwing paths, and the stale-set threading fixed at review.
+- **Read-only doctor opens** — doctor opens the store read-only where it only audits.
+- **Temp-dir hygiene** — test temp dirs cleaned; shared picker helper deduplicated.
+
+#### Security
+
+- **Tamper evidence** — hash-chained `audit_ledger`/`tx_log` verified by the doctor; backup snapshots proven by manifest SHA-256 (unproven/tampered = refusal, zero writes); schema-ceiling and active-run guards on restore.
+
 ### DB-primary storage Phase 12 — shipped-path fixes + integration proof (2026-09-24)
 
 The shipped DB-only default had never been executed end-to-end, and doing so exposed three real defects — all fixed here. `ops/approve.ts` now gates DB-rendered kinds on the **LLM working copy** (the artifact the user reviewed) instead of the lossy DB render, so a PRD publish and a PRD **revision** pass their gates under the default (before: 21 `psrs-*` errors, nothing could publish). The G8 `prd-file` mirror hash is required only when a PRD markdown is **already published** and is compared against that pre-publish file, so a first publish in write-alongside mode no longer fails on a hash the caller cannot predict. The three DB-rendered doctor drift checks are DB-only aware, so a migrated project's legacy markdown no longer reports phantom drift. Coverage: an approve-level suite for the shipped default, a migrated-project end-to-end suite, a Tier-1 e2e through a real `pi`, and the e2e README refresh. No new dependencies.

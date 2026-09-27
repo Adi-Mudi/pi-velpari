@@ -75,17 +75,26 @@ See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-arti
 
 ## Commands
 
-45 commands total. See [`Doc/velpari-sequence/08-command-reference.md`](Doc/velpari-sequence/08-command-reference.md) for the full list. Quick reference:
+51 commands total. See [`Doc/velpari-sequence/08-command-reference.md`](Doc/velpari-sequence/08-command-reference.md) for the full list. Quick reference:
 
 > **Publish is DB-only by default (Phase 11, Q3):** approve writes store rows + the YAML export beside `Doc/store/<project>/index.db` + a git commit — nothing to `Doc/`; opt back into markdown write-alongside with `files.json` `"velpari": {"markdownWrites": true}`. A legacy project imports once via `/velpari-migrate-store --dry-run` → `--execute`.
 
 | Category | Commands |
 |---|---|
 | Stage | `/velpari-brainstorm`, `/velpari-prd`, `/velpari-rtm`, `/velpari-feasibility`, `/velpari-architecture-generator`, `/velpari-pseudocode`, `/velpari-testplan`, `/velpari-atomic-function`, `/velpari-development-order`, `/velpari-final-design` |
-| Discipline | `/velpari-approve-brainstorm`, `/velpari-prd-approve`, `/velpari-rtm-approve`, `/velpari-feasibility-approve`, `/velpari-architecture-generator-approve`, `/velpari-atomic-function-approve`, `/velpari-pseudocode-approve`, `/velpari-testplan-approve`, `/velpari-development-order-approve`, `/velpari-final-design-approve` (9 per-stage fall-back commands — the normal publish flow is auto-publish via the `velpari_stage_publish` tool), `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-configure-requirements`, `/velpari-configure-standards`, `/velpari-configure-agents`, `/velpari-agents`, `/velpari-generate-sub-agents`, `/velpari-doctor`, `/velpari-handoff`, **`/velpari-design-logging`** (cross-cutting — runs after Design is approved) |
+| Discipline | `/velpari-approve-brainstorm`, `/velpari-prd-approve`, `/velpari-rtm-approve`, `/velpari-feasibility-approve`, `/velpari-architecture-generator-approve`, `/velpari-atomic-function-approve`, `/velpari-pseudocode-approve`, `/velpari-testplan-approve`, `/velpari-development-order-approve`, `/velpari-final-design-approve` (9 per-stage fall-back commands — the normal publish flow is auto-publish via the `velpari_stage_publish` tool), `/velpari-status`, `/velpari-reset`, `/velpari-configure-inputs`, `/velpari-configure-requirements`, `/velpari-configure-standards`, `/velpari-configure-agents`, `/velpari-agents`, `/velpari-generate-sub-agents`, `/velpari-doctor`, `/velpari-handoff`, **`/velpari-design-logging`** (cross-cutting — runs after Design is approved), `/velpari-db-reset`, `/velpari-freeze`, `/velpari-tombstone`, `/velpari-rollback`, `/velpari-retention-prune`, `/velpari-merge-back` |
 | Wrapper | `/velpari-prd-rtm` |
 | View | `/velpari-show-brainstorm`, `/velpari-show-prd`, `/velpari-show-rtm`, `/velpari-show-feasibility`, `/velpari-show-design`, `/velpari-show-pseudocode`, `/velpari-show-testplan`, **`/velpari-show-logging`** |
 | Ops / store | `/velpari-reconfirm`, `/velpari-backfill`, `/velpari-portfolio`, `/velpari-migrate-store`, `/velpari-export` |
+
+### Versioning, locking & recovery (Phases 1–7)
+
+- **Revisions & freeze (N4/F7):** every publish creates an immutable snapshot revision; `/velpari-freeze` freezes an artifact at handoff with a typed reason (a frozen artifact refuses publish, supersession and tombstone), `/velpari-tombstone` withdraws a revision, `/velpari-rollback` restores content as a new revision.
+- **Backups (N9–N11):** the store auto-snapshots (`VACUUM INTO`) at publish / `/velpari-db-reset` / `/velpari-migrate-store` into gitignored `Backup/velpari/<project>/` with a `manifest.jsonl`, pruned keep-last-N FIFO; restore goes through `skills/db-store-merge-runbook.md`.
+- **Retention (N7):** `/velpari-retention-prune` deletes superseded revisions beyond `velpari.retention.revisions` (keep-last-N) — confirmed and audited; head and baselined revisions are never pruned.
+- **Enforcement (N5/N6/N8/N14):** run binding ties `state.json` to a git worktree/branch; a gate blocks commands from the wrong tree; an upstream-moved notice surfaces each turn; the doctor reports a worktree removed mid-run.
+- **Hash-chain (N15):** `audit_ledger` / `tx_log` rows are hash-chained and verified end-to-end by `/velpari-doctor`.
+- **Execution lanes (N16):** dev-order work is ranked into DAG-derived execution lanes (integration plan + lock rules), carried in the working copy, store kinds and handoff payload.
 
 ### Sub-agent generator (v2)
 

@@ -107,7 +107,8 @@ YAML diff is the intended review surface and needs no extra tools.
    re-running the consumer stage.
 6. **Last verified backup (N11)** — no backup yet (the next publish,
    `/velpari-db-reset` or `/velpari-migrate-store` writes one) or the newest
-   backup failed verification (restore from git per § 2 or an older snapshot).
+   backup failed verification (restore from git per § 2, or restore an older
+   verified snapshot — **§ 7**).
 7. **Run lock (N13)** — a stale run lock from a crashed session; the ONLY
    sanctioned clear is `/velpari-reset` (confirm + audit event) — never
    hand-delete `.lock/`.
@@ -115,7 +116,44 @@ YAML diff is the intended review surface and needs no extra tools.
    exists (removed while the run was active): restore the worktree or reset
    the run before continuing.
 
-## 7. Guided merge-back (`/velpari-merge-back`, N12)
+## 7. Restore a backup snapshot
+
+Disaster path: the store DB is missing, corrupt, or stale and a
+`Backup/velpari/<project>/` snapshot is newer. Restore sequence (Phase 3
+contract — the guard strings below are what `restoreBackupSnapshot`
+(`core/backup.ts`) actually emits):
+
+1. **Close any running pi session first** — restoring under an open writer
+   is how the file you are rescuing gets re-corrupted.
+2. **Check `.pi/velpari/.lock/`** — the restore refuses while a run lock
+   exists: `a run lock exists at …/.lock/ — held by pid …; close any running
+   pi session first; if the holder is dead, clear the lock via the runbook /
+   N13 path.` The N13 path = `/velpari-reset` (confirm + audit) — never
+   hand-delete `.lock/` (§ 6 item 7).
+3. **Pick + verify the snapshot** — a snapshot restores only if the manifest
+   proves it: an entry must name it (`no manifest entry for … — the snapshot
+   cannot be proven`), the SHA-256 must match (`digest mismatch …`), and
+   `quick_check` must pass. Unproven/tampered = refusal, **zero writes**.
+4. **Schema ceiling (G3)** — a snapshot newer than this build refuses:
+   `snapshot schema vN is newer than this extension (vM) — upgrade before
+   restoring.`
+5. **Confirm, then call** `restoreBackupSnapshot({cwd, projectName,
+   backupPath})` (through the parent LLM / doctor fix path — the function
+   itself has no UI). Checks 1–4 run FIRST; then a **pre-restore safety
+   snapshot** of a healthy target is written (skipped with a warning for a
+   missing or already-corrupt target; a *failed* safety copy for a healthy
+   target refuses: `refusing to overwrite a DB we could not protect`), the
+   DB is atomically replaced, stale `-wal`/`-shm` sidecars are dropped, and
+   `quick_check` re-runs (`post-restore quick_check failed` = restore
+   rejected against the safety copy's record).
+6. **Doctor re-audit** — `/velpari-doctor` must come back clean on **Store
+   DB integrity**, **Store DB links** and **Audit hash chain** (§ 6 items 2,
+   3, 4) before anyone publishes again.
+
+The `backup-verify-failed` / `backup-restore-hint` suggestions (§ 6 item 6)
+point here.
+
+## 8. Guided merge-back (`/velpari-merge-back`, N12)
 
 The hand-driven procedure above also has one deliberate command surface
 (Phase 6). **Never automatic (G-4):** the command plans first; only

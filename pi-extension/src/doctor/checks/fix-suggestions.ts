@@ -223,9 +223,9 @@ export const SUGGESTIONS = {
 	"backup-missing":
 		"The first snapshot is written by the next publish, `/velpari-db-reset` or `/velpari-migrate-store` (N9). Until then there is nothing to restore — skills/db-store-merge-runbook.md.",
 	"backup-verify-failed":
-		"Treat the newest snapshot as untrusted: fix the manifest/file mismatch (or take a fresh snapshot at the next publish) and prefer an older verified snapshot. Restore steps: skills/db-store-merge-runbook.md §4.",
+		"Treat the newest snapshot as untrusted: fix the manifest/file mismatch (or take a fresh snapshot at the next publish) and prefer an older verified snapshot. Restore steps: skills/db-store-merge-runbook.md §7.",
 	"backup-restore-hint":
-		"Restore with `restoreBackupSnapshot` per skills/db-store-merge-runbook.md §4 — the pre-restore safety copy and post-restore quick_check are automatic.",
+		"Restore with `restoreBackupSnapshot` per skills/db-store-merge-runbook.md §7 — the pre-restore safety copy and post-restore quick_check are automatic.",
 	"stale-lock-reset":
 		"Clear it with `/velpari-reset` (confirm + audit, N13) — never delete `.pi/velpari/.lock/` by hand.",
 	"worktree-removal":

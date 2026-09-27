@@ -53,7 +53,7 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-agents` | View + validate the mapping. |
 | `/velpari-generate-sub-agents` | Per-phase dynamic agent generation (phase auto-detected from run state; `--phase N` overrides) — see `05-sub-agent-generation.md`. |
 
-## Ops / discipline commands (9)
+## Ops / discipline commands (15)
 
 | Command | Purpose |
 |---|---|
@@ -66,6 +66,12 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-backfill <kind>` | One-step import of a pre-store project into its store DB (`--from-export` rebuilds from the YAML beside the DB). Store-only; no stage advance. |
 | `/velpari-portfolio` | List the portfolio registry (`Doc/store/portfolio.db`); `--repair` rebuilds it from the spokes. |
 | `/velpari-migrate-store` | One-time legacy migration (Phase 11, RES-3): `--dry-run` reports per project/kind and writes nothing; `--execute` confirms first, then imports into the store under run `migrated`, re-exports the YAMLs beside each DB, verifies, and commits per project. |
+| `/velpari-db-reset [runId]` | DB-only reset: delete one run's DRAFT store rows (published rows and revisions are never touched). Confirms first; audits; takes a pre-reset backup snapshot. |
+| `/velpari-freeze` | Freeze or unfreeze a published artifact (N4): a frozen artifact refuses publish, supersession and tombstone. Unfreezing requires a typed reason; every action is audited. |
+| `/velpari-tombstone` | Retract one published revision as a tracked modification (F16): status becomes withdrawn, bytes stay, the reason is audited. Typed reason + two confirmations. |
+| `/velpari-rollback` | Roll one artifact back by publishing a NEW revision carrying an older revision's exact content (F21). History is never rewritten; typed reason required. |
+| `/velpari-retention-prune` | Retention cleanup (N7): delete superseded revisions beyond keep-last-N (`velpari.retention.revisions`). Confirmed + audited; head and baselined revisions are never pruned. |
+| `/velpari-merge-back` | Guided merge-back of a parallel line (N12) — dry-run plan, then `--execute`: confirm → git merge → store verify → doctor → staleness → F14 flags. |
 
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 
@@ -95,6 +101,30 @@ republish. Gates and behavior:
   `## Change Log` section (`hashv: 2`), so the audit line itself never
   re-stales downstream consumers. Legacy (`hashv`-less) entries keep
   whole-file checking until their next publish or re-confirm.
+
+### Revisions, freeze & protection
+
+- **`/velpari-freeze` / unfreeze (N4):** a frozen artifact refuses publish,
+  supersession and tombstone; unfreezing requires a typed reason. One
+  executor home: `ops/freeze.ts` — gate code calls into it, no second home.
+- **`/velpari-tombstone` (F16)** withdraws a revision — bytes stay, status
+  flips, reason audited. **`/velpari-rollback` (F21)** restores an older
+  revision's exact content as a NEW revision; history is never rewritten.
+- **`/velpari-db-reset`** deletes only one run's DRAFT store rows (published
+  rows and revisions survive) — the row-only counterpart to
+  `/velpari-reset`, which also clears run state.
+- **`/velpari-retention-prune` (N7)** enforces `velpari.retention.revisions`
+  (keep-last-N, default keep-forever); head and baselined revisions are
+  never pruned.
+- **`/velpari-merge-back` (N12)** syncs a parallel line back upstream:
+  dry-run plan, then `--execute` (confirm → git merge → store verify →
+  doctor → staleness → F14 flags).
+- **Automatic backups (N9–N11):** every publish / `/velpari-db-reset` /
+  `/velpari-migrate-store` snapshots the store (`VACUUM INTO`, never a raw
+  copy) into gitignored `Backup/velpari/<project>/index-<UTC>-<sha>.db` with
+  a `manifest.jsonl` record (SHA-256, git commit, quick-check result),
+  pruned FIFO keep-last-N; restore runs only through the runbook
+  (`skills/db-store-merge-runbook.md`).
 
 ## View commands (8)
 
