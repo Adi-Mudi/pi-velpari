@@ -204,6 +204,58 @@ describe("transition lock — closed session, stale chain", () => {
 		assert.match(block, /\/velpari-reconfirm if the change has no impact on this artifact/);
 	});
 
+	it("a FOREIGN-RUN stale input adds the N8-B line with the worktree fix (append-only)", () => {
+		const lock = computeLegalCommandsFrom({
+			state: makeState("drafted-prd"),
+			specs: SPECS,
+			staleSet: [stale("prd:TestApp", "prd")],
+			cwd: "/tmp/any",
+			projectName: "TestApp",
+			classifications: {
+				"prd:TestApp": {
+					classification: "foreign-run",
+					move: {
+						kind: "prd",
+						move: "foreign-run",
+						publishedHead: {
+							kind: "prd",
+							revisionId: 9,
+							revisionNumber: 7,
+							runId: "run-B",
+							publishedAt: "2026-09-27T01:00:00.000Z",
+							fingerprint: "f",
+							version: 2,
+						},
+						myRevisionNumber: 5,
+						storeLastCommit: "abc1234",
+						otherRuns: ["run-B"],
+					},
+				},
+			},
+		});
+		const block = lock.reasonFor("/velpari-rtm")!;
+		// The Phase-5 line is additive: every pinned Phase-1/2 substring remains.
+		assert.match(block, /Cannot run \/velpari-rtm: declared inputs are stale/);
+		assert.match(block, /prd:TestApp is stale \(input-changed/);
+		assert.match(block, /FOREIGN RUN MOVE \(N8-B\): run run-B published prd rev 7 \(commit abc1234\)/);
+		assert.match(block, /your line is at rev 5/);
+		assert.match(block, /git worktree add \.\.\//);
+	});
+
+	it("an OWN-RUN classification adds no N8-B line (the normal update path)", () => {
+		const lock = computeLegalCommandsFrom({
+			state: makeState("drafted-prd"),
+			specs: SPECS,
+			staleSet: [stale("prd:TestApp", "prd")],
+			cwd: "/tmp/any",
+			projectName: "TestApp",
+			classifications: { "prd:TestApp": { classification: "own-run", move: null } },
+		});
+		const block = lock.reasonFor("/velpari-rtm")!;
+		assert.doesNotMatch(block, /FOREIGN RUN MOVE/);
+		assert.doesNotMatch(block, /git worktree add/);
+	});
+
 	it("an input-missing stale input keeps the republish-only remedy (D4)", () => {
 		const lock = computeLegalCommandsFrom({
 			state: makeState("drafted-prd"),

@@ -11,6 +11,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { clearRun, loadState } from "../core/state.js";
+import { closeRunBinding } from "../core/run-binding.js";
 import { clearStaleRunLock, readLockStatus } from "../io/run-lock.js";
 import { auditResetEvent } from "./db-reset.js";
 
@@ -50,6 +51,11 @@ export async function handleReset(ctx: ExtensionCommandContext, cwd: string = pr
 		}
 	}
 
+	// N5 release path (Phase 5): a reset abandons this run line — close its
+	// worktree binding so a new run line may start in this folder. Best effort;
+	// a failure never blocks the reset.
+	const bindingClosed = closeRunBinding(cwd, runId, "reset");
+
 	clearRun(cwd);
 	// F17 — the reset itself is audited (who/what/when/why), one row per store DB.
 	const warnings = auditResetEvent(cwd, runId, {
@@ -59,7 +65,8 @@ export async function handleReset(ctx: ExtensionCommandContext, cwd: string = pr
 	ctx.ui.notify(
 		`Run ${runId} reset. State is now empty. No store DB rows were touched ` +
 			`(draft cleanup: /velpari-db-reset).` +
-			(clearedStaleLock ? " Stale run lock cleared (audited)." : ""),
+			(clearedStaleLock ? " Stale run lock cleared (audited)." : "") +
+			(bindingClosed ? " Worktree binding closed — this folder is free for a new run (N5)." : ""),
 		"info",
 	);
 	for (const warning of warnings) ctx.ui.notify(warning, "warning");

@@ -29,6 +29,7 @@
 
 import { nextCommandsFor, PATHS, type Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
+import { classifyStaleItem, type StaleClassification } from "../core/change-report.js";
 import {
 	computeStaleSet,
 	manifestKey,
@@ -38,6 +39,7 @@ import {
 } from "../core/freshness.js";
 import { hasPublishedFeasibility, slugify } from "../core/paths.js";
 import { loadState, type RunState } from "../core/state.js";
+import { worktreeAddHint } from "../core/worktree.js";
 
 const BRAINSTORM_COMMAND = "/velpari-brainstorm";
 const APPROVE_BRAINSTORM_COMMAND = "/velpari-approve-brainstorm";
@@ -99,6 +101,35 @@ interface LegalCommandsFromInput {
 	cwd?: string;
 	projectName?: string;
 	feasibilitySkip?: boolean;
+	/**
+	 * N8 classification per stale item key (`stale.item.key`). Filled by
+	 * `computeLegalCommands` from the store; the pure core only uses it to
+	 * enrich the block message. It can never change legality.
+	 */
+	classifications?: Record<string, StaleClassification>;
+}
+
+/**
+ * Classify the stale items for their N8 verdict (own-run vs foreign-run).
+ * Best-effort + fail-open: no store project, no run, or a read failure →
+ * undefined, and every gate message stays exactly as before.
+ */
+function classifyStale(
+	cwd: string,
+	projectName: string,
+	runId: string,
+	staleSet: readonly StaleItem[],
+): Record<string, StaleClassification> | undefined {
+	if (projectName === "" || runId === "") return undefined;
+	const actionable = staleSet.filter((item) => item.reason !== "no-stamp");
+	if (actionable.length === 0) return undefined;
+	try {
+		const out: Record<string, StaleClassification> = {};
+		for (const item of actionable) out[item.key] = classifyStaleItem(cwd, projectName, runId, item);
+		return out;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -119,6 +150,7 @@ export function computeLegalCommands(cwd: string, specs: readonly StageLockSpec[
 		cwd,
 		projectName,
 		feasibilitySkip,
+		classifications: state.runId ? classifyStale(cwd, projectName, state.runId, staleSet) : undefined,
 	});
 }
 
@@ -239,11 +271,25 @@ export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCo
 			}
 			const staleInputs = staleInputsFor(stageSpec);
 			if (staleInputs.length > 0) {
-				const lines = staleInputs.map(
-					(item) =>
+				const runId = state.runId;
+				const lines = staleInputs.map((item) => {
+					const base =
 						`  - ${item.key} is stale (${item.reason}: ${item.changedInputs.join(", ")}) — ` +
-						(item.reason === "input-changed" ? remedyFor(item) + "." : `republish via ${remedyFor(item)}.`),
-				);
+						(item.reason === "input-changed" ? remedyFor(item) + "." : `republish via ${remedyFor(item)}.`);
+					// N8-B enrichment (Phase 5): name the foreign publisher, its
+					// revision and commit, and force a separate worktree. Purely
+					// additive — the base line (and its pinned substrings) stay.
+					const verdict = input.classifications?.[item.key];
+					if (verdict?.classification !== "foreign-run" || !verdict.move) return base;
+					const move = verdict.move;
+					return (
+						base +
+						`\n    FOREIGN RUN MOVE (N8-B): run ${move.publishedHead.runId} published ${move.kind} ` +
+						`rev ${move.publishedHead.revisionNumber} (commit ${move.storeLastCommit ?? "n/a"})` +
+						`${move.myRevisionNumber === null ? "" : `; your line is at rev ${move.myRevisionNumber}`}. ` +
+						`Stop and notify, then continue a parallel line in a separate worktree: ${worktreeAddHint(runId)}`
+					);
+				});
 				return (
 					`Cannot run ${cmd}: declared inputs are stale per ${PATHS.FRESHNESS_FILE}.\n` +
 					lines.join("\n") +

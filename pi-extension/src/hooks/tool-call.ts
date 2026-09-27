@@ -34,6 +34,11 @@
  *      /velpari-rollback, /velpari-export). Published revisions are
  *      immutable (F16): a delete is a tracked modification, never a
  *      removal.
+ *   6. Worktree write guard (phase 5, N5/N6):
+ *      `stages/worktree-lock.ts:verifyRunWorktree` — while a run is active,
+ *      edit/write from a folder that is not the run's worktree (or on a
+ *      different branch) is blocked with the self-healing fix. Runs last so
+ *      it never shadows the brainstorm/stage/scout/store precedence.
  *
  * Accepted boundaries (recorded, not oversights): non-destructive bash
  * writes to the store, and deletes of the legacy `Doc/*.md` views
@@ -52,6 +57,7 @@ import { buildRunDir, STORE_DB_DIR } from "../core/paths.js";
 import { deleteAttemptGuidance } from "../ops/tombstone.js";
 import { loadState, type RunState } from "../core/state.js";
 import { guardBrainstormMutation } from "../stages/brainstorm/guard.js";
+import { verifyRunWorktree } from "../stages/worktree-lock.js";
 
 /**
  * Generalized stage mutation lock: while `state.currentStage` is an
@@ -187,6 +193,32 @@ function guardScoutSpawn(
 	};
 }
 
+/**
+ * Worktree write guard (Phase 5, N5/N6): while a run is active, an edit/write
+ * whose folder is not the run's stamped worktree (or whose branch is not the
+ * run's branch) is blocked with the self-healing message — go back to the run's
+ * worktree, or create a separate worktree for a parallel line. This is the
+ * "blocks fire BEFORE any write" half of the enforcement; the stage/publish
+ * gates cover the commands.
+ *
+ * Fail-open like its siblings (R4): no run, no stamp, a non-git folder or any
+ * error → allowed.
+ * @param {string} toolName - Pi tool name (only edit/write are guarded).
+ * @param {RunState} state - Current run state.
+ * @param {string} cwd - Session folder.
+ * @returns {{ block: true; reason: string } | undefined} Block, or undefined.
+ */
+export function guardWorktreeMutation(
+	toolName: string,
+	state: RunState,
+	cwd: string,
+): { block: true; reason: string } | undefined {
+	if (toolName !== "edit" && toolName !== "write") return undefined;
+	if (!state.runId) return undefined;
+	const verdict = verifyRunWorktree(state, cwd);
+	return verdict.ok ? undefined : { block: true, reason: verdict.reason };
+}
+
 export function registerToolCallHook(pi: ExtensionAPI): void {
 	pi.on("tool_call", (event, ctx) => {
 		try {
@@ -213,6 +245,11 @@ export function registerToolCallHook(pi: ExtensionAPI): void {
 			//    store paths, with the self-healing guidance instead of a dead end.
 			const deleteBlock = guardStoreDeleteAttempt(event.toolName, input, ctx.cwd);
 			if (deleteBlock) return deleteBlock;
+
+			// 6. Worktree write guard (phase 5) — a run may only write inside its
+			//    own worktree/branch; a copied folder or a foreign line is blocked.
+			const worktreeBlock = guardWorktreeMutation(event.toolName, state, ctx.cwd);
+			if (worktreeBlock) return worktreeBlock;
 		} catch {
 			// Fail open — never wedge edits on a guard bug.
 		}

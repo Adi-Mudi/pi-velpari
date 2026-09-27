@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
-import { runDbPublish } from "../../src/ops/db-publish.js";
+import { precheckGitForPublish, runDbPublish } from "../../src/ops/db-publish.js";
 import {
 	appendAuditEntry,
 	appendTxEntry,
@@ -374,3 +374,71 @@ describe("Phase 1 publish chain — CAS door, revision surfacing, audit wiring",
 		assert.deepEqual(out.problems, []);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Phase 5 — the worktree/branch half of the publish pre-check (N5/N6).
+// `run` is optional, so every Phase-1/2/3 caller keeps its exact behavior.
+// ---------------------------------------------------------------------------
+
+/** Repo with one commit + pinned local identity (mirrors the suite's hermeticity rule). */
+function initRepoWithIdentity(target: string, branch = "main"): void {
+	execFileSync("git", ["init", "-b", branch], { cwd: target });
+	execFileSync("git", ["-c", "user.email=t@t.local", "-c", "user.name=T", "commit", "--allow-empty", "-m", "init"], {
+		cwd: target,
+	});
+	execFileSync("git", ["config", "user.email", "t@t.local"], { cwd: target });
+	execFileSync("git", ["config", "user.name", "T"], { cwd: target });
+}
+
+describe("precheckGitForPublish — Phase 5 worktree/branch checks (N5/N6)", () => {
+	let repo: string;
+
+	beforeEach(() => {
+		repo = mkdtempSync(join(tmpdir(), "velpari-precheck-wt-"));
+		dirs.push(repo);
+	});
+
+	test("no run argument → the Phase-1 behavior (identical to an explicit undefined)", () => {
+		initRepoWithIdentity(repo);
+		const withoutRun = precheckGitForPublish(repo);
+		const explicitUndefined = precheckGitForPublish(repo, undefined);
+		assert.deepEqual(withoutRun, explicitUndefined);
+		assert.equal(withoutRun.ok, true, withoutRun.problems.join("; "));
+	});
+
+	test("matching worktree + branch → still ok", () => {
+		initRepoWithIdentity(repo, "velpari/line-A");
+		const result = precheckGitForPublish(repo, { runBranch: "velpari/line-A", runWorktree: repo });
+		assert.equal(result.ok, true, result.problems.join("; "));
+	});
+
+	test("publish from the WRONG worktree → refused with both folders + the fix", () => {
+		initRepoWithIdentity(repo, "velpari/line-A");
+		const parent = mkdtempSync(join(tmpdir(), "velpari-precheck-wt2-"));
+		dirs.push(parent);
+		const second = join(parent, "line-b");
+		execFileSync("git", ["worktree", "add", second, "-b", "velpari/line-B"], { cwd: repo });
+
+		const result = precheckGitForPublish(second, { runBranch: "velpari/line-B", runWorktree: repo });
+		assert.equal(result.ok, false);
+		const joined = result.problems.join("\n");
+		assert.match(joined, /publish must run in the run's worktree/);
+		assert.match(joined, /git worktree add \.\.\//);
+		assert.match(joined, /N5\/N6/);
+	});
+
+	test("publish on the WRONG branch → refused with the checkout fix", () => {
+		initRepoWithIdentity(repo, "main");
+		const result = precheckGitForPublish(repo, { runBranch: "velpari/line-A", runWorktree: repo });
+		assert.equal(result.ok, false);
+		assert.match(result.problems.join("\n"), /bound to branch 'velpari\/line-A', this worktree is on 'main'/);
+		assert.match(result.problems.join("\n"), /git checkout velpari\/line-A/);
+	});
+
+	test("non-git folder → the original 'not inside a git work tree' refusal (unchanged)", () => {
+		const result = precheckGitForPublish(repo, { runBranch: "x", runWorktree: repo });
+		assert.equal(result.ok, false);
+		assert.match(result.problems.join("\n"), /not inside a git work tree/);
+	});
+});
+

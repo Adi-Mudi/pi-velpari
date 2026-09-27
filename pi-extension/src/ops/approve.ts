@@ -50,6 +50,8 @@ import { computeInputHashes, recordPublish, resolveDeclaredInputs } from "../cor
 import { runPublishGate } from "../doctor/gate.js";
 import { buildFeasibilityRowsFromSession, kindForWorkingDir, loadStagePayload } from "./stage-payloads.js";
 import { precheckGitForPublish, publishedPrdPath, runDbPublish } from "./db-publish.js";
+import { verifyRunWorktree, verifyUpstreamMoves } from "../stages/worktree-lock.js";
+import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
 import type { ArtifactEnvelopeInput, ArtifactPayload } from "../io/store.js";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { buildStoreDbPath } from "../core/paths.js";
@@ -498,7 +500,24 @@ export async function handleApprove(
 		return;
 	}
 	if (!skipDbPublish) {
-		const gitPre = precheckGitForPublish(cwd);
+		// Phase 5 (N6): the publishing command must run in the run's worktree +
+		// branch — checked before any store row, commit or backup write.
+		const wtVerdict = verifyRunWorktree(state, cwd);
+		if (!wtVerdict.ok) {
+			ctx.ui.notify(`${wtVerdict.reason}\nPublish blocked before any write.`, "error");
+			return;
+		}
+		// Phase 5 (N8-B): a foreign run published a newer upstream revision of an
+		// artifact this run consumed. STOP, notify with artifact/revision/run/
+		// commit, force a separate worktree. This closes the cross-run blind spot
+		// of the per-run CAS head (Phase-1 integration request #2).
+		const moved = verifyUpstreamMoves(state, cwd);
+		if (!moved.ok) {
+			const reportPath = writeChangeReport(cwd, buildChangeReport(cwd, state));
+			ctx.ui.notify(`${moved.reason}\nChange report: ${reportPath}`, "error");
+			return;
+		}
+		const gitPre = precheckGitForPublish(cwd, state);
 		if (!gitPre.ok) {
 			ctx.ui.notify(
 				`Git pre-check failed — publish blocked (Q6a):\n` + gitPre.problems.map((p) => `  - ${p}`).join("\n"),

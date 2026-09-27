@@ -17,7 +17,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadState } from "../core/state.js";
+import { loadState, type RunState } from "../core/state.js";
 import { loadHistory } from "../core/history.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import {
@@ -36,6 +36,10 @@ import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 import { STAGE_LOCK_SPECS } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
 import { generationHintForPhase, phaseEntryPhase } from "../core/agent-freshness.js";
+import { changeReportPath, classifyStaleItem } from "../core/change-report.js";
+import { computeStaleSet } from "../core/freshness.js";
+import { foreignLinesInWorktree, readRunBinding } from "../core/run-binding.js";
+import { branchCheckedOutAt, detectWorktree, samePaths, worktreeAddHint } from "../core/worktree.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -57,6 +61,69 @@ const ARTIFACT_ORDER: ReadonlyArray<{ artifact: string; label: string }> = [
 	{ artifact: "atomic-functions", label: "Atomic Functions" },
 	{ artifact: "development-order", label: "Development Order" },
 ];
+
+/**
+ * Phase 5 — the Worktree section (N5/N6/N8/N14). Read-only diagnostics: bound
+ * vs current worktree/branch, a foreign run line claiming this folder, upstream
+ * moves with artifact/revision/run/commit, the N14 `git fetch` advise, and the
+ * change-report path when a gate wrote one.
+ * @param {string} cwd - Project root.
+ * @param {RunState} state - Current run state.
+ * @param {string} projectName - Configured project name ("" = unset).
+ * @returns {string[]} Markdown lines for the status entry.
+ */
+function worktreeLines(cwd: string, state: RunState, projectName: string): string[] {
+	const info = detectWorktree(cwd);
+	if (!info.isGit) {
+		return ["## Worktree", "", "- not a git worktree — worktree enforcement skipped (N5/N6, fail-open)."];
+	}
+	const binding = readRunBinding(cwd, state.runId);
+	const boundWorktree = state.runWorktree ?? binding?.worktree ?? null;
+	const boundBranch = state.runBranch ?? binding?.branch ?? null;
+	const mismatch = boundWorktree !== null && !samePaths(boundWorktree, info.worktree);
+	const lines: string[] = [
+		"## Worktree",
+		"",
+		`- bound: ${boundWorktree ?? "(not stamped)"}${boundBranch ? ` @ ${boundBranch}` : ""}`,
+		`- current: ${info.worktree} @ ${info.branch}`,
+		`- verdict: ${
+			mismatch
+				? `MISMATCH — work in ${boundWorktree}, or create a separate worktree: ${worktreeAddHint(state.runId)}`
+				: "ok"
+		}`,
+	];
+	const movedBranch = boundBranch ? branchCheckedOutAt(info, boundBranch) : null;
+	if (movedBranch)
+		lines.push(`- the run's branch ${boundBranch} is checked out in another worktree: ${movedBranch} (N6)`);
+	if (info.behind > 0) {
+		lines.push(
+			`- behind-upstream: ${info.behind} commit(s) behind ${info.upstream} — run git fetch / git pull, then re-run (N14: local view only)`,
+		);
+	}
+	for (const line of foreignLinesInWorktree(cwd, state.runId, { worktree: info.worktree })) {
+		lines.push(
+			`- FOREIGN LINE (N5): run ${line.runId} @ ${line.branch} is active in this folder — ${worktreeAddHint(line.runId)}`,
+		);
+	}
+	if (projectName !== "") {
+		try {
+			for (const item of computeStaleSet(cwd)) {
+				if (item.reason === "no-stamp") continue;
+				const verdict = classifyStaleItem(cwd, projectName, state.runId, item);
+				if (verdict.classification !== "foreign-run" || !verdict.move) continue;
+				lines.push(
+					`- upstream-moved (N8-B): ${verdict.move.kind} r${verdict.move.publishedHead.revisionNumber} ` +
+						`by run ${verdict.move.publishedHead.runId} (commit ${verdict.move.storeLastCommit ?? "n/a"}) — ` +
+						`stop, re-read, re-confirm; continue a parallel line in a separate worktree`,
+				);
+			}
+		} catch {
+			// Fail-open: diagnostics must never break /velpari-status.
+		}
+	}
+	lines.push(`- change report: ${changeReportPath(cwd, state.runId)} (written by the stage/publish gates)`);
+	return lines;
+}
 
 export async function handleStatus(
 	ctx: ExtensionCommandContext,
@@ -113,7 +180,8 @@ export async function handleStatus(
 		}
 	}
 
-	lines.push(``, `## Profile`);
+	lines.push("", ...worktreeLines(cwd, state, projectName));
+	lines.push("", "## Profile");
 
 	const profile = loadRequirementsProfile(cwd);
 	const compact = compactProfileMetadata(profile);

@@ -17,10 +17,46 @@
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { STAGE_FOLDERS } from "../core/constants.js";
+import { loadFilesConfig } from "../core/config.js";
+import { classifyStaleItem } from "../core/change-report.js";
+import { computeStaleSet } from "../core/freshness.js";
 import { buildRunDir } from "../core/paths.js";
+import { foreignLinesInWorktree } from "../core/run-binding.js";
 import { loadState, type RunState } from "../core/state.js";
+import { detectWorktree, samePaths, worktreeAddHint } from "../core/worktree.js";
 import { STAGE_LOCK_SPECS } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
+
+/**
+ * Cheap upstream-move summary for the per-turn status block (N8-B).
+ *
+ * Cost rule (user watch item, 2026-09-27): `before_agent_start` fires EVERY
+ * turn, so this reads ONE small JSON file first (`freshness.json` via
+ * computeStaleSet) and only then touches the store — and only for the stale
+ * entries, never for the whole chain. A clean run costs one file read and
+ * returns []. Never throws.
+ */
+function upstreamMoveLines(cwd: string, state: RunState): string[] {
+	try {
+		const stale = computeStaleSet(cwd);
+		if (stale.length === 0) return [];
+		const projectName = loadFilesConfig(cwd).projectName ?? "";
+		if (projectName === "") return [];
+		const lines: string[] = [];
+		for (const item of stale) {
+			if (item.reason === "no-stamp") continue;
+			const verdict = classifyStaleItem(cwd, projectName, state.runId, item);
+			if (verdict.classification !== "foreign-run" || !verdict.move) continue;
+			lines.push(
+				`${verdict.move.kind} r${verdict.move.publishedHead.revisionNumber} by ${verdict.move.publishedHead.runId} ` +
+					`(commit ${verdict.move.storeLastCommit ?? "n/a"})`,
+			);
+		}
+		return lines;
+	} catch {
+		return [];
+	}
+}
 
 /** Per-stage hard rule injected alongside the status block. */
 function stageRule(state: RunState, cwd: string): string | null {
@@ -71,6 +107,34 @@ export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 			}
 			const rule = stageRule(state, ctx.cwd);
 			if (rule) lines.push(`rule: ${rule}`);
+
+			// Phase 5 — notification channel (§3.5, N14). Cheap by construction:
+			// one light git probe (3 rev-parse calls) + a foreign-line scan of
+			// small run files; the store is only read when the freshness manifest
+			// already reports stale entries. All fail-open.
+			const info = detectWorktree(ctx.cwd, { skipWorktrees: true, skipUpstream: true });
+			if (info.isGit && info.worktree !== "") {
+				const boundMismatch =
+					(state.runWorktree !== undefined && !samePaths(state.runWorktree, info.worktree)) ||
+					(state.runBranch !== undefined && state.runBranch !== info.branch);
+				lines.push(
+					`worktree: ${info.worktree} @ ${info.branch}` +
+						(boundMismatch
+							? `  ← MISMATCH: run is bound to ${state.runWorktree ?? "(unknown)"} @ ${state.runBranch ?? "(unknown)"}`
+							: ""),
+				);
+				const foreign = foreignLinesInWorktree(ctx.cwd, state.runId, { worktree: info.worktree });
+				if (foreign.length > 0) {
+					lines.push(
+						`BLOCKED: run line ${foreign[0]!.runId} is active in this folder — ${worktreeAddHint(foreign[0]!.runId)}`,
+					);
+				}
+				const moves = upstreamMoveLines(ctx.cwd, state);
+				if (moves.length > 0) {
+					lines.push(`upstream-moved: ${moves.join(", ")} — re-read / rebase / re-confirm (N8-B)`);
+				}
+			}
+
 			lines.push("</velpari_status>");
 			return { systemPrompt: `${event.systemPrompt}\n\n${lines.join("\n")}` };
 		} catch {
