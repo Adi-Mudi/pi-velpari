@@ -43,38 +43,28 @@ import { registerExportCommand } from "./export.js";
 import { registerBackfillCommand } from "./backfill.js";
 import { registerPortfolioCommand } from "./portfolio.js";
 import { registerMigrateCommand } from "./migrate.js";
-// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
-// Phase I owns this registry. Rebase/merge this block; do not duplicate it.
+// Ops — versioning, locking & recovery surface (Phases 2/4/6)
 import { registerDbResetCommand } from "./db-reset.js";
 import { registerFreezeCommand } from "./freeze.js";
 import { registerTombstoneCommand } from "./tombstone.js";
 import { registerRollbackCommand } from "./rollback.js";
-// ==== END PHASE 2 BLOCK ====
-// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
-// Phase I owns this registry. Rebase/merge this block; do not duplicate it.
 import { registerRetentionPruneCommand } from "./retention-prune.js";
-// ==== END PHASE 4 BLOCK ====
-// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK (Master Outline §4.2) ====
-// Phase I owns this registry: rebase/merge this block as a unit; do not duplicate it.
 import { registerMergeBackCommand } from "./merge-back.js";
-// ==== END PHASE 6 BLOCK ====
 
 /**
- * All 43 user-facing commands. v1.6.0 replaced the generic
+ * All 51 user-facing commands (Phase I reconciliation — the canonical
+ * registry; no per-phase blocks remain). v1.6.0 replaced the generic
  * `the publish tool` command (which the parent LLM invokes via the
  * `velpari_stage_publish` tool during preview-yes) with 9 per-stage
  * `/velpari-<stage>-approve` fall-back commands for stages 2–10. Brainstorm
- * keeps its bespoke `/velpari-approve-brainstorm` chain. The previous
- * 30-command baseline came from `/velpari-generate-sub-agents` (Phase 8)
- * on top of the 29-command baseline (see CHANGELOG.md for the v1.0
- * entry).
- * 9 per-stage /velpari-<stage>-approve commands (manual recovery only).
- * v1.4.0 added /velpari-design-logging (discipline) and
- * /velpari-show-logging (view). The previous 30-command baseline came
- * from /velpari-generate-sub-agents (Phase 8) on top of the
- * 29-command baseline (see CHANGELOG.md for the v1.0 entry).
- * A5 added /velpari-reconfirm (the 41st command — stale-set re-confirm
- * path, spec 02:92-100).
+ * keeps its bespoke `/velpari-approve-brainstorm` chain.
+ * Later additions (history): /velpari-design-logging + /velpari-show-logging
+ * (v1.4.0), /velpari-generate-sub-agents (Phase 8), /velpari-reconfirm (A5),
+ * /velpari-export (42nd), /velpari-backfill (43rd), /velpari-portfolio
+ * (44th), /velpari-migrate-store (45th), then the versioning/locking/
+ * recovery surface — /velpari-db-reset, /velpari-freeze, /velpari-tombstone,
+ * /velpari-rollback (46th–49th), /velpari-retention-prune (50th),
+ * /velpari-merge-back (51st).
  *
  * /velpari-final-design (renamed from /velpari-html-design on 2026-09-14;
  * today produces Doc/design/final-design_<project>.md, not actual HTML) and
@@ -139,18 +129,13 @@ export const COMMAND_NAMES = [
 	"velpari-portfolio",
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	"velpari-migrate-store",
-	// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK (46th–49th commands) ====
+	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–51st commands)
 	"velpari-db-reset", // F23 — DB-only reset (draft rows of one run)
 	"velpari-freeze", // N4 — freeze/unfreeze with a mandatory unfreeze reason
 	"velpari-tombstone", // F16 — delete-as-modification (withdraw a revision)
 	"velpari-rollback", // F21 — rollback-as-new-revision
-	// ==== END PHASE 2 BLOCK ====
-	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK (50th command) ====
 	"velpari-retention-prune", // N7 — keep-last-N retention cleanup (confirmed + audited)
-	// ==== END PHASE 4 BLOCK ====
-	// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK (51st command) ====
 	"velpari-merge-back", // N12 — guided merge-back (N12/G-4)
-	// ==== END PHASE 6 BLOCK ====
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -214,16 +199,11 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerPortfolioCommand(pi);
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	registerMigrateCommand(pi);
-	// ==== PHASE 2 (protection) — INTEGRATION-REQUEST BLOCK ====
+	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–51st commands)
 	registerDbResetCommand(pi);
 	registerFreezeCommand(pi);
 	registerTombstoneCommand(pi);
 	registerRollbackCommand(pi);
-	// ==== END PHASE 2 BLOCK ====
-	// ==== PHASE 4 (export/retention) — INTEGRATION-REQUEST BLOCK ====
 	registerRetentionPruneCommand(pi);
-	// ==== END PHASE 4 BLOCK ====
-	// ==== PHASE 6 (doctor + merge-back) — INTEGRATION-REQUEST BLOCK ====
 	registerMergeBackCommand(pi);
-	// ==== END PHASE 6 BLOCK ====
 }
