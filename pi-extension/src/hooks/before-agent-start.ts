@@ -12,6 +12,11 @@
  *
  * No-op (returns the prompt unchanged) when there is no active run.
  * Fails open: any error returns the original system prompt untouched.
+ *
+ * Phase A (N18): a session gate verdict is resolved FIRST (cached per
+ * session, G2) — a mismatch/conflict injects a `<velpari_session_gate>`
+ * stop block (before any no-run early return, so plan-only declarations
+ * are enforced too); a match adds one `session-gate:` status line.
  */
 
 import { join, relative } from "node:path";
@@ -22,6 +27,7 @@ import { classifyStaleItem } from "../core/change-report.js";
 import type { StaleItem } from "../core/freshness.js";
 import { buildRunDir } from "../core/paths.js";
 import { foreignLinesInWorktree } from "../core/run-binding.js";
+import { sessionGateVerdict } from "../core/plan-binding.js";
 import { loadState, type RunState } from "../core/state.js";
 import { detectWorktree, samePaths, worktreeAddHint } from "../core/worktree.js";
 import { STAGE_LOCK_SPECS } from "../stages/registry.js";
@@ -89,9 +95,22 @@ function stageRule(state: RunState, cwd: string): string | null {
 export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", (event, ctx) => {
 		try {
+			// Phase A / N18 — session-start worktree gate. Runs BEFORE the no-run
+			// early return so a plan-only declaration (no live run) still reports
+			// or stops. The verdict is cached per session (G2).
+			const gate = sessionGateVerdict(ctx.cwd);
+			if (gate.kind === "mismatch" || gate.kind === "conflict") {
+				return {
+					systemPrompt: `${event.systemPrompt}\n\n<velpari_session_gate>\n${gate.reason}\n</velpari_session_gate>`,
+				};
+			}
+			const gateLine = gate.why === "match" && gate.statusLine ? gate.statusLine : null;
+
 			const state = loadState(ctx.cwd);
 			if (!state.runId || state.currentStage === "none") {
-				return { systemPrompt: event.systemPrompt };
+				return gateLine
+					? { systemPrompt: `${event.systemPrompt}\n\n<velpari_status>\n${gateLine}\n</velpari_status>` }
+					: { systemPrompt: event.systemPrompt };
 			}
 			const lock = computeLegalCommands(ctx.cwd, STAGE_LOCK_SPECS);
 			const lines = [
@@ -106,6 +125,7 @@ export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 			}
 			const rule = stageRule(state, ctx.cwd);
 			if (rule) lines.push(`rule: ${rule}`);
+			if (gateLine) lines.push(gateLine);
 
 			// Phase 5 — notification channel (§3.5, N14). Cheap by construction:
 			// one light git probe (3 rev-parse calls) + a foreign-line scan of

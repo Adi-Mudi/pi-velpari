@@ -2,9 +2,9 @@ name: test
 
 on:
   push:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**"]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
   pull_request:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**"]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
