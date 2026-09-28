@@ -3,6 +3,12 @@
  *
  * Guards (all fail open on error — a guard bug must never wedge edits):
  *
+ *   0. Session worktree gate (Phase A, N18): while the cached session
+ *      verdict reports a declared-worktree mismatch or a conflict between
+ *      the run binding and the active plan directive, edit/write is
+ *      blocked with the exact session message ("Restart the session
+ *      there."). Runs FIRST — a wrong-folder session must never see a
+ *      stage/brainstorm message instead of the session one.
  *   1. Brainstorm mutation lock (stages/brainstorm/guard.ts): while a
  *      brainstorm is open (currentStage === "brainstorming", with or
  *      without pausedStage), edit/write outside the run's brainstorm
@@ -56,6 +62,7 @@ import { STAGE_FOLDERS } from "../core/constants.js";
 import { buildRunDir, STORE_DB_DIR } from "../core/paths.js";
 import { deleteAttemptGuidance } from "../ops/tombstone.js";
 import { loadState, type RunState } from "../core/state.js";
+import { sessionGateVerdict } from "../core/plan-binding.js";
 import { guardBrainstormMutation } from "../stages/brainstorm/guard.js";
 import { verifyRunWorktree } from "../stages/worktree-lock.js";
 
@@ -155,6 +162,11 @@ export function guardStoreDeleteAttempt(
 	// quote or end-of-command — `Doc/storekeeper/x` must NOT match.
 	const storeRoot = resolve(cwd, STORE_DB_DIR);
 	const relativeStore = relative(cwd, storeRoot) || STORE_DB_DIR;
+	/**
+	 * True when the given path literal appears in the command followed by a separator, whitespace, quote or end-of-string (never mid-segment); the literal is regex-escaped internally.
+	 * @param {string} value - Path literal to search for.
+	 * @returns {boolean} Whether the path appears at a token boundary.
+	 */
 	const atBoundary = (value: string): boolean => new RegExp(`${escapeRegExp(value)}(?=[/\\s'"]|$)`).test(command);
 	if (!atBoundary(relativeStore) && !atBoundary(storeRoot)) return undefined;
 	return { block: true, reason: deleteAttemptGuidance(command) };
@@ -219,11 +231,39 @@ export function guardWorktreeMutation(
 	return verdict.ok ? undefined : { block: true, reason: verdict.reason };
 }
 
+/**
+ * Session worktree gate (Phase A, N18/G3): deny edit/write while the
+ * session's cached verdict says this folder is not the declared
+ * worktree/branch — or that two active declarations conflict (G4: the
+ * user decides which line wins). Runs FIRST so the session message always
+ * wins over stage/brainstorm guards. Fail-open: any error → allowed (R4).
+ * @param {string} toolName - Tool being called.
+ * @param {string} cwd - Session folder.
+ * @returns {{ block: true; reason: string } | undefined} The block, or undefined when allowed.
+ */
+export function guardSessionWorktree(toolName: string, cwd: string): { block: true; reason: string } | undefined {
+	if (toolName !== "edit" && toolName !== "write") return undefined;
+	try {
+		const verdict = sessionGateVerdict(cwd);
+		if (verdict.kind === "mismatch" || verdict.kind === "conflict") {
+			return { block: true, reason: verdict.reason };
+		}
+		return undefined;
+	} catch {
+		return undefined; // fail-open (R4)
+	}
+}
+
 export function registerToolCallHook(pi: ExtensionAPI): void {
 	pi.on("tool_call", (event, ctx) => {
 		try {
 			const state = loadState(ctx.cwd);
 			const input = event.input as Record<string, unknown> | undefined;
+
+			// 0. Session worktree gate (Phase A, N18) — a wrong-folder session is
+			//    a hard stop before ANY stage/brainstorm message (G3).
+			const sessionBlock = guardSessionWorktree(event.toolName, ctx.cwd);
+			if (sessionBlock) return sessionBlock;
 
 			// 1. Brainstorm mutation lock (returns { block, reason } or undefined).
 			const mutationBlock = guardBrainstormMutation(event.toolName, input, state, ctx.cwd);
