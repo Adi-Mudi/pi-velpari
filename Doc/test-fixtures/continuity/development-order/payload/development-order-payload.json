@@ -1,0 +1,26 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "ordering-development",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture development order."]
+	},
+	"rows": {
+		"devStep": [
+			{ "id": "S-1", "module": "storage", "description": "Implement local todo persistence." },
+			{ "id": "S-2", "module": "export", "description": "Implement CSV export." },
+			{ "id": "S-3", "module": "sync", "description": "Implement cross-device sync." }
+		],
+		"stepAf": [
+			{ "stepId": "S-1", "afId": "AF-01" },
+			{ "stepId": "S-2", "afId": "AF-02" },
+			{ "stepId": "S-3", "afId": "AF-03" }
+		],
+		"stepDep": [
+			{ "stepId": "S-2", "dependsOnId": "S-1" },
+			{ "stepId": "S-3", "dependsOnId": "S-1" }
+		]
+	}
+}

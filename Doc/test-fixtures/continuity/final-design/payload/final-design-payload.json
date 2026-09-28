@@ -1,0 +1,21 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "finalizing-design",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture final design."]
+	},
+	"rows": {
+		"finalSection": [
+			{ "no": 1, "title": "Overview", "sourceArtifact": "design", "sourceIds": "ADR-001" },
+			{ "no": 2, "title": "Module Inventory", "sourceArtifact": "atomic-functions", "sourceIds": "AF-01,AF-02,AF-03" },
+			{ "no": 3, "title": "Contract Map", "sourceArtifact": "pseudocode", "sourceIds": "PC-01,PC-02,PC-03" },
+			{ "no": 4, "title": "Consistency Notes", "sourceArtifact": "test-cases", "sourceIds": "TC-01,TC-02" },
+			{ "no": 5, "title": "Mismatches Found + Resolution", "sourceArtifact": "development-order", "sourceIds": "S-1,S-2,S-3" },
+			{ "no": 6, "title": "Final Contracts", "sourceArtifact": "design", "sourceIds": "M-1,M-2,M-3" },
+			{ "no": 7, "title": "Change Log", "sourceArtifact": "final-design", "sourceIds": "1.0.0" }
+		]
+	}
+}

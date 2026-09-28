@@ -1,0 +1,71 @@
+{
+	"$comment": "Known-defect ledger for the N25 continuity dry run (user ruling 2026-09-28). Driver behavior: a failure whose id is listed here is reported as KNOWN-FAIL (exit 0); an unlisted failure fails the run (exit 1); a listed id that does NOT reproduce fails the run with STALE LEDGER (exit 1) so the entry gets removed when the defect is fixed.",
+	"ledger": [
+		{
+			"id": "N24-01",
+			"area": "sequence / stage entry",
+			"summary": "Stage-entry transitions have no production caller — runStage never advances state for 8 of 9 stages. Driver workaround W1: manual advanceStage after the real entry prompt.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-01"
+		},
+		{
+			"id": "N24-13",
+			"area": "publish chain / freshness",
+			"summary": "Publish-gate freshness resolves declared inputs as Doc/*.md while the shipped DB-only default writes only store rows, so a default-mode chain blocks at the first upstream input. Driver workaround W2: after each publish, seed the upstream markdown a write-alongside publish would have produced.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-13"
+		},
+		{
+			"id": "N24-14",
+			"area": "publish chain / frontmatter",
+			"summary": "withArtifactFrontmatter renders supersedes/sunset/deprecatedAt only when set, but missingFrontmatterFields requires all three — so a freshly published brainstorm artifact (grouped-folder scan in checkFrontmatterSection) ALWAYS fails the doctor frontmatter check with an error, which blocks every subsequent publish under the real auto-doctor. Found by this dry run; every existing chain test bypasses the auto-doctor.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-14"
+		},
+		{
+			"id": "N24-15",
+			"area": "publish chain / doctor policy",
+			"summary": "The post-publish auto-doctor blocks the advance on ANY warning (documented v1.2.1 policy), but environment-hygiene warnings are unavoidable: the repo checkout itself reports 108 warnings (multiplexer env, pi-interactive-subagents peer dep, unbootstrapped scout agents, official-extension readiness). Every chain test bypasses via skipAutoDoctor / VELPARI_SKIP_AUTO_DOCTOR=1, so no test exercises the real policy. Driver workaround W3: the chain walk uses the escape hatch; the driver audits the doctor separately (errors asserted, warnings recorded as this observation). Needs a severity ruling (Phase G): which checks demote to info, or should warnings stop blocking.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-15"
+		},
+		{
+			"id": "N24-16",
+			"area": "publish chain / RTM coverage vs store FK",
+			"summary": "RTM publish is deadlocked in default DB-only mode: freshness requires the PRD markdown file to exist (N24-13/W2), but once it exists the fingerprint coverage gate demands store rtm_row rows for NFR-01/02, and rtm_row.fr_ref has a FOREIGN KEY to fr(run_id, id) while NFR ids live in the nfr table — so an NFR RTM row throws FOREIGN KEY constraint failed. With no file, freshness blocks; with a file, coverage+FK blocks. Driver workaround W4: the PRD payload dual-writes NFR ids into the fr table (rows.fr mirrors rows.nfr) so the NFR RTM rows satisfy the FK. Fixture payloads carry the W4 rows.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-16"
+		},
+		{
+			"id": "N24-17",
+			"area": "publish chain / reviewer verdict gate",
+			"summary": "The atomic-function publish gate requires a reviewer verdict file (legacy missingVerdict=always-error) even though the tier gate correctly skips the reviewer at the shipped default basic tier — the reviewer subagent never spawns, so no verdict file can exist and the publish blocks with 'Reviewer verdict not found' (a self-referential re-run hint). Driver workaround W5: the Tier-1 run seeds a deterministic approve verdict before the real publish, after observing the block.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-17"
+		},
+		{
+			"id": "N24-18",
+			"area": "freshness / stamp-verify asymmetry",
+			"summary": "Publish stamps input hashes from the markdown artifact path, but computeStaleSet (hashv 2) re-verifies against the store YAML bytes when the YAML exists (resolveInputPath prefers Doc/store/<project>/<kind>_<project>.yaml in default DB-only mode) — so an input whose markdown is byte-identical to its stamp is reported 'input-changed' whenever its YAML export exists. Observed: design flagged stale (input-changed: feasibility-study) while the stamped hash exactly equals the current markdown sha256. Phantom stale set → downstream 'Stale downstream artifacts' + 'Freshness (stale set)' doctor errors.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-18"
+		},
+		{
+			"id": "N24-19",
+			"area": "id coverage / store tc_trace extractor",
+			"summary": "extractTestCaseTracesFromStore filters tc_trace targetIds to /^(?:FR|NFR)-\\d+$/ and drops AF targets, but the fr-af-to-test-cases coverage rule requires FR + AF ids downstream — so once the testplan kind is published to the store AND a test-cases Doc markdown exists, the doctor/handoff always errors 'missing AF-01, AF-02, AF-03' even though the AF edges are present in the store (the markdown/sidecar fallbacks would find them). Observed live at the development-order stage; driver probes the extractor directly after the testplan publish.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-19"
+		},
+		{
+			"id": "N24-20",
+			"area": "handoff / file-bound hybrid docs",
+			"summary": "The handoff gate lists file-bound artifacts (observed: Doc/design/final-design_<project>.md) as required, but the default DB-only publish never writes them — a default-mode run therefore cannot hand off without the markdown existing. Driver workaround W7: seed the listed missing files from the working copies before retrying handoff.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-20"
+		},
+		{
+			"id": "N24-21",
+			"area": "doctor / drift check gate",
+			"summary": "Phase 12 Fix F7 gated the view-drift checks (rtm/atomic-functions/development-order) behind markdownWritesEnabled so a default DB-only project's legacy markdown view cannot produce a spurious drift error — but the test-cases drift check (doctor/checks/test-cases-data.ts) never got the gate. Any existing test-cases markdown (W2 seed, migrated project, or write-alongside artifact) errors 'has drifted from the store' on every doctor run in the shipped default mode.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-21"
+		},
+		{
+			"id": "N24-22",
+			"area": "prompt / stage-skill map",
+			"summary": "STAGE_SKILL (core/prompt.ts) maps finalizing-design to the pre-rename suffix \"design\", so loadStageSkill resolves skills/velpari-design.md — a file renamed to velpari-final-design.md on 2026-09-14 (the doctor's stage-skill list got the fix, the prompt builder did not). Every /velpari-final-design entry throws 'Stage skill not found', killing Stage 10 for all users; no e2e exercises the final-design prompt, so CI stays green.",
+			"findingsRef": ".IDE_Plans/velpari/n24-static-audit-findings_20260928.md#n24-22"
+		}
+	]
+}

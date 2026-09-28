@@ -1,0 +1,11 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "analyzing-feasibility",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture feasibility study."]
+	},
+	"rows": {}
+}

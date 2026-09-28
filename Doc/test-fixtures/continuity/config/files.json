@@ -1,0 +1,10 @@
+{
+	"version": 4,
+	"projectName": "ContinuityApp",
+	"framework": { "language": "typescript", "runtime": "node" },
+	"inputDocuments": [],
+	"outputPaths": {},
+	"codePaths": [],
+	"testPaths": [],
+	"excludedPaths": []
+}

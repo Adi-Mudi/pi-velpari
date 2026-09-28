@@ -1,0 +1,56 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "analyzing-atomic-functions",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture atomic functions."]
+	},
+	"rows": {
+		"atomicFunction": [
+			{
+				"id": "AF-01",
+				"name": "addTodo",
+				"signature": "addTodo(title: string): id",
+				"tier": "basic",
+				"criticality": "A",
+				"sil": "none",
+				"isLeaf": 1,
+				"purpose": "Create a todo record from a non-empty title.",
+				"source": "FR-01",
+				"cohesion": "single command path",
+				"verification": "unit test",
+				"testable": "given/when/then in test-cases"
+			},
+			{
+				"id": "AF-02",
+				"name": "exportCsv",
+				"signature": "exportCsv(todos: Todo[]): string",
+				"tier": "basic",
+				"criticality": "A",
+				"sil": "none",
+				"isLeaf": 1,
+				"purpose": "Render todos as RFC 4180 CSV.",
+				"source": "FR-03",
+				"cohesion": "pure function",
+				"verification": "unit test",
+				"testable": "golden file comparison"
+			},
+			{
+				"id": "AF-03",
+				"name": "syncTodos",
+				"signature": "syncTodos(local: Todo[]): Promise<void>",
+				"tier": "basic",
+				"criticality": "A",
+				"sil": "none",
+				"isLeaf": 1,
+				"purpose": "Reconcile local todos with the remote store.",
+				"source": "FR-02",
+				"cohesion": "single use case",
+				"verification": "integration test",
+				"testable": "fake transport in test-cases"
+			}
+		]
+	}
+}

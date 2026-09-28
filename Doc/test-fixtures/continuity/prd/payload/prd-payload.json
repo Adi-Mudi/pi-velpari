@@ -1,0 +1,80 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "drafting-prd",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture PRD."]
+	},
+	"rows": {
+		"fr": [
+			{
+				"id": "FR-01",
+				"phase": 1,
+				"textHash": "ac4b94d1eb6b381df854ef3a10c87b7aa5b2a595644633fba0de71a17acdcb5b",
+				"text": "The system SHALL store todos locally."
+			},
+			{
+				"id": "FR-02",
+				"phase": 2,
+				"textHash": "134975715c3a7a264c4d8afa5bcf649af0af0ece485f397ccbdfe0760ef3d4cd",
+				"text": "The system SHALL sync todos across devices."
+			},
+			{
+				"id": "FR-03",
+				"phase": 1,
+				"textHash": "e9198fe3a92c6effe4b2cacffc309569fb70d6180cf6d94c6379fb9f4578bd82",
+				"text": "The system SHALL export todos as CSV."
+			},
+			{
+				"id": "NFR-01",
+				"phase": 1,
+				"textHash": "d9706a9fc6c064166af6768c37df0059a22effb418a023da5abbee166b338400",
+				"text": "Sync SHALL complete within 2 seconds."
+			},
+			{
+				"id": "NFR-02",
+				"phase": 2,
+				"textHash": "9ce336abb6eb11d36ee2a66efb80636801a2a0f041d3aed2e885c72bbcc1336b",
+				"text": "A todo SHALL be addable in under 3 clicks."
+			}
+		],
+		"nfr": [
+			{
+				"id": "NFR-01",
+				"phase": 1,
+				"textHash": "d9706a9fc6c064166af6768c37df0059a22effb418a023da5abbee166b338400",
+				"text": "Sync SHALL complete within 2 seconds."
+			},
+			{
+				"id": "NFR-02",
+				"phase": 2,
+				"textHash": "9ce336abb6eb11d36ee2a66efb80636801a2a0f041d3aed2e885c72bbcc1336b",
+				"text": "A todo SHALL be addable in under 3 clicks."
+			}
+		],
+		"prdSection": [
+			{ "no": 1, "title": "Objective", "body": "Deterministic todo CLI proving the continuity chain." },
+			{ "no": 2, "title": "Problem", "body": "Tooling breaks stage transitions silently." },
+			{ "no": 3, "title": "System Actors", "body": "Local user; sync service later." },
+			{ "no": 4, "title": "User Stories", "body": "Add/list/complete todos; CSV export." },
+			{ "no": 5, "title": "Scope", "body": "CLI with file-backed storage." },
+			{ "no": 6, "title": "MVP", "body": "Local CRUD + CSV export." },
+			{ "no": 7, "title": "Success Metrics", "body": "Chain publishes; doctor clean." },
+			{ "no": 8, "title": "Phases", "body": "Phase 1 local CLI; Phase 2 sync." },
+			{ "no": 9, "title": "Functional Requirements", "body": "FR-01..FR-03." },
+			{ "no": 10, "title": "Non-Functional Requirements", "body": "NFR-01..NFR-02." },
+			{ "no": 11, "title": "Data and Interfaces", "body": "JSON storage; CSV export." },
+			{ "no": 12, "title": "Errors and Edge Cases", "body": "Corrupt file; empty list." },
+			{ "no": 13, "title": "Constraints", "body": "Single binary; Linux arm64." },
+			{ "no": 14, "title": "Dependencies and Risks", "body": "Node runtime only." },
+			{ "no": 15, "title": "Out of Scope", "body": "Web UI; mobile." },
+			{ "no": 16, "title": "Open Questions", "body": "None blocking." },
+			{ "no": 17, "title": "Acceptance Criteria", "body": "Tests cover FR-01/FR-03." },
+			{ "no": 18, "title": "Helper Function Candidates", "body": "loadTodos; exportCsv." },
+			{ "no": 19, "title": "Glossary", "body": "Todo = task record." },
+			{ "no": 20, "title": "Change Log", "body": "Initial draft." }
+		]
+	}
+}

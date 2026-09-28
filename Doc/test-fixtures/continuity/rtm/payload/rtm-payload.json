@@ -1,0 +1,56 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "building-rtm",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": [
+			"2026-09-28: continuity fixture RTM (FR + NFR rows; NFR fr_refs rely on the W4 dual-write)."
+		]
+	},
+	"rows": {
+		"rtmRow": [
+			{
+				"id": "FR-01",
+				"frRef": "FR-01",
+				"afRef": "AF-01",
+				"tcRef": "TC-01",
+				"phase": 1,
+				"targetSha256": "ac4b94d1eb6b381df854ef3a10c87b7aa5b2a595644633fba0de71a17acdcb5b"
+			},
+			{
+				"id": "FR-02",
+				"frRef": "FR-02",
+				"afRef": "AF-02",
+				"tcRef": "IT-01",
+				"phase": 2,
+				"targetSha256": "134975715c3a7a264c4d8afa5bcf649af0af0ece485f397ccbdfe0760ef3d4cd"
+			},
+			{
+				"id": "FR-03",
+				"frRef": "FR-03",
+				"afRef": "AF-03",
+				"tcRef": "TC-02",
+				"phase": 1,
+				"targetSha256": "e9198fe3a92c6effe4b2cacffc309569fb70d6180cf6d94c6379fb9f4578bd82"
+			},
+			{
+				"id": "NFR-01",
+				"frRef": "NFR-01",
+				"afRef": "AF-01",
+				"tcRef": "IT-02",
+				"phase": 1,
+				"targetSha256": "d9706a9fc6c064166af6768c37df0059a22effb418a023da5abbee166b338400"
+			},
+			{
+				"id": "NFR-02",
+				"frRef": "NFR-02",
+				"afRef": "AF-01",
+				"tcRef": null,
+				"phase": 2,
+				"targetSha256": "9ce336abb6eb11d36ee2a66efb80636801a2a0f041d3aed2e885c72bbcc1336b"
+			}
+		]
+	}
+}
