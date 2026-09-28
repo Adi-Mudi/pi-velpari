@@ -147,9 +147,7 @@ export function runPreflight(cwd: string, opts: PreflightOptions): PreflightResu
 						status: "error",
 						message: `config-unreadable: .pi/velpari/files.json is not valid JSON`,
 						details: [tracked ? "git: tracked (HEAD restore available)" : "git: no HEAD version to restore"],
-						suggestion: tracked
-							? suggestionFor("config-restore-git")
-							: suggestionFor("config-unreadable"),
+						suggestion: tracked ? suggestionFor("config-restore-git") : suggestionFor("config-unreadable"),
 					},
 				});
 			} else {

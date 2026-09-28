@@ -350,7 +350,7 @@ export function checkIdCoverage(cwd: string): IdCoverageReport {
 	const results: IdCoverageRuleResult[] = [];
 	// Phase C render hardening: corrupt files.json → no configured names
 	// (disk-discovered artifacts are still checked); Config reports it.
-	let config;
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
 	try {
 		config = loadFilesConfig(cwd);
 	} catch {

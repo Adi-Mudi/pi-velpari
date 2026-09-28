@@ -54,7 +54,7 @@ function phaseInputKeys(cwd: string, phase: GenerationPhase): string[] {
 	if (inputs.length === 0) return [];
 	// Phase C render hardening: corrupt files.json → no configured project
 	// (only mission-keyed inputs contribute; agent-freshness warns anyway).
-	let config;
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
 	try {
 		config = loadFilesConfig(cwd);
 	} catch {

@@ -105,7 +105,7 @@ export function checkAgentFreshnessSection(cwd: string): DiagnosticSection {
  *  tier + overlay + reviewerMode policy requires the reviewer; a single
  *  info item when the policy skips it. */
 function reviewerPresenceItems(cwd: string): DiagnosticItem[] {
-	let profile;
+	let profile: ReturnType<typeof deriveAtomicProfile>;
 	try {
 		profile = deriveAtomicProfile(loadFilesConfig(cwd));
 	} catch {

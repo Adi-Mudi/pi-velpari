@@ -166,7 +166,7 @@ export function loadReviewerVerdictForStage(
 		// tier + overlay gate would have skipped the reviewer. If yes, emit
 		// an info (no error) so basic-tier projects don't break. If no,
 		// emit an error (the reviewer should have run).
-		let config;
+		let config: Partial<ReturnType<typeof loadFilesConfig>>;
 		try {
 			config = loadFilesConfig(cwd);
 		} catch {

@@ -162,7 +162,10 @@ export function checkPiExtensionConformance(cwd: string): DiagnosticSection {
 			}
 		}
 		if (foldersOk) {
-			items.push({ status: "ok", message: `All ${DECLARED_FOLDERS.length} declared layer folders present; no undeclared folders.` });
+			items.push({
+				status: "ok",
+				message: `All ${DECLARED_FOLDERS.length} declared layer folders present; no undeclared folders.`,
+			});
 		}
 
 		// (b) hooks registration text.
@@ -170,14 +173,13 @@ export function checkPiExtensionConformance(cwd: string): DiagnosticSection {
 		if (!existsSync(hooksIndex)) {
 			items.push({
 				status: "warning",
-				message: "conformance-hooks-missing: pi-extension/src/hooks/index.ts missing — session/tool_call gates cannot register.",
+				message:
+					"conformance-hooks-missing: pi-extension/src/hooks/index.ts missing — session/tool_call gates cannot register.",
 				suggestion: suggestionFor("conformance-hooks-missing"),
 			});
 		} else {
 			const hooksText = readFileSync(hooksIndex, "utf8");
-			const missingHooks = REQUIRED_HOOKS.filter(([, token]) => !hooksText.includes(token)).map(
-				([event]) => event,
-			);
+			const missingHooks = REQUIRED_HOOKS.filter(([, token]) => !hooksText.includes(token)).map(([event]) => event);
 			if (missingHooks.length > 0) {
 				items.push({
 					status: "warning",
@@ -216,7 +218,10 @@ export function checkPiExtensionConformance(cwd: string): DiagnosticSection {
 				suggestion: suggestionFor("conformance-dep-violation"),
 			});
 		} else {
-			items.push({ status: "ok", message: `Dependency hygiene clean across ${tsFiles.length} source files (no chirpi / interactive-subagents imports).` });
+			items.push({
+				status: "ok",
+				message: `Dependency hygiene clean across ${tsFiles.length} source files (no chirpi / interactive-subagents imports).`,
+			});
 		}
 		if (importsPeer.length > 0 && !(REQUIRED_PEER in peerDeps)) {
 			items.push({

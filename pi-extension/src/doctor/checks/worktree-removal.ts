@@ -52,7 +52,7 @@ export function checkWorktreeRemovalSection(cwd: string): DiagnosticSection {
 		} else {
 			// Phase C render hardening: corrupt state.json → no binding to
 			// compare (the Run state section carries the UNREADABLE error).
-			let state;
+			let state: ReturnType<typeof loadState>;
 			try {
 				state = loadState(cwd);
 			} catch {

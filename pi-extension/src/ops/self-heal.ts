@@ -122,9 +122,7 @@ export function detectBookkeepingDrift(cwd: string): BookkeepingDrift[] {
 		// Only APPROVE transitions represent a publish (rule 1: iterate
 		// STAGE_TRANSITIONS read-only; stage-start commands are excluded —
 		// handoff and `/velpari-<stage>` starts are never auto-advanced).
-		const candidates = STAGE_TRANSITIONS.filter(
-			(t) => t.from === state.currentStage && t.command.includes("approve"),
-		);
+		const candidates = STAGE_TRANSITIONS.filter((t) => t.from === state.currentStage && t.command.includes("approve"));
 		if (candidates.length === 0) return out;
 		const evidence = publishEvidence(cwd);
 		if (evidence === null) return out;
@@ -221,8 +219,9 @@ export function ensureStandardScaffold(cwd: string): { created: string[]; messag
 	}
 	return {
 		created,
-		message: created.length === 0
-			? "standard scaffold already present"
-			: `created ${created.length} path(s): ${created.join(", ")}`,
+		message:
+			created.length === 0
+				? "standard scaffold already present"
+				: `created ${created.length} path(s): ${created.join(", ")}`,
 	};
 }

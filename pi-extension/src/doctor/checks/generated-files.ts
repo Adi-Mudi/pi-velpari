@@ -59,7 +59,8 @@ export function checkGeneratedFilesSection(cwd: string): DiagnosticSection {
 			// corrupt JSON or wrong shape.
 			items.push({
 				status: "warning",
-				message: "generated-manifest-unreadable: .pi/velpari/generated-manifest.json exists but is corrupt or wrong-shaped (loader returned empty).",
+				message:
+					"generated-manifest-unreadable: .pi/velpari/generated-manifest.json exists but is corrupt or wrong-shaped (loader returned empty).",
 				suggestion: suggestionFor("generated-manifest-unreadable"),
 			});
 		}

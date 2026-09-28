@@ -116,14 +116,16 @@ function buildView(source: FixFlowSource): FlowView {
 				level: (levelFor(f.fingerprint as SuggestionKey) ?? "interactive") as FixLevel,
 			})),
 			autoNames: relevant.filter((f) => f.autoFixable).map((f) => f.fingerprint),
-			manual: relevant.filter((f) => !f.autoFixable).map((f, i) => ({
-				index: i,
-				section: "Preflight",
-				status: "error" as const,
-				message: f.item.message,
-				suggestion: f.item.suggestion ?? "",
-				level: "interactive" as FixLevel,
-			})),
+			manual: relevant
+				.filter((f) => !f.autoFixable)
+				.map((f, i) => ({
+					index: i,
+					section: "Preflight",
+					status: "error" as const,
+					message: f.item.message,
+					suggestion: f.item.suggestion ?? "",
+					level: "interactive" as FixLevel,
+				})),
 		};
 	}
 	const items = listActionableItems(source.report);
@@ -165,10 +167,7 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 		}
 		if (choice.startsWith("Show details")) {
 			for (const item of view.items) {
-				opts.ui.notify(
-					`[${item.status}] ${item.section} — ${item.message}\n  → ${item.suggestion}`,
-					"info",
-				);
+				opts.ui.notify(`[${item.status}] ${item.section} — ${item.message}\n  → ${item.suggestion}`, "info");
 			}
 			continue; // re-ask (loop back to select)
 		}
@@ -182,10 +181,7 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 		}
 
 		// Build the batch list FIRST — the user sees exactly what will run.
-		const batchLines = [
-			...view.autoNames.map((n) => n),
-			...view.manual.map((m) => `manual: ${m.message}`),
-		];
+		const batchLines = [...view.autoNames.map((n) => n), ...view.manual.map((m) => `manual: ${m.message}`)];
 		const applyMsg =
 			`Apply ${batchLines.length} fix(es):\n` +
 			batchLines.map((l) => `  - ${l}`).join("\n") +
@@ -200,7 +196,8 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 
 		// Auto batch — the existing Level-B loop (whitelist → fn → try/catch).
 		if (view.autoNames.length > 0) {
-			const runAuto = opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
+			const runAuto =
+				opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
 			try {
 				await runAuto();
 			} catch (err) {

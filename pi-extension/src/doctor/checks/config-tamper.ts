@@ -67,7 +67,8 @@ export function checkConfigTamperSection(cwd: string): DiagnosticSection {
 		if (manifest === null) {
 			items.push({
 				status: "info",
-				message: "config-baseline-missing: no config baseline recorded — tamper detection inactive. Run `/velpari-doctor --velpari-fix` and choose Fix all to record it (one confirm).",
+				message:
+					"config-baseline-missing: no config baseline recorded — tamper detection inactive. Run `/velpari-doctor --velpari-fix` and choose Fix all to record it (one confirm).",
 				suggestion: suggestionFor("config-baseline-missing"),
 			});
 			return { title: SECTION_TITLE, items };

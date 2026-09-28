@@ -314,7 +314,7 @@ export function computeBrainstormInputHashes(
 ): Record<FreshnessInputId, string> {
 	// Phase C render hardening: corrupt files.json → no declared inputs
 	// (freshness reports `input-missing`/no-stamp as designed).
-	let config;
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
 	try {
 		config = loadFilesConfig(cwd);
 	} catch {

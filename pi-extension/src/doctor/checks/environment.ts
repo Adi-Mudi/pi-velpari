@@ -60,7 +60,10 @@ function readEnginesNode(): string | null {
  */
 function toTuple(v: string): Tuple | null {
 	const bare = v.trim().replace(/^[^0-9]*/, "");
-	const parts = bare.split(/[.\-+]/).slice(0, 3).map((p) => Number.parseInt(p, 10));
+	const parts = bare
+		.split(/[.\-+]/)
+		.slice(0, 3)
+		.map((p) => Number.parseInt(p, 10));
 	if (parts.length === 0 || parts.some((n) => Number.isNaN(n))) return null;
 	while (parts.length < 3) parts.push(0);
 	return [parts[0]!, parts[1]!, parts[2]!] as Tuple;
@@ -143,7 +146,8 @@ export function checkEnvironmentSection(cwd: string): DiagnosticSection {
 		} else {
 			items.push({
 				status: "warning",
-				message: "environment-git-missing: git not found on PATH — publish commits, backups, and store protection cannot run.",
+				message:
+					"environment-git-missing: git not found on PATH — publish commits, backups, and store protection cannot run.",
 				suggestion: suggestionFor("environment-git-missing"),
 			});
 		}
@@ -155,7 +159,8 @@ export function checkEnvironmentSection(cwd: string): DiagnosticSection {
 		} else {
 			items.push({
 				status: "warning",
-				message: "environment-pi-missing: pi binary not found on PATH — RPC/e2e tooling and the extension host need it.",
+				message:
+					"environment-pi-missing: pi binary not found on PATH — RPC/e2e tooling and the extension host need it.",
 				suggestion: suggestionFor("environment-pi-missing"),
 			});
 		}

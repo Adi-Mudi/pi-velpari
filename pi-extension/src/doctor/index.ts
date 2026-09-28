@@ -179,14 +179,15 @@ function buildStateSection(cwd: string): DiagnosticSection {
 	if (existsSync(statePath)) {
 		// Phase C (N22) render hardening: a corrupt state.json must RENDER,
 		// not crash the doctor (the preflight row 6 reports it too).
-		let state;
+		let state: ReturnType<typeof loadState>;
 		try {
 			state = loadState(cwd);
 		} catch (err) {
 			items.push({
 				status: "error",
 				message: `Run state: UNREADABLE (${(err as Error).message})`,
-				suggestion: "Repair `.pi/velpari/state.json` by hand, or delete it to start a fresh run via /velpari-brainstorm.",
+				suggestion:
+					"Repair `.pi/velpari/state.json` by hand, or delete it to start a fresh run via /velpari-brainstorm.",
 			});
 			return { title: "Run state", items };
 		}

@@ -46,7 +46,7 @@ export function checkFeasibilityV2Section(cwd: string, projectName: string): Dia
 	// 2. Open session progress.
 	// Phase C render hardening: corrupt state.json → no session to report
 	// (the Run state section carries the UNREADABLE error).
-	let state;
+	let state: ReturnType<typeof loadState>;
 	try {
 		state = loadState(cwd);
 	} catch {
