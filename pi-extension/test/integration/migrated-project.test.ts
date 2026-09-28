@@ -317,7 +317,10 @@ describe("migrated project — DB-era behaviour downstream (Phase 12, 1.2)", () 
 		// (the link check matches on them) and phases match the legacy PRD.
 		const runDir = join(".IDE_Plans", "velpari", "runs", runId);
 		mkdirSync(join(dir, runDir, "rtm", "payload"), { recursive: true });
-		writeFileSync(join(dir, runDir, "rtm", `RTM_${PROJECT}.md`), "# RTM preview\n", "utf8");
+		// PHASE-D (N27) fixture: this RTM revision replaces the legacy
+		// published RTM wholesale (its ids + `## Traceability` heading are
+		// gone → actual MAJOR), so the working copy declares `bump: major`.
+		writeFileSync(join(dir, runDir, "rtm", `RTM_${PROJECT}.md`), "---\nbump: major\n---\n\n# RTM preview\n", "utf8");
 		writeFileSync(
 			join(dir, runDir, "rtm", "payload", "rtm-payload.json"),
 			`${JSON.stringify(

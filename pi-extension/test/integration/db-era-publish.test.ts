@@ -96,13 +96,17 @@ const SECTION_TITLES = [
  * sections; the FR/NFR tables carry the id/phase/status columns the checks need).
  * @param {number} version - Frontmatter version (revisions bump it).
  * @param {string} changeLog - Change Log body lines.
+ * @param {string} [bump] - PHASE-D (N27) declared `bump:` — revision
+ *   fixtures that pass the revision gate must declare one; fresh
+ *   publishes stay bump-exempt.
  * @returns {string} The PRD markdown.
  */
-function prdMarkdown(version = 1, changeLog = "- 2026-09-24: initial draft."): string {
+function prdMarkdown(version = 1, changeLog = "- 2026-09-24: initial draft.", bump?: string): string {
 	const head = [
 		"---",
 		"documentType: PSRS",
 		`version: ${version}`,
+		...(bump ? [`bump: ${bump}`] : []),
 		"status: draft",
 		"profile: core-psrs-v1",
 		"profileVersion: 1",
@@ -196,7 +200,13 @@ function buildFixture(opts: {
 	}
 
 	const runDir = join(".IDE_Plans", "velpari", "runs", runId);
-	const workingCopy = write(join(runDir, "prd", `PRD_${PROJECT}.md`), prdMarkdown(opts.seedPublishedPrd ? 2 : 1));
+	// PHASE-D (N27) fixture: the seeded-PRD revision declares its bump —
+	// only the Change Log line changed → actual PATCH. Fresh fixtures stay
+	// bump-exempt (byte-identical to the pre-N27 fixture).
+	const workingCopy = write(
+		join(runDir, "prd", `PRD_${PROJECT}.md`),
+		prdMarkdown(opts.seedPublishedPrd ? 2 : 1, undefined, opts.seedPublishedPrd ? "patch" : undefined),
+	);
 	const payload = {
 		envelope: {
 			version: opts.seedPublishedPrd ? 2 : 1,

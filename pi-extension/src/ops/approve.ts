@@ -32,6 +32,10 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
 import { loadFilesConfig, devLaneConfig, markdownWritesEnabled, validateFilesConfig } from "../core/config.js";
+// PHASE-D import (N26) — project-type contract accessor (reads B's key; never redefines it).
+import { projectTypeForCwd, wireframePairingMissingMessage, type ProjectType } from "../core/project-type.js";
+// PHASE-D import (N27) — declared-vs-actual document-semver validation.
+import { bumpGateMessages, validateBump } from "../core/semver.js";
 import {
 	computeLanes,
 	type DevLanesGateData,
@@ -122,6 +126,9 @@ const STAGE_APPROVE_MAP: readonly StageApproveSpec[] = [
 		command: "/velpari-architecture-generator-approve",
 		workingDir: "design",
 		artifact: "design",
+		// ─── PHASE-D (N26) — design may publish the paired wireframe (testplan/test-cases precedent) ───
+		extras: ["wireframe"],
+		// ─── PHASE-D END ───
 		stages: ["designing", "designed"],
 	},
 	// Stage 6 — atomic function working copy lives under
@@ -591,6 +598,22 @@ export async function handleApprove(
 		});
 	}
 
+	// ─── PHASE-D (N26) — full-app Stage 5 publishes only WITH its paired wireframe ───
+	if (mapping.artifact === "design") {
+		let projectType: ProjectType;
+		try {
+			projectType = projectTypeForCwd(cwd);
+		} catch (err) {
+			ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+			return;
+		}
+		if (projectType === "full-app" && !targets.some((t) => t.fileArtifact === "wireframe")) {
+			ctx.ui.notify(wireframePairingMissingMessage(join(workingDirPath, `wireframe_${projectName}.md`)), "error");
+			return;
+		}
+	}
+	// ─── PHASE-D END ───
+
 	// Revision gate (living documents): when a published copy already
 	// exists, the working copy is a REVISION and must prove it first.
 	//   PRD     → comparePsrs(published, working) must pass (append-only
@@ -873,6 +896,43 @@ export async function handleApprove(
 			"warning",
 		);
 	}
+
+	// ─── PHASE-D (N27) — declared-vs-actual bump gate (revisions only) ───
+	// Every REVISION publish must declare `bump: major|minor|patch` in the
+	// working copy's frontmatter (exact lowercase), and the declared level
+	// must be at least the actual change class derived by core/semver.ts.
+	// Fresh publishes are exempt — there is no prior version to compare.
+	// Errors block (nothing written, stage does not advance); over-bump
+	// warnings are shown but allowed — the same notify policy as the publish
+	// gate above. This runs on the single handleApprove path, so the
+	// velpari_stage_publish tool AND all 9 fall-back commands enforce it
+	// identically (doctor/gate.ts deliberately untouched — C integration
+	// request consumes the same core/semver.ts exports).
+	const bumpErrors: string[] = [];
+	const bumpWarnings: string[] = [];
+	for (const target of targets) {
+		if (!target.publishedPath) continue; // fresh publish — no prior version to compare
+		const publishedContent = readFileSync(target.publishedPath, "utf8");
+		const verdict = validateBump(publishedContent, target.gateContent ?? target.content);
+		const { errors, warnings } = bumpGateMessages(verdict);
+		for (const e of errors) bumpErrors.push(`[${target.file}] ${e}`);
+		for (const w of warnings) bumpWarnings.push(`[${target.file}] ${w}`);
+	}
+	if (bumpErrors.length > 0) {
+		ctx.ui.notify(
+			`Bump gate blocked the publish (N27). Declare the change class in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
+				bumpErrors.map((e) => `  - ${e}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (bumpWarnings.length > 0) {
+		ctx.ui.notify(
+			`Bump gate warnings (publish allowed):\n` + bumpWarnings.map((w) => `  - ${w}`).join("\n"),
+			"warning",
+		);
+	}
+	// ─── PHASE-D END ───
 
 	// Freshness stamps (B4): hash the stage's declared inputs (registry
 	// is the single source of truth — D2) so every published artifact is

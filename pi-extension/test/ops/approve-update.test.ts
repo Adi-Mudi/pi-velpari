@@ -46,11 +46,14 @@ function allMessages(): string {
 
 // --- Valid 20-section PSRS fixture (mirrors test/core/psrs.test.ts) ---
 
-function frontmatter(version: string): string {
+function frontmatter(version: string, bump?: string): string {
+	// PHASE-D (N27) fixture: optional declared `bump:` — revision fixtures
+	// that pass the revision gate must declare one (fresh publishes exempt).
+	const bumpLine = bump ? `bump: ${bump}\n` : "";
 	return `---
 documentType: product-software-requirements
 version: ${version}
-status: draft
+${bumpLine}status: draft
 profile: core-psrs-v1
 profileVersion: 1.0.0
 mission: TestApp
@@ -111,8 +114,8 @@ function sectionBodies(opts: { frRows?: string; changeLog?: string }): Array<[st
 	];
 }
 
-function buildPsrs(opts: { version: string; frRows?: string; changeLog?: string }): string {
-	const parts: string[] = [frontmatter(opts.version)];
+function buildPsrs(opts: { version: string; frRows?: string; changeLog?: string; bump?: string }): string {
+	const parts: string[] = [frontmatter(opts.version, opts.bump)];
 	for (const [heading, body] of sectionBodies(opts)) {
 		parts.push(`## ${heading}\n${body}\n`);
 	}
@@ -204,6 +207,9 @@ describe("publish — revision gate", () => {
 		reenterDraftingPrd(
 			buildPsrs({
 				version: "1.1.0",
+				// PHASE-D (N27) fixture: declared bump — the revision adds FR-02
+				// (backward-compatible addition → MINOR actual class).
+				bump: "minor",
 				frRows: FR_TABLE_TWO_ROWS,
 				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
 			}),
