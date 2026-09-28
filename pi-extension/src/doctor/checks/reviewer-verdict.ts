@@ -166,7 +166,13 @@ export function loadReviewerVerdictForStage(
 		// tier + overlay gate would have skipped the reviewer. If yes, emit
 		// an info (no error) so basic-tier projects don't break. If no,
 		// emit an error (the reviewer should have run).
-		const config = loadFilesConfig(cwd);
+		let config: Partial<ReturnType<typeof loadFilesConfig>>;
+		try {
+			config = loadFilesConfig(cwd);
+		} catch {
+			// Phase C: corrupt files.json → no overlay configured (Config reports it).
+			config = {};
+		}
 		const overlayRequiresReviewer = config.atomic?.overlayId
 			? overlayRequiresReviewerFor(cwd, config.atomic.overlayId)
 			: false;
@@ -288,6 +294,11 @@ function resolveStageVerdictPath(cwd: string, spec: ReviewerStageSpec): string |
 	return null;
 }
 
+/**
+ * Read a directory's entry names, sorted lexicographically (stable scans).
+ * @param {string} dir - Directory to list.
+ * @returns {string[]} Sorted entry names (throws when the dir is unreadable).
+ */
 function readdirSyncSorted(dir: string): string[] {
 	return readdirSync(dir).sort();
 }

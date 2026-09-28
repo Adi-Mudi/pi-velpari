@@ -312,7 +312,14 @@ export function computeBrainstormInputHashes(
 	cwd: string,
 	hashFn: (absolutePath: string) => string | null = hashFileContent,
 ): Record<FreshnessInputId, string> {
-	const config = loadFilesConfig(cwd);
+	// Phase C render hardening: corrupt files.json → no declared inputs
+	// (freshness reports `input-missing`/no-stamp as designed).
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		config = {};
+	}
 	const hashes: Record<FreshnessInputId, string> = {};
 	for (const doc of config.inputDocuments ?? []) {
 		const hash = hashFn(join(cwd, doc));
@@ -350,7 +357,14 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 	// id's artifact key IS the YAML label (PRD, test-plan, …), so no
 	// mapping table is needed. File resolution remains for legacy /
 	// flag-ON projects and as the fallback when no store YAML exists.
-	if (!markdownWritesEnabled(cwd)) {
+	// Phase C: corrupt files.json → markdown writes are OFF (the default).
+	let markdownWrites = false;
+	try {
+		markdownWrites = markdownWritesEnabled(cwd);
+	} catch {
+		/* Config section reports UNREADABLE */
+	}
+	if (!markdownWrites) {
 		const yamlPath = buildStoreYamlPath(parsed.id, parsed.kind, cwd);
 		if (existsSync(yamlPath)) return yamlPath;
 	}

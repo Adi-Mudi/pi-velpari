@@ -44,7 +44,14 @@ export function checkFeasibilityV2Section(cwd: string, projectName: string): Dia
 	}
 
 	// 2. Open session progress.
-	const state = loadState(cwd);
+	// Phase C render hardening: corrupt state.json → no session to report
+	// (the Run state section carries the UNREADABLE error).
+	let state: ReturnType<typeof loadState>;
+	try {
+		state = loadState(cwd);
+	} catch {
+		return { title: "Feasibility v2 (decision record)", items };
+	}
 	const session = state.feasibilitySession;
 	if ((state.currentStage === "analyzing-feasibility" || state.currentStage === "analyzed-feasibility") && session) {
 		const spikes = session.spikeResults?.length ?? 0;

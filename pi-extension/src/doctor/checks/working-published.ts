@@ -41,6 +41,11 @@ export function checkWorkingPublishedSeparationSection(cwd: string, projectName:
 
 	let publishedCount = 0;
 	if (existsSync(docsDir)) {
+		/**
+		 * Recursively count `.md` files below one directory.
+		 * @param {string} dir - Directory to walk.
+		 * @returns {number} Total `.md` files under `dir` (subdirectories included).
+		 */
 		const recurse = (dir: string): number => {
 			let n = 0;
 			for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -61,7 +66,12 @@ export function checkWorkingPublishedSeparationSection(cwd: string, projectName:
 	for (const kind of KIND_ORDER) {
 		if (readLatestPublishedRows(cwd, projectName, kind)) storeKinds += 1;
 	}
-	const markdownWrites = markdownWritesEnabled(cwd);
+	let markdownWrites = false;
+	try {
+		markdownWrites = markdownWritesEnabled(cwd);
+	} catch {
+		/* Phase C: corrupt files.json — the Config section reports UNREADABLE */
+	}
 
 	const groupedKeys = Object.keys(GROUPED_CATEGORIES);
 	const groupedCats = Object.values(new Set(Object.values(GROUPED_CATEGORIES))).join(", ");

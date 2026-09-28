@@ -70,7 +70,12 @@ export function checkDevOrderDataSection(cwd: string, projectName: string): Diag
 		// Phase 12 Fix F7 — DB-only awareness (see the RTM check's note): the
 		// published markdown is a legacy VIEW under the default mode, so the
 		// drift comparison only runs while markdown writes are maintained.
-		const viewMaintained = markdownWritesEnabled(cwd);
+		let viewMaintained = false;
+		try {
+			viewMaintained = markdownWritesEnabled(cwd);
+		} catch {
+			/* Phase C: corrupt files.json — Config section reports UNREADABLE */
+		}
 		if (dbMd && viewMaintained) {
 			const renderedBody = parseFrontmatterBlock(renderDevOrderMarkdownFromRows(fromDb.rows))?.body ?? "";
 			const publishedText = readFileSync(dbMd.path, "utf8");

@@ -27,6 +27,9 @@ const ARTIFACTS: readonly string[] = [
 	"RTM",
 	"feasibility-study",
 	"design",
+	// Phase C (D Integration request 2) — paired full-app wireframe;
+	// presence-based: backend projects have no wireframe file → skipped.
+	"wireframe",
 	"pseudocode",
 	"test-plan",
 	"test-cases",

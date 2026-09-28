@@ -348,7 +348,14 @@ export function checkDownstreamCoverage(
  */
 export function checkIdCoverage(cwd: string): IdCoverageReport {
 	const results: IdCoverageRuleResult[] = [];
-	const config = loadFilesConfig(cwd);
+	// Phase C render hardening: corrupt files.json → no configured names
+	// (disk-discovered artifacts are still checked); Config reports it.
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		config = {};
+	}
 	const configuredNames = config.projectNames ?? (config.projectName ? [config.projectName] : []);
 	for (const rule of COVERAGE_RULES) {
 		const downstreams = new Map<string, { path: string; projectName: string }>();

@@ -27,6 +27,9 @@ const ARTIFACT_KEYS: readonly string[] = [
 	"brainstorm",
 	"feasibility-study",
 	"design",
+	// Phase C (D Integration request 2) — paired full-app wireframe;
+	// `if (!found) continue;` keeps backend projects error-free.
+	"wireframe",
 	"pseudocode",
 	"test-plan",
 	"test-cases",

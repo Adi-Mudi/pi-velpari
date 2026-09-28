@@ -70,7 +70,12 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 		// (the default) the published markdown is a legacy VIEW the publish
 		// chain never rewrites; comparing a re-render against it would error
 		// on every republish of a migrated project.
-		const viewMaintained = markdownWritesEnabled(cwd);
+		let viewMaintained = false;
+		try {
+			viewMaintained = markdownWritesEnabled(cwd);
+		} catch {
+			/* Phase C: corrupt files.json — Config section reports UNREADABLE */
+		}
 		if (dbMd && viewMaintained) {
 			// View drift (DB-path): deterministic re-render of the DB rows
 			// must match the published body (G5 renderers).
@@ -138,7 +143,14 @@ export function checkAfDataSection(cwd: string, projectName: string): Diagnostic
 		return { title: "Atomic-functions data sidecar", items };
 	}
 
-	const tier = deriveAtomicProfile(loadFilesConfig(cwd)).tier;
+	let tier: ReturnType<typeof deriveAtomicProfile>["tier"];
+	try {
+		tier = deriveAtomicProfile(loadFilesConfig(cwd)).tier;
+	} catch {
+		// Phase C: corrupt files.json → default tier (basic/A/none) — the
+		// Config section already carries the UNREADABLE error.
+		tier = deriveAtomicProfile({}).tier;
+	}
 	const data = parsed.data as AfData;
 	const validation = validateAfData(data, { tier: data.tier ?? tier });
 	if (!validation.ok) {

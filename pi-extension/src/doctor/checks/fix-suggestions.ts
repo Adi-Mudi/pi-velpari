@@ -208,6 +208,70 @@ export const SUGGESTIONS = {
 		"Clear it with `/velpari-reset` (confirm + audit, N13) — never delete `.pi/velpari/.lock/` by hand.",
 	"worktree-removal":
 		"Recreate the worktree (`git worktree add <path> <branch>`) to keep the run, or `/velpari-reset` to retire it. A bash-side removal cannot be blocked — doctor reports it instead (N14).",
+
+	// Phase C — Doctor v2 (N22/N23). Each finding names its fix
+	// (fix-command-per-finding, Senai pattern). FIX_LEVELS/SAFE_WHITELIST
+	// entries land in Subphase 3.3 with their paired RemediateFns.
+	"digest-contract-unavailable":
+		"The Phase B digest API (io/db.ts) is not present in this build — no action; the check degrades until batch gate 1 merges Phase B.",
+	"digest-not-stamped":
+		"Publish once (any stage approve) — every Phase B content writer re-stamps `store-content-v1` automatically; until then the foreign-modification check cannot run.",
+	"digest-mismatch":
+		"Store content changed without a digest re-stamp — foreign modification or an un-stamped writer. Verify with `git status Doc/store/<project>/`: a foreign edit → restore per skills/db-store-merge-runbook.md; a velpari write → report the missing re-stamp as a defect.",
+	"store-uncommitted":
+		"The store changed since the last commit. Publish normally (the flow commits it) — if you edited `Doc/store/**` by hand, revert that edit; the store is written only by publish/backfill/reconfirm/export.",
+	"semver-contract-unavailable":
+		"The Phase D semver API (core/semver.ts) is not present in this build — no action; the check degrades until batch gate 1 merges Phase D.",
+	"semver-bump-mismatch":
+		"The declared `bump:` frontmatter does not match what actually changed. Recompute the bump (MAJOR = id/structure change, MINOR = additive, PATCH = wording) per Doc/velpari-sequence/ and republish the pair.",
+	"soft-lock-contract-unavailable":
+		"The Phase B soft-lock API (core/soft-lock.ts) is not present in this build — no action; the check degrades until batch gate 1 merges Phase B.",
+	"environment-node-old":
+		"Upgrade Node to the version in package.json:engines.node (node:sqlite-backed store requirement) — the doctor and store will not run reliably below it.",
+	"environment-git-missing":
+		"Install git and add it to PATH — publish commits, backups, and the store protection hook all need it.",
+	"environment-pi-missing":
+		"Install pi (`npm i -g @earendil-works/pi-coding-agent`) or fix PATH — e2e/RPC tooling and the extension host need the `pi` binary.",
+	"environment-config-invalid":
+		"Fix the flagged config key in files.json (see the message), or re-run `/velpari-configure-inputs` to rewrite the file.",
+	"conformance-not-applicable":
+		"Run conformance from the pi-velpari extension checkout or a project with pi-velpari installed under node_modules — nothing to check here.",
+	"conformance-layer-mismatch":
+		"Restore the 4-layer layout: every folder under pi-extension/src/ must be declared in src/layers.ts, and every declared folder must exist (architecture-alignment test is the oracle).",
+	"conformance-hooks-missing":
+		"Restore the hook registrations in pi-extension/src/hooks/index.ts — the session/tool_call gates are part of the extension contract.",
+	"conformance-dep-violation":
+		"Remove the forbidden import: velpari must not import chirpi or pi-interactive-subagents (text references only — see AGENTS.md Coding conventions).",
+	"config-baseline-missing":
+		"Run `/velpari-doctor --velpari-fix` and pick Fix all to record the config baseline (files.json/agents.json/requirements-profile.json hashes) — future drift is detected against it.",
+	"config-drift":
+		"A config file changed since the baseline. If the change is yours: run `/velpari-doctor --velpari-fix` and accept via the config-baseline item (Show details). If not: `git diff .pi/velpari/` to see the foreign edit, then restore or re-configure deliberately.",
+	"config-unreadable":
+		"files.json is not valid JSON. Run `/velpari-doctor --velpari-fix` (config-restore-git restores the last committed version when tracked) or fix the syntax by hand, then `/velpari-configure-inputs` to verify.",
+	"config-restore-git":
+		"Restore `.pi/velpari/files.json` from the last committed version (`git checkout HEAD -- .pi/velpari/files.json`) — only when you did not mean to keep the broken edit.",
+	"generated-manifest-unreadable":
+		"`.pi/velpari/generated-manifest.json` is corrupt — re-run `/velpari-generate-sub-agents` to regenerate the manifest and its files.",
+	"generated-file-missing":
+		"A manifest-tracked generated file was deleted — re-run `/velpari-generate-sub-agents` (the phase auto-detects) to restore it.",
+	"generated-file-modified":
+		"A generated file changed since it was generated — regenerate via `/velpari-generate-sub-agents`, or keep your edit deliberately and regenerate so the manifest matches.",
+	"generated-file-bad-config":
+		"The generated agent's frontmatter is incomplete/invalid — fix the fields (name, description, tools, thinking, session-mode, auto-exit, spawning) or regenerate via `/velpari-generate-sub-agents`.",
+	"generated-file-unregistered":
+		"An agent file carries the generator footer but is not in the manifest — regenerate via `/velpari-generate-sub-agents` so the file is tracked, or remove the footer if it is hand-authored.",
+	"binding-mismatch":
+		"This work belongs in another worktree/branch (N17). Restart the session there — no changes were made here.",
+	"binding-conflict":
+		"Two active declarations point at different worktrees — ask the user which line to follow, then close or complete the other plan/run (newest PENDING plan wins once the other is DONE).",
+	"bookkeeping-drift":
+		"Run `/velpari-doctor --velpari-fix` — the stage flag auto-advances to match the already-published artifact (bookkeeping only; content stays human-gated).",
+	// The fix fingerprint for the row above (preflight/fix-all batch key;
+	// FIX_LEVELS is typed on SuggestionKey, so it needs this entry).
+	"bookkeeping-advance":
+		"Run `/velpari-doctor --velpari-fix` — the stage flag auto-advances to match the already-published artifact (evidence-gated bookkeeping only; content stays human-gated).",
+	"scaffold-missing":
+		"Run `/velpari-doctor --velpari-fix` — the missing standard folders/baseline are created in one confirm-gated batch (N23).",
 } as const;
 
 export type SuggestionKey = keyof typeof SUGGESTIONS;
@@ -261,6 +325,11 @@ export const FIX_LEVELS: Partial<Record<SuggestionKey, FixLevel>> = {
 	"frontmatter-missing": "auto-safe",
 	"fingerprint-untracked": "auto-safe",
 	"working-published-drift": "auto-safe",
+	// Phase C (N23) — bookkeeping-only self-heal, paired RemediateFns
+	// under doctor/checks/remediate/ (Subphase 3.3).
+	"bookkeeping-advance": "auto-safe",
+	"scaffold-missing": "auto-safe",
+	"config-restore-git": "auto-safe",
 
 	// Phase 3 (Level C — agentic fix via parent LLM). Each entry
 	// triggers `buildFixBrief` and dispatches a structured prompt
@@ -282,6 +351,10 @@ export const SAFE_WHITELIST: ReadonlySet<string> = new Set([
 	"frontmatter-missing",
 	"fingerprint-untracked",
 	"working-published-drift",
+	// Phase C (N23) — paired fns registered in Subphase 3.3.
+	"bookkeeping-advance",
+	"scaffold-missing",
+	"config-restore-git",
 ]);
 
 /**

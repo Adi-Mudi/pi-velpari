@@ -22,7 +22,18 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
 export function checkScanOptions(cwd: string = process.cwd()): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
-	const config = loadFilesConfig(cwd);
+	let config: ReturnType<typeof loadFilesConfig>;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		// Phase C: corrupt files.json renders as info here — the Config
+		// section already carries the UNREADABLE error (doctor-always-renders).
+		items.push({
+			status: "info",
+			message: "Scan options: files.json unreadable — see the Config section",
+		});
+		return { title: "Available scans (SCAN gate)", items };
+	}
 	const available = getAvailableScanTypes(config, cwd);
 	const enabled = availableScanList(available);
 

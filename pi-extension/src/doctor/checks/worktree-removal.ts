@@ -50,7 +50,18 @@ export function checkWorktreeRemovalSection(cwd: string): DiagnosticSection {
 				message: "No active run — nothing bound to a worktree.",
 			});
 		} else {
-			const state = loadState(cwd);
+			// Phase C render hardening: corrupt state.json → no binding to
+			// compare (the Run state section carries the UNREADABLE error).
+			let state: ReturnType<typeof loadState>;
+			try {
+				state = loadState(cwd);
+			} catch {
+				items.push({
+					status: "info",
+					message: "Run state unreadable — worktree-removal check skipped (see the Run state section).",
+				});
+				return { title: "Worktree removal (N14)", items };
+			}
 			if (!state.runId) {
 				items.push({
 					status: "info",
