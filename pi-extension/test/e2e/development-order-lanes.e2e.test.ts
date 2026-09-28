@@ -225,8 +225,8 @@ describe("e2e/development-order-lanes", () => {
 				`  "- 1. A — AFs: AF-1", "- 2. B — AFs: AF-2", "- 3. C — AFs: AF-1, AF-2", ` +
 				`  "- 4. D — AFs: AF-1", "- 5. E — AFs: AF-2", "- 6. F — AFs: AF-1, AF-2", ` +
 				`  "", "## Execution Lanes", "", "| Lane | Worktree | Branch | Steps | Status |", "| --- | --- | --- | --- | --- |", ` +
-				`  "| lane-1 | e2elanesapp/lane-1-core | e2elanesapp/lane-1-core | A, C, D, F | active |", ` +
-				`  "| lane-2 | e2elanesapp/lane-2-edge | e2elanesapp/lane-2-edge | B, E | active |", ` +
+				`  "| lane-1 | e2elanesapp/wt-1-core | e2elanesapp/wt-1-core | A, C, D, F | active |", ` +
+				`  "| lane-2 | e2elanesapp/wt-2-edge | e2elanesapp/wt-2-edge | B, E | active |", ` +
 				`  "", "## Integration Plan", "", "| # | Lane | Merge level | Gates |", "| --- | --- | --- | --- |", ` +
 				`  "| 1 | lane-2 | 1 | rebuild + tests + doctor |", "| 2 | lane-1 | 2 | rebuild + tests + doctor |", ` +
 				`  "", "## Lane Shape", "", "parallel", "series", "parallel", "series", ` +
@@ -326,7 +326,7 @@ describe("e2e/development-order-lanes", () => {
 		);
 		for (const lane of out.store.lanes) {
 			assert.strictEqual(lane.worktree, lane.branch, `name-match violated by ${lane.laneId}`);
-			assert.match(lane.worktree, /^e2elanesapp\/lane-[12]-/, `worktree naming: ${lane.worktree}`);
+			assert.match(lane.worktree, /^e2elanesapp\/wt-[12]-/, `worktree naming: ${lane.worktree}`);
 		}
 		assert.deepStrictEqual(
 			out.store.xdeps,
