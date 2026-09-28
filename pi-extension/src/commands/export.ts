@@ -14,7 +14,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs"; // PHASE-F (N31) — read the export for Mermaid fences
 import { join } from "node:path";
 import { loadState } from "../core/state.js";
 import { loadFilesConfig } from "../core/config.js";
@@ -24,6 +24,8 @@ import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { KIND_LABELS, type ExportFormat } from "../ops/export-doc.js";
 import { buildRevisionExportPath, listExportableRevisions, runRevisionExport } from "../ops/export-revision.js";
 import { runSimpleConfirm, runSimplePicker } from "../ui/simple-picker.js";
+// PHASE-F import (N31) — Excalidraw canvas push launcher (offer-only-when-reachable).
+import { canvasUiFor, extractMermaidBlocks, offerCanvasPush } from "../core/excalidraw.js";
 
 /** N3 head-export destination: the grouped `Doc/<category>/<A>_<p>.<ext>` path.
  * Uses the shared `KIND_LABELS` map (ops/export-doc.ts) — the local
@@ -187,6 +189,19 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 			warningLine,
 		"info",
 	);
+	// ─── PHASE-F (N31) — export flow offers push-to-canvas (offer-only-when-reachable) ───
+	// Best-effort: an export with no Mermaid fences, an unreadable file, or
+	// any launcher failure degrades silently/info-only — the export result
+	// above is already final.
+	try {
+		await offerCanvasPush(canvasUiFor(ctx), {
+			mermaidBlocks: extractMermaidBlocks(readFileSync(outputPath, "utf8")),
+			sourceLabel: "export",
+		});
+	} catch {
+		// Unreadable export → skip the canvas offer (Mermaid path stays).
+	}
+	// ─── PHASE-F END ───
 }
 
 /**
