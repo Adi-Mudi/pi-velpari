@@ -21,14 +21,31 @@ import {
 	type LaneStepInput,
 } from "../../src/core/dev-lanes.js";
 
+/**
+ * Build a lane step input.
+ * @param {string} stepId - The step id (e.g. "DO-1").
+ * @param {string} [module] - Optional module label used for the lane slug.
+ * @returns {LaneStepInput} The step input object.
+ */
 function step(stepId: string, module?: string): LaneStepInput {
 	return module === undefined ? { stepId } : { stepId, module };
 }
 
+/**
+ * Build a dependency edge input.
+ * @param {string} stepId - Dependent step id.
+ * @param {string} dependsOnStepId - Prerequisite step id.
+ * @returns {LaneDepInput} The dependency input object.
+ */
 function dep(stepId: string, dependsOnStepId: string): LaneDepInput {
 	return { stepId, dependsOnStepId };
 }
 
+/**
+ * Flatten a computed plan into the row list a proposal carries.
+ * @param {ReturnType<typeof computeLanes>} result - computeLanes result (must be ok).
+ * @returns {LaneProposal[]} One row per step with lane position + names.
+ */
 function proposalOf(result: ReturnType<typeof computeLanes>): LaneProposal[] {
 	if (!result.ok) assert.fail(`expected ok plan, got problems: ${JSON.stringify(result.problems)}`);
 	return result.plan.lanes.flatMap((lane) =>
@@ -112,10 +129,10 @@ describe("computeLanes — worked example (parallel → series → parallel → 
 		if (!result.ok) return;
 		for (const lane of result.plan.lanes) {
 			assert.equal(lane.worktree, lane.branch, "worktree === branch");
-			assert.match(lane.worktree, /^testapp\/lane-\d+-[a-z0-9-]+$/);
+			assert.match(lane.worktree, /^testapp\/wt-\d+-[a-z0-9-]+$/);
 		}
-		assert.equal(result.plan.lanes[0]?.worktree, "testapp/lane-1-a");
-		assert.equal(result.plan.lanes[1]?.worktree, "testapp/lane-2-b");
+		assert.equal(result.plan.lanes[0]?.worktree, "testapp/wt-1-a");
+		assert.equal(result.plan.lanes[1]?.worktree, "testapp/wt-2-b");
 		for (const lane of result.plan.lanes) assert.equal(lane.status, "active");
 	});
 
@@ -210,7 +227,7 @@ describe("computeLanes — lane cap merging", () => {
 		// merged lanes keep matching worktree/branch with the NEW lane number
 		for (const [i, lane] of result.plan.lanes.entries()) {
 			assert.equal(lane.worktree, lane.branch);
-			assert.match(lane.worktree, new RegExp(`^p/lane-${i + 1}-`));
+			assert.match(lane.worktree, new RegExp(`^p/wt-${i + 1}-`));
 		}
 		// determinism under the cap
 		const again = computeLanes([...steps].reverse(), [], { projectSlug: "P", maxLanes: 4 });
@@ -230,8 +247,8 @@ describe("computeLanes — lane cap merging", () => {
 		const result = computeLanes(steps, [], { projectSlug: "TestApp" });
 		assert.equal(result.ok, true);
 		if (!result.ok) return;
-		assert.equal(result.plan.lanes[0]?.worktree, "testapp/lane-1-m-3-database-schema");
-		assert.equal(result.plan.lanes[1]?.worktree, "testapp/lane-2-m-1-auth-service");
+		assert.equal(result.plan.lanes[0]?.worktree, "testapp/wt-1-m-3-database-schema");
+		assert.equal(result.plan.lanes[1]?.worktree, "testapp/wt-2-m-1-auth-service");
 	});
 });
 
@@ -240,6 +257,10 @@ describe("verifyLaneProposal", () => {
 	const deps = [dep("C", "A"), dep("C", "B"), dep("D", "C"), dep("E", "C"), dep("F", "D"), dep("F", "E")];
 	const opts = { projectSlug: "TestApp", maxLanes: 4 };
 
+	/**
+	 * Compute the canonical plan for this describe's fixed steps/deps.
+	 * @returns {{proposal: LaneProposal[], xdeps: ReturnType<typeof computeLanes>}} Row list + full result.
+	 */
 	const canonical = (): { proposal: LaneProposal[]; xdeps: ReturnType<typeof computeLanes> } => {
 		const result = computeLanes(steps, deps, opts);
 		assert.equal(result.ok, true);
@@ -250,6 +271,25 @@ describe("verifyLaneProposal", () => {
 		const { proposal, xdeps } = canonical();
 		if (!xdeps.ok) return assert.fail("canonical plan missing");
 		assert.deepEqual(verifyLaneProposal(proposal, steps, deps, { ...opts, xdeps: xdeps.plan.xdeps }), []);
+	});
+
+	it("accepts wt- names and still accepts legacy lane- names (N36 tolerance)", () => {
+		const { proposal, xdeps } = canonical();
+		if (!xdeps.ok) return assert.fail("canonical plan missing");
+		const xopts = { ...opts, xdeps: xdeps.plan.xdeps };
+		// The builder now emits wt- names → verify must accept them.
+		assert.ok(
+			proposal.every((row) => row.worktree.includes("/wt-")),
+			"canonical proposal should carry wt- names",
+		);
+		assert.deepEqual(verifyLaneProposal(proposal, steps, deps, xopts), []);
+		// Legacy stored-row names (lane-) must keep verifying unchanged.
+		const legacy = proposal.map((row) => ({
+			...row,
+			worktree: row.worktree.replace("/wt-", "/lane-"),
+			branch: row.branch.replace("/wt-", "/lane-"),
+		}));
+		assert.deepEqual(verifyLaneProposal(legacy, steps, deps, xopts), []);
 	});
 
 	it("flags a step assigned to two lanes", () => {
@@ -346,7 +386,7 @@ describe("helpers", () => {
 	});
 
 	it("buildLaneName keeps folder == branch (name-match rule)", () => {
-		assert.equal(buildLaneName("proj", 2, "core"), "proj/lane-2-core");
+		assert.equal(buildLaneName("proj", 2, "core"), "proj/wt-2-core");
 	});
 
 	it("publishes the lock rules the renderer + handoff emit", () => {
