@@ -33,6 +33,10 @@ export const DOC_ARTIFACT_TO_KIND: Record<string, ArtifactKind> = {
 	RTM: "rtm",
 	"feasibility-study": "feasibility",
 	design: "design",
+	// ─── PHASE-D (N26) — wireframe rides the design envelope; parity with
+	// core/upstream.ts ARTIFACT_TO_KIND (pinned by test/core/upstream.test.ts). ───
+	wireframe: "design",
+	// ─── PHASE-D END ───
 	"atomic-functions": "atomic-functions",
 	pseudocode: "pseudocode",
 	"test-plan": "testplan",

@@ -98,6 +98,9 @@ export const GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	RTM: "requirements",
 	"feasibility-study": "feasibility",
 	design: "design",
+	// ─── PHASE-D (N26) — wireframe rides the design envelope (testplan/test-cases precedent) ───
+	wireframe: "design",
+	// ─── PHASE-D END ───
 	pseudocode: "pseudocode",
 	"test-plan": "tests",
 	"test-cases": "tests",
@@ -141,6 +144,9 @@ export const WORKING_GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	RTM: "rtm",
 	"feasibility-study": "feasibility",
 	design: "design",
+	// ─── PHASE-D (N26) — wireframe rides the design envelope (testplan/test-cases precedent) ───
+	wireframe: "design",
+	// ─── PHASE-D END ───
 	pseudocode: "pseudocode",
 	"test-plan": "tests",
 	"test-cases": "tests",

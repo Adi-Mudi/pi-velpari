@@ -162,7 +162,7 @@ After all 4 scouts complete:
 
 ## Output Format
 
-Write the working copy as `design_<projectName>.md` at `<workingCopy>`:
+Write the working copy as `design_<projectName>.md` at `<workingCopy>` (full-app projects also write `wireframe_<projectName>.md` beside it — see "Wireframe pairing (full-app only)" below):
 
 ```markdown
 ---
@@ -643,15 +643,80 @@ Revision rules:
    Never delete it.
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
-4. **Change Log entry required.** The `velpari_stage_publish` tool
+4. **Declare the bump (N27).** Add `bump: major|minor|patch` to the
+   working copy's frontmatter (exact lowercase): `major` = ids removed or
+   sections reorganized (incl. any deprecation), `minor` =
+   backward-compatible additions (new ids/sections, existing untouched),
+   `patch` = wording only. The publish gate compares the declared bump
+   against the actual change — a missing or under-declared bump blocks
+   the publish with a message naming the fix; a first publish needs no
+   bump.
+5. **Change Log entry required.** The `velpari_stage_publish` tool
    (same gate chain as `/velpari-architecture-generator-approve`) blocks publishing
    without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
+## Wireframe pairing (full-app only) — N26
+
+First step of this stage: read `.pi/velpari/files.json` and resolve the
+project type — top-level `projectType` first, then `velpari.projectType`;
+absent = `backend`.
+
+- **`backend` (default):** the flow is UNCHANGED. Never create a wireframe
+  file.
+- **`full-app`:** the design carries a PAIRED wireframe artifact — both
+  files live in the same working dir, iterate together, and publish
+  together:
+
+  | File | Path |
+  |---|---|
+  | design | `<workingCopy>` (`design_<projectName>.md`) |
+  | wireframe | `<workingCopyDir>/wireframe_<projectName>.md` (same folder) |
+
+Both files must exist before the `velpari_stage_publish` tool is called;
+full-app publish WITHOUT the wireframe is blocked by the gate (the error
+names the expected path). Both revisions get a `## Change Log` entry, both
+carry the SAME stamped `version`, and every wireframe canvas is also
+declared as a diagram row in the stage payload (see "Stage payload") so a
+DB-only publish keeps the wireframe in the store.
+
+### Wireframe file format
+
+Frontmatter identical in shape to the design's (`artifact: wireframe`,
+plus `bump:` on revisions), then:
+
+```markdown
+# Wireframe — <projectName>
+
+## Screens
+One `### <screen id>` block per screen: an ASCII layout in a code fence
+(or a Mermaid flowchart for the widget tree), its purpose, and the FR ids
+it implements (FR-1, ...).
+
+## User flows
+Mermaid flowcharts of the end-to-end paths between screens; each flow
+names the FR ids it satisfies.
+
+## Layout notes
+Constraints, states (empty/loading/error), responsive rules — sourced
+from the PRD/feasibility study only (zero hallucination).
+
+## FR traceability
+| Screen/Flow | FR ids |
+|---|---|
+| <screen or flow> | FR-N, ... |
+
+## Change Log
+- <date>: initial publish.
+```
+
+Rules: revise the wireframe whenever the architecture it depicts changes
+(both-or-neither with the design); reference FR ids, never invent them.
+
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + arch-sub-cycle gate + ADR gate + design-readiness gate + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). For a full-app project verify BOTH first (`test -s <workingCopy>` + `test -s <workingCopyDir>/wireframe_<projectName>.md`) — the tool publishes both and refuses an unpaired publish. It runs the publish gate (revision + arch-sub-cycle gate + ADR gate + design-readiness gate + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-architecture-generator-approve` runs the same gate chain from the terminal.
 
@@ -671,6 +736,12 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-architec
   in interactive mode.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the design content.
+- **Paired wireframe (N26).** full-app projects publish design + wireframe
+  together with the same version; backend projects never write a wireframe
+  file.
+- **Declare the bump (N27).** Every revision carries a frontmatter
+  `bump: major|minor|patch` (exact lowercase) matching what actually
+  changed — the gate blocks missing or under-declared bumps.
 
 ## Stage payload (DB rows) — MANDATORY before the preview gate
 
@@ -706,6 +777,11 @@ Shape (unknown fields are rejected; enums must match exactly):
 `adrStatus` ∈ proposed | accepted | superseded | rejected. `tacticId` must
 be a tactic from the approved §5 table. Every row must trace to the working
 copy content (zero hallucination).
+
+full-app only: add one `diagram` row per wireframe canvas —
+`{ "id": "WF-1", "diagramKind": "wireframe", "mermaidText": "..." }`.
+Wireframe ids MUST use the `WF-` prefix (the diagram PK is `(run_id, id)` —
+never collide with the `D-*` C4 ids).
 
 ## Known issue: zellij `close-pane` bug
 
