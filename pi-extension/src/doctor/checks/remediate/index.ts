@@ -9,6 +9,10 @@
 import { remediate as frontmatter } from "./frontmatter.js";
 import { remediate as fingerprintUntracked } from "./fingerprint-untracked.js";
 import { remediate as workingPublishedDrift } from "./working-published-drift.js";
+// Phase C (N23) — bookkeeping-only self-heal (fix flow never calls approve/publish).
+import { remediate as bookkeepingAdvance } from "./bookkeeping-advance.js";
+import { remediate as scaffoldMissing } from "./scaffold-missing.js";
+import { remediate as configRestoreGit } from "./config-restore-git.js";
 
 interface RemediateContext {
 	cwd: string;
@@ -31,4 +35,8 @@ export const REMEDIATE_FNS: Readonly<Record<string, RemediateFn>> = {
 	"frontmatter-missing": frontmatter,
 	"fingerprint-untracked": fingerprintUntracked,
 	"working-published-drift": workingPublishedDrift,
+	// Phase C (N23)
+	"bookkeeping-advance": bookkeepingAdvance,
+	"scaffold-missing": scaffoldMissing,
+	"config-restore-git": configRestoreGit,
 };

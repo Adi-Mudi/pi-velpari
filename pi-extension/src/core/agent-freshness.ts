@@ -52,9 +52,22 @@ export function generatedAgentPath(cwd: string, slug: string, role: string): str
 function phaseInputKeys(cwd: string, phase: GenerationPhase): string[] {
 	const inputs = GENERATION_PHASES[phase].inputs;
 	if (inputs.length === 0) return [];
-	const config = loadFilesConfig(cwd);
+	// Phase C render hardening: corrupt files.json → no configured project
+	// (only mission-keyed inputs contribute; agent-freshness warns anyway).
+	let config;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		config = {};
+	}
 	const projectName = config.projectName || config.projectNames?.[0] || "";
-	const topicSlug = slugify(loadState(cwd).mission ?? "");
+	let mission = "";
+	try {
+		mission = loadState(cwd).mission ?? "";
+	} catch {
+		/* Phase C: corrupt state.json — the Run state section reports it */
+	}
+	const topicSlug = slugify(mission);
 	const keys: string[] = [];
 	for (const input of inputs) {
 		if (input === "brainstorm") {

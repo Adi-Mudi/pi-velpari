@@ -36,6 +36,8 @@ import {
 	type StaleItem,
 } from "../core/freshness.js";
 import { computeLegalCommands, type StageLockSpec } from "./transition-lock.js";
+// Phase C (N22) — preflight entry (shared-file rule: marked block, integration request; Phase G owns final wiring)
+import { runStagePreflight } from "../doctor/preflight.js";
 import { verifyRunStartLine, verifyRunWorktree } from "./worktree-lock.js";
 import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
 import { loadOverlay } from "../core/standards-overlay.js";
@@ -183,6 +185,13 @@ export interface StageSpec {
 // test gate stays green and the UX string the user sees is unchanged.
 // ---------------------------------------------------------------------------
 
+/**
+ * Build a grouped `Doc/` artifact path (`Doc/<category>/<file>`).
+ * @param {string} cwd - Project root.
+ * @param {string} category - Doc category folder (e.g. `requirements`).
+ * @param {string} file - File name (may include an extension).
+ * @returns {string} Absolute path under the grouped Doc layout.
+ */
 const grouped = (cwd: string, category: string, file: string) => join(cwd, "Doc", category, file);
 
 const prdMissingError: MissingInputMessageFormatter = ({ cwd, mission }) => {
@@ -440,6 +449,14 @@ const FINAL_DESIGN_REQUIRED_ORDER = [
 	"development-order",
 ] as const;
 
+/**
+ * Find the first required artifact that is NOT yet published in the
+ * project store (Phase 6 DB-only read flip).
+ * @param {string} projectName - Configured project name (store DB path).
+ * @param {string} cwd - Project root.
+ * @param {readonly string[]} order - Required artifacts in dependency order.
+ * @returns {string} The first missing artifact name (falls back to `order[0]`).
+ */
 function firstMissingArtifact(projectName: string, cwd: string, order: readonly string[]): string {
 	// Phase 6 read flip (Subphase 3.6): pre-conditions check the PROJECT
 	// STORE DB, not Doc/ file existence. All stage inputs are DB-only
@@ -456,16 +473,34 @@ function firstMissingArtifact(projectName: string, cwd: string, order: readonly 
 	return order[0]!;
 }
 
+/**
+ * Missing-input error text for the atomic-function stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function atomicMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, AF_REQUIRED_ORDER);
 	return `Cannot run atomic-function: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
+/**
+ * Missing-input error text for the development-order stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function devOrderMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, DO_REQUIRED_ORDER);
 	return `Cannot run development-order: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
+/**
+ * Missing-input error text for the final-design stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function finalDesignMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, FINAL_DESIGN_REQUIRED_ORDER);
 	return `Cannot run final-design: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
@@ -580,6 +615,13 @@ export function resolveStageInputs(spec: StageSpec, deps: ResolveInputsDeps): Re
 	};
 }
 
+/**
+ * Resolve one stage input document to an on-disk path (brainstorm file
+ * first for its kind, then the store-backed file view, then legacy paths).
+ * @param {StageInputDoc} input - The stage input spec (kind + label).
+ * @param {ResolveInputsDeps} deps - cwd/mission/project resolution context.
+ * @returns {{ path: string; label: string } | null} Resolved path+label, or null when absent.
+ */
 function resolveOne(input: StageInputDoc, deps: ResolveInputsDeps): { path: string; label: string } | null {
 	if (input.kind === "brainstorm") {
 		const topicSlug = slugify(deps.mission);
@@ -703,6 +745,16 @@ export async function runStage(
 	cwd: string = process.cwd(),
 ): Promise<void> {
 	const spec = STAGE_REGISTRY[stageKey];
+
+	// ===== PHASE C PREFLIGHT BLOCK — N22 fast preflight (integration request; Phase G owns final wiring) =====
+	// Session gate respected (hard stop, no fix offered — C+A), then N17
+	// binding-match + config/state readability + bookkeeping drift. Any
+	// blocking finding opens the chat fix flow (Fix all / Show details /
+	// Abort); only a repaired or clean preflight continues into runStage.
+	// Read-only commands never reach this point (injection = stage starts).
+	const preflight = await runStagePreflight(stageKey, ctx, pi, cwd);
+	if (!preflight.continue) return;
+	// ===== END PHASE C PREFLIGHT BLOCK =====
 
 	// 1. Load state + config.
 	const state = loadState(cwd);

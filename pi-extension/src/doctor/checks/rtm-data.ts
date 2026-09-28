@@ -64,7 +64,12 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 		// differ from it — comparing anyway errored on every republish of a
 		// migrated project. Drift is checked only while the markdown is still
 		// maintained (write-alongside ON).
-		const viewMaintained = markdownWritesEnabled(cwd);
+		let viewMaintained = false;
+		try {
+			viewMaintained = markdownWritesEnabled(cwd);
+		} catch {
+			/* Phase C: corrupt files.json — Config section reports UNREADABLE */
+		}
 		if (dbMd && viewMaintained) {
 			// View drift (DB-path): the publish chain rendered the published
 			// view from the same rows the store holds, so a deterministic
