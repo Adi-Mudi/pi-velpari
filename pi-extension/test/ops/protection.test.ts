@@ -28,6 +28,7 @@ import {
 	readFrozenState,
 	withdrawRevision,
 	withProtectionTxn,
+	setRevisionStatus,
 } from "../../src/ops/protection.js";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -98,6 +99,13 @@ function chainTxRows(db: DatabaseSync): Array<{ prev_hash: string; entry_hash: s
 	}));
 }
 
+/**
+ * Count all rows in one table (test assertion helper — table name is a
+ * developer-controlled literal, never user input).
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {string} table - Table name to count.
+ * @returns {number} Row count (0 when the table is empty).
+ */
 function countRows(db: DatabaseSync, table: string): number {
 	const row = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
 	return Number(row.n);
@@ -489,6 +497,321 @@ describe("ops/protection — F16 tombstone + N4/D5 frozen refusal", () => {
 			setFrozen(db, "r1", "prd", false, "user retracted the handoff lock");
 			const after = withdrawRevision(db, { kind: "prd", revisionId: first, reason: "now allowed", actor: "test" });
 			assert.equal(after.ok, true, "an explicit unfreeze unblocks the tombstone");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+});
+
+describe("ops/protection — N20 status path (G2, soft-locked rows)", () => {
+	let dir: string;
+	let dbPath: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "velpari-protection-status-"));
+		dbPath = join(dir, "index.db");
+	});
+
+	after(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	/**
+	 * Publish two PRD revisions for one run (first superseded, second head).
+	 * @param {DatabaseSync} db - Open store connection.
+	 * @param {string} [runId] - Run to seed (default "r1").
+	 * @returns {{ first: number; second: number }} Both revision ids.
+	 */
+	function seedTwoRevisions(db: DatabaseSync, runId = "r1"): { first: number; second: number } {
+		writeDraftPrd(db, runId, "aaa111");
+		const first = publishArtifactCas(db, runId, "prd", null);
+		writeDraftPrd(db, runId, "bbb222");
+		const second = publishArtifactCas(db, runId, "prd", first.revisionId);
+		return { first: first.revisionId, second: second.revisionId };
+	}
+
+	/**
+	 * Content columns of one revision for byte-identical N20 comparisons.
+	 * @param {DatabaseSync} db - Open store connection.
+	 * @param {number} revisionId - Target revision.
+	 * @returns {{ yaml: string; inputs: string; changeLog: string; fingerprint: string }} Content snapshot.
+	 */
+	function contentColumns(
+		db: DatabaseSync,
+		revisionId: number,
+	): { yaml: string; inputs: string; changeLog: string; fingerprint: string } {
+		const row = db
+			.prepare(
+				"SELECT yaml_bytes, inputs, change_log, sha256_fingerprint FROM artifact_revisions WHERE revision_id = ?",
+			)
+			.get(revisionId) as { yaml_bytes: string; inputs: string; change_log: string; sha256_fingerprint: string };
+		return {
+			yaml: row.yaml_bytes,
+			inputs: row.inputs,
+			changeLog: row.change_log,
+			fingerprint: row.sha256_fingerprint,
+		};
+	}
+
+	test("(a) status write on a SOFT-LOCKED revision is allowed; content + fingerprint unchanged (N20)", () => {
+		const db = openStoreDb(dbPath);
+		try {
+			const { first, second } = seedTwoRevisions(db);
+			// Lock the head row the way markConsumedUpstreams does (D9 columns).
+			db.prepare("UPDATE artifact_revisions SET locked_at = ?, locked_by = ? WHERE revision_id = ?").run(
+				"2026-09-28T00:00:00Z",
+				"test-consumer:proj",
+				second,
+			);
+			const before = contentColumns(db, second);
+
+			const outcome = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: second,
+				to: "withdrawn",
+				reason: "mistaken head",
+				actor: "test",
+			});
+			assert.equal(outcome.ok, true, "a soft-locked row accepts status writes (N20)");
+			const row = db.prepare("SELECT status, locked_at FROM artifact_revisions WHERE revision_id = ?").get(second) as {
+				status: string;
+				locked_at: string | null;
+			};
+			assert.equal(row.status, "withdrawn");
+			assert.ok(row.locked_at !== null, "the lock marker survives a status change (metadata, not content)");
+			const after = contentColumns(db, second);
+			assert.deepEqual(after, before, "content columns are byte-identical (status-only write)");
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r1' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				first,
+				"head re-pointed by the delegated tombstone",
+			);
+
+			// The ONE tombstone path + digest proof in the tx log (F18/N20).
+			const tx = db
+				.prepare(
+					"SELECT before_digest, after_digest FROM tx_log WHERE operation = 'tombstone' ORDER BY tx_id DESC LIMIT 1",
+				)
+				.get() as { before_digest: string; after_digest: string };
+			assert.equal(tx.before_digest, before.fingerprint, "before digest = the unchanged fingerprint");
+			assert.equal(tx.after_digest, before.fingerprint, "after digest = the unchanged fingerprint");
+			assert.equal(verifyChain(chainAuditRows(db)), null, "audit chain stays verifiable");
+			assert.equal(verifyChain(chainTxRows(db)), null, "tx chain stays verifiable");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("(b) restore: null head → published + head re-pointed; another revision is head → refusal", () => {
+		const db = openStoreDb(dbPath);
+		try {
+			// Single revision: withdraw (head → null), then restore (re-point).
+			writeDraftPrd(db, "r1", "solo1");
+			const solo = publishArtifactCas(db, "r1", "prd", null);
+			const withdrawn = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: solo.revisionId,
+				to: "withdrawn",
+				reason: "oops",
+				actor: "test",
+			});
+			assert.equal(withdrawn.ok, true);
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r1' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				null,
+				"no live revision left → head is null",
+			);
+			const restored = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: solo.revisionId,
+				to: "published",
+				reason: "withdrawal was a mistake",
+				actor: "test",
+			});
+			assert.equal(restored.ok, true, "restore with a null head succeeds");
+			assert.equal(restored.ok === true && restored.status, "published");
+			assert.equal(
+				(db.prepare("SELECT status FROM artifact_revisions WHERE revision_id = ?").get(solo.revisionId) as {
+					status: string;
+				}).status,
+				"published",
+			);
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r1' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				solo.revisionId,
+				"head re-pointed back to the restored revision",
+			);
+			const tx = db
+				.prepare("SELECT before_digest, after_digest FROM tx_log WHERE operation = 'status-update' ORDER BY tx_id DESC LIMIT 1")
+				.get() as { before_digest: string; after_digest: string };
+			assert.equal(tx.before_digest, tx.after_digest, "restore proves content immutability in the tx log");
+			const audit = db
+				.prepare("SELECT reason, detail_json FROM audit_ledger WHERE action = 'status-update' ORDER BY entry_id DESC LIMIT 1")
+				.get() as { reason: string; detail_json: string };
+			assert.equal(audit.reason, "withdrawal was a mistake");
+			assert.equal(audit.detail_json, JSON.stringify({ from: "withdrawn", to: "published" }));
+			assert.equal(verifyChain(chainAuditRows(db)), null);
+			assert.equal(verifyChain(chainTxRows(db)), null);
+
+			// Fresh run r2 — the solo scenario above owns r1's head.
+			const { first, second } = seedTwoRevisions(db, "r2");
+			// Build the null-head state: withdraw BOTH rows (superseded first goes
+			// through the F16 tombstone path; the head delegates to it).
+			const wSuperseded = withdrawRevision(db, {
+				kind: "prd",
+				revisionId: first,
+				reason: "wrong text",
+				actor: "test",
+			});
+			assert.equal(wSuperseded.ok, true, "F16 withdraw of a superseded row");
+			const wHead = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: second,
+				to: "withdrawn",
+				reason: "head too",
+				actor: "test",
+			});
+			assert.equal(wHead.ok, true, "head withdraw via delegation");
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r2' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				null,
+				"no live revision left → head is null",
+			);
+
+			// Case 1: non-head withdrawn + null head → restore ok (re-points head).
+			const restoreNonHead = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: first,
+				to: "published",
+				reason: "changed my mind",
+				actor: "test",
+			});
+			assert.equal(restoreNonHead.ok, true, "non-head withdrawn restores when no other revision is head");
+			assert.equal(
+				(db.prepare("SELECT status FROM artifact_revisions WHERE revision_id = ?").get(first) as { status: string })
+					.status,
+				"published",
+			);
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r2' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				first,
+				"head re-pointed to the restored revision",
+			);
+
+			// Case 2: another revision is head → self-healing refusal.
+			const refused = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: second,
+				to: "published",
+				reason: "changed my mind too",
+				actor: "test",
+			});
+			assert.equal(refused.ok, false);
+			assert.match(
+				refused.ok === false ? refused.problem : "",
+				/cannot be restored while another revision is head — publish a new version instead/,
+				"self-healing refusal names the N19 path",
+			);
+			assert.equal(
+				(db.prepare("SELECT status FROM artifact_revisions WHERE revision_id = ?").get(second) as { status: string })
+					.status,
+				"withdrawn",
+				"the refusal leaves the row untouched",
+			);
+			assert.equal(
+				(db.prepare("SELECT head_revision_id FROM artifacts WHERE run_id = 'r2' AND kind = 'prd'").get() as {
+					head_revision_id: number | null;
+				}).head_revision_id,
+				first,
+				"head unchanged by the refusal",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("(c) refusals: same value, superseded target/source, empty reason, unknown id, kind mismatch, frozen", () => {
+		const db = openStoreDb(dbPath);
+		try {
+			const { first, second } = seedTwoRevisions(db);
+			const auditsBefore = countRows(db, "audit_ledger");
+			const txBefore = countRows(db, "tx_log");
+
+			const cases: Array<{ to: "published" | "withdrawn" | "superseded"; id: number; reason: string; kind: "prd" | "rtm"; expect: RegExp }> = [
+				{ to: "published", id: second, reason: "x", kind: "prd", expect: /already 'published'/ },
+				{ to: "superseded", id: second, reason: "x", kind: "prd", expect: /system-owned/ },
+				{ to: "published", id: first, reason: "x", kind: "prd", expect: /superseded \(system-owned\)/ },
+				{ to: "withdrawn", id: second, reason: "  ", kind: "prd", expect: /non-empty reason/ },
+				{ to: "withdrawn", id: 999999, reason: "x", kind: "prd", expect: /no revision with id/ },
+				{ to: "withdrawn", id: second, reason: "x", kind: "rtm", expect: /belongs to 'prd', not 'rtm'/ },
+			];
+			for (const c of cases) {
+				const outcome = setRevisionStatus(db, { kind: c.kind, revisionId: c.id, to: c.to, reason: c.reason, actor: "test" });
+				assert.equal(outcome.ok, false, `refused: to=${c.to} id=${c.id} kind=${c.kind}`);
+				assert.match(outcome.ok === false ? outcome.problem : "", c.expect);
+			}
+
+			// N4 preserved: frozen gates withdraw through the delegation.
+			setFrozen(db, "r1", "prd", true, "baselined at handoff");
+			const frozenRefusal = setRevisionStatus(db, {
+				kind: "prd",
+				revisionId: second,
+				to: "withdrawn",
+				reason: "wanted it gone",
+				actor: "test",
+			});
+			assert.equal(frozenRefusal.ok, false);
+			assert.match(frozenRefusal.ok === false ? frozenRefusal.problem : "", /is frozen/);
+			assert.match(frozenRefusal.ok === false ? frozenRefusal.problem : "", /\/velpari-freeze/);
+
+			assert.equal(countRows(db, "audit_ledger"), auditsBefore, "refusals write no audit entry");
+			assert.equal(countRows(db, "tx_log"), txBefore, "refusals write no tx entry");
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	test("(d) withdrawRevision regression: identical behavior on a locked row", () => {
+		const db = openStoreDb(dbPath);
+		try {
+			const { first, second } = seedTwoRevisions(db);
+			db.prepare("UPDATE artifact_revisions SET locked_at = ?, locked_by = ? WHERE revision_id = ?").run(
+				"2026-09-28T00:00:00Z",
+				"test-consumer:proj",
+				first,
+			);
+			const outcome = withdrawRevision(db, {
+				kind: "prd",
+				revisionId: first,
+				reason: "locked row tombstone",
+				actor: "test",
+			});
+			assert.equal(outcome.ok, true, "the lock never blocks a status op (N20)");
+			assert.equal(outcome.ok === true && outcome.wasHead, false);
+			assert.equal(outcome.ok === true && outcome.newHeadRevisionId, second);
+			assert.equal(
+				(db.prepare("SELECT status FROM artifact_revisions WHERE revision_id = ?").get(first) as { status: string })
+					.status,
+				"withdrawn",
+			);
+			assert.ok(
+				(db.prepare("SELECT locked_at FROM artifact_revisions WHERE revision_id = ?").get(first) as {
+					locked_at: string | null;
+				}).locked_at !== null,
+				"marker persists",
+			);
+			assert.equal(verifyChain(chainAuditRows(db)), null);
+			assert.equal(verifyChain(chainTxRows(db)), null);
 		} finally {
 			closeStoreDb(db);
 		}

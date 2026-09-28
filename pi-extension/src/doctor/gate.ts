@@ -39,6 +39,7 @@ import { gateArchSubCycle } from "./checks/arch-sub-cycle.js";
 import { gateStandardsProfile } from "./checks/standards-profile.js";
 import { gateADR } from "./checks/adr.js";
 import { gateDesignReadiness } from "./checks/design-readiness.js";
+import { gateStoreEnforcement } from "./checks/soft-lock.js"; // Phase B (soft-lock)
 import { loadReviewerVerdictForStage, verifierSpecForArtifact } from "./checks/reviewer-verdict.js";
 import { deriveAtomicProfile } from "../core/atomic-tier.js";
 import { loadFilesConfig, devLaneConfig } from "../core/config.js";
@@ -251,5 +252,36 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 		}
 	}
 
+	// ===== PHASE B REGISTRY BLOCK — soft-lock + store enforcement (N19/N20/N21) =====
+	// Phase B added this block; `doctor/` is Phase C's territory (shared-file
+	// rule, recorded in the plan's integration requests). KEEP IT LAST so it
+	// sees the final error list: detection + marking only run when every
+	// other gate check has passed (D8). Do not merge other edits into here.
+	{
+		const specB = Object.values(STAGE_REGISTRY).find(
+			(s) => s.workingCopyArtifact === input.artifact || s.additionalWorkingCopies?.includes(input.artifact),
+		);
+		if (specB) {
+			const stateB = loadState(input.cwd);
+			const declaredB = resolveDeclaredInputs(input.cwd, specB.inputs, {
+				projectName: input.projectName,
+				topicSlug: slugify(stateB.mission),
+			});
+			const coverageB = checkDownstreamCoverage(input.cwd, input.artifact, input.workingContent, input.projectName);
+			const enforcement = gateStoreEnforcement({
+				artifact: input.artifact,
+				cwd: input.cwd,
+				projectName: input.projectName,
+				declaredInputIds: declaredB.filter((d) => d.status === "found").map((d) => d.id),
+				coverageUpstreamKeys: coverageB
+					.filter((r) => r.status !== "not-checkable")
+					.flatMap((r) => r.rule.upstreams.map((u) => manifestKey(u.artifact, input.projectName))),
+				gateErrorsSoFar: errors.length,
+			});
+			for (const e of enforcement.errors) errors.push(e);
+			for (const w of enforcement.warnings) warnings.push(w);
+		}
+	}
+	// ===== END PHASE B REGISTRY BLOCK =====
 	return { errors, warnings };
 }

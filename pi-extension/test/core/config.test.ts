@@ -11,7 +11,7 @@
 
 import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync as realMkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,6 +21,11 @@ import {
 	retentionConfig,
 	saveFilesConfig,
 	validateFilesConfig,
+	maxWorktreesConfig,
+	testingRunnerConfig,
+	projectTypeConfig,
+	markdownWritesEnabled,
+	FILES_CONFIG_COMMENT,
 	type FilesConfig,
 } from "../../src/core/config.js";
 import { getEffectiveProjectNames, isMultiProject } from "../../src/core/projectnames.js";
@@ -314,5 +319,119 @@ describe("devLaneConfig (Phase 7 / N16)", () => {
 			writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: bad } });
 			assert.throws(() => devLaneConfig(cwd), /maxLanes is invalid/, JSON.stringify(bad));
 		}
+	});
+});
+
+describe("rollout config keys (G8): maxWorktrees / testing.runner / projectType", () => {
+	it("(a) absent keys → D15 defaults (3 / remote / backend)", () => {
+		const cwd = tmp();
+		assert.equal(maxWorktreesConfig(cwd), 3);
+		assert.equal(testingRunnerConfig(cwd), "remote");
+		assert.equal(projectTypeConfig(cwd), "backend");
+	});
+
+	it("(b) set keys are honored (5 / local / full-app)", () => {
+		const cwd = tmp();
+		writeRaw(cwd, {
+			...VALID_V4,
+			velpari: { maxWorktrees: 5 },
+			testing: { runner: "local" },
+			projectType: "full-app",
+		});
+		assert.equal(maxWorktreesConfig(cwd), 5);
+		assert.equal(testingRunnerConfig(cwd), "local");
+		assert.equal(projectTypeConfig(cwd), "full-app");
+	});
+
+	it("(c) invalid values throw with the exact message", () => {
+		const cwd = tmp();
+		for (const bad of [0, -1, 1.5]) {
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: bad } });
+			assert.throws(
+				() => maxWorktreesConfig(cwd),
+				new RegExp(`maxWorktrees is invalid: expected a positive integer \\(got ${bad}\\)`),
+				JSON.stringify(bad),
+			);
+		}
+		writeRaw(cwd, { ...VALID_V4, testing: { runner: "ci" } });
+		assert.throws(
+			() => testingRunnerConfig(cwd),
+			/testing\.runner is invalid: expected "remote" or "local" \(got "ci"\)/,
+		);
+		writeRaw(cwd, { ...VALID_V4, projectType: "mobile" });
+		assert.throws(
+			() => projectTypeConfig(cwd),
+			/projectType is invalid: expected "backend" or "full-app" \(got "mobile"\)/,
+		);
+	});
+});
+
+describe("N35 adoption: _comment marker + load hardening", () => {
+	it("(d) save writes _comment, load strips it, second save stays single", () => {
+		const cwd = tmp();
+		saveFilesConfig(VALID_V4, cwd);
+		const filePath = join(cwd, ".pi", "velpari", "files.json");
+		/**
+		 * Count `_comment` marker occurrences in a files.json text.
+		 * @param {string} text - Raw file content.
+		 * @returns {number} Occurrence count.
+		 */
+		const countMarkers = (text: string): number => (text.match(/_comment/g) ?? []).length;
+		const firstRaw = readFileSync(filePath, "utf8");
+		const first = JSON.parse(firstRaw) as Record<string, unknown>;
+		assert.equal(first._comment, FILES_CONFIG_COMMENT, "marker written on save");
+		assert.equal(countMarkers(firstRaw), 1, "exactly one marker on first save");
+		const loaded = loadFilesConfig(cwd);
+		assert.equal("_comment" in loaded, false, "loader strips the marker");
+		saveFilesConfig(loaded, cwd);
+		const secondRaw = readFileSync(filePath, "utf8");
+		assert.equal(countMarkers(secondRaw), 1, "round-trip never duplicates the marker");
+		assert.equal((JSON.parse(secondRaw) as Record<string, unknown>)._comment, FILES_CONFIG_COMMENT);
+	});
+
+	it("(e) malformed JSON → Invalid files.json at <path>: …", () => {
+		const cwd = tmp();
+		const filePath = join(cwd, ".pi", "velpari", "files.json");
+		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+		writeFileSync(filePath, "{ not json", "utf8");
+		assert.throws(
+			() => loadFilesConfig(cwd),
+			(err: unknown) =>
+				err instanceof Error && err.message.startsWith(`Invalid files.json at ${filePath}: `),
+			"path-qualified parse error",
+		);
+	});
+
+	it("(f) version 5 → unsupported-version error naming the recreate command", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, version: 5 });
+		assert.throws(
+			() => loadFilesConfig(cwd),
+			/Unsupported files\.json version: 5\. Expected 4\. Run \/velpari-configure-inputs to recreate\./,
+		);
+	});
+
+	it("(g) version 3 legacy migration still works", () => {
+		const cwd = tmp();
+		writeRaw(cwd, {
+			version: 3,
+			projectName: "OldApp",
+			inputDocuments: ["a.md"],
+			outputPaths: {},
+			excludedPaths: [],
+		});
+		const loaded = loadFilesConfig(cwd);
+		assert.equal(loaded.version, 4);
+		assert.equal(loaded.projectName, "OldApp");
+		assert.deepEqual(loaded.inputDocuments, ["a.md"]);
+		assert.deepEqual(loaded.excludedPaths, [...DEFAULT_EXCLUDED_PATHS], "empty v3 excludes backfill defaults");
+	});
+
+	it("(h) existing accessors untouched: markdownWrites / retention / devLane defaults", () => {
+		const cwd = tmp();
+		saveFilesConfig(VALID_V4, cwd);
+		assert.equal(markdownWritesEnabled(cwd), false, "Phase 11 default OFF");
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 10 });
+		assert.equal(devLaneConfig(cwd).maxLanes, 4);
 	});
 });

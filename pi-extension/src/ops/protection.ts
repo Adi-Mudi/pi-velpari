@@ -534,6 +534,124 @@ export function withdrawRevision(
 }
 
 // ---------------------------------------------------------------------------
+// N20 audited status path (Phase B, G2) — status updates build HERE,
+// not in a second path. CONTENT never changes (before/after digest = the
+// revision fingerprint), every change is audited (F17/F18), and SOFT-LOCKED
+// revisions may still transition (N20: the lock column is metadata only —
+// only `artifacts.frozen` gates `withdraw`, via withdrawRevision).
+// ---------------------------------------------------------------------------
+
+/** Outcome of a status update (business refusals are RETURNED, never thrown). */
+export type StatusUpdateOutcome =
+	| { ok: true; revisionNumber: number; status: RevisionStatus }
+	| { ok: false; problem: string };
+
+/**
+ * N20: bookkeeping status write — CONTENT never changes (before/after digest
+ * = the revision fingerprint), every change audited (F17/F18), allowed on
+ * SOFT-LOCKED revisions (the locked column is metadata only).
+ * Transition matrix (D16): →withdrawn delegates to withdrawRevision
+ * (freeze + head re-point rules unchanged); withdrawn→published restores
+ * only when no other revision is head (re-points head back if null);
+ * →superseded and superseded→* are refused (system-owned).
+ * @param {DatabaseSync} db - Open store connection.
+ * @param {{kind: ArtifactKind; revisionId: number; to: RevisionStatus; reason: string; actor: string}} params - Action input.
+ * @returns {StatusUpdateOutcome} `{ok:false, problem}` for business refusals.
+ */
+export function setRevisionStatus(
+	db: DatabaseSync,
+	params: { kind: ArtifactKind; revisionId: number; to: RevisionStatus; reason: string; actor: string },
+): StatusUpdateOutcome {
+	const reason = params.reason.trim();
+	if (reason === "") {
+		return { ok: false, problem: "status change requires a non-empty reason" };
+	}
+	const row = readRevisionIdentity(db, params.revisionId);
+	if (!row) return { ok: false, problem: `no revision with id ${params.revisionId}` };
+	if (row.kind !== params.kind) {
+		return { ok: false, problem: `revision ${params.revisionId} belongs to '${row.kind}', not '${params.kind}'` };
+	}
+	if (row.status === params.to) {
+		return { ok: false, problem: `revision v${row.revisionNumber} is already '${params.to}'` };
+	}
+	if (params.to === "superseded") {
+		return {
+			ok: false,
+			problem:
+				"'superseded' is system-owned — a new publish flips the old head automatically; " +
+				"restore it as a new version instead (copy → publish)",
+		};
+	}
+	if (row.status === "superseded") {
+		return {
+			ok: false,
+			problem:
+				`revision v${row.revisionNumber} is superseded (system-owned) — publish a new version instead ` +
+				"(copy → publish)",
+		};
+	}
+
+	// D16: →withdrawn = the ONE tombstone path (freeze + head re-point rules
+	// live in withdrawRevision — this must not become a second implementation).
+	if (params.to === "withdrawn") {
+		const outcome = withdrawRevision(db, {
+			kind: params.kind,
+			revisionId: params.revisionId,
+			reason,
+			actor: params.actor,
+		});
+		if (!outcome.ok) return { ok: false, problem: outcome.problem };
+		return { ok: true, revisionNumber: outcome.revisionNumber, status: "withdrawn" };
+	}
+
+	// Restore path: withdrawn → published. Allowed only when NO other revision
+	// is head (the single-published invariant); head === null → re-point back.
+	const head = readHeadRevisionId(db, row.runId, params.kind);
+	if (head !== null && head !== params.revisionId) {
+		return {
+			ok: false,
+			problem:
+				`revision v${row.revisionNumber} cannot be restored while another revision is head — ` +
+				"publish a new version instead (copy → publish)",
+		};
+	}
+	const headRepoint = head === null;
+
+	return withProtectionTxn(
+		db,
+		{
+			actor: params.actor,
+			action: "status-update",
+			artifactKind: params.kind,
+			revisionNumber: row.revisionNumber,
+			reason,
+			beforeDigest: row.sha256Fingerprint,
+			afterDigest: row.sha256Fingerprint, // content never changes (N20 proof in the tx log)
+			detail: { from: "withdrawn", to: "published" },
+		},
+		() => {
+			const updated = db
+				.prepare("UPDATE artifact_revisions SET status = 'published' WHERE revision_id = ? AND status = 'withdrawn'")
+				.run(params.revisionId);
+			if (Number(updated.changes) === 0) {
+				throw new Error(`protection: revision ${params.revisionId} changed status during the restore`);
+			}
+			if (headRepoint) {
+				const moved = db
+					.prepare(
+						"UPDATE artifacts SET head_revision_id = ? WHERE run_id = ? AND kind = ? AND head_revision_id IS NULL",
+					)
+					.run(params.revisionId, row.runId, params.kind);
+				if (Number(moved.changes) === 0) {
+					throw new Error(`protection: head appeared during the restore of revision ${params.revisionId}`);
+				}
+			}
+			return { ok: true as const, revisionNumber: row.revisionNumber, status: "published" as RevisionStatus };
+		},
+	);
+}
+
+// ---------------------------------------------------------------------------
 // Freeze / unfreeze (N4) — read layer for the pickers
 // ---------------------------------------------------------------------------
 // Ownership note (Phase I plan subphase I2.1, review Issue 3): `ops/freeze.ts`

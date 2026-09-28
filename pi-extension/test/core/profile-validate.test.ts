@@ -8,7 +8,17 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { REQUIREMENTS_PROFILE_VERSION, validateRequirementsProfile } from "../../src/core/profile.js";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+	REQUIREMENTS_PROFILE_VERSION,
+	REQUIREMENTS_PROFILE_COMMENT,
+	validateRequirementsProfile,
+	saveRequirementsProfile,
+	loadRequirementsProfile,
+	type RequirementsProfile,
+} from "../../src/core/profile.js";
 
 /** Build a valid baseline profile — caller mutates one field to exercise a branch. */
 function validProfile(): Record<string, unknown> {
@@ -154,5 +164,33 @@ describe("validateRequirementsProfile — branch coverage", () => {
 		p.conditionalQuestions = ["q1", "q2"];
 		p.researchSources = ["https://example.com"];
 		assert.equal(validateRequirementsProfile(p), true);
+	});
+});
+
+describe("N35: requirements-profile _comment round-trip", () => {
+	it("save writes _comment first; load strips it; profile data otherwise round-trips", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "velpari-profile-n35-"));
+		try {
+			const profile = validProfile() as unknown as RequirementsProfile;
+			saveRequirementsProfile(profile, cwd);
+			const filePath = join(cwd, ".pi", "velpari", "requirements-profile.json");
+			const rawText = readFileSync(filePath, "utf8");
+			const parsed = JSON.parse(rawText) as Record<string, unknown>;
+			assert.equal(parsed._comment, REQUIREMENTS_PROFILE_COMMENT, "marker written on save");
+			assert.equal(Object.keys(parsed)[0], "_comment", "marker leads the file");
+			const loaded = loadRequirementsProfile(cwd);
+			assert.ok(loaded !== null, "saved profile loads back");
+			assert.equal("_comment" in loaded, false, "loader strips the marker");
+			assert.deepEqual({ ...loaded }, { ...profile }, "profile data otherwise equal");
+			// Second save (of the loaded object) keeps exactly one marker.
+			saveRequirementsProfile(profile, cwd);
+			assert.equal(
+				(readFileSync(filePath, "utf8").match(/_comment/g) ?? []).length,
+				1,
+				"round-trip never duplicates the marker",
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 });

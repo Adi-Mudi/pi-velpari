@@ -486,3 +486,22 @@ CREATE TABLE IF NOT EXISTS dev_lane_xdep (
 	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
 ) STRICT;
 `;
+
+/**
+ * v006 — soft-lock marker (Phase B, N19/N20, 2026-09-28).
+ *
+ * Two nullable columns on `artifact_revisions`: a downstream consumer marks
+ * the revision it read (locked_at = ISO timestamp, locked_by = the consumer's
+ * freshness manifest key, e.g. "rtm:MyProj"). NULL = unlocked. Content
+ * writes to a locked revision are refused by io/db.ts's L1 guard
+ * (assertRevisionContentUnlocked / updateRevisionContent); STATUS updates
+ * remain allowed and audited (N20). The status vocabulary is UNCHANGED
+ * (D6 — v004's three values already cover the model), and the store-content
+ * digest lives in store_meta (no schema change).
+ *
+ * Nullable `ALTER TABLE … ADD COLUMN` = the v002 forward-only precedent.
+ */
+export const SCHEMA_V006_LOCKING = `
+ALTER TABLE artifact_revisions ADD COLUMN locked_at TEXT;
+ALTER TABLE artifact_revisions ADD COLUMN locked_by TEXT;
+`;
