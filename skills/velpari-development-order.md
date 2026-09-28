@@ -157,8 +157,8 @@ After all 4 scouts complete:
      smallest lane merges into its most-connected neighbour; steps inside a
      lane are never reordered.
    - **Name-match** — every lane gets
-     `worktree === branch === <projectSlug>/lane-<x>-<slug>`
-     (e.g. `myapp/lane-1-auth`), the exact string used by
+     `worktree === branch === <projectSlug>/wt-<x>-<slug>`
+     (e.g. `myapp/wt-1-auth`), the exact string used by
      `git worktree add ../<string> -b <string>`.
 7. Record every **cross-lane** dependency as an integration point: one row
    per edge that spans lanes, `boundaryLevel` = the dependent step's level —
@@ -268,11 +268,11 @@ updated: <ISO timestamp>
 
 | Lane | Status | Steps (in order) | Worktree | Branch |
 |---|---|---|---|---|
-| lane-1 | active | DO-1, DO-3, DO-5 | <projectSlug>/lane-1-core | <projectSlug>/lane-1-core |
-| lane-2 | active | DO-2, DO-4 | <projectSlug>/lane-2-integrations | <projectSlug>/lane-2-integrations |
+| lane-1 | active | DO-1, DO-3, DO-5 | <projectSlug>/wt-1-core | <projectSlug>/wt-1-core |
+| lane-2 | active | DO-2, DO-4 | <projectSlug>/wt-2-integrations | <projectSlug>/wt-2-integrations |
 
-- `git worktree add ../<projectSlug>/lane-1-core -b <projectSlug>/lane-1-core`
-- `git worktree add ../<projectSlug>/lane-2-integrations -b <projectSlug>/lane-2-integrations`
+- `git worktree add ../<projectSlug>/wt-1-core -b <projectSlug>/wt-1-core`
+- `git worktree add ../<projectSlug>/wt-2-integrations -b <projectSlug>/wt-2-integrations`
 
 lane-1: DO-1, DO-3, DO-5 … — parallel at levels 0 and 2, series handoff at
 level 1. lane-2: DO-2, DO-4 … — picks up DO-4 only after DO-1 (lane-1)
@@ -400,10 +400,10 @@ Shape (unknown fields are rejected):
     "stepDep": [{ "stepId": "S2", "dependsOnId": "S1" }],
     "devLane": [
       { "laneId": "lane-1", "stepId": "S1", "position": 0,
-        "worktree": "<projectSlug>/lane-1-core", "branch": "<projectSlug>/lane-1-core",
+        "worktree": "<projectSlug>/wt-1-core", "branch": "<projectSlug>/wt-1-core",
         "status": "active" },
       { "laneId": "lane-1", "stepId": "S2", "position": 1,
-        "worktree": "<projectSlug>/lane-1-core", "branch": "<projectSlug>/lane-1-core",
+        "worktree": "<projectSlug>/wt-1-core", "branch": "<projectSlug>/wt-1-core",
         "status": "active" }
     ],
     "devLaneXdep": [

@@ -1,0 +1,32 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "writing-pseudocode",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture pseudocode."]
+	},
+	"rows": {
+		"pseudocodeBlock": [
+			{
+				"id": "PC-01",
+				"afRef": "AF-01",
+				"contentHash": "pc01-continuity-fixture",
+				"content": "validate title non-empty; compute id; append todo; persist."
+			},
+			{
+				"id": "PC-02",
+				"afRef": "AF-02",
+				"contentHash": "pc02-continuity-fixture",
+				"content": "render header; map rows; join with newlines."
+			},
+			{
+				"id": "PC-03",
+				"afRef": "AF-03",
+				"contentHash": "pc03-continuity-fixture",
+				"content": "fetch remote; merge by precedence; write back."
+			}
+		]
+	}
+}

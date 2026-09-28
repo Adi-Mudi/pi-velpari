@@ -190,12 +190,14 @@ export function slugify(value: string): string {
 }
 
 /**
- * Build the shared lane name: `<projectSlug>/lane-<n>-<slug>` — used as BOTH
+ * Build the shared lane name: `<projectSlug>/wt-<n>-<slug>` — used as BOTH
  * the worktree folder (relative to the repo parent) and the branch, which is
- * the name-match rule.
+ * the name-match rule. (Lane IDs stay `lane-<n>`; only the NAME segment is
+ * `wt-` — N36.)
  */
 export function buildLaneName(projectSlug: string, laneNumber: number, slug: string): string {
-	return `${projectSlug}/lane-${laneNumber}-${slug}`;
+	// --- Phase E (N36) block: name segment `lane-` → `wt-` (lane IDs unchanged).
+	return `${projectSlug}/wt-${laneNumber}-${slug}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +314,11 @@ function findCyclePath(
 	const onPath = new Set<string>();
 	let cycle: string[] | null = null;
 
+	/**
+	 * DFS walk from `id` looking for a cycle among the remaining nodes.
+	 * @param {string} id - Node currently being visited.
+	 * @returns {boolean} True when a cycle was found (captured in `cycle`).
+	 */
 	const visit = (id: string): boolean => {
 		path.push(id);
 		onPath.add(id);
@@ -349,6 +356,13 @@ function findCyclePath(
 // Lane assignment
 // ---------------------------------------------------------------------------
 
+/**
+ * Assign graph nodes to lanes, level by level: keep dependency handoffs in
+ * the same lane where possible, then the first free lane at that level,
+ * otherwise open a new lane (up to the cap applied by the caller).
+ * @param {GraphAnalysis} analysis - Level/pred/child analysis of the step DAG.
+ * @returns {Array<{laneId: string, steps: string[]}>} Lane buckets with contiguous `lane-<n>` ids.
+ */
 function assignLanes(analysis: GraphAnalysis): Array<{ laneId: string; steps: string[] }> {
 	const { nodes, preds, level } = analysis;
 	const byLevel = new Map<number, string[]>();
@@ -395,6 +409,10 @@ function mergeToCap(
 ): Array<{ laneId: string; steps: string[] }> {
 	const working = lanes.map((lane) => ({ laneId: lane.laneId, steps: [...lane.steps] }));
 	const laneOf = new Map<string, number>();
+	/**
+	 * Rebuild the step→lane index after a lane mutation.
+	 * @returns {void}
+	 */
 	const refresh = (): void => {
 		laneOf.clear();
 		working.forEach((lane, i) => {
@@ -403,11 +421,23 @@ function mergeToCap(
 	};
 	refresh();
 
+	/**
+	 * Count dependency edges between two lane buckets.
+	 * @param {number} a - Index of the first lane in `working`.
+	 * @param {number} b - Index of the second lane in `working`.
+	 * @returns {number} Number of edges linking lane a with lane b.
+	 */
 	const crossingEdges = (a: number, b: number): number => {
 		const laneA = working[a];
 		const laneB = working[b];
 		if (!laneA || !laneB) return 0;
 		let count = 0;
+		/**
+		 * Add the edges between lane i and lane j to the shared counter.
+		 * @param {number} i - Lane index whose steps are scanned.
+		 * @param {number} j - The other lane index compared against.
+		 * @returns {void}
+		 */
 		const touch = (i: number, j: number): void => {
 			const lane = working[i];
 			if (!lane) return;
@@ -663,16 +693,24 @@ export function verifyLaneProposal(
 				});
 				break;
 			}
-			const expectedPrefix = `${projectSlug}/lane-`;
-			if (!row.worktree.startsWith(expectedPrefix)) {
+			// --- Phase E (N36) block: primary prefix `wt-`, legacy `lane-` tolerated.
+			const expectedPrefix = `${projectSlug}/wt-`;
+			const legacyPrefix = `${projectSlug}/lane-`;
+			let nameTail: string;
+			if (row.worktree.startsWith(expectedPrefix)) {
+				nameTail = row.worktree.slice(expectedPrefix.length);
+			} else if (row.worktree.startsWith(legacyPrefix)) {
+				nameTail = row.worktree.slice(legacyPrefix.length);
+			} else {
 				problems.push({
 					code: "name-mismatch",
-					message: `lane "${laneId}" name "${row.worktree}" must start with "${expectedPrefix}"`,
+					message: `lane "${laneId}" name "${row.worktree}" must start with "${expectedPrefix}" (legacy "${legacyPrefix}" accepted)`,
 				});
 				break;
 			}
+			// --- end Phase E (N36) block ---
 			const match = LANE_ID_PATTERN.exec(laneId);
-			const nameLane = /^(\d+)-/.exec(row.worktree.slice(expectedPrefix.length));
+			const nameLane = /^(\d+)-/.exec(nameTail);
 			if (match && nameLane && match[1] !== nameLane[1]) {
 				problems.push({
 					code: "name-mismatch",
