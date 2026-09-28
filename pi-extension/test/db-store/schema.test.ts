@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import { openStoreDb, closeStoreDb, maxKnownVersion } from "../../src/io/db.js";
 import type { DatabaseSync } from "node:sqlite";
 import { STORE_DB_DIR, buildStoreDbPath, buildStoreYamlPath } from "../../src/core/paths.js";
 
@@ -421,13 +421,17 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 		["dev_step", "description"],
 	];
 
-	test("v002 applies on a fresh open: user_version = 5 (v002 + v003 store_meta + v004 revision model + v005 dev lanes), all 14 prose columns present + nullable", () => {
+	test("v002 applies on a fresh open: user_version = maxKnownVersion (v002 + v003 store_meta + v004 revision model + v005 dev lanes + v006 soft-lock), all 14 prose columns present + nullable", () => {
 		const db = openStoreDb(join(dir, "index.db"));
 		try {
 			const v = db.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 5, "v002 + v003 + v004 + v005 migrations applied → user_version = 5");
+			assert.equal(
+				v.user_version,
+				maxKnownVersion(),
+				"v002 + v003 + v004 + v005 + v006 migrations applied → user_version = maxKnownVersion()",
+			);
 			for (const [table, col] of V002_COLUMNS) {
 				const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
 					name: string;
@@ -456,23 +460,23 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			const v = db2.prepare("PRAGMA user_version").get() as {
 				user_version: number;
 			};
-			assert.equal(v.user_version, 5);
+			assert.equal(v.user_version, maxKnownVersion());
 		} finally {
 			closeStoreDb(db2);
 		}
 	});
 
-	test("G3 downgrade guard: user_version > 5 refuses to open", async () => {
+	test("G3 downgrade guard: user_version > maxKnownVersion refuses to open", async () => {
 		const path = join(dir, "index.db");
 		const seed = openStoreDb(path);
 		closeStoreDb(seed);
-		// Bump to v6 — a future, unknown migration. This extension only knows up to v5.
-		// Uses dynamic import (ESM-friendly) to reach node:sqlite without polluting
-		// the registered lazy loader. The test proves the downgrade guard reads
-		// PRAGMA user_version directly and refuses an opening from an older extension.
+		// Bump to a FUTURE, unknown migration (maxKnown + 1). Uses dynamic import
+		// (ESM-friendly) to reach node:sqlite without polluting the registered
+		// lazy loader. The test proves the downgrade guard reads PRAGMA
+		// user_version directly and refuses an opening from an older extension.
 		const sqlite = (await import("node:sqlite")) as typeof import("node:sqlite");
 		const bump = new sqlite.DatabaseSync(path);
-		bump.exec("PRAGMA user_version = 6");
+		bump.exec(`PRAGMA user_version = ${maxKnownVersion() + 1}`);
 		bump.close();
 		assert.throws(() => openStoreDb(path), /schema version|Upgrade your extension/);
 	});
@@ -540,6 +544,12 @@ describe("db-schema — v004 revision model (Foundation)", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
+	/**
+	 * Read a table's column names via PRAGMA table_info.
+	 * @param {DatabaseSync} db - Open store connection.
+	 * @param {string} table - Table name to inspect.
+	 * @returns {string[]} The column names in PRAGMA order.
+	 */
 	function columnNames(db: DatabaseSync, table: string): string[] {
 		return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((r) => r.name);
 	}

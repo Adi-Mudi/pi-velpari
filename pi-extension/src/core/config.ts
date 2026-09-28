@@ -47,7 +47,15 @@ export interface FilesConfig {
 		/** Phase 7 / N16: lane cap for development-order execution lanes.
 		 *  Absent = 4 (core/dev-lanes.ts DEFAULT_MAX_LANES). */
 		maxLanes?: number;
+		/** N32 — parallel worktree cap. Absent = 3. */
+		maxWorktrees?: number;
 	};
+	/** N33 — where the full test suite runs. Absent = "remote". */
+	testing?: {
+		runner?: "remote" | "local";
+	};
+	/** N26 — project shape (wireframe pairing in Phase D). Absent = "backend". */
+	projectType?: "backend" | "full-app";
 }
 
 /** Senai-parity default exclusions for discovery and scans. */
@@ -171,6 +179,58 @@ interface FilesConfigV3 {
 }
 
 /**
+ * N32: parallel-worktree cap (rollout-wide config key, G8). Positive integer
+ * or throw — a typo'd cap must surface, not silently default (devLaneConfig
+ * idiom).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {number} The resolved cap (absent key = 3).
+ * @throws {Error} When `velpari.maxWorktrees` is present but not a positive integer.
+ */
+export function maxWorktreesConfig(cwd: string = process.cwd()): number {
+	const raw = loadFilesConfig(cwd).velpari?.maxWorktrees;
+	if (raw === undefined) return 3;
+	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+		throw new Error(
+			`files.json velpari.maxWorktrees is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
+		);
+	}
+	return raw;
+}
+
+/**
+ * N33: where the full test suite runs (rollout-wide config key, G8).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {"remote" | "local"} The resolved runner (absent key = "remote").
+ * @throws {Error} When `testing.runner` is present but not "remote"/"local".
+ */
+export function testingRunnerConfig(cwd: string = process.cwd()): "remote" | "local" {
+	const raw = loadFilesConfig(cwd).testing?.runner;
+	if (raw === undefined) return "remote";
+	if (raw !== "remote" && raw !== "local") {
+		throw new Error(`files.json testing.runner is invalid: expected "remote" or "local" (got ${JSON.stringify(raw)}).`);
+	}
+	return raw;
+}
+
+/**
+ * N26: project shape (rollout-wide config key, G8; wireframe pairing in
+ * Phase D).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {"backend" | "full-app"} The resolved shape (absent key = "backend").
+ * @throws {Error} When `projectType` is present but not "backend"/"full-app".
+ */
+export function projectTypeConfig(cwd: string = process.cwd()): "backend" | "full-app" {
+	const raw = loadFilesConfig(cwd).projectType;
+	if (raw === undefined) return "backend";
+	if (raw !== "backend" && raw !== "full-app") {
+		throw new Error(
+			`files.json projectType is invalid: expected "backend" or "full-app" (got ${JSON.stringify(raw)}).`,
+		);
+	}
+	return raw;
+}
+
+/**
  * Migrate a v3 config to v4: keep every existing value, add the new
  * path arrays, and backfill default excludes when none were set.
  */
@@ -189,24 +249,51 @@ function migrateV3(v3: FilesConfigV3): FilesConfig {
 }
 
 /**
+ * N35 marker line written into files.json on every save (senai convention:
+ * every config file carries a human-readable `_comment`). Documentation,
+ * not data — the loader strips it before parsing/validating.
+ */
+export const FILES_CONFIG_COMMENT =
+	"Velpari config: project paths, framework, outputs, and velpari settings. Managed by /velpari-configure-inputs.";
+
+/**
  * Load files.json from disk. Returns defaults if missing. Migrates v3
- * files to v4 on load.
+ * files to v4 on load. N35: strips the `_comment` marker; a malformed file
+ * throws `Invalid files.json at <path>: …`; `version > 4` throws the
+ * unsupported-version error naming the recreate command.
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {FilesConfig} The parsed config with defaults merged in.
+ * @throws {Error} On malformed JSON or an unsupported (future) version.
  */
 export function loadFilesConfig(cwd: string = process.cwd()): FilesConfig {
 	const filePath = join(cwd, PATHS.CONFIG_DIR, "files.json");
 	if (!existsSync(filePath)) return defaultConfig();
 	const raw = readFileSync(filePath, "utf8");
-	const parsed = JSON.parse(raw) as Partial<FilesConfig> | FilesConfigV3;
+	let parsed: Partial<FilesConfig> | FilesConfigV3;
+	try {
+		parsed = JSON.parse(raw) as Partial<FilesConfig> | FilesConfigV3;
+	} catch (err) {
+		throw new Error(`Invalid files.json at ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+	}
+	delete (parsed as Record<string, unknown>)._comment; // N35: marker is documentation, not data
+	if (typeof parsed.version === "number" && parsed.version > 4) {
+		throw new Error(
+			`Unsupported files.json version: ${parsed.version}. Expected 4. ` + `Run /velpari-configure-inputs to recreate.`,
+		);
+	}
 	const migrated = parsed.version === 3 ? migrateV3(parsed as FilesConfigV3) : parsed;
 	return { ...defaultConfig(), ...migrated, version: 4 };
 }
 
 /**
- * Save files.json.
+ * Save files.json (N35: the `_comment` marker leads the object; the loader
+ * strips it, so round-trips never duplicate it).
+ * @param {FilesConfig} config - The config to persist.
+ * @param {string} [cwd] - Project root holding files.json.
  */
 export function saveFilesConfig(config: FilesConfig, cwd: string = process.cwd()): void {
 	const filePath = join(cwd, PATHS.CONFIG_DIR, "files.json");
-	atomicWriteJson(filePath, config);
+	atomicWriteJson(filePath, { _comment: FILES_CONFIG_COMMENT, ...config });
 }
 
 /**

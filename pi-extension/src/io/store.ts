@@ -40,10 +40,10 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
-import { GENESIS_HASH, computeEntryHash } from "../core/hashchain.js";
 import type { Stage } from "../core/constants.js";
 import type { LaneStatus } from "../core/dev-lanes.js";
-import { openStoreDb, closeStoreDb } from "./db.js";
+import { openStoreDb, closeStoreDb, stampStoreContentDigest, appendAuditEntry, appendTxEntry } from "./db.js";
+import { clearLocksForConsumer, consumerKeysForKind } from "../core/soft-lock.js"; // Phase B (D9)
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */
 export type ArtifactKind =
@@ -480,6 +480,10 @@ function buildExportObject(envelope: ArtifactEnvelope, rows: Record<string, unkn
 // ---------------------------------------------------------------------------
 // writeArtifact
 // ---------------------------------------------------------------------------
+// Phase B (G6): every content writer below re-stamps store-content-v1 right
+// before its write commits (D11) — the stamp must always equal post-write
+// content, or Phase C's foreign-modification check false-positives.
+// ---------------------------------------------------------------------------
 
 /**
  * Write (or idempotently rewrite) one artifact: envelope upsert + child rows,
@@ -553,6 +557,7 @@ export function writeArtifact(
 			kind,
 		);
 
+		stampStoreContentDigest(db); // Phase B (G6/D11) — before COMMIT
 		db.exec("COMMIT;");
 	} catch (err) {
 		try {
@@ -935,6 +940,7 @@ export function importArtifactYaml(db: DatabaseSync, runId: string, yamlText: st
 	if (!check.ok) {
 		try {
 			db.prepare("DELETE FROM artifacts WHERE run_id = ? AND kind = ? AND status = 'draft'").run(yamlRunId, kind);
+			stampStoreContentDigest(db); // Phase B (G6/D11) — checksum-failure cleanup changes content too
 		} catch {
 			// Rollback is best-effort; the refusal below is what matters.
 		}
@@ -963,6 +969,7 @@ export function importArtifactYaml(db: DatabaseSync, runId: string, yamlText: st
  */
 export function deleteRunDrafts(db: DatabaseSync, runId: string): number {
 	const result = db.prepare("DELETE FROM artifacts WHERE run_id = ? AND status = 'draft'").run(runId);
+	stampStoreContentDigest(db); // Phase B (G6/D11)
 	return Number(result.changes);
 }
 
@@ -1004,6 +1011,19 @@ export function revertPublish(db: DatabaseSync, runId: string, kind: ArtifactKin
 			if (spec.edge) continue; // edge tables carry no status column
 			db.prepare(`UPDATE ${spec.table} SET status = 'draft' WHERE run_id = ? AND kind = ?`).run(runId, kind);
 		}
+		// Phase B (D9): a failed publish rolls back AFTER the gate marked its
+		// consumption locks — release them (same txn) + audit, then re-stamp.
+		const cleared = clearLocksForConsumer(db, consumerKeysForKind(kind));
+		if (cleared > 0) {
+			appendAuditEntry(db, {
+				actor: "velpari-store",
+				action: "soft-lock-release",
+				artifactKind: kind,
+				reason: "downstream publish reverted",
+				detail: { runId, cleared },
+			});
+		}
+		stampStoreContentDigest(db); // Phase B (G6/D11) — before COMMIT
 		db.exec("COMMIT;");
 	} catch (err) {
 		try {
@@ -1046,6 +1066,7 @@ export function publishArtifact(db: DatabaseSync, runId: string, kind: ArtifactK
 	db.exec("BEGIN IMMEDIATE;");
 	try {
 		flipToPublished(db, runId, kind);
+		stampStoreContentDigest(db); // Phase B (G6/D11) — status flips are content rows too
 		db.exec("COMMIT;");
 	} catch (err) {
 		try {
@@ -1285,6 +1306,7 @@ export function publishArtifactCas(
 			outcome: "commit",
 		});
 
+		stampStoreContentDigest(db); // Phase B (G6/D11) — before COMMIT
 		db.exec("COMMIT;");
 		return { revisionId, revisionNumber, sha256Fingerprint: envelope.sha256Fingerprint };
 	} catch (err) {
@@ -1316,6 +1338,7 @@ export function recordBaseline(db: DatabaseSync, kind: ArtifactKind, consumerSta
 		 ON CONFLICT(kind, consumer_stage) DO UPDATE SET
 		   revision_id = excluded.revision_id, baselined_at = excluded.baselined_at`,
 	).run(kind, consumerStage, revisionId, new Date().toISOString());
+	stampStoreContentDigest(db); // Phase B (G6/D11)
 }
 
 /**
@@ -1333,131 +1356,14 @@ export function setFrozen(db: DatabaseSync, runId: string, kind: ArtifactKind, f
 	if (Number(result.changes) === 0) {
 		throw new Error(`store: no artifact to freeze/unfreeze (${runId}/${kind})`);
 	}
+	stampStoreContentDigest(db); // Phase B (G6/D11)
 }
 
 // ---------------------------------------------------------------------------
-// Audit ledger + tx log append helpers (v004, F17/F18/N15)
+// Audit ledger + tx log append helpers (v004, F17/F18/N15) — MOVED to io/db.ts
+// in Phase B (D12: openStoreDb's post-migration audit must not import this
+// file — store imports db, a reverse import would be a runtime cycle).
+// Re-exported below so every existing importer keeps working unchanged.
 // ---------------------------------------------------------------------------
 
-/** Canonical JSON: keys sorted (deep), so the same content always hashes the same. */
-function canonicalJson(value: unknown): string {
-	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-	const rec = value as Record<string, unknown>;
-	const keys = Object.keys(rec).sort();
-	return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(rec[k])}`).join(",")}}`;
-}
-
-/** Canonical payload covering one audit_ledger row's content fields (hash input). */
-export function auditCanonicalPayload(row: {
-	at: string;
-	actor: string;
-	action: string;
-	artifact_kind: string | null;
-	revision_number: number | null;
-	reason: string | null;
-	detail_json: string;
-}): string {
-	return canonicalJson(row);
-}
-
-/** Canonical payload covering one tx_log row's content fields (hash input). */
-export function txCanonicalPayload(row: {
-	at: string;
-	actor: string;
-	operation: string;
-	before_digest: string | null;
-	after_digest: string | null;
-	outcome: string;
-}): string {
-	return canonicalJson(row);
-}
-
-/**
- * Append one audit-ledger entry (F17: who/what/when/why). Chain-anchored
- * (N15): prev_hash = the table's last entry_hash (GENESIS_HASH when empty).
- * Runs inside the caller's transaction when one is open.
- * @returns {number} The new entry_id.
- */
-export function appendAuditEntry(
-	db: DatabaseSync,
-	entry: {
-		actor: string;
-		action: string;
-		artifactKind?: ArtifactKind;
-		revisionNumber?: number;
-		reason?: string;
-		detail?: Record<string, unknown>;
-	},
-): number {
-	const last = db.prepare("SELECT entry_hash FROM audit_ledger ORDER BY entry_id DESC LIMIT 1").get() as
-		| { entry_hash: string }
-		| undefined;
-	const prevHash = last?.entry_hash ?? GENESIS_HASH;
-	const row = {
-		at: new Date().toISOString(),
-		actor: entry.actor,
-		action: entry.action,
-		artifact_kind: entry.artifactKind ?? null,
-		revision_number: entry.revisionNumber ?? null,
-		reason: entry.reason ?? null,
-		detail_json: JSON.stringify(entry.detail ?? {}),
-	};
-	const entryHash = computeEntryHash(prevHash, auditCanonicalPayload(row));
-	const inserted = db
-		.prepare(
-			`INSERT INTO audit_ledger (at, actor, action, artifact_kind, revision_number, reason, detail_json, prev_hash, entry_hash)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		)
-		.run(
-			row.at,
-			row.actor,
-			row.action,
-			row.artifact_kind,
-			row.revision_number,
-			row.reason,
-			row.detail_json,
-			prevHash,
-			entryHash,
-		);
-	return Number(inserted.lastInsertRowid);
-}
-
-/**
- * Append one tx-log entry (F18: every store mutation, before/after digests,
- * outcome). Chain-anchored like audit_ledger. A 'rollback' entry is appended
- * AFTER the failed transaction rolled back (its own write commits separately —
- * a rollback entry inside the failed txn would vanish with it).
- * @returns {number} The new tx_id.
- */
-export function appendTxEntry(
-	db: DatabaseSync,
-	entry: {
-		actor: string;
-		operation: string;
-		beforeDigest?: string;
-		afterDigest?: string;
-		outcome: "commit" | "rollback";
-	},
-): number {
-	const last = db.prepare("SELECT entry_hash FROM tx_log ORDER BY tx_id DESC LIMIT 1").get() as
-		| { entry_hash: string }
-		| undefined;
-	const prevHash = last?.entry_hash ?? GENESIS_HASH;
-	const row = {
-		at: new Date().toISOString(),
-		actor: entry.actor,
-		operation: entry.operation,
-		before_digest: entry.beforeDigest ?? null,
-		after_digest: entry.afterDigest ?? null,
-		outcome: entry.outcome,
-	};
-	const entryHash = computeEntryHash(prevHash, txCanonicalPayload(row));
-	const inserted = db
-		.prepare(
-			`INSERT INTO tx_log (at, actor, operation, before_digest, after_digest, outcome, prev_hash, entry_hash)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		)
-		.run(row.at, row.actor, row.operation, row.before_digest, row.after_digest, row.outcome, prevHash, entryHash);
-	return Number(inserted.lastInsertRowid);
-}
+export { auditCanonicalPayload, txCanonicalPayload, appendAuditEntry, appendTxEntry } from "./db.js";
