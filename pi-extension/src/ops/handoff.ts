@@ -22,18 +22,20 @@
  */
 
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteJson } from "../io/atomic-write.js";
 import { readLatestPublishedRows } from "../io/store.js";
 import { renderDesignMarkdown } from "./export-doc.js";
 import { advanceStage, type RunState } from "../core/state.js";
 import { closeRunBinding } from "../core/run-binding.js";
-import { buildGroupedPath, buildOutputPath, resolveDocArtifact } from "../core/paths.js";
+import { buildGroupedPath, buildOutputPath, buildWorkingGroupedPath, resolveDocArtifact } from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
 import { computeStaleSet } from "../core/freshness.js";
 import { freezeAllForHandoff } from "./freeze.js";
+// PHASE-D import (N29) — store-backed per-document version metadata.
+import { collectDocumentMeta, refreshFrozenMeta, type DocumentMetaMap } from "./handoff-meta.js";
 import { checkIdCoverage } from "../core/id-coverage.js";
 import { parseADRSection, type ADR } from "../core/adr.js";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
@@ -60,11 +62,27 @@ export type DocumentType =
 	| "Test Plan"
 	| "Test Cases"
 	| "Development Order"
-	| "Final Design";
+	| "Final Design"
+	// PHASE-D (N26/N29) — optional 11th entry, appended only when a
+	// wireframe exists (full-app projects; presence-driven, decision 7).
+	| "Wireframe";
 
 export interface ArchitectDocument {
 	type: DocumentType;
 	path: string;
+	// ─── PHASE-D (N29) — store-backed version metadata (additive; absent
+	// on legacy payloads written before N29, always emitted since). ───
+	/** Store envelope version (`artifacts.version`); null when no store row. */
+	version?: number | null;
+	/** Head `artifact_revisions.revision_id` handed to Senai; null when none. */
+	revisionId?: number | null;
+	/** Monotonic revision number of that head; null when there is none. */
+	revisionNumber?: number | null;
+	/** Frozen at handoff (N4); false when the kind has no store row. */
+	frozen?: boolean;
+	/** Freeze reason (N4) — `"handoff (N4)"` in the written payload. */
+	freezeReason?: string | null;
+	// ─── PHASE-D END ───
 }
 
 /**
@@ -206,6 +224,67 @@ export function readApprovedArtifacts(projectName: string, cwd: string = process
 	return docs;
 }
 
+// ─── PHASE-D (N26/N29) — wireframe entry + version metadata ─────────────────
+
+/**
+ * Artifact key behind a document type: REQUIRED_TYPES for the 10 required
+ * documents, `wireframe` for the optional Wireframe entry.
+ * @param {DocumentType} type - The document type in the payload.
+ * @returns {string} The paths/upstream map key for the artifact.
+ */
+function artifactKeyForDocumentType(type: DocumentType): string {
+	const found = REQUIRED_TYPES.find((r) => r.type === type);
+	return found ? found.artifact : "wireframe";
+}
+
+/**
+ * Append the optional Wireframe document (N26/N29, presence-driven):
+ * published copy first (`Doc/design/wireframe_<project>.md`), then the
+ * run's durable working copy as the DB-only fallback; still absent →
+ * nothing appended (backend and legacy projects keep exactly 10 docs).
+ * @param {ArchitectDocument[]} docs - Documents array (mutated in place).
+ * @param {string} projectName - Project whose wireframe to resolve.
+ * @param {string} cwd - Project root.
+ * @param {string} [runId] - Current run id (working-copy fallback).
+ */
+export function appendWireframeDocument(
+	docs: ArchitectDocument[],
+	projectName: string,
+	cwd: string,
+	runId?: string,
+): void {
+	const resolved = resolveDocArtifact("wireframe", projectName, cwd);
+	if (resolved) {
+		docs.push({ type: "Wireframe", path: resolved.path });
+		return;
+	}
+	if (!runId) return;
+	const working = buildWorkingGroupedPath(cwd, runId, "wireframe", projectName);
+	if (existsSync(working)) {
+		docs.push({ type: "Wireframe", path: working });
+	}
+}
+
+/**
+ * Copy collected store metadata onto the documents array (in place) —
+ * called once while building the payload and again after the N4 freeze
+ * + `refreshFrozenMeta`, so the written payload states post-freeze truth.
+ * @param {ArchitectDocument[]} documents - Payload documents (mutated).
+ * @param {DocumentMetaMap} meta - Metadata keyed by artifact key.
+ */
+function applyDocumentMeta(documents: ArchitectDocument[], meta: DocumentMetaMap): void {
+	for (const doc of documents) {
+		const entry = meta.get(artifactKeyForDocumentType(doc.type));
+		if (!entry) continue;
+		doc.version = entry.version;
+		doc.revisionId = entry.revisionId;
+		doc.revisionNumber = entry.revisionNumber;
+		doc.frozen = entry.frozen;
+		doc.freezeReason = entry.freezeReason;
+	}
+}
+// ─── PHASE-D END ───
+
 /**
  * Validate the architect-inputs JSON against our schema mirror.
  * Returns true if valid; throws on failure.
@@ -237,6 +316,25 @@ export function validateSenaiSchema(json: unknown): boolean {
 		if (typeof doc.path !== "string" || doc.path === "") {
 			throw new Error(`documents[${i}].path must be a non-empty string`);
 		}
+		// ─── PHASE-D (N29) — additive metadata type checks. Absent keys
+		// (legacy payloads) and explicit nulls pass; a present, non-null
+		// value must have the declared type. ───
+		if (doc.version !== undefined && doc.version !== null && typeof doc.version !== "number") {
+			throw new Error(`documents[${i}].version must be a number or null`);
+		}
+		if (doc.revisionId !== undefined && doc.revisionId !== null && typeof doc.revisionId !== "number") {
+			throw new Error(`documents[${i}].revisionId must be a number or null`);
+		}
+		if (doc.revisionNumber !== undefined && doc.revisionNumber !== null && typeof doc.revisionNumber !== "number") {
+			throw new Error(`documents[${i}].revisionNumber must be a number or null`);
+		}
+		if (doc.frozen !== undefined && typeof doc.frozen !== "boolean") {
+			throw new Error(`documents[${i}].frozen must be a boolean`);
+		}
+		if (doc.freezeReason !== undefined && doc.freezeReason !== null && typeof doc.freezeReason !== "string") {
+			throw new Error(`documents[${i}].freezeReason must be a string or null`);
+		}
+		// ─── PHASE-D END ───
 	}
 	return true;
 }
@@ -276,6 +374,9 @@ export async function runHandoff(
 		ctx.ui.notify((err as Error).message, "error");
 		return;
 	}
+	// PHASE-D (N26/N29) — append the optional Wireframe document when one
+	// exists (published copy, else the run's durable working copy).
+	appendWireframeDocument(documents, projectName, cwd, state.runId);
 
 	// MVP coverage gate (MVP/phase traceability, Phase 4): handoff is the
 	// "MVP is ready" signal — a Phase-1 requirement with no RTM row or
@@ -366,6 +467,13 @@ export async function runHandoff(
 		ctx.ui.notify(`ID coverage warnings (handoff allowed):\n${lines.join("\n")}`, "warning");
 	}
 
+	// ─── PHASE-D (N29) — collect store-backed version metadata once and
+	// fill the documents (refreshed again after the freeze below). ───
+	const docKeys = documents.map((d) => artifactKeyForDocumentType(d.type));
+	const docMeta = collectDocumentMeta(projectName, state.runId ?? "", cwd, docKeys);
+	applyDocumentMeta(documents, docMeta);
+	// ─── PHASE-D END ───
+
 	const inputs: ArchitectInputs = {
 		version: 1,
 		projectName,
@@ -418,15 +526,16 @@ export async function runHandoff(
 		return;
 	}
 
-	atomicWriteJson(targetPath, inputs);
-	ctx.ui.notify(`Handoff written to ${targetPath}`, "info");
-
 	// N4 — freeze the chain at handoff: every kind of this run with a
 	// published head becomes frozen (blocks even supersession until an
-	// audited unfreeze). MULTI-DESIGN: every project store is covered. A
-	// failed freeze leaves the chain unfrozen AND un-advanced — the user
-	// fixes the store and re-runs /velpari-handoff (the payload write is
-	// idempotent).
+	// audited unfreeze). MULTI-DESIGN: every project store is covered.
+	// PHASE-D (N29 / decision 6): the freeze runs BEFORE the payload write
+	// so the written documents[] carry post-freeze truth (`frozen: true`,
+	// `freezeReason: "handoff (N4)"`). Recoverability: a failed freeze
+	// leaves the chain unfrozen AND the payload unwritten — the user fixes
+	// the store and re-runs /velpari-handoff (the freeze is idempotent); a
+	// failed payload write leaves the frozen chain and no payload — the
+	// re-run no-ops the freeze and writes the payload.
 	const freeze = freezeAllForHandoff(cwd, projectName, state.runId!);
 	if (!freeze.ok) {
 		ctx.ui.notify(
@@ -436,6 +545,14 @@ export async function runHandoff(
 		return;
 	}
 	ctx.ui.notify(`Handoff freeze: ${freeze.frozen} artifact kind(s) frozen (N4).`, "info");
+
+	// PHASE-D (N29): re-read the just-frozen store, refill the documents,
+	// THEN write — the payload only ever states what the store holds.
+	refreshFrozenMeta(projectName, state.runId ?? "", cwd, docMeta);
+	applyDocumentMeta(documents, docMeta);
+
+	atomicWriteJson(targetPath, inputs);
+	ctx.ui.notify(`Handoff written to ${targetPath}`, "info");
 
 	const next = advanceStage(state, "/velpari-handoff", cwd);
 	void next;
