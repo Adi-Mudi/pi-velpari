@@ -36,6 +36,8 @@ import { loadFilesConfig, devLaneConfig, markdownWritesEnabled, validateFilesCon
 import { projectTypeForCwd, wireframePairingMissingMessage, type ProjectType } from "../core/project-type.js";
 // PHASE-D import (N27) — declared-vs-actual document-semver validation.
 import { bumpGateMessages, validateBump } from "../core/semver.js";
+// PHASE-F import (N31) — Excalidraw canvas push launcher (offer-only-when-reachable).
+import { canvasUiFor, extractMermaidBlocks, offerCanvasPush } from "../core/excalidraw.js";
 import {
 	computeLanes,
 	type DevLanesGateData,
@@ -1232,6 +1234,18 @@ export async function handleApprove(
 	} else {
 		ctx.ui.notify(nextHint, "info");
 	}
+	// ─── PHASE-F (N31) — design flow offers push-to-canvas (offer-only-when-reachable) ───
+	// Runs after stage advance + Next-hint: a successful design publish
+	// (fall-back approve AND the velpari_stage_publish tool share this
+	// path) offers the canvas push. Failures inside are info-only no-ops —
+	// publish outcome and notices are untouched.
+	if (mapping.artifact === "design") {
+		await offerCanvasPush(canvasUiFor(ctx), {
+			mermaidBlocks: extractMermaidBlocks(targets.map((t) => `${t.gateContent ?? ""}\n${t.content}`).join("\n")),
+			sourceLabel: "design",
+		});
+	}
+	// ─── PHASE-F END ───
 }
 /**
  * v1.3.0+ helpers for the sunset auto-archive flow. Pure string ops.
