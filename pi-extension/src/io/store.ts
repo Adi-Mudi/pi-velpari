@@ -42,7 +42,14 @@ import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import type { Stage } from "../core/constants.js";
 import type { LaneStatus } from "../core/dev-lanes.js";
-import { openStoreDb, openStoreDbReadOnly, closeStoreDb, stampStoreContentDigest, appendAuditEntry, appendTxEntry } from "./db.js";
+import {
+	openStoreDb,
+	openStoreDbReadOnly,
+	closeStoreDb,
+	stampStoreContentDigest,
+	appendAuditEntry,
+	appendTxEntry,
+} from "./db.js";
 import { clearLocksForConsumer, consumerKeysForKind } from "../core/soft-lock.js"; // Phase B (D9)
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */

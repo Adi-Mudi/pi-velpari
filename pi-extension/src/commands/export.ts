@@ -174,7 +174,14 @@ export async function runExportFlow(ctx: ExtensionContext, cwd: string): Promise
 		}
 	}
 
-	const result = runRevisionExport({ dbPath, revisionId: pickedRevision.revisionId, format, outputPath, overwrite, cwd });
+	const result = runRevisionExport({
+		dbPath,
+		revisionId: pickedRevision.revisionId,
+		format,
+		outputPath,
+		overwrite,
+		cwd,
+	});
 	if (!result.ok) {
 		ctx.ui.notify(`Export failed: ${result.problem}`, "error");
 		return;
