@@ -178,16 +178,16 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 
 ## Command surface
 
-**51 commands total** (see `commands/index.ts:COMMAND_NAMES` for the full list):
+**52 commands total** (see `commands/index.ts:COMMAND_NAMES` for the full list):
 - **10 stage** — 5 pre-production (`brainstorm`, `prd`, `rtm`, `feasibility`, `architecture-generator`) + 3 build-planning (`atomic-function`, `pseudocode`, `testplan`) + 2 execution/consolidation (`development-order`, `final-design`).
 - **10 approve (fall-back)** — 9 per-stage `/velpari-<stage>-approve` + the bespoke `/velpari-approve-brainstorm`.
-- **15 ops/discipline** — `status`, `reset` (orchestration run: clears run state + the run's draft store rows), `handoff`, `doctor`, `design-logging`, `reconfirm` (A5), `backfill` (Phase 6 — 43rd command), `portfolio` (Phase 10 — 44th command), `migrate-store` (Phase 11 — 45th command; DB-only publish + one-time migration, Q3/RES-3), `db-reset` (draft store rows only — never touches run state; distinct from `reset`), `freeze` (N4 freeze/unfreeze with typed reason), `tombstone` (F16 withdraw a revision), `rollback` (F21 restore content as a new revision), `retention-prune` (N7 keep-last-N revisions), `merge-back` (N12 sync published work back upstream).
+- **16 ops/discipline** — `status`, `reset` (orchestration run: clears run state + the run's draft store rows), `handoff`, `doctor`, `design-logging`, `reconfirm` (A5), `backfill` (Phase 6 — 43rd command), `portfolio` (Phase 10 — 44th command), `migrate-store` (Phase 11 — 45th command; DB-only publish + one-time migration, Q3/RES-3), `db-reset` (draft store rows only — never touches run state; distinct from `reset`), `freeze` (N4 freeze/unfreeze with typed reason), `tombstone` (F16 withdraw a revision), `rollback` (F21 restore content as a new revision), `retention-prune` (N7 keep-last-N revisions), `merge-back` (N12 sync published work back upstream), `revision-status` (v1.2 — status view + withdrawn→published restore).
 - **6 configure** — `configure-inputs`, `configure-requirements`, `configure-standards`, `configure-agents`, `agents`, `generate-sub-agents`.
 - **1 wrapper** — `prd-rtm`.
 - **8 view** — `show-<stage>` + `show-logging`.
 - **1 export** — `export` (Phase 5): on-demand document download from the DB store (read-only, no publish/gate changes).
 
-**Sum:** 10 stage + 10 approve + 15 ops/discipline + 6 configure + 1 wrapper + 8 view + 1 export = **51**.
+**Sum:** 10 stage + 10 approve + 16 ops/discipline + 6 configure + 1 wrapper + 8 view + 1 export = **52**.
 
 ## Coding conventions
 

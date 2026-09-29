@@ -32,7 +32,7 @@
 
 import { existsSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { openStoreDb, closeStoreDb } from "../io/db.js";
+import { openStoreDb, closeStoreDb, assertRevisionContentUnlocked, stampStoreContentDigest } from "../io/db.js";
 import type { ArtifactKind } from "../io/store.js";
 import { KIND_ORDER, appendAuditEntry, appendTxEntry, checkpointNow } from "../io/store.js";
 import { retentionConfig, type RetentionConfig } from "../core/config.js";
@@ -201,6 +201,16 @@ function pruneOneRevision(
 			db.exec("ROLLBACK;");
 			return "skipped";
 		}
+		// (1b) v1.2 B2 — D11 content-lock assert: a locked revision is never
+		// content-pruned (the row flip would delete what the lock protects;
+		// mirrors updateRevisionContent). Any lock-verification failure = skip,
+		// never fail — conservative, the row survives.
+		try {
+			assertRevisionContentUnlocked(db, params.revisionId, "retention-prune");
+		} catch {
+			db.exec("ROLLBACK;");
+			return "skipped";
+		}
 		// (2) Flip the status FIRST: the DELETE below is guarded by it, so a
 		// concurrent re-flip can never be silently removed.
 		const flipped = db
@@ -241,6 +251,10 @@ function pruneOneRevision(
 			afterDigest: params.fingerprint, // content bytes unchanged by a status flip
 			outcome: "commit",
 		});
+		// (5b) v1.2 B2 — writer contract: re-stamp the content digest inside the
+		// txn (store_meta is excluded from the digest scope, so the stamp never
+		// invalidates itself).
+		stampStoreContentDigest(db);
 		db.exec("COMMIT;");
 		try {
 			checkpointNow(db);

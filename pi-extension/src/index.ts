@@ -10,7 +10,7 @@
  *   - registerHooks(pi)     — Pi lifecycle hooks, one file per event (hooks/, L2)
  *   - registerVelpariStatusRenderer(pi) — velpari-status entry renderer (ui/, L2)
  *   - Keyboard shortcuts (Ctrl+Shift+V / Ctrl+Shift+R)
- *   - CLI flags (--velpari-skip-doctor, --velpari-stage, --velpari-fix)
+ *   - CLI flags (--velpari-skip-doctor, --velpari-stage, --velpari-fix, --velpari-run-reviewer)
  *
  * --velpari-fix (v1.4.0): opt-in for the doctor interactive fix
  * picker. Wired through commands/doctor.ts:registerDoctorCommand.
@@ -27,6 +27,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCommands } from "./commands/index.js";
+import { setRunReviewerFlagResolver } from "./core/atomic-tier.js";
 import { registerHooks } from "./hooks/index.js";
 import { registerBrainstormSessionTool } from "./stages/brainstorm-state-tool.js";
 import { registerFeasibilitySessionTool } from "./stages/feasibility-session-tool.js";
@@ -93,4 +94,14 @@ export default function (pi: ExtensionAPI) {
 		type: "boolean",
 		default: false,
 	});
+	// G-F1 (v1.2): reviewer opt-in documented in AGENTS.md / atomic-tier.ts
+	// since the reviewer plan but never registered — closes the doc/code
+	// drift. Read lazily through the resolver (Pi parses CLI flags after
+	// extension load).
+	pi.registerFlag("velpari-run-reviewer", {
+		description: "Force the reviewer sub-agent for this invocation (pure OR over tier/overlay/reviewerMode).",
+		type: "boolean",
+		default: false,
+	});
+	setRunReviewerFlagResolver(() => pi.getFlag?.("velpari-run-reviewer") === true);
 }

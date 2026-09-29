@@ -22,6 +22,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test $(find dist/pi-extension/test -name '*.test.js' -not -path '*/e2e/*' -not -path '*/in-process/*')",
+    "test:scope": "node scripts/run-tests.js",
     "test:coverage": "npm run build && node --experimental-test-coverage --test --test-reporter=spec $(find dist/pi-extension/test -name '*.test.js' -not -path '*/e2e/*' -not -path '*/in-process/*')",
     "test:e2e": "npm run build && RUN_E2E=1 node --test --test-force-exit --test-timeout=180000 dist/pi-extension/test/e2e/*.test.js",
     "test:e2e:tier2": "RUN_E2E=1 RUN_LLM_E2E=1 node --test --test-force-exit --test-timeout=300000 dist/pi-extension/test/e2e/*.test.js",

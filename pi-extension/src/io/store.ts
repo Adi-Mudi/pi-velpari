@@ -42,7 +42,7 @@ import { toYamlString, parseYaml } from "../core/yaml-data.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import type { Stage } from "../core/constants.js";
 import type { LaneStatus } from "../core/dev-lanes.js";
-import { openStoreDb, closeStoreDb, stampStoreContentDigest, appendAuditEntry, appendTxEntry } from "./db.js";
+import { openStoreDb, openStoreDbReadOnly, closeStoreDb, stampStoreContentDigest, appendAuditEntry, appendTxEntry } from "./db.js";
 import { clearLocksForConsumer, consumerKeysForKind } from "../core/soft-lock.js"; // Phase B (D9)
 
 /** The 9 approve-command artifact kinds (envelope PK `kind` values). */
@@ -706,7 +706,15 @@ export function readLatestPublishedRows(
 ): { envelope: ArtifactEnvelope; rows: Record<string, unknown> } | null {
 	const dbPath = buildStoreDbPath(projectName, cwd);
 	if (!existsSync(dbPath)) return null;
-	const db = openStoreDb(dbPath);
+	// D6 (v1.2): read-only + fail-soft — a byte-corrupt store degrades to a
+	// null read instead of crashing consumers (handoff MVP gate, lanes builder,
+	// freshness stamps). Failures elsewhere in the read path degrade the same way.
+	let db: ReturnType<typeof openStoreDbReadOnly>;
+	try {
+		db = openStoreDbReadOnly(dbPath);
+	} catch {
+		return null;
+	}
 	try {
 		const versions = listPublishedVersions(db, kind);
 		if (versions.length === 0) return null;
@@ -714,8 +722,10 @@ export function readLatestPublishedRows(
 		const result = readArtifact(db, newest.runId, kind);
 		if (!result) return null;
 		return { envelope: result.envelope, rows: result.rows };
+	} catch {
+		return null;
 	} finally {
-		closeStoreDb(db);
+		db.close(); // read-only connection — no WAL checkpoint (openStoreDbReadOnly contract)
 	}
 }
 

@@ -9,9 +9,9 @@
 // (tests written from driver behavior per Phase 1/2 retrospective lesson).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -42,6 +42,7 @@ import {
 	runExport,
 	type ExportFormat,
 } from "../../src/ops/export-doc.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 
 /** Envelope input with deterministic defaults; overrides per test. */
 function env(overrides: Partial<ArtifactEnvelopeInput> = {}): ArtifactEnvelopeInput {
@@ -816,5 +817,70 @@ describe("runExport", () => {
 	test("every format is accepted by the type surface", () => {
 		const formats: ExportFormat[] = ["md", "yaml", "html"];
 		assert.equal(formats.length, 3);
+	});
+
+	test("v1.2 D3: runExport + cwd materializes the wireframe sidecar (fresh → no warnings)", () => {
+		const storePath = buildStoreDbPath("HeadProj", dir);
+		mkdirSync(dirname(storePath), { recursive: true });
+		const sdb = openStoreDb(storePath);
+		writeArtifact(
+			sdb,
+			"design",
+			"r-design",
+			env({ stage: "designing", version: 3 }),
+			{ diagram: [{ id: "WF-1", diagramKind: "wireframe", mermaidText: "flowchart TD\n  A-->B" }] },
+		);
+		publishArtifact(sdb, "r-design", "design");
+		closeStoreDb(sdb);
+
+		const result = runExport({
+			dbPath: storePath,
+			runId: "r-design",
+			kind: "design",
+			version: 3,
+			format: "yaml",
+			outputPath: join(dir, "head-design.yaml"),
+			cwd: dir,
+		});
+		assert.equal(result.ok, true, JSON.stringify(result));
+		assert.equal(result.warnings, undefined, "fresh sidecar → no warnings");
+		const sidecar = join(dir, "Doc", "design", "wireframe_HeadProj.md");
+		assert.ok(existsSync(sidecar), "sidecar materialized");
+		const text = readFileSync(sidecar, "utf8");
+		assert.ok(text.includes("artifact: wireframe"));
+		assert.ok(text.includes("version: 3"));
+		assert.ok(text.includes("```mermaid"));
+	});
+
+	test("v1.2 D3: existing sidecar → runExport ok with a skip warning (warnings propagation)", () => {
+		const storePath = buildStoreDbPath("HeadProj2", dir);
+		mkdirSync(dirname(storePath), { recursive: true });
+		const sdb = openStoreDb(storePath);
+		writeArtifact(
+			sdb,
+			"design",
+			"r-design",
+			env({ stage: "designing", version: 1 }),
+			{ diagram: [{ id: "WF-1", diagramKind: "wireframe", mermaidText: "flowchart TD\n  A-->B" }] },
+		);
+		publishArtifact(sdb, "r-design", "design");
+		closeStoreDb(sdb);
+		const sidecar = join(dir, "Doc", "design", "wireframe_HeadProj2.md");
+		mkdirSync(dirname(sidecar), { recursive: true });
+		writeFileSync(sidecar, "MARKER", "utf8");
+
+		const result = runExport({
+			dbPath: storePath,
+			runId: "r-design",
+			kind: "design",
+			version: 1,
+			format: "yaml",
+			outputPath: join(dir, "head-design2.yaml"),
+			cwd: dir,
+		});
+		assert.equal(result.ok, true, JSON.stringify(result));
+		assert.ok(result.warnings && result.warnings.length > 0, "skip warning propagated");
+		assert.match(result.warnings[0]!, /not overwritten/);
+		assert.equal(readFileSync(sidecar, "utf8"), "MARKER", "existing file untouched");
 	});
 });

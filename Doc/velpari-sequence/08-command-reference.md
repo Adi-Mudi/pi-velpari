@@ -72,6 +72,7 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-rollback` | Roll one artifact back by publishing a NEW revision carrying an older revision's exact content (F21). History is never rewritten; typed reason required. |
 | `/velpari-retention-prune` | Retention cleanup (N7): delete superseded revisions beyond keep-last-N (`velpari.retention.revisions`). Confirmed + audited; head and baselined revisions are never pruned. |
 | `/velpari-merge-back` | Guided merge-back of a parallel line (N12) — dry-run plan, then `--execute`: confirm → git merge → store verify → doctor → staleness → F14 flags. |
+| `/velpari-revision-status` | View a revision's F16 status and restore withdrawn → published (typed reason + confirmation, audited). Withdrawal stays on `/velpari-tombstone`; `superseded` is system-owned (set only by a new publish). |
 
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 

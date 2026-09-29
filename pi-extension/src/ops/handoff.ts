@@ -105,8 +105,18 @@ export interface ObservabilitySection {
 	loggingPlan: ObservabilityLoggingPlan[];
 }
 
+/**
+ * Human-readable marker for the payload file — the `_comment` convention
+ * every `.pi/senai/` JSON this suite writes carries (Senai's own savers write
+ * it; its loaders strip it — pi-senai CHANGELOG 2026-09).
+ */
+const HANDOFF_PAYLOAD_COMMENT =
+	"Packages the approved Velpari requirements for Pi-Senai's architect stage. Written by /velpari-handoff; documentation, not data.";
+
 export interface ArchitectInputs {
 	version: 1;
+	/** Human-readable marker — documentation, not data (Senai's loaders strip it). */
+	readonly _comment?: string;
 	projectName: string;
 	createdAt: string;
 	mission: string;
@@ -476,6 +486,7 @@ export async function runHandoff(
 
 	const inputs: ArchitectInputs = {
 		version: 1,
+		_comment: HANDOFF_PAYLOAD_COMMENT,
 		projectName,
 		createdAt: new Date().toISOString(),
 		mission: state.mission,

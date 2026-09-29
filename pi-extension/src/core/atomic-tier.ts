@@ -202,9 +202,24 @@ export function isReviewerMode(x: unknown): x is ReviewerMode {
 export const DEFAULT_REVIEWER_MODE: ReviewerMode = "tier-default";
 
 /**
+ * G-F1 (v1.2): lazy resolver for the `--velpari-run-reviewer` CLI flag —
+ * registered once from index.ts (L3 → L0) and invoked inside shouldRunReviewer
+ * at decision time, because Pi parses CLI flags after extension load.
+ * Null = unset (default). Set/reset to null is idempotent.
+ */
+let runReviewerFlagResolver: (() => boolean) | null = null;
+
+/** Register or clear the --velpari-run-reviewer resolver (index.ts registration). */
+export function setRunReviewerFlagResolver(resolver: (() => boolean) | null): void {
+	runReviewerFlagResolver = resolver;
+}
+
+/**
  * Single source of truth for "does the reviewer run for this stage iteration".
  *
  * Decision order (later wins):
+ *   0. --velpari-run-reviewer flag  → true (pure OR — forces the reviewer on
+ *      regardless of mode/overlay/tier; G-F1 v1.2, user ruling 2026-09-29)
  *   1. user reviewerMode = "never"  → false (never wins over tier/overlay)
  *   2. user reviewerMode = "always" → true  (always wins over tier)
  *   3. overlay.requiresReviewer === true → true (overlay wins over tier default)
@@ -218,6 +233,9 @@ interface ReviewerGateInput {
 }
 
 export function shouldRunReviewer(input: ReviewerGateInput): boolean {
+	// G-F1 (v1.2) — pure OR: --velpari-run-reviewer forces the reviewer on
+	// ahead of config mode / overlay / tier (user ruling 2026-09-29).
+	if (runReviewerFlagResolver?.() === true) return true;
 	const mode = input.reviewerMode ?? DEFAULT_REVIEWER_MODE;
 	if (mode === "never") return false;
 	if (mode === "always") return true;

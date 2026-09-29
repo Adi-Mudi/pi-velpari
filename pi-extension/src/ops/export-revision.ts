@@ -46,6 +46,7 @@ import {
 	renderKindMarkdown,
 	countRowsOf,
 	KIND_LABELS,
+	materializeWireframe,
 	type ExportFormat,
 } from "./export-doc.js";
 
@@ -85,6 +86,8 @@ export interface ExportRevisionInput {
 	outputPath: string;
 	/** Overwrite an existing file — the CALLER confirms with the user. */
 	overwrite?: boolean;
+	/** Project root — resolves the paired wireframe sidecar path (v1.2 D3). */
+	cwd?: string;
 }
 
 /** runRevisionExport result — `ok:false` carries a human-readable `problem`. */
@@ -204,6 +207,17 @@ export function runRevisionExport(input: ExportRevisionInput): ExportRevisionRes
 			return { ok: false, problem: `file already exists: ${input.outputPath}` };
 		}
 
+		// v1.2 D3 — wireframe sidecar renders from design `diagram` rows in EVERY
+		// format: parse the snapshot YAML here (the main bytes stay untouched,
+		// so `--format yaml` remains byte-identical while the sidecar lands).
+		let wireframeRows: Record<string, unknown> | null = null;
+		if (kind === "design") {
+			const parsedWf = parseYaml(snapshot.yamlBytes);
+			if (parsedWf.ok) {
+				const wfData = parsedWf.data as { rows?: Record<string, unknown> } | null;
+				wireframeRows = wfData && typeof wfData === "object" ? (wfData.rows ?? {}) : null;
+			}
+		}
 		let bytes: string;
 		let counts: Record<string, number> | undefined;
 		if (input.format === "yaml") {
@@ -228,6 +242,25 @@ export function runRevisionExport(input: ExportRevisionInput): ExportRevisionRes
 		}
 
 		atomicWriteFile(input.outputPath, bytes, "utf8");
+
+		// v1.2 D3 — publish the wireframe sidecar beside the design export so a
+		// DB-only project's handoff resolves Doc/design/wireframe_<slug>.md
+		// without the working-copy fallback (presence-driven; skip+warn unless
+		// overwrite).
+		if (wireframeRows && input.cwd) {
+			const wfWarning = materializeWireframe(wireframeRows, {
+				dbPath: input.dbPath,
+				cwd: input.cwd,
+				overwrite: input.overwrite,
+				meta: {
+					runId: snapshot.runId,
+					stage: snapshot.stage,
+					version: snapshot.version,
+					generatedAt: snapshot.generatedAt,
+				},
+			});
+			if (wfWarning) warnings.push(wfWarning);
+		}
 
 		// G-1/Q1: audit old-revision exports too — one entry with the
 		// revision_number. Read-only audit in its own autocommit txn, best

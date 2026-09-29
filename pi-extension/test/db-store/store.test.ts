@@ -9,15 +9,16 @@
 // (tests written from driver behavior per Phase 1/2 retrospective lesson).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import type { DatabaseSync } from "node:sqlite";
 import {
 	writeArtifact,
 	readArtifact,
+	readLatestPublishedRows,
 	exportArtifactYaml,
 	verifyExportChecksum,
 	deleteRunDrafts,
@@ -26,6 +27,7 @@ import {
 	revertPublish,
 	type ArtifactEnvelopeInput,
 } from "../../src/io/store.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 
 /** Deterministic G5 golden: exportArtifactYaml('prd') bytes, captured from
  * the real driver (yaml stringify, lineWidth: 0, single trailing \n).
@@ -509,5 +511,13 @@ describe("io/store — Store API", () => {
 		assert.ok(dev);
 		const steps = dev.rows.devStep as Array<Record<string, unknown>>;
 		assert.equal(steps[0]?.description, "Implement AF-1 greet() and wire it into the request entry point.");
+	});
+
+	test("D6: readLatestPublishedRows degrades to null on a byte-corrupt store (never throws)", () => {
+		const cwd = dirs[dirs.length - 1]!;
+		const storePath = buildStoreDbPath("Project", cwd);
+		mkdirSync(dirname(storePath), { recursive: true });
+		writeFileSync(storePath, "this is not a sqlite database", "utf8");
+		assert.equal(readLatestPublishedRows(cwd, "Project", "prd"), null);
 	});
 });

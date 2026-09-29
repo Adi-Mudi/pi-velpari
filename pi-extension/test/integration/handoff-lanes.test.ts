@@ -29,6 +29,11 @@ const KIND = "development-order";
 
 let cwd: string;
 
+/**
+ * Write a run state at `finalized-design` (handoff-eligible) into the temp cwd.
+ * @param {Partial<RunState>} [patch] - Field overrides merged over the default run.
+ * @returns {void}
+ */
 function seedState(patch: Partial<RunState> = {}): void {
 	const state: RunState = {
 		version: 1,
@@ -42,6 +47,10 @@ function seedState(patch: Partial<RunState> = {}): void {
 	saveState(state, cwd);
 }
 
+/**
+ * Write a minimal files.json v4 config (projectName + path groups) for the temp cwd.
+ * @returns {void}
+ */
 function seedConfig(): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(
@@ -57,6 +66,10 @@ function seedConfig(): void {
 	);
 }
 
+/**
+ * Create every grouped Doc/ directory and stub artifact /velpari-handoff requires.
+ * @returns {void}
+ */
 function seedAllRequiredDocs(): void {
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });
 	mkdirSync(join(cwd, "Doc", "feasibility"), { recursive: true });
@@ -127,6 +140,10 @@ function seedDevOrderStore(opts: { withLanes: boolean; lanes?: LaneSeed[] }): vo
 	}
 }
 
+/**
+ * Build the default two-lane execution-lane seed rows (lane-1: DO-1/DO-3, lane-2: DO-2).
+ * @returns {LaneSeed[]} Lane rows ready for seeding the dev-order store.
+ */
 function defaultLanes(): LaneSeed[] {
 	return [
 		{
@@ -164,6 +181,10 @@ function defaultLanes(): LaneSeed[] {
 	];
 }
 
+/**
+ * Build a mock command context that records every notify call.
+ * @returns {{ ui: {...}; notices: Array<{ msg: string; level: string }> }} Context whose ui.notify appends to `notices` and whose confirm always accepts.
+ */
 function makeCtx(): {
 	ui: {
 		notify: (msg: string, level: string) => void;
@@ -185,6 +206,10 @@ function makeCtx(): {
 	};
 }
 
+/**
+ * Parse the handoff payload written by /velpari-handoff.
+ * @returns {Record<string, unknown>} Parsed architect-inputs.json contents (asserts the file exists first).
+ */
 function readPayload(): Record<string, unknown> {
 	const payloadPath = join(cwd, ".pi", "senai", "architect-inputs.json");
 	assert.ok(existsSync(payloadPath), "architect-inputs.json should exist");
@@ -259,6 +284,7 @@ describe("runHandoff — execution lanes block", () => {
 
 		assert.equal(Object.hasOwn(payload, "lanes"), false);
 		assert.deepEqual(Object.keys(payload).sort(), [
+			"_comment",
 			"architectureDecisions",
 			"createdAt",
 			"documents",

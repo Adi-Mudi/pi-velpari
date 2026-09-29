@@ -28,6 +28,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { openStoreDb, closeStoreDb } from "../io/db.js";
 import { readArtifact, exportArtifactYaml, type ArtifactEnvelope, type ArtifactKind } from "../io/store.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
+import { buildGroupedPath } from "../core/paths.js";
 import {
 	LANE_LOCK_RULES,
 	LANE_MERGE_GATES,
@@ -50,6 +51,8 @@ export interface ExportResult {
 	problem?: string;
 	/** Row counts per payload key (present when ok). */
 	counts?: Record<string, number>;
+	/** Post-write notes (v1.2 D3 wireframe sidecar). */
+	warnings?: string[];
 }
 
 /** runExport input. `overwrite` must be caller-confirmed (user decision 2). */
@@ -68,6 +71,8 @@ export interface ExportInput {
 	outputPath: string;
 	/** Overwrite an existing file — the CALLER confirms with the user. */
 	overwrite?: boolean;
+	/** Project root — resolves the paired wireframe sidecar path (v1.2 D3). */
+	cwd?: string;
 }
 
 /** File-name label per kind (matches buildStoreYamlPath sidecar labels).
@@ -731,6 +736,59 @@ export function mdToHtml(markdown: string): string {
 	);
 }
 
+/**
+ * v1.2 D3 — materialize `Doc/design/wireframe_<slug>.md` from a design
+ * payload's `diagram` rows (diagramKind "wireframe"), so a DB-only project's
+ * handoff resolves the published wireframe without the working-copy fallback
+ * (phase-D integration request 3). Presence-driven: no wireframe rows → no
+ * file, no message. Reuses `renderDiagram` so output matches the design view.
+ * @param rows - The design kind's payload rows.
+ * @param opts - dbPath (slug derivation), cwd (project root), overwrite flag, envelope meta.
+ * @returns Warning text when an existing sidecar was skipped; otherwise undefined.
+ */
+export function materializeWireframe(
+	rows: Record<string, unknown>,
+	opts: {
+		dbPath: string;
+		cwd: string;
+		overwrite?: boolean;
+		meta: { runId: string; stage: string; version: number; generatedAt: string };
+	},
+): string | undefined {
+	const diagrams = Array.isArray(rows.diagram) ? rows.diagram : [];
+	const wireframes = diagrams
+		.filter(
+			(d): d is Record<string, unknown> =>
+				!!d && typeof d === "object" && (d as { diagramKind?: unknown }).diagramKind === "wireframe",
+		)
+		.sort((a, b) => String((a as { id?: unknown }).id ?? "").localeCompare(String((b as { id?: unknown }).id ?? "")));
+	if (wireframes.length === 0) return undefined;
+	const slugMatch = /[\\/]store[\\/]([^\\/]+)[\\/]index\.db$/.exec(opts.dbPath);
+	const slug = slugMatch ? slugMatch[1]! : "";
+	if (slug === "") return undefined;
+	const target = join(opts.cwd, buildGroupedPath("wireframe", slug));
+	if (existsSync(target) && opts.overwrite !== true) {
+		return `${target} exists — wireframe sidecar not overwritten (confirm overwrite to replace it).`;
+	}
+	const lines = [
+		"---",
+		"artifact: wireframe",
+		`runId: ${opts.meta.runId}`,
+		`stage: ${opts.meta.stage}`,
+		`version: ${opts.meta.version}`,
+		`generatedAt: ${opts.meta.generatedAt}`,
+		"---",
+		"",
+		`# Wireframe — ${slug}`,
+		"",
+	];
+	for (const row of wireframes) {
+		lines.push(renderDiagram(row, slug).trimEnd(), "");
+	}
+	atomicWriteFile(target, lines.join("\n"), "utf8");
+	return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // runExport — the single deterministic entry point
 // ---------------------------------------------------------------------------
@@ -813,10 +871,28 @@ export function runExport(input: ExportInput): ExportResult {
 			bytes = input.format === "html" ? mdToHtml(md) : md;
 		}
 		atomicWriteFile(input.outputPath, bytes, "utf8");
+
+		// v1.2 D3 — same wireframe sidecar wiring as runRevisionExport.
+		const warnings: string[] = [];
+		if (input.kind === "design" && input.cwd) {
+			const wfWarning = materializeWireframe(read.rows, {
+				dbPath: input.dbPath,
+				cwd: input.cwd,
+				overwrite: input.overwrite,
+				meta: {
+					runId: read.envelope.runId,
+					stage: read.envelope.stage,
+					version: read.envelope.version,
+					generatedAt: read.envelope.generatedAt,
+				},
+			});
+			if (wfWarning) warnings.push(wfWarning);
+		}
 		return {
 			ok: true,
 			path: input.outputPath,
 			counts: countRows(read.rows),
+			warnings: warnings.length > 0 ? warnings : undefined,
 		};
 	} finally {
 		closeStoreDb(db);

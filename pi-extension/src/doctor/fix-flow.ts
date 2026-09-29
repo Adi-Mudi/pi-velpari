@@ -24,7 +24,7 @@
 import type { DiagnosticReport } from "./_types.js";
 import { runAllSafeRemediates } from "./remediate.js";
 import { listActionableItems, type ActionableItem } from "./fix-dispatch.js";
-import { SUGGESTIONS, levelFor, type FixLevel, type SuggestionKey } from "./checks/fix-suggestions.js";
+import { SAFE_WHITELIST, SUGGESTIONS, levelFor, type FixLevel, type SuggestionKey } from "./checks/fix-suggestions.js";
 import type { PreflightFinding } from "./preflight.js"; // type-only: no runtime cycle
 
 /** The Pi UI primitives the flow needs (absent functions degrade, never hang). */
@@ -181,7 +181,7 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 		}
 
 		// Build the batch list FIRST — the user sees exactly what will run.
-		const batchLines = [...view.autoNames.map((n) => n), ...view.manual.map((m) => `manual: ${m.message}`)];
+		const batchLines = [...Array.from(SAFE_WHITELIST), ...view.manual.map((m) => `manual: ${m.message}`)];
 		const applyMsg =
 			`Apply ${batchLines.length} fix(es):\n` +
 			batchLines.map((l) => `  - ${l}`).join("\n") +
@@ -195,14 +195,16 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 		}
 
 		// Auto batch — the existing Level-B loop (whitelist → fn → try/catch).
-		if (view.autoNames.length > 0) {
-			const runAuto =
-				opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
-			try {
-				await runAuto();
-			} catch (err) {
-				opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
-			}
+		// C-F2 (v1.2): runs after every confirm — the confirm list IS the
+		// whitelist, so display and executor cannot diverge (the old
+		// autoNames>0 gate skipped the batch whenever no suggestion text
+		// reverse-mapped while the user had just confirmed the full safe list).
+		const runAuto =
+			opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
+		try {
+			await runAuto();
+		} catch (err) {
+			opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
 		}
 
 		// Manual remainder — caller's per-item dispatch (absent in preflight:

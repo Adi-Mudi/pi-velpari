@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
-import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import { openStoreDb, closeStoreDb, computeStoreContentDigest, readStoreDigestStamp } from "../../src/io/db.js";
 import { writeArtifact, publishArtifactCas, recordBaseline, type ArtifactPayload } from "../../src/io/store.js";
 import type { DatabaseSync } from "node:sqlite";
 import { buildStoreDbPath } from "../../src/core/paths.js";
@@ -275,5 +275,40 @@ describe("pruneRetentions", () => {
 		} else {
 			assert.ok(result.warnings.length > 0, "git failure surfaces as warnings, never a failed prune");
 		}
+	});
+
+	test("B2: a content-locked revision is skipped — row survives, nothing audited", () => {
+		const ids = seedRevisions(2);
+		writeRetentionConfig(1); // keep last 1 → ids[0] prunable
+		db.prepare("UPDATE artifact_revisions SET locked_at = ?, locked_by = ? WHERE revision_id = ?").run(
+			"2026-09-29T00:00:00Z",
+			"test-locker",
+			ids[0]!,
+		);
+		const result = pruneRetentions(dir, "Project");
+		assert.equal(result.ok, true);
+		assert.equal(result.pruned, 0, "locked revision never pruned");
+		const survivor = db
+			.prepare("SELECT status FROM artifact_revisions WHERE revision_id = ?")
+			.get(ids[0]!) as { status: string } | undefined;
+		assert.ok(survivor, "locked row still exists");
+		// seedRevisions(2) supersedes rev 1 when rev 2 publishes — the prune's
+		// flip to 'withdrawn' is exactly what the lock assert must prevent.
+		assert.equal(survivor.status, "superseded", "no withdrawn flip happened");
+		const auditCount = (
+			db.prepare("SELECT COUNT(*) AS n FROM audit_ledger WHERE action = 'retention-prune'").get() as { n: number }
+		).n;
+		assert.equal(auditCount, 0, "skip = no audit entries");
+	});
+
+	test("B2: prune re-stamps the store content digest inside the txn (D11)", () => {
+		seedRevisions(3);
+		writeRetentionConfig(1);
+		const result = pruneRetentions(dir, "Project");
+		assert.equal(result.ok, true);
+		assert.equal(result.pruned, 2);
+		const stamp = readStoreDigestStamp(db);
+		assert.ok(stamp, "digest stamped after prune");
+		assert.equal(stamp.digest, computeStoreContentDigest(db), "stamp matches recomputed content");
 	});
 });

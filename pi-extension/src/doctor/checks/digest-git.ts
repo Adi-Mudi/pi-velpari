@@ -30,7 +30,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { buildStoreDbPath } from "../../core/paths.js";
-import { closeStoreDb, openStoreDb } from "../../io/db.js";
+import { closeStoreDb, openStoreDbReadOnly } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { resolveDigestApi } from "../contract.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -99,9 +99,9 @@ export function checkDigestGitSection(cwd: string, projectName: string): Diagnos
 		const relDb = relative(cwd, dbPath).split("\\").join("/");
 		const gitState = gitPorcelain(cwd, relDb); // null = git unavailable
 
-		let db: ReturnType<typeof openStoreDb> | null = null;
+		let db: ReturnType<typeof openStoreDbReadOnly> | null = null;
 		try {
-			db = openStoreDb(dbPath);
+			db = openStoreDbReadOnly(dbPath);
 			const stamp = api.readStoreDigestStamp(db);
 			if (!stamp) {
 				items.push({

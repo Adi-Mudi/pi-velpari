@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { runFixFlow, type FixFlowSource, type PreflightUi } from "../../src/doctor/fix-flow.js";
 import type { PreflightFinding } from "../../src/doctor/preflight.js";
 import type { DiagnosticReport } from "../../src/doctor/_types.js";
-import { suggestionFor } from "../../src/doctor/checks/fix-suggestions.js";
+import { SAFE_WHITELIST, suggestionFor } from "../../src/doctor/checks/fix-suggestions.js";
 
 /** Build a preflight finding (blocking/auto as asked). */
 function finding(fingerprint: string, autoFixable: boolean, blocking = true): PreflightFinding {
@@ -44,10 +44,12 @@ function mockUi(selectAnswers: (string | null | undefined)[], confirmAnswer: boo
 	notifies: { m: string; k?: string }[];
 	selectCalls: () => number;
 	confirmCalls: () => number;
+	confirmMsgs: string[];
 } {
 	const notifies: { m: string; k?: string }[] = [];
 	let selects = 0;
 	let confirms = 0;
+	const confirmMsgs: string[] = [];
 	const ui: PreflightUi = {
 		notify: (m, k) => notifies.push({ m, k }),
 		select: async (_t, _l) => {
@@ -55,12 +57,13 @@ function mockUi(selectAnswers: (string | null | undefined)[], confirmAnswer: boo
 			selects++;
 			return answer;
 		},
-		confirm: async () => {
+		confirm: async (_t: string, m?: string) => {
 			confirms++;
+			if (m !== undefined) confirmMsgs.push(m);
 			return confirmAnswer;
 		},
 	};
-	return { ui, notifies, selectCalls: () => selects, confirmCalls: () => confirms };
+	return { ui, notifies, selectCalls: () => selects, confirmCalls: () => confirms, confirmMsgs };
 }
 
 describe("runFixFlow", () => {
@@ -262,6 +265,50 @@ describe("runFixFlow", () => {
 		assert.equal(dispatched, 1, "interactive item dispatched manually");
 		assert.equal(outcome.action, "fixed");
 		assert.equal((outcome as { remainingManual: number }).remainingManual, 1);
+	});
+
+	it("C-F2: manual-only doctor source → confirm lists the full safe whitelist, batch always runs", async () => {
+		const { ui, confirmMsgs } = mockUi(["Fix all (Recommended)"], true);
+		let autoCalls = 0;
+		let dispatched = 0;
+		const report: DiagnosticReport = {
+			ok: false,
+			summary: { ok: 0, warning: 0, error: 1, info: 0 },
+			sections: [
+				{
+					title: "Config",
+					items: [
+						{
+							status: "error",
+							message: "config-invalid: no projectName",
+							suggestion: suggestionFor("config-invalid"),
+						},
+					],
+				},
+			],
+		};
+		const outcome = await runFixFlow({
+			ui,
+			cwd: "/tmp/x",
+			projectName: "X",
+			source: { kind: "doctor", report },
+			reRun: async () => ({ ok: false, actionableCount: 1 }),
+			runAuto: async () => {
+				autoCalls++;
+			},
+			dispatchOne: async () => {
+				dispatched++;
+			},
+		});
+		assert.equal(confirmMsgs.length, 1, "batch confirm shown once");
+		const shown = confirmMsgs[0] ?? "";
+		for (const name of SAFE_WHITELIST) {
+			assert.ok(shown.includes(name), `confirm must list whitelist item "${name}"`);
+		}
+		assert.ok(shown.includes("manual: config-invalid"), "manual item listed");
+		assert.equal(autoCalls, 1, "auto batch runs after confirm even with zero reverse-mapped autoNames");
+		assert.equal(dispatched, 1, "interactive item dispatched manually");
+		assert.equal(outcome.action, "fixed");
 	});
 
 	it("(g) N23: compiled source imports no approve/publish machinery", () => {

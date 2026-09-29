@@ -50,9 +50,10 @@ import { registerTombstoneCommand } from "./tombstone.js";
 import { registerRollbackCommand } from "./rollback.js";
 import { registerRetentionPruneCommand } from "./retention-prune.js";
 import { registerMergeBackCommand } from "./merge-back.js";
+import { registerRevisionStatusCommand } from "./revision-status.js";
 
 /**
- * All 51 user-facing commands (Phase I reconciliation — the canonical
+ * All 52 user-facing commands (Phase I reconciliation — the canonical
  * registry; no per-phase blocks remain). v1.6.0 replaced the generic
  * `the publish tool` command (which the parent LLM invokes via the
  * `velpari_stage_publish` tool during preview-yes) with 9 per-stage
@@ -64,7 +65,8 @@ import { registerMergeBackCommand } from "./merge-back.js";
  * (44th), /velpari-migrate-store (45th), then the versioning/locking/
  * recovery surface — /velpari-db-reset, /velpari-freeze, /velpari-tombstone,
  * /velpari-rollback (46th–49th), /velpari-retention-prune (50th),
- * /velpari-merge-back (51st).
+ * /velpari-merge-back (51st),
+ * /velpari-revision-status (52nd).
  *
  * /velpari-final-design (renamed from /velpari-html-design on 2026-09-14;
  * today produces Doc/design/final-design_<project>.md, not actual HTML) and
@@ -129,13 +131,14 @@ export const COMMAND_NAMES = [
 	"velpari-portfolio",
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	"velpari-migrate-store",
-	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–51st commands)
+	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–52nd commands)
 	"velpari-db-reset", // F23 — DB-only reset (draft rows of one run)
 	"velpari-freeze", // N4 — freeze/unfreeze with a mandatory unfreeze reason
 	"velpari-tombstone", // F16 — delete-as-modification (withdraw a revision)
 	"velpari-rollback", // F21 — rollback-as-new-revision
 	"velpari-retention-prune", // N7 — keep-last-N retention cleanup (confirmed + audited)
 	"velpari-merge-back", // N12 — guided merge-back (N12/G-4)
+	"velpari-revision-status", // v1.2 B6 — status view + withdrawn→published restore (52nd)
 ] as const;
 
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -199,11 +202,13 @@ export function registerCommands(pi: ExtensionAPI): void {
 	registerPortfolioCommand(pi);
 	// Ops — Phase 11 one-time migration (45th command, §15.6)
 	registerMigrateCommand(pi);
-	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–51st commands)
+	// Ops — versioning, locking & recovery (Phases 2/4/6; 46th–52nd commands)
 	registerDbResetCommand(pi);
 	registerFreezeCommand(pi);
 	registerTombstoneCommand(pi);
 	registerRollbackCommand(pi);
 	registerRetentionPruneCommand(pi);
 	registerMergeBackCommand(pi);
+	// Ops — v1.2 revision status view + restore (52nd command)
+	registerRevisionStatusCommand(pi);
 }

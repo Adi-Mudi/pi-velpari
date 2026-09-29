@@ -8,15 +8,16 @@
 // (tests written from driver behavior).
 import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { writeArtifact, publishArtifactCas, exportArtifactYaml, type ArtifactPayload } from "../../src/io/store.js";
 import type { DatabaseSync } from "node:sqlite";
 import { listExportableRevisions, runRevisionExport, buildRevisionExportPath } from "../../src/ops/export-revision.js";
 import { withdrawRevision } from "../../src/ops/protection.js";
+import { buildStoreDbPath, resolveDocArtifact } from "../../src/core/paths.js";
 
 /** Minimal PRD payload; textHash varies per revision (content change proof). */
 function prdPayload(textHash: string): ArtifactPayload {
@@ -259,5 +260,130 @@ describe("buildRevisionExportPath", () => {
 
 	test("kind labels match the head exporter family", () => {
 		assert.match(buildRevisionExportPath("p", "development-order", 1, "md", dir), /development-order_p_rev1\.md$/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// v1.2 D3 — wireframe sidecar materialization (design revision export)
+// ---------------------------------------------------------------------------
+
+/**
+ * Seed a store at the production Doc/store/<slug>/index.db layout and publish
+ * one design revision (optionally with a wireframe diagram row).
+ * @param {string} slug - Store/project slug (directory name under Doc/store/).
+ * @param {boolean} [withWireframe] - Include a diagramKind "wireframe" diagram row (default true).
+ * @returns {{ storePath: string; revisionId: number }} Store path + published design revision id.
+ */
+function seedDesignStore(slug: string, withWireframe = true): { storePath: string; revisionId: number } {
+	const storePath = buildStoreDbPath(slug, dir);
+	mkdirSync(dirname(storePath), { recursive: true });
+	const sdb = openStoreDb(storePath);
+	writeArtifact(
+		sdb,
+		"design",
+		"r-design",
+		{ version: 2, stage: "designing", generatedAt: "2026-09-27T00:00:00Z" },
+		{
+			diagram: [
+				{
+					id: "WF-1",
+					diagramKind: withWireframe ? "wireframe" : "context",
+					mermaidText: "flowchart TD\n  A-->B",
+				},
+			],
+		},
+	);
+	const revisionId = publishArtifactCas(sdb, "r-design", "design", null).revisionId;
+	closeStoreDb(sdb);
+	return { storePath, revisionId };
+}
+
+describe("runRevisionExport — wireframe sidecar (v1.2 D3)", () => {
+	test("materializes Doc/design/wireframe_<slug>.md from wireframe diagram rows", () => {
+		const { storePath, revisionId } = seedDesignStore("MyProj");
+		const result = runRevisionExport({
+			dbPath: storePath,
+			revisionId,
+			format: "yaml",
+			outputPath: join(dir, "design-export.yaml"),
+			cwd: dir,
+		});
+		assert.equal(result.ok, true, JSON.stringify(result));
+		const sidecar = join(dir, "Doc", "design", "wireframe_MyProj.md");
+		assert.ok(existsSync(sidecar), "sidecar materialized");
+		const text = readFileSync(sidecar, "utf8");
+		assert.ok(text.includes("artifact: wireframe"));
+		assert.ok(text.includes("version: 2"));
+		assert.ok(text.includes("```mermaid"));
+		assert.ok(text.includes("flowchart TD"));
+	});
+
+	test("existing sidecar → skip + warning; marker intact", () => {
+		const { storePath, revisionId } = seedDesignStore("MyProj");
+		const sidecar = join(dir, "Doc", "design", "wireframe_MyProj.md");
+		mkdirSync(dirname(sidecar), { recursive: true });
+		writeFileSync(sidecar, "MARKER", "utf8");
+		const result = runRevisionExport({
+			dbPath: storePath,
+			revisionId,
+			format: "yaml",
+			outputPath: join(dir, "design-export2.yaml"),
+			cwd: dir,
+		});
+		assert.equal(result.ok, true, JSON.stringify(result));
+		assert.ok(result.warnings && result.warnings.length > 0, "skip surfaced as warning");
+		assert.match(result.warnings[0]!, /not overwritten/);
+		assert.equal(readFileSync(sidecar, "utf8"), "MARKER", "existing file untouched");
+	});
+
+	test("presence-driven: no wireframe rows / non-design kind → no sidecar", () => {
+		const noWf = seedDesignStore("NoWfProj", false);
+		const r1 = runRevisionExport({
+			dbPath: noWf.storePath,
+			revisionId: noWf.revisionId,
+			format: "yaml",
+			outputPath: join(dir, "ctx.yaml"),
+			cwd: dir,
+		});
+		assert.equal(r1.ok, true, JSON.stringify(r1));
+		assert.equal(existsSync(join(dir, "Doc", "design", "wireframe_NoWfProj.md")), false);
+
+		// Non-design kind at a slug-resolvable store path → design-only gate holds.
+		const prdStore = buildStoreDbPath("PrdProj", dir);
+		mkdirSync(dirname(prdStore), { recursive: true });
+		const pdb = openStoreDb(prdStore);
+		writeArtifact(
+			pdb,
+			"prd",
+			"r-prd",
+			{ version: 1, stage: "drafting-prd", generatedAt: "2026-09-27T00:00:00Z" },
+			prdPayload("wf-x"),
+		);
+		const prdRev = publishArtifactCas(pdb, "r-prd", "prd", null).revisionId;
+		closeStoreDb(pdb);
+		const r2 = runRevisionExport({
+			dbPath: prdStore,
+			revisionId: prdRev,
+			format: "yaml",
+			outputPath: join(dir, "prd.yaml"),
+			cwd: dir,
+		});
+		assert.equal(r2.ok, true, JSON.stringify(r2));
+		assert.equal(existsSync(join(dir, "Doc", "design", "wireframe_PrdProj.md")), false);
+	});
+
+	test("handoff resolution: resolveDocArtifact('wireframe', slug, cwd) finds the sidecar", () => {
+		const { storePath, revisionId } = seedDesignStore("ResProj");
+		const result = runRevisionExport({
+			dbPath: storePath,
+			revisionId,
+			format: "yaml",
+			outputPath: join(dir, "res.yaml"),
+			cwd: dir,
+		});
+		assert.equal(result.ok, true, JSON.stringify(result));
+		const resolved = resolveDocArtifact("wireframe", "ResProj", dir);
+		assert.ok(resolved);
+		assert.equal(resolved.path, join(dir, "Doc", "design", "wireframe_ResProj.md"));
 	});
 });

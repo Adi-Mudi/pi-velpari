@@ -22,6 +22,11 @@ interface RegisteredCommand {
 	handler: (...args: unknown[]) => unknown;
 }
 
+/**
+ * Build a fake Pi ExtensionAPI that records registered commands, flags, and
+ * hook calls in maps the tests can assert on.
+ * @returns {ExtensionAPI} Fake API exposing `commands`, `flags`, `hookCalls`.
+ */
 function makeFakePi(): ExtensionAPI & {
 	commands: Map<string, RegisteredCommand>;
 	flags: Map<string, unknown>;
@@ -37,12 +42,30 @@ function makeFakePi(): ExtensionAPI & {
 		registerCommand(name: string, spec: { description?: string; handler: (...args: unknown[]) => unknown }) {
 			commands.set(name, { name, ...spec });
 		},
+		/**
+		 * Record a flag registration as enabled.
+		 * @param {string} name - Flag name.
+		 * @param {unknown} _meta - Ignored flag metadata.
+		 * @param {unknown} _parser - Ignored value parser.
+		 * @returns {void} Nothing; the flag is stored as `true`.
+		 */
 		registerFlag(name: string, _meta: unknown, _parser: unknown) {
 			flags.set(name, true);
 		},
+		/**
+		 * Record a hook registration.
+		 * @param {string} _name - Hook event name.
+		 * @param {unknown} _handler - Ignored hook handler.
+		 * @returns {void} Nothing; the hook name is appended to `hookCalls`.
+		 */
 		registerHook(_name: string, _handler: unknown) {
 			hookCalls.push(_name);
 		},
+		/**
+		 * Read back a registered flag value.
+		 * @param {string} name - Flag name.
+		 * @returns {unknown} The stored value, or `undefined` when unregistered.
+		 */
 		getFlag(name: string) {
 			return flags.get(name);
 		},
@@ -131,6 +154,10 @@ describe("commands/index — COMMAND_NAMES invariants", () => {
 
 	it("contains the Phase 6 merge-back command (N12, 51st command)", () => {
 		assert.ok(COMMAND_NAMES.includes("velpari-merge-back"));
+	});
+
+	it("contains the v1.2 revision-status command (B6, 52nd command)", () => {
+		assert.ok(COMMAND_NAMES.includes("velpari-revision-status"));
 	});
 
 	it("contains the headline /velpari-generate-sub-agents + /velpari-final-design", () => {
