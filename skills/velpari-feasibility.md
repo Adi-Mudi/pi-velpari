@@ -335,8 +335,12 @@ Revision rules:
 2. **Deprecate, don't delete.** Conditions, risks, or open questions that
    no longer apply stay in the document marked `deprecated` with a
    reason. Never delete them silently.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when anything is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when anything is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** The `velpari_stage_publish` tool
    (same gate chain as `/velpari-feasibility-approve`) blocks publishing
    without a new Change Log entry.

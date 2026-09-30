@@ -170,6 +170,8 @@ export const SUGGESTIONS = {
 		"No store DB yet (or pre-store project). Publish an artifact via its stage approve, or import legacy artifacts with `/velpari-backfill <kind>`.",
 	"store-db-corrupt":
 		"The store DB failed SQLite integrity checking. Restore from git history (`git checkout <commit> -- Doc/store/`) or rebuild from the exported YAML beside the DB; do NOT keep writing to a corrupt DB.",
+	"store-db-unreadable":
+		"Doc/store/<project>/index.db exists but cannot be used (not a Velpari store, not a database, or unreadable). Remove the invalid file (the next publish re-creates it) or restore the real store — skills/db-store-merge-runbook.md § 2.",
 	"store-db-orphan-link":
 		"A trace link points at a row that does not exist in the store. Re-run the publishing stage (update mode) to regenerate consistent rows, or `/velpari-backfill <kind>` for legacy data.",
 

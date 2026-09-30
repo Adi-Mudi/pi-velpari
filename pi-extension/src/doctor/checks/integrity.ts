@@ -64,15 +64,21 @@ interface DbAudit {
 /** Run quick_check + integrity_check on one DB; null when file absent. */
 function auditOneDb(dbPath: string): string | null {
 	if (!existsSync(dbPath)) return null;
-	const db = openStoreDb(dbPath);
+	// E#2: a non-store path (garbage bytes / directory / unreadable file)
+	// must degrade to an error RESULT — the section renders it, never throws.
 	try {
-		const quick = db.prepare("PRAGMA quick_check").get() as { quick_check: string };
-		if (quick.quick_check !== "ok") return quick.quick_check;
-		const full = db.prepare("PRAGMA integrity_check").get() as { integrity_check: string };
-		return full.integrity_check;
-	} finally {
-		// Checkpoint first (G1) so any read of the DB file sees a clean file.
-		closeStoreDb(db);
+		const db = openStoreDb(dbPath);
+		try {
+			const quick = db.prepare("PRAGMA quick_check").get() as { quick_check: string };
+			if (quick.quick_check !== "ok") return quick.quick_check;
+			const full = db.prepare("PRAGMA integrity_check").get() as { integrity_check: string };
+			return full.integrity_check;
+		} finally {
+			// Checkpoint first (G1) so any read of the DB file sees a clean file.
+			closeStoreDb(db);
+		}
+	} catch (err) {
+		return `unreadable: ${err instanceof Error ? err.message : String(err)}`;
 	}
 }
 

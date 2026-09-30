@@ -177,7 +177,12 @@ publish gate blocks on any missing one). Array fields
 string lists; `complexity` / `argCount` / `storyPoints` are numbers.
 Update mode: never delete a function — keep it with
 `status: deprecated` + a `reason`, bump the version, add a `changeLog`
-entry.
+entry, and declare the bump (N27): add `bump: major|minor|patch`
+(exact lowercase) to the working copy's frontmatter — `major` = ids
+removed/sections reorganized (incl. any deprecation), `minor` =
+backward-compatible additions, `patch` = wording only. The publish
+gate blocks a missing or under-declared bump; a first publish needs no
+bump.
 
 ### File 2: `atomic-functions_<projectName>.md` — rendered preview
 

@@ -9,9 +9,11 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { runPublishGate } from "../../src/doctor/gate.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
+import { openStoreDb } from "../../src/io/db.js";
 import { createRun, advanceStage, saveState, type RunState } from "../../src/core/state.js";
 
 let tmpDir: string;
@@ -25,6 +27,10 @@ afterEach(() => {
 	rmSync(tmpDir, { recursive: true, force: true });
 });
 
+/**
+ * Write a valid files.json (v4 + projectName) into the temp project.
+ * @returns {void} Nothing; the config file is created under tmpDir.
+ */
 function setupFilesConfig(): void {
 	writeFileSync(
 		join(tmpDir, ".pi", "velpari", "files.json"),
@@ -33,6 +39,11 @@ function setupFilesConfig(): void {
 	);
 }
 
+/**
+ * Advance a fresh run to the designed-feasibility boundary (the fixture
+ * stage every publish-gate test starts from).
+ * @returns {void} Nothing; state is written into the temp project.
+ */
 function walkToPlannedTests(): void {
 	setupFilesConfig();
 	let state: RunState = createRun("Test", tmpDir) as RunState;
@@ -178,5 +189,39 @@ describe("publish gate — file reading smoke test", () => {
 		writeFileSync(docPath, "# PRD\n", "utf8");
 		const content = readFileSync(docPath, "utf8");
 		assert.match(content, /^# PRD/);
+	});
+});
+
+describe("store integrity in the gate (E#5)", () => {
+	it("no store file → no store-integrity error (pre-store passes silently)", () => {
+		setupFilesConfig();
+		const r = runPublishGate({ artifact: "PRD", workingContent: "# PRD\n", cwd: tmpDir, projectName: "TestApp" });
+		assert.ok(!r.errors.some((e) => e.includes("store-integrity")), JSON.stringify(r.errors));
+	});
+
+	it("garbage bytes at the store path → store-integrity error naming the runbook", () => {
+		setupFilesConfig();
+		const dbPath = buildStoreDbPath("TestApp", tmpDir);
+		mkdirSync(dirname(dbPath), { recursive: true });
+		writeFileSync(dbPath, "not a database", "utf8");
+		const r = runPublishGate({ artifact: "PRD", workingContent: "# PRD\n", cwd: tmpDir, projectName: "TestApp" });
+		assert.ok(
+			r.errors.some((e) => e.includes("store-integrity:")),
+			`expected store-integrity error; got ${JSON.stringify(r.errors)}`,
+		);
+		assert.ok(
+			r.errors.some((e) => e.includes("db-store-merge-runbook.md")),
+			`expected the runbook recovery reference; got ${JSON.stringify(r.errors)}`,
+		);
+	});
+
+	it("valid seeded store → no store-integrity error", () => {
+		setupFilesConfig();
+		const dbPath = buildStoreDbPath("TestApp", tmpDir);
+		mkdirSync(dirname(dbPath), { recursive: true });
+		const db = openStoreDb(dbPath);
+		db.close();
+		const r = runPublishGate({ artifact: "PRD", workingContent: "# PRD\n", cwd: tmpDir, projectName: "TestApp" });
+		assert.ok(!r.errors.some((e) => e.includes("store-integrity")), JSON.stringify(r.errors));
 	});
 });

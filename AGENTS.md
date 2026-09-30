@@ -217,7 +217,7 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 - **Flags:** `--velpari-skip-doctor`, `--velpari-stage`, `--velpari-fix`, `--velpari-run-reviewer`. Registered via `pi.registerFlag` in `index.ts`.
 - **RTM YAML sidecar is the source of truth.** Edit the sidecar (`RTM_<project>.yaml`; legacy `.json` is a read-only fallback), never the published markdown.
 - **SHA-256 fingerprints on every RTM link.** Stamped at publish time; doctor reports suspect/unknown-id/orphan as errors.
-- **Publish gate + automatic doctor audit.** Both publish and fall-back commands run `doctor/gate.ts:runPublishGate` pre-write and full `runDoctor` post-write. Errors + warnings both block the advance (v1.2.1 policy).
+- **Publish gate + automatic doctor audit.** Both publish and fall-back commands run `doctor/gate.ts:runPublishGate` pre-write and full `runDoctor` post-write. Errors block the advance; warnings are reported (notify) but do not block (N24-15 report-only policy).
 - **RFC 2119 + EARS** for FR/NFR wording. `findFrRowsMissingKeywords` flags non-conforming rows.
 - **YAML frontmatter on published artifacts** (`artifact`, `runId`, `stage`, `version`, `generatedAt`).
 - **Phase vocabulary (MVP traceability).** Every FR/NFR row carries `Phase` (positive int; Phase 1 = MVP). RTM JSON requires `phase` per row. PRD Phase edits flag RTM rows as suspect via fingerprints.

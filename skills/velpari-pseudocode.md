@@ -209,8 +209,12 @@ Revision rules:
    appended with the next free ID — never renumber or reuse.
 2. **Deprecate, don't delete.** A function that is removed stays marked
    `deprecated` with a reason. Never delete it.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when anything is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when anything is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** The `velpari_stage_publish` tool
    (same gate chain as `/velpari-pseudocode-approve`) blocks publishing
    without a new Change Log entry.

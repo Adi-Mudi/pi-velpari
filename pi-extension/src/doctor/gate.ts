@@ -26,8 +26,10 @@
  * revision rules are already enforced by the Change Log gate.
  */
 
-import { readFileSync } from "node:fs";
-import { resolveDocArtifact, slugify } from "../core/paths.js";
+import { existsSync, readFileSync } from "node:fs";
+import { buildStoreDbPath, resolveDocArtifact, slugify } from "../core/paths.js";
+import { openStoreDbReadOnly } from "../io/db.js";
+import type { DatabaseSync } from "node:sqlite";
 import { extractRequirementPhases, validatePsrs } from "../core/psrs.js";
 import { validateFeasibilityDoc } from "../core/feasibility-doc.js";
 import { checkRowFingerprints, extractRequirementFingerprints } from "../core/fingerprints.js";
@@ -249,6 +251,47 @@ export function runPublishGate(input: PublishGateInput): PublishGateResult {
 				`id-coverage:${result.rule.id}: duplicate ids ${result.duplicateIds.join(", ")} — ` +
 					`each upstream id should appear exactly once.`,
 			);
+		}
+	}
+
+	// Store integrity in the gate (E#5 — G4 adopted at publish). Before this,
+	// the gate never opened the store, so a non-store or corrupt DB reached
+	// the publish chain undetected (the pre-write doctor's standalone branch
+	// cannot stamp either). Pre-store (no file) passes silently — the first
+	// publish creates the store. Read-only open: the gate never migrates or
+	// creates. Both G4 PRAGMAs, doctor parity; failure = errors.push (block).
+	{
+		const dbPath = buildStoreDbPath(input.projectName, input.cwd);
+		if (existsSync(dbPath)) {
+			let problem: string | null = null;
+			let db: DatabaseSync | undefined;
+			try {
+				db = openStoreDbReadOnly(dbPath);
+			} catch (err) {
+				problem = `cannot open store DB — ${err instanceof Error ? err.message : String(err)}`;
+			}
+			if (db !== undefined) {
+				try {
+					const quick = db.prepare("PRAGMA quick_check").get() as { quick_check: string } | undefined;
+					if (!quick || quick.quick_check !== "ok") {
+						problem = `PRAGMA quick_check failed — ${quick ? quick.quick_check : "no row"}`;
+					} else {
+						const full = db.prepare("PRAGMA integrity_check").get() as { integrity_check: string } | undefined;
+						if (!full || full.integrity_check !== "ok") {
+							problem = `PRAGMA integrity_check failed — ${full ? full.integrity_check : "no row"}`;
+						}
+					}
+				} catch (err) {
+					problem = `integrity PRAGMA failed — ${err instanceof Error ? err.message : String(err)}`;
+				} finally {
+					db.close();
+				}
+			}
+			if (problem !== null) {
+				errors.push(
+					`store-integrity: ${problem} — restore or rebuild the store (skills/db-store-merge-runbook.md) before publishing.`,
+				);
+			}
 		}
 	}
 

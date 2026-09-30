@@ -19,6 +19,15 @@
  * (the re-audit reaches `runDoctor` only through the caller's `reRun`
  * closure). **N23 invariant:** no approve/publish import anywhere in
  * this module, asserted by test + import scan.
+ *
+ * Recursion contract (v1.3, B#7 re-investigation — accept with evidence):
+ * this flow NEVER re-enters itself. Max ONE attempt per invocation: the
+ * `for(;;)` below re-asks only after "Show details" / an interactive
+ * fixable selection; `reRun` only re-audits (runPreflight / runDoctor —
+ * neither calls runFixFlow); `dispatchOne` walks manual items linearly;
+ * and `remediateOne` has no path back into the flow. Re-entry from
+ * outside requires a fresh user command (`/velpari-doctor --fix`) —
+ * user-gated, not code recursion.
  */
 
 import type { DiagnosticReport } from "./_types.js";

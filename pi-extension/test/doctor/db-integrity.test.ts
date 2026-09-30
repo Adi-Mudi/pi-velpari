@@ -11,7 +11,7 @@ import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { openStoreDb, closeStoreDb, storeMetaGet, maxKnownVersion } from "../../src/io/db.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
 import { checkDbIntegritySection } from "../../src/doctor/checks/integrity.js";
@@ -116,5 +116,26 @@ describe("checkDbIntegritySection", () => {
 		} finally {
 			closeStoreDb(db);
 		}
+	});
+
+	test("E#2: garbage bytes at the store path degrade to an error item (no throw)", () => {
+		seedConfig("ProbeApp");
+		const dbPath = buildStoreDbPath("ProbeApp", cwd);
+		mkdirSync(dirname(dbPath), { recursive: true });
+		writeFileSync(dbPath, "not a database", "utf8");
+		const section = checkDbIntegritySection(cwd);
+		assert.equal(section.items.length, 1);
+		assert.equal(section.items[0]?.status, "error");
+		assert.match(section.items[0]?.message ?? "", /unreadable|not a database/i);
+	});
+
+	test("E#2: a DIRECTORY at the store path degrades to an error item (no throw)", () => {
+		seedConfig("ProbeApp");
+		const dbPath = buildStoreDbPath("ProbeApp", cwd);
+		mkdirSync(dbPath, { recursive: true });
+		const section = checkDbIntegritySection(cwd);
+		assert.equal(section.items.length, 1);
+		assert.equal(section.items[0]?.status, "error");
+		assert.match(section.items[0]?.message ?? "", /unreadable|failed/i);
 	});
 });

@@ -273,17 +273,22 @@ export interface PreflightPi {
  * @param {string} cwd - Project root.
  * @returns {Promise<{ continue: boolean }>} True = proceed into `runStage`.
  */
-export async function runStagePreflight(
-	stageKey: string,
+/**
+ * Shared preflight flow body — stage starts and command starts run the
+ * SAME decision table (v1.3 extraction; max ONE fix-flow attempt per
+ * call, B#7). The only mode difference lives in `opts.mode` + `label`.
+ * @param label - Stop-message prefix (`Stage "prd"` / `Command "/velpari-handoff"`).
+ * @param opts - Preflight options (command, mode, skipDoctor).
+ * @param ctx - Command context (ui primitives).
+ * @param cwd - Project root.
+ * @returns True = proceed into the caller's handler.
+ */
+async function runPreflightFlow(
+	label: string,
+	opts: PreflightOptions,
 	ctx: PreflightCtx,
-	pi: PreflightPi,
 	cwd: string,
 ): Promise<{ continue: boolean }> {
-	const opts: PreflightOptions = {
-		command: `/velpari-${stageKey}`,
-		mode: "stage-start",
-		skipDoctor: pi.getFlag?.("velpari-skip-doctor") === true,
-	};
 	const result = runPreflight(cwd, opts);
 
 	// Rows 1–2 — hard stop, no fix offered.
@@ -337,11 +342,58 @@ export async function runStagePreflight(
 	}
 	// aborted (user) or fixed-with-remainders — stop with the reason.
 	const reason = flow.action === "aborted" ? flow.reason : `${flow.remainingManual} item(s) still need manual fixes`;
-	ctx.ui.notify(`Stage "${stageKey}" stopped by preflight: ${reason}`, "warning");
+	ctx.ui.notify(`${label} stopped by preflight: ${reason}`, "warning");
 	if (flow.action === "fixed") {
 		for (const f of blocking) {
 			if (!f.autoFixable) ctx.ui.notify(`${f.item.message} — ${f.item.suggestion ?? ""}`, "error");
 		}
 	}
 	return { continue: false };
+}
+
+export async function runStagePreflight(
+	stageKey: string,
+	ctx: PreflightCtx,
+	pi: PreflightPi,
+	cwd: string,
+): Promise<{ continue: boolean }> {
+	return runPreflightFlow(
+		`Stage "${stageKey}"`,
+		{
+			command: `/velpari-${stageKey}`,
+			mode: "stage-start",
+			skipDoctor: pi.getFlag?.("velpari-skip-doctor") === true,
+		},
+		ctx,
+		cwd,
+	);
+}
+
+/**
+ * Command-start preflight (E#3): the same rows 1-10 gate every non-exempt
+ * command, in `mode: "command-start"` (the reserved PreflightMode).
+ * Stage-start safety is unchanged — stage commands additionally keep the
+ * `stages/registry.ts` guard. Max ONE fix-flow attempt (B#7 bound).
+ * @param command - Command name (e.g. `/velpari-handoff`).
+ * @param ctx - Command context (ui primitives).
+ * @param pi - Extension API (flag lookup only).
+ * @param cwd - Project root.
+ * @returns False = skip the command handler.
+ */
+export async function runCommandPreflight(
+	command: string,
+	ctx: PreflightCtx,
+	pi: PreflightPi,
+	cwd: string,
+): Promise<{ continue: boolean }> {
+	return runPreflightFlow(
+		`Command "${command}"`,
+		{
+			command,
+			mode: "command-start",
+			skipDoctor: pi.getFlag?.("velpari-skip-doctor") === true,
+		},
+		ctx,
+		cwd,
+	);
 }

@@ -24,6 +24,7 @@ import { buildStoreDbPath } from "../../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../../core/config.js";
 import { getEffectiveProjectNames } from "../../core/projectnames.js";
 import { openStoreDbReadOnly } from "../../io/db.js";
+import type { DatabaseSync } from "node:sqlite";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -64,9 +65,14 @@ WITH endpoints(run_id, kind, node_id) AS (
 )`;
 
 /** Count + list orphan links (dangling from/to endpoints) for one DB. */
-function findOrphans(dbPath: string): { total: number; orphans: OrphanLink[] } | null {
-	if (!existsSync(dbPath)) return null;
-	const db = openStoreDbReadOnly(dbPath);
+function findOrphans(dbPath: string): DbQuery<{ total: number; orphans: OrphanLink[] }> {
+	if (!existsSync(dbPath)) return { status: "absent" };
+	let db: DatabaseSync;
+	try {
+		db = openStoreDbReadOnly(dbPath);
+	} catch (err) {
+		return { status: "error", message: err instanceof Error ? err.message : String(err) };
+	}
 	try {
 		const countRow = db
 			.prepare(
@@ -88,19 +94,34 @@ function findOrphans(dbPath: string): { total: number; orphans: OrphanLink[] } |
 				 LIMIT ${MAX_LISTED_ORPHANS}`,
 			)
 			.all() as unknown as OrphanLink[];
-		return { total: countRow.n, orphans };
+		return { status: "ok", value: { total: countRow.n, orphans } };
+	} catch (err) {
+		return { status: "error", message: err instanceof Error ? err.message : String(err) };
 	} finally {
 		db.close();
 	}
 }
 
-/** Total links row count for one DB (null when the DB is absent). */
-function countLinks(dbPath: string): number | null {
-	if (!existsSync(dbPath)) return null;
-	const db = openStoreDbReadOnly(dbPath);
+/**
+ * Query outcome per DB (E#2): absent vs unusable vs usable — these
+ * wrappers used to throw on unusable paths and kill runDoctor.
+ */
+type DbQuery<T> = { status: "absent" } | { status: "error"; message: string } | { status: "ok"; value: T };
+
+/** Total links row count for one DB (absent when the DB is not there). */
+function countLinks(dbPath: string): DbQuery<number> {
+	if (!existsSync(dbPath)) return { status: "absent" };
+	let db: DatabaseSync;
+	try {
+		db = openStoreDbReadOnly(dbPath);
+	} catch (err) {
+		return { status: "error", message: err instanceof Error ? err.message : String(err) };
+	}
 	try {
 		const row = db.prepare("SELECT COUNT(*) AS n FROM links").get() as { n: number };
-		return row.n;
+		return { status: "ok", value: row.n };
+	} catch (err) {
+		return { status: "error", message: err instanceof Error ? err.message : String(err) };
 	} finally {
 		db.close();
 	}
@@ -152,8 +173,8 @@ export function checkDbLinkOrphansSection(cwd: string): DiagnosticSection {
 	}
 
 	for (const { projectName, dbPath } of dbPaths) {
-		const linkCount = countLinks(dbPath);
-		if (linkCount === null) {
+		const countRes = countLinks(dbPath);
+		if (countRes.status === "absent") {
 			items.push({
 				status: "info",
 				message: `${projectName}: no store DB (pre-store project).`,
@@ -162,6 +183,16 @@ export function checkDbLinkOrphansSection(cwd: string): DiagnosticSection {
 			});
 			continue;
 		}
+		if (countRes.status === "error") {
+			items.push({
+				status: "error",
+				message: `${projectName}: store DB unusable — ${countRes.message}`,
+				details: [`db=${dbPath}`],
+				suggestion: suggestionFor("store-db-unreadable"),
+			});
+			continue;
+		}
+		const linkCount = countRes.value;
 		if (linkCount === 0) {
 			items.push({
 				status: "ok",
@@ -169,8 +200,18 @@ export function checkDbLinkOrphansSection(cwd: string): DiagnosticSection {
 			});
 			continue;
 		}
-		const found = findOrphans(dbPath);
-		if (!found || found.total === 0) {
+		const foundRes = findOrphans(dbPath);
+		if (foundRes.status === "error") {
+			items.push({
+				status: "error",
+				message: `${projectName}: store DB unusable — ${foundRes.message}`,
+				details: [`db=${dbPath}`],
+				suggestion: suggestionFor("store-db-unreadable"),
+			});
+			continue;
+		}
+		const found = foundRes.status === "ok" ? foundRes.value : { total: 0, orphans: [] };
+		if (found.total === 0) {
 			items.push({
 				status: "ok",
 				message: `${projectName}: ${linkCount} link(s), all endpoints resolve.`,

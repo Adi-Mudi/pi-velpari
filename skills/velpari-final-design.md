@@ -174,7 +174,12 @@ exists), revise the baseline instead of regenerating:
 1. Append new entries with new IDs — never renumber or delete existing
    entries.
 2. Mark superseded entries `deprecated` with a reason.
-3. Bump the version and add a new Change Log entry.
+3. Bump the version, add a new Change Log entry, and declare the bump
+   (N27): add `bump: major|minor|patch` (exact lowercase) to the
+   working copy's frontmatter — `major` = ids removed/sections
+   reorganized (incl. any deprecation), `minor` = backward-compatible
+   additions, `patch` = wording only. The publish gate blocks a missing
+   or under-declared bump; a first publish needs no bump.
    The `velpari_stage_publish` tool (which same gate chain as `/velpari-final-design-approve`) blocks publishing without it.
 
 ## Publish (auto on working-copy ready)

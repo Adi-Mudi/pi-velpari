@@ -46,7 +46,7 @@ typed approve commands exist for recovery when that path is unavailable.
 
 | Command | Purpose |
 |---|---|
-| `/velpari-configure-inputs` | Framework, projectName, code/test/doc/excluded paths → `files.json`. Empty-project safe. |
+| `/velpari-configure-inputs` | Framework, projectName, code/test/doc/excluded paths → `files.json`. Empty-project safe. Also the home of the `projectType` config key: edit `files.json` by hand to set `"projectType": "backend"` (default when absent) or `"full-app"` — read by `core/project-type.ts`; only `full-app` pairs Stage 5 with a wireframe artifact (N26). |
 | `/velpari-configure-requirements` | Requirements profile (optional; default = common PSRS core). |
 | `/velpari-configure-standards` | Standards overlay (optional). |
 | `/velpari-configure-agents` | Role → custom agent name mapping → `agents.json`. |

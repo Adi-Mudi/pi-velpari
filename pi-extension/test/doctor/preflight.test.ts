@@ -19,7 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runPreflight, runStagePreflight } from "../../src/doctor/preflight.js";
+import { runCommandPreflight, runPreflight, runStagePreflight } from "../../src/doctor/preflight.js";
 import { ensureStandardScaffold } from "../../src/ops/self-heal.js";
 import { resetSessionGateCache } from "../../src/core/plan-binding.js";
 
@@ -287,5 +287,53 @@ describe("heavy-check exclusion (ms budget)", () => {
 		for (const re of forbidden) {
 			assert.ok(!re.test(src), `preflight must not statically import matches of ${re}`);
 		}
+	});
+});
+
+describe("runCommandPreflight — command-start (E#3)", () => {
+	it("clean project → continue:true", async () => {
+		ensureStandardScaffold(tmpDir);
+		writeConfig();
+		writeState("run-1", "drafted-prd");
+		const ctx = { ui: { notify: (): void => {} } };
+		const out = await runCommandPreflight("/velpari-handoff", ctx, {}, tmpDir);
+		assert.equal(out.continue, true);
+	});
+
+	it("corrupt files.json (untracked) + non-interactive → continue:false + config-unreadable notify (row 10)", async () => {
+		mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
+		writeFileSync(path.join(tmpDir, ".pi", "velpari", "files.json"), "{broken", "utf8");
+		const notifies: { m: string; k?: string }[] = [];
+		const ctx = { ui: { notify: (m: string, k?: string) => notifies.push({ m, k }) } };
+		const out = await runCommandPreflight("/velpari-handoff", ctx, {}, tmpDir);
+		assert.equal(out.continue, false);
+		assert.ok(notifies.some((n) => n.m.includes("config-unreadable")), JSON.stringify(notifies));
+	});
+
+	it("session-gate mismatch (row 1) → continue:false + hardStop notify as error", async () => {
+		writeState("run-1", "designing");
+		mkdirSync(path.join(tmpDir, ".IDE_Plans", "velpari", "runs", "run-1"), { recursive: true });
+		writeFileSync(
+			path.join(tmpDir, ".IDE_Plans", "velpari", "runs", "run-1", "run-binding.json"),
+			JSON.stringify({ runId: "run-1", branch: "", worktree: "/somewhere/else", startedAt: "x", status: "active" }),
+			"utf8",
+		);
+		const r0 = spawnSync("git", ["init", "-q"], { cwd: tmpDir, encoding: "utf8" });
+		assert.equal(r0.status, 0);
+		const notifies: { m: string; k?: string }[] = [];
+		const ctx = { ui: { notify: (m: string, k?: string) => notifies.push({ m, k }) } };
+		const out = await runCommandPreflight("/velpari-handoff", ctx, {}, tmpDir);
+		assert.equal(out.continue, false);
+		assert.equal(notifies[0]?.k, "error");
+		assert.ok(notifies[0] && /worktree|No changes were made/.test(notifies[0].m), JSON.stringify(notifies));
+	});
+
+	it("row 3 at command level: skip-doctor flag → continue:true despite corrupt state", async () => {
+		mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
+		writeFileSync(path.join(tmpDir, ".pi", "velpari", "state.json"), "{not json", "utf8");
+		const ctx = { ui: { notify: (): void => {} } };
+		const pi = { getFlag: (name: string): unknown => name === "velpari-skip-doctor" };
+		const out = await runCommandPreflight("/velpari-handoff", ctx, pi, tmpDir);
+		assert.equal(out.continue, true);
 	});
 });

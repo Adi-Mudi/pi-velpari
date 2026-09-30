@@ -206,8 +206,13 @@ are required strings; `traces` is MANDATORY on every record — a
 non-empty list of `FR-N` / `NFR-N` / `AF-N` ids the test verifies
 (Layer-2 ID coverage). Every Phase-1 (MVP) FR must be reachable through
 at least one TC. Update mode: never delete a test — append new ids at
-the next free number, bump the version, add a `changeLog` entry. The
-publish gate validates this schema and BLOCKS the publish on errors.
+the next free number, bump the version, add a `changeLog` entry, and
+declare the bump (N27): add `bump: major|minor|patch` (exact lowercase)
+to the working copy's frontmatter — `major` = ids removed/sections
+reorganized (incl. any deprecation), `minor` = backward-compatible
+additions, `patch` = wording only; the publish gate blocks a missing or
+under-declared bump (a first publish needs no bump) and validates this
+schema and BLOCKS the publish on errors.
 
 ### File 3: `<additionalWorkingCopy>` = `test-cases_<projectName>.md` — rendered preview
 

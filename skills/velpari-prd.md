@@ -353,9 +353,15 @@ Revision rules:
 2. **Deprecate, don't delete.** A removed requirement stays in its table
    with status `deprecated` and the reason recorded. Never delete the
    row.
-3. **Version bump.** Minor (x.Y.0) when the revision only adds rows.
-   Major (X.0.0) when anything is deprecated or an acceptance criterion
-   changes.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) when the revision
+   only adds rows. Major (X.0.0) when anything is deprecated or an
+   acceptance criterion changes. Add `bump: major|minor|patch` (exact
+   lowercase) to the working copy's frontmatter: `major` = ids removed
+   or sections reorganized (incl. any deprecation), `minor` =
+   backward-compatible additions (new ids/rows, existing untouched),
+   `patch` = wording only. The publish gate compares the declared bump
+   against the actual change — a missing or under-declared bump blocks
+   the publish; a first publish needs no bump.
 4. **Change Log entry required.** Add a new entry under `## 20. Change
    Log` describing the revision. The `velpari_stage_publish` tool (which
    same gate chain as `/velpari-prd-approve`) blocks publishing a revision

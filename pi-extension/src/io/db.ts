@@ -314,6 +314,48 @@ export function openStoreDbReadOnly(dbPath: string): DatabaseSync {
 	return db;
 }
 
+/** Probe outcome for a store path (E#2/CR D#4 shared classifier). */
+export type StoreProbe =
+	/** File exists, opens read-only, and carries the Velpari schema. */
+	| { status: "ok" }
+	/** No file at dbPath — normal for a pre-store project. */
+	| { status: "missing" }
+	/** File exists but is unusable: not a database, not a Velpari store, or unreadable. */
+	| { status: "invalid"; reason: string };
+
+/**
+ * Classify a store path without ever throwing (E#2 design — the shared
+ * probe behind the handoff store guard and re-usable by audits).
+ *
+ * Distinguishes the three states callers used to conflate: missing
+ * (pre-store, fine), unreadable (dir/permissions — CANTOPEN), and
+ * not-a-store (garbage bytes — NOTADB, or a foreign SQLite file with no
+ * `store_meta`). Read-only + schema-scoped: never migrates, never
+ * creates, never writes.
+ * @param dbPath - Candidate store path (buildStoreDbPath output).
+ * @returns Discriminated probe outcome — never throws.
+ */
+export function probeStoreDb(dbPath: string): StoreProbe {
+	if (!existsSync(dbPath)) return { status: "missing" };
+	let db: DatabaseSync;
+	try {
+		db = openStoreDbReadOnly(dbPath);
+	} catch (err) {
+		return { status: "invalid", reason: err instanceof Error ? err.message : String(err) };
+	}
+	try {
+		const row = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'").get();
+		if (row === undefined) {
+			return { status: "invalid", reason: "not a Velpari store (no store_meta table)" };
+		}
+		return { status: "ok" };
+	} catch (err) {
+		return { status: "invalid", reason: err instanceof Error ? err.message : String(err) };
+	} finally {
+		db.close();
+	}
+}
+
 /**
  * N28/D4 — read the schema version WITHOUT opening/migrating (Phase C
  * preflight: "store will migrate v005 → v006 (backup at …)" can be shown

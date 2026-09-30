@@ -13,7 +13,7 @@ import { test, describe, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
 import { buildStoreDbPath } from "../../src/core/paths.js";
 import { checkDbLinkOrphansSection } from "../../src/doctor/checks/db-link-orphans.js";
@@ -152,5 +152,16 @@ describe("checkDbLinkOrphansSection", () => {
 		}
 		const section = checkDbLinkOrphansSection(cwd);
 		assert.equal(section.items[0]?.status, "ok");
+	});
+
+	test("E#2: non-store file at the store path → error item with store-db-unreadable (no throw)", () => {
+		seedConfig({ projectName: "TodoApp" });
+		const dbPath = buildStoreDbPath("TodoApp", cwd);
+		mkdirSync(dirname(dbPath), { recursive: true });
+		writeFileSync(dbPath, "garbage bytes", "utf8");
+		const section = checkDbLinkOrphansSection(cwd);
+		assert.equal(section.items[0]?.status, "error");
+		assert.match(section.items[0]?.message ?? "", /store DB unusable/);
+		assert.match(section.items[0]?.suggestion ?? "", /db-store-merge-runbook/);
 	});
 });

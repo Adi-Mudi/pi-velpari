@@ -19,6 +19,19 @@
  * `Doc/` directly. Every fix routes through an existing velpari
  * slash command or `pi.sendUserMessage` handoff, so the `tool_call`
  * mutation lock in `hooks/tool-call.ts` continues to gate every write.
+ *
+ * Dispatch safety (v1.3, B#8 re-investigation — accept with evidence):
+ * every outbound expansion path in pi is start-of-text anchored —
+ * agent-session `prompt()`: extension commands only when the WHOLE text
+ * starts with "/", `_expandSkillCommand` needs a "/skill:" prefix,
+ * `expandPromptTemplate` matches `^\/...$` — and the dispatch prompt's
+ * first line is the static "The doctor flagged ..." prefix (below), so
+ * report-derived message/suggestion text can never dispatch a command or
+ * expand a template. The unrecognised picker label fallthrough ("Fix
+ * all", fix-flow.ts select loop) stays: still confirm-gated (N23 batch
+ * confirm), user-presses-label bound, same contract as the explicit
+ * Fix-all row — pi's selector always emits a known key. Re-check against
+ * agent-session.js when upgrading pi.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";

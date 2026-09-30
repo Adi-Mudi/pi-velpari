@@ -8,12 +8,17 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { runHandoff, validateSenaiSchema } from "../../src/ops/handoff.js";
+import { buildStoreDbPath } from "../../src/core/paths.js";
 import type { RunState } from "../../src/core/state.js";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
+/**
+ * Create a fresh temporary working directory for a handoff test.
+ * @returns {string} Absolute path to the new temp directory.
+ */
 function makeCwd(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-handoff-err-"));
 }
@@ -23,6 +28,11 @@ interface NotifyCall {
 	l: "info" | "warning" | "error";
 }
 
+/**
+ * Build a mock extension command context with recorded notifications.
+ * @param {{ confirm?: boolean }} [opts] - Confirmation result returned by ui.confirm.
+ * @returns {ExtensionCommandContext & { notifies: NotifyCall[] }} Ctx whose notifies list captures every ui.notify call.
+ */
 function makeCtx(opts: { confirm?: boolean } = {}): ExtensionCommandContext & {
 	notifies: NotifyCall[];
 } {
@@ -37,6 +47,11 @@ function makeCtx(opts: { confirm?: boolean } = {}): ExtensionCommandContext & {
 	} as unknown as ExtensionCommandContext & { notifies: NotifyCall[] };
 }
 
+/**
+ * Create an in-memory run state seeded at a chosen stage.
+ * @param {string} [stage="planned-tests"] - StageKey to place the run in.
+ * @returns {RunState} A minimal version-1 run state for direct handoff invocation.
+ */
 function seedState(stage: string = "planned-tests"): RunState {
 	return {
 		version: 1,
@@ -48,6 +63,12 @@ function seedState(stage: string = "planned-tests"): RunState {
 	} as RunState;
 }
 
+/**
+ * Write a minimal valid files.json config into the temp project.
+ * @param {string} cwd - Project root to configure.
+ * @param {string} [projectName="TestApp"] - Project name stamped in the config.
+ * @returns {void}
+ */
 function seedConfig(cwd: string, projectName = "TestApp"): void {
 	const dir = join(cwd, ".pi", "velpari");
 	mkdirSync(dir, { recursive: true });
@@ -66,6 +87,12 @@ function seedConfig(cwd: string, projectName = "TestApp"): void {
 	);
 }
 
+/**
+ * Seed every artifact document + RTM sidecar + standards profile the handoff payload needs.
+ * @param {string} cwd - Project root to populate.
+ * @param {string} projectName - Project name used in artifact file names.
+ * @returns {void}
+ */
 function seedPublishedArtifacts(cwd: string, projectName: string): void {
 	// Seed every REQUIRED artifact + RTM JSON sidecar + standards-profile
 	const docDir = join(cwd, "Doc");
@@ -122,6 +149,38 @@ describe("runHandoff — gate errors", () => {
 		try {
 			seedConfig(cwd, "");
 			await runHandoff(seedState("planned-tests"), makeCtx(), cwd);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("CR D#4: blocks with 'store DB is unusable' when the store path is garbage", async () => {
+		const cwd = makeCwd();
+		try {
+			seedConfig(cwd, "TestApp");
+			const dbPath = buildStoreDbPath("TestApp", cwd);
+			mkdirSync(dirname(dbPath), { recursive: true });
+			writeFileSync(dbPath, "not a database", "utf8");
+			const ctx = makeCtx();
+			await runHandoff(seedState("finalized-design"), ctx, cwd);
+			const errors = ctx.notifies.filter((n) => n.l === "error");
+			assert.equal(errors.length, 1);
+			assert.match(errors[0]?.m ?? "", /store DB is unusable/);
+			assert.doesNotMatch(ctx.notifies.map((n) => n.m).join("\n"), /No published PRD/);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("CR D#4: a MISSING store does not trip the guard (reaches the normal artifact path)", async () => {
+		const cwd = makeCwd();
+		try {
+			seedConfig(cwd, "TestApp");
+			const ctx = makeCtx();
+			await runHandoff(seedState("finalized-design"), ctx, cwd);
+			assert.equal(ctx.notifies.filter((n) => /store DB is unusable/.test(n.m)).length, 0);
+			assert.equal(ctx.notifies.length, 1);
+			assert.equal(ctx.notifies[0]?.l, "error");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

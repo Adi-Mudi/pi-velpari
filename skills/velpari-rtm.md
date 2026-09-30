@@ -249,8 +249,12 @@ Revision rules:
 2. **Deprecate, don't delete.** A requirement deprecated in the PRD keeps
    its RTM row with status `deprecated` and the reason recorded. Never
    delete the row.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when any row is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when any row is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** Add a `## Change Log` section if the
    baseline has none, then add a new entry describing the revision. The
    `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`) blocks publishing without it.

@@ -13,8 +13,16 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
-import { COMMAND_NAMES, registerCommands } from "../../src/commands/index.js";
+import {
+	COMMAND_NAMES,
+	COMMAND_PREFLIGHT_CLASS,
+	PREFLIGHT_WRAPPED_MARK,
+	registerCommands,
+} from "../../src/commands/index.js";
 
 interface RegisteredCommand {
 	name: string;
@@ -216,4 +224,161 @@ describe("commands/index — type-level", () => {
 		const first: First = COMMAND_NAMES[0];
 		assert.equal(typeof first, "string");
 	});
+});
+
+describe("registerCommands — command-start preflight (E#3)", () => {
+	/** Make a temp project dir with a corrupt (untracked) files.json. */
+	function makeCorruptProject(): string {
+		const cwd = mkdtempSync(path.join(os.tmpdir(), "velpari-cmdgate-"));
+		mkdirSync(path.join(cwd, ".pi", "velpari"), { recursive: true });
+		writeFileSync(path.join(cwd, ".pi", "velpari", "files.json"), "{broken", "utf8");
+		return cwd;
+	}
+
+	it("wrapped command: preflight blocks before the handler (config-unreadable, handler skipped)", async () => {
+		const cwd = makeCorruptProject();
+		try {
+			const pi = makeFakePi();
+			registerCommands(pi);
+			const notifies: string[] = [];
+			const ctx = { ui: { notify: (m: string) => notifies.push(m) }, cwd };
+			const cmd = pi.commands.get("velpari-handoff");
+			assert.ok(cmd, "velpari-handoff registered");
+			await cmd.handler("", ctx);
+			assert.ok(
+				notifies.some((m) => m.includes("config-unreadable")),
+				`preflight must run first: ${JSON.stringify(notifies)}`,
+			);
+			assert.ok(
+				!notifies.some((m) => /No active run/.test(m)),
+				`handler must NOT run after a failed preflight: ${JSON.stringify(notifies)}`,
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("exempt-view command: passes straight through (no config-unreadable notify)", async () => {
+		const cwd = makeCorruptProject();
+		try {
+			const pi = makeFakePi();
+			registerCommands(pi);
+			const notifies: string[] = [];
+			const ctx = { ui: { notify: (m: string) => notifies.push(m) }, cwd };
+			const cmd = pi.commands.get("velpari-status");
+			assert.ok(cmd, "velpari-status registered");
+			try {
+				await cmd.handler("", ctx);
+			} catch {
+				/* view-side errors are irrelevant — the assertion is about the gate */
+			}
+			assert.ok(
+				!notifies.some((m) => m.includes("config-unreadable")),
+				`exempt commands must not run command-start preflight: ${JSON.stringify(notifies)}`,
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("every wrapped handler remains a callable function (pins the wrapper typing)", () => {
+		const pi = makeFakePi();
+		registerCommands(pi);
+		for (const name of Object.keys(COMMAND_PREFLIGHT_CLASS).filter(
+			(n) => (COMMAND_PREFLIGHT_CLASS as Record<string, string>)[n] === "wrapped",
+		)) {
+			const cmd = pi.commands.get(name);
+			assert.ok(cmd, `${name} registered`);
+			assert.equal(typeof cmd.handler, "function", `${name} handler callable`);
+		}
+	});
+});
+
+describe("COMMAND_PREFLIGHT_CLASS registry coverage (Q4)", () => {
+	it("class counts pin: wrapped 22 / exempt-stage 11 / exempt-recovery 8 / exempt-view 11 = 52 = COMMAND_NAMES.length", () => {
+		const entries = Object.entries(COMMAND_PREFLIGHT_CLASS as Record<string, string>);
+		/**
+		 * Count table entries assigned to one class.
+		 * @param {string} cls - CommandClass value to count.
+		 * @returns {number} Number of commands with that class.
+		 */
+		const count = (cls: string): number => entries.filter(([, v]) => v === cls).length;
+		assert.equal(count("wrapped"), 22, "wrapped count");
+		assert.equal(count("exempt-stage"), 11, "exempt-stage count");
+		assert.equal(count("exempt-recovery"), 8, "exempt-recovery count");
+		assert.equal(count("exempt-view"), 11, "exempt-view count");
+		assert.equal(entries.length, COMMAND_NAMES.length);
+	});
+
+	it("table keys deep-equal COMMAND_NAMES (both directions: unknown entry or missing class fails)", () => {
+		const keys = Object.keys(COMMAND_PREFLIGHT_CLASS).sort();
+		const names = [...COMMAND_NAMES].sort();
+		assert.deepEqual(keys, names);
+	});
+
+	it("exempt-view and exempt-recovery members match the locked Q4 lists", () => {
+		/**
+		 * Command names assigned to one preflight class, sorted.
+		 * @param {string} cls - CommandClass value ("exempt-view" / "exempt-recovery").
+		 * @returns {string[]} Sorted command names carrying that class.
+		 */
+		const members = (cls: string): string[] =>
+			Object.keys(COMMAND_PREFLIGHT_CLASS)
+				.filter((n) => (COMMAND_PREFLIGHT_CLASS as Record<string, string>)[n] === cls)
+				.sort();
+		// exempt-view (11) — pure readers.
+		assert.deepEqual(members("exempt-view"), [
+			"velpari-agents",
+			"velpari-export",
+			"velpari-show-brainstorm",
+			"velpari-show-design",
+			"velpari-show-feasibility",
+			"velpari-show-logging",
+			"velpari-show-prd",
+			"velpari-show-pseudocode",
+			"velpari-show-rtm",
+			"velpari-show-testplan",
+			"velpari-status",
+		]);
+		// exempt-recovery (8) — FIX broken state (reset is NOT wrapped).
+		assert.deepEqual(members("exempt-recovery"), [
+			"velpari-backfill",
+			"velpari-configure-agents",
+			"velpari-configure-inputs",
+			"velpari-configure-requirements",
+			"velpari-configure-standards",
+			"velpari-doctor",
+			"velpari-migrate-store",
+			"velpari-reset",
+		]);
+	});
+
+	it("observed wrapped-set (marked registrations) deep-equals the table's wrapped entries", () => {
+		const pi = makeFakePi();
+		registerCommands(pi);
+		const observed = [...pi.commands.entries()]
+			.filter(([, cmd]) => (cmd as unknown as Record<symbol, unknown>)[PREFLIGHT_WRAPPED_MARK] === true)
+			.map(([name]) => name)
+			.sort();
+		const tableWrapped = Object.entries(COMMAND_PREFLIGHT_CLASS as Record<string, string>)
+			.filter(([, v]) => v === "wrapped")
+			.map(([name]) => name)
+			.sort();
+		assert.deepEqual(observed, tableWrapped);
+	});
+
+	it("every observed-wrapped def's handler is callable and every exempt def is unmarked", () => {
+		const pi = makeFakePi();
+		registerCommands(pi);
+		for (const [name, cmd] of pi.commands) {
+			const cls = (COMMAND_PREFLIGHT_CLASS as Record<string, string>)[name];
+			const marked = (cmd as unknown as Record<symbol, unknown>)[PREFLIGHT_WRAPPED_MARK] === true;
+			assert.equal(typeof cmd.handler, "function", `${name} handler callable`);
+			assert.equal(marked, cls === "wrapped", `${name} (${cls}) mark presence`);
+		}
+	});
+
+	// Build-time layer of the same contract: `satisfies Record<CommandName,
+	// CommandClass>` in src/commands/index.ts makes a 53rd command without a
+	// class a tsc error — this suite pins the runtime half.
 });

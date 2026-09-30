@@ -25,11 +25,18 @@ import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteJson } from "../io/atomic-write.js";
+import { probeStoreDb } from "../io/db.js";
 import { readLatestPublishedRows } from "../io/store.js";
 import { renderDesignMarkdown } from "./export-doc.js";
 import { advanceStage, type RunState } from "../core/state.js";
 import { closeRunBinding } from "../core/run-binding.js";
-import { buildGroupedPath, buildOutputPath, buildWorkingGroupedPath, resolveDocArtifact } from "../core/paths.js";
+import {
+	buildGroupedPath,
+	buildOutputPath,
+	buildStoreDbPath,
+	buildWorkingGroupedPath,
+	resolveDocArtifact,
+} from "../core/paths.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
 import { computeStaleSet } from "../core/freshness.js";
@@ -376,6 +383,20 @@ export async function runHandoff(
 		return;
 	}
 	const projectName = config.projectName;
+
+	// CR D#4 (E#2 shared probe): an existing-but-unusable store must fail
+	// with a clear message — readLatestPublishedRows would silently fall
+	// back to files and blame "missing Doc/ artifacts" instead.
+	const probe = probeStoreDb(buildStoreDbPath(projectName, cwd));
+	if (probe.status === "invalid") {
+		ctx.ui.notify(
+			`Handoff blocked — the store DB is unusable: ${probe.reason}\n` +
+				`Remove the invalid file (the next publish re-creates it) or restore the real store — ` +
+				`skills/db-store-merge-runbook.md § 2.`,
+			"error",
+		);
+		return;
+	}
 
 	let documents: ArchitectDocument[];
 	try {

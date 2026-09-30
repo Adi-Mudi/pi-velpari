@@ -215,7 +215,12 @@ published atomic-functions doc must appear in exactly one step);
 resolve, the graph must be ACYCLIC, and a step must be listed after
 every step it depends on. Update mode: never delete a step — mark it
 superseded in its `rationale`, bump the version, add a `changeLog`
-entry.
+entry, and declare the bump (N27): add `bump: major|minor|patch`
+(exact lowercase) to the working copy's frontmatter — `major` = ids
+removed/sections reorganized (incl. any deprecation), `minor` =
+backward-compatible additions, `patch` = wording only. The publish
+gate blocks a missing or under-declared bump; a first publish needs no
+bump.
 
 ### File 2: `development-order_<projectName>.md` — rendered preview
 
