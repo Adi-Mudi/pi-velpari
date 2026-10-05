@@ -233,10 +233,11 @@ describe("verifierSpecForArtifact — C3 stage→verifier map", () => {
 			);
 			assert.ok(spec.publishedArtifactKind.length > 0, `${spec.stageKey} publishedArtifactKind`);
 		}
-		// Legacy policy pinned: atomic-function errors on a missing verdict
-		// even at basic tier; the Plan-D stages are tier-aware.
-		assert.equal(REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!.missingVerdict, "always-error");
-		for (const key of ["pseudocode", "testplan", "architecture-generator"]) {
+		// N24-17: every spec is tier-aware. The shipped default is the basic
+		// tier, which skips the reviewer, so a missing verdict cannot be an
+		// unconditional error. "always-error" stays in the union as retained
+		// policy vocabulary, but no spec opts into it.
+		for (const key of ["atomic-function", "pseudocode", "testplan", "architecture-generator"]) {
 			assert.equal(REVIEWER_STAGE_SPECS.find((s) => s.stageKey === key)!.missingVerdict, "tier-aware");
 		}
 	});

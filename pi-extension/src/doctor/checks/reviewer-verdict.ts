@@ -63,8 +63,11 @@ export interface ReviewerVerdict {
  *   - `missingVerdict` — behavior when no verdict file exists:
  *     "tier-aware" (info when the tier + overlay gate skipped the
  *     reviewer, error when it should have run) or "always-error"
- *     (legacy atomic-function behavior — pinned by
- *     test/doctor/check-atomic-tier.test.ts).
+ *     (always an error regardless of tier). Both remain available as
+ *     policy vocabulary; every spec — atomic-function included — uses
+ *     "tier-aware" as of N24-17, because the shipped default is the
+ *     basic tier, which skips the reviewer, so no verdict file can
+ *     exist to be found.
  *   - `publishedArtifactKind` — Doc/ artifact kind used by the anytime
  *     doctor section for verdict-freshness comparison. */
 interface ReviewerStageSpec {
@@ -84,7 +87,7 @@ export const REVIEWER_STAGE_SPECS: readonly ReviewerStageSpec[] = [
 		verdictSubpath: "atomic-function/scouts/reviewer-report.json",
 		titlePrefix: "Atomic tier",
 		gateArtifacts: ["atomic-functions"],
-		missingVerdict: "always-error",
+		missingVerdict: "tier-aware",
 		publishedArtifactKind: "atomic-functions",
 	},
 	{
@@ -144,9 +147,10 @@ export function loadReviewerVerdictForStage(
 
 	const verdictPath = resolveStageVerdictPath(cwd, spec);
 	if (!verdictPath) {
-		// Legacy atomic-function policy ("always-error"): the gate must never
-		// silently pass through a stage that never ran the reviewer. Pinned by
-		// test/doctor/check-atomic-tier.test.ts (basic tier + missing → error).
+		// Retained policy vocabulary ("always-error"): the gate must never
+		// silently pass through a stage that never ran the reviewer. No spec
+		// opts into it as of N24-17 (all four are "tier-aware"), but it stays
+		// available for a future spec that wants an unconditional error.
 		if (spec.missingVerdict === "always-error") {
 			return {
 				title,
