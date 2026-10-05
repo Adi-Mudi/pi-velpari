@@ -146,17 +146,26 @@ describe("fixture: continuity dry-run fixture is gate-shaped", () => {
 		}
 	});
 
-	it("W4 dual-write: PRD payload mirrors NFR ids into rows.fr (rtm_row FK)", () => {
-		const payload = JSON.parse(read("prd/payload/prd-payload.json")) as {
+	it("N24-16: NFR ids are NOT mirrored into rows.fr; RTM NFR rows use nfrRef", () => {
+		const prd = JSON.parse(read("prd/payload/prd-payload.json")) as {
 			rows: { fr: Array<{ id: string; textHash: string }>; nfr: Array<{ id: string; textHash: string }> };
 		};
-		for (const nfr of payload.rows.nfr) {
-			const mirrored = payload.rows.fr.find((fr) => fr.id === nfr.id);
-			assert.ok(
-				mirrored,
-				`W4: NFR id ${nfr.id} must also be in rows.fr — rtm_row.fr_ref FKs to fr, so NFR RTM rows need an fr parent (N24-16)`,
+		// W4 dual-write retired: rtm_row.nfr_ref FKs to nfr, so no fr parent is needed.
+		for (const nfr of prd.rows.nfr) {
+			assert.equal(
+				prd.rows.fr.find((fr) => fr.id === nfr.id),
+				undefined,
+				`N24-16: NFR id ${nfr.id} must NOT be in rows.fr — rtm_row.nfr_ref FKs to nfr instead`,
 			);
-			assert.equal(mirrored.textHash, nfr.textHash, `W4 mirror textHash mismatch for ${nfr.id}`);
+		}
+		const rtm = JSON.parse(read("rtm/payload/rtm-payload.json")) as {
+			rows: { rtmRow: Array<{ id: string; frRef: string | null; nfrRef?: string | null }> };
+		};
+		for (const row of rtm.rows.rtmRow) {
+			if (/^nfr/i.test(row.id)) {
+				assert.equal(row.frRef, null, `RTM NFR row ${row.id} must have frRef null`);
+				assert.equal(row.nfrRef, row.id, `RTM NFR row ${row.id} must carry nfrRef ${row.id}`);
+			}
 		}
 	});
 

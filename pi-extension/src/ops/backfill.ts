@@ -228,7 +228,8 @@ function loadRtm(projectName: string, cwd: string): LegacyLoad | null {
 	if (data && data.rows.length > 0) {
 		const rtmRow = data.rows.map((row) => ({
 			id: row.id,
-			frRef: row.id,
+			frRef: /^nfr/i.test(row.id) ? null : row.id,
+			nfrRef: /^nfr/i.test(row.id) ? row.id : null,
 			afRef: row.design ? row.design : null,
 			tcRef: row.tests && row.tests.length > 0 ? row.tests.join(", ") : null,
 			phase: row.phase,
@@ -246,12 +247,13 @@ function loadRtm(projectName: string, cwd: string): LegacyLoad | null {
 	if (!t) return null;
 	const rtmRow = t.rows.flatMap((row, i) => {
 		const frRef = val(t.headers, row, "fr", "fr id", "requirement", "id");
-		if (!frRef || /^nfr/i.test(frRef)) return [];
+		if (!frRef) return [];
 		const phaseRaw = Number(val(t.headers, row, "phase") ?? "1");
 		return [
 			{
 				id: frRef,
-				frRef,
+				frRef: /^nfr/i.test(frRef) ? null : frRef,
+				nfrRef: /^nfr/i.test(frRef) ? frRef : null,
 				afRef: val(t.headers, row, "af", "design", "design element"),
 				tcRef: val(t.headers, row, "tc", "tests", "test cases", "test"),
 				phase: Number.isFinite(phaseRaw) && phaseRaw > 0 ? phaseRaw : 1,

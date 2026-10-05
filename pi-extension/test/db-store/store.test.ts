@@ -303,7 +303,7 @@ describe("io/store — Store API", () => {
 		assert.equal(prd.envelope.kind, "prd");
 		assert.equal(rtm.envelope.kind, "rtm");
 		assert.deepEqual(rtm.rows.rtmRow, [
-			{ id: "RTM-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "t1" },
+			{ id: "RTM-1", frRef: "FR-1", nfrRef: null, afRef: null, tcRef: null, phase: 1, targetSha256: "t1" },
 		]);
 	});
 

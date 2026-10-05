@@ -26,18 +26,6 @@
 				"phase": 1,
 				"textHash": "e9198fe3a92c6effe4b2cacffc309569fb70d6180cf6d94c6379fb9f4578bd82",
 				"text": "The system SHALL export todos as CSV."
-			},
-			{
-				"id": "NFR-01",
-				"phase": 1,
-				"textHash": "d9706a9fc6c064166af6768c37df0059a22effb418a023da5abbee166b338400",
-				"text": "Sync SHALL complete within 2 seconds."
-			},
-			{
-				"id": "NFR-02",
-				"phase": 2,
-				"textHash": "9ce336abb6eb11d36ee2a66efb80636801a2a0f041d3aed2e885c72bbcc1336b",
-				"text": "A todo SHALL be addable in under 3 clicks."
 			}
 		],
 		"nfr": [

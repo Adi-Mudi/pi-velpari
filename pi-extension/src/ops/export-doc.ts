@@ -261,7 +261,7 @@ export function renderRtmMarkdown(rows: Record<string, unknown>): string {
 	return table(
 		"Traceability Rows",
 		["ID", "FR", "AF", "TC", "Phase", "Target SHA-256"],
-		list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase, r.targetSha256]),
+		list.map((r) => [r.id, r.frRef ?? r.nfrRef, r.afRef, r.tcRef, r.phase, r.targetSha256]),
 	);
 }
 

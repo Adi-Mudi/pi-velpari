@@ -42,6 +42,7 @@ import {
 	SCHEMA_V004_REVISION_MODEL,
 	SCHEMA_V005_DEV_LANES,
 	SCHEMA_V006_LOCKING,
+	SCHEMA_V007_RTM_NFR,
 } from "./db-schema.js";
 import { PORTFOLIO_USER_VERSION } from "./portfolio-schema.js";
 import { applyPortfolioSchema } from "./portfolio.js";
@@ -137,6 +138,13 @@ export const MIGRATIONS: readonly Migration[] = [
 		name: "soft-lock — artifact_revisions.locked_at/locked_by (N19/N20)",
 		up: (db: DatabaseSync) => {
 			db.exec(SCHEMA_V006_LOCKING);
+		},
+	},
+	{
+		version: 7,
+		name: "rtm NFR references — rtm_row.fr_ref nullable + nfr_ref FK (N24-16)",
+		up: (db: DatabaseSync) => {
+			db.exec(SCHEMA_V007_RTM_NFR);
 		},
 	},
 ];

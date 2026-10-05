@@ -37,7 +37,8 @@
 			},
 			{
 				"id": "NFR-01",
-				"frRef": "NFR-01",
+				"frRef": null,
+				"nfrRef": "NFR-01",
 				"afRef": "AF-01",
 				"tcRef": "IT-02",
 				"phase": 1,
@@ -45,7 +46,8 @@
 			},
 			{
 				"id": "NFR-02",
-				"frRef": "NFR-02",
+				"frRef": null,
+				"nfrRef": "NFR-02",
 				"afRef": "AF-01",
 				"tcRef": null,
 				"phase": 2,

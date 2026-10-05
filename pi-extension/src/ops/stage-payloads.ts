@@ -103,6 +103,8 @@ const MODULE_REF: Record<string, FieldSpec> = {
 interface RowSetSpec {
 	single?: boolean;
 	fields: Record<string, FieldSpec>;
+	/** v007 (N24-16): when present, exactly one of these field keys must be set. */
+	exactlyOneOf?: readonly string[];
 }
 
 const PRD_ROWS: Record<string, RowSetSpec> = {
@@ -123,12 +125,15 @@ const RTM_ROWS: Record<string, RowSetSpec> = {
 	rtmRow: {
 		fields: {
 			id: { type: "string" },
-			frRef: { type: "string" },
+			frRef: { type: "string", optional: true, nullable: true },
+			nfrRef: { type: "string", optional: true, nullable: true },
 			afRef: { type: "string", optional: true, nullable: true },
 			tcRef: { type: "string", optional: true, nullable: true },
 			phase: { type: "int", min: 1 },
 			targetSha256: { type: "string" },
 		},
+		// v007 (N24-16): exactly one FR/NFR reference per row.
+		exactlyOneOf: ["frRef", "nfrRef"],
 	},
 };
 const FEASIBILITY_ROWS: Record<string, RowSetSpec> = {
@@ -387,6 +392,26 @@ function checkFields(
 		}
 	}
 }
+/**
+ * v007 (N24-16): enforce a row-set `exactlyOneOf` XOR across the listed
+ * field keys — exactly one must be present (defined, non-null, non-empty).
+ */
+function checkExactlyOneOf(
+	where: string,
+	row: Record<string, unknown>,
+	keys: readonly string[],
+	problems: string[],
+): void {
+	const present = keys.filter((k) => {
+		const v = row[k];
+		return v !== undefined && v !== null && v !== "";
+	});
+	if (present.length !== 1) {
+		problems.push(
+			`${where}: exactly one of [${keys.join(", ")}] must be set (got ${present.length > 0 ? present.join(", ") : "none"})`,
+		);
+	}
+}
 
 /**
  * Read + validate `<workingDirPath>/payload/<kind>-payload.json`.
@@ -505,6 +530,9 @@ export function loadStagePayload(
 					continue;
 				}
 				checkFields(`payload.rows.${key}`, value as Record<string, unknown>, spec.fields, problems);
+				if (spec.exactlyOneOf) {
+					checkExactlyOneOf(`payload.rows.${key}`, value as Record<string, unknown>, spec.exactlyOneOf, problems);
+				}
 			} else {
 				if (!Array.isArray(value)) {
 					problems.push(`payload.rows.${key} must be an array`);
@@ -516,6 +544,9 @@ export function loadStagePayload(
 						return;
 					}
 					checkFields(`payload.rows.${key}[${i}]`, row as Record<string, unknown>, spec.fields, problems);
+					if (spec.exactlyOneOf) {
+						checkExactlyOneOf(`payload.rows.${key}[${i}]`, row as Record<string, unknown>, spec.exactlyOneOf, problems);
+					}
 				});
 			}
 		}

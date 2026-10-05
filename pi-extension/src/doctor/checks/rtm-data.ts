@@ -47,12 +47,21 @@ export function checkRtmDataSection(cwd: string, projectName: string): Diagnosti
 			});
 			return { title: "RTM data sidecar", items };
 		}
-		const bad = rtmRows.filter((r) => typeof r.frRef !== "string" || r.frRef === "" || !(Number(r.phase) >= 1));
+		const bad = rtmRows.filter((r) => {
+			const fr = typeof r.frRef === "string" && r.frRef !== "";
+			const nfr = typeof r.nfrRef === "string" && r.nfrRef !== "";
+			// v007 (N24-16): exactly one of frRef/nfrRef must be set.
+			return fr === nfr || !(Number(r.phase) >= 1);
+		});
 		if (bad.length > 0) {
 			items.push({
 				status: "error",
-				message: `RTM store rows failed validation (${bad.length} row(s) with an empty frRef or phase < 1).`,
-				details: bad.slice(0, 20).map((r) => `id=${String(r.id)} frRef=${String(r.frRef)} phase=${String(r.phase)}`),
+				message: `RTM store rows failed validation (${bad.length} row(s) without exactly one frRef/nfrRef, or phase < 1).`,
+				details: bad
+					.slice(0, 20)
+					.map(
+						(r) => `id=${String(r.id)} frRef=${String(r.frRef)} nfrRef=${String(r.nfrRef)} phase=${String(r.phase)}`,
+					),
 				suggestion: suggestionFor("rtm-json-invalid"),
 			});
 			return { title: "RTM data sidecar", items };

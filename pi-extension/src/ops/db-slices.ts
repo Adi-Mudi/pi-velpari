@@ -181,7 +181,7 @@ export function renderStageSlice(kind: ArtifactKind, rows: Record<string, unknow
 			return table(
 				"Traceability Rows",
 				["ID", "FR", "AF", "TC", "Phase"],
-				list.map((r) => [r.id, r.frRef, r.afRef, r.tcRef, r.phase]),
+				list.map((r) => [r.id, r.frRef ?? r.nfrRef, r.afRef, r.tcRef, r.phase]),
 			);
 		}
 		case "feasibility": {

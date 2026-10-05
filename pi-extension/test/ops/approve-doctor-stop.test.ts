@@ -102,7 +102,8 @@ function rtmJsonAsPayload(json: string): string {
 		rows: {
 			rtmRow: parsed.rows.map((r) => ({
 				id: r.id,
-				frRef: r.id,
+				frRef: /^nfr/i.test(r.id) ? null : r.id,
+				nfrRef: /^nfr/i.test(r.id) ? r.id : null,
 				phase: 1,
 				targetSha256: "f".repeat(64),
 			})),

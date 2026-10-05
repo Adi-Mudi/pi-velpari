@@ -56,7 +56,8 @@ describe("io/db — v005 → v006 soft-lock migration (N28 backup-first)", () =>
 	 * @returns {FrRow[]} The fr rows ordered by id.
 	 */
 	function readFr(db: DatabaseSync): FrRow[] {
-		return db.prepare("SELECT run_id, kind, id, phase, text_hash, status FROM fr ORDER BY id")
+		return db
+			.prepare("SELECT run_id, kind, id, phase, text_hash, status FROM fr ORDER BY id")
 			.all() as unknown as FrRow[];
 	}
 
@@ -132,9 +133,9 @@ describe("io/db — v005 → v006 soft-lock migration (N28 backup-first)", () =>
 			// Decision 2026-09-28 (B): init is not a migration event — the audit
 			// fires only when a PRE-EXISTING file is migrated (see test 2).
 			assert.equal(migrationAudits(db).length, 0, "no migration audit row for a fresh create");
-			const tx = db
-				.prepare("SELECT outcome FROM tx_log WHERE operation = 'migration'")
-				.all() as unknown as { outcome: string }[];
+			const tx = db.prepare("SELECT outcome FROM tx_log WHERE operation = 'migration'").all() as unknown as {
+				outcome: string;
+			}[];
 			assert.equal(tx.length, 0, "no migration tx entry for a fresh create");
 
 			const stamp = readStoreDigestStamp(db);
@@ -153,14 +154,10 @@ describe("io/db — v005 → v006 soft-lock migration (N28 backup-first)", () =>
 		const probe = inspectStoreVersion(path);
 		assert.deepEqual(
 			probe,
-			{ version: 5, maxKnown: maxKnownVersion(), pending: 1 },
+			{ version: 5, maxKnown: maxKnownVersion(), pending: maxKnownVersion() - 5 },
 			"inspectStoreVersion reports the pending migration without opening for write",
 		);
-		assert.equal(
-			inspectStoreVersion(path)?.version,
-			5,
-			"still v005 after the read-only inspection (no side effects)",
-		);
+		assert.equal(inspectStoreVersion(path)?.version, 5, "still v005 after the read-only inspection (no side effects)");
 
 		const db = openStoreDb(path);
 		try {
@@ -171,9 +168,7 @@ describe("io/db — v005 → v006 soft-lock migration (N28 backup-first)", () =>
 			assert.deepEqual(readFr(db), before, "pre-existing fr rows byte-identical");
 
 			// G1 columns exist and start NULL.
-			const cols = (db.prepare("PRAGMA table_info(artifact_revisions)").all() as { name: string }[]).map(
-				(c) => c.name,
-			);
+			const cols = (db.prepare("PRAGMA table_info(artifact_revisions)").all() as { name: string }[]).map((c) => c.name);
 			assert.ok(cols.includes("locked_at"), "locked_at column added by v006");
 			assert.ok(cols.includes("locked_by"), "locked_by column added by v006");
 			const locked = db

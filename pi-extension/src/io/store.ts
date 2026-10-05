@@ -100,7 +100,9 @@ export interface PrdSectionRow {
 }
 export interface RtmRowRow {
 	id: string;
-	frRef: string;
+	/** v007 — exactly one of frRef / nfrRef is set (payload validator enforces). */
+	frRef?: string | null;
+	nfrRef?: string | null;
 	afRef?: string | null;
 	tcRef?: string | null;
 	phase: number;

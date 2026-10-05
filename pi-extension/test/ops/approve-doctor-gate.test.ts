@@ -129,7 +129,8 @@ function rtmPayload(ids: string[], phases: Record<string, number> = {}): string 
 		rows: {
 			rtmRow: ids.map((id) => ({
 				id,
-				frRef: id,
+				frRef: /^nfr/i.test(id) ? null : id,
+				nfrRef: /^nfr/i.test(id) ? id : null,
 				phase: phases[id] ?? 1,
 				targetSha256: "f".repeat(64),
 			})),

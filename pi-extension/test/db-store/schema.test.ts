@@ -253,6 +253,20 @@ describe("db-schema — v001 core schema", () => {
 						.run(),
 				/FOREIGN KEY constraint failed/,
 			);
+			// N24-16 (v007): rtm_row may reference an NFR via nfr_ref instead of fr_ref.
+			db.prepare("INSERT INTO nfr (run_id, kind, id, phase, text_hash) VALUES ('r1', 'prd', 'NFR-1', 1, 'h2')").run();
+			db.prepare(
+				"INSERT INTO rtm_row (run_id, kind, id, nfr_ref, phase, target_sha256) VALUES ('r1', 'rtm', 'RTM-N1', 'NFR-1', 1, 't3')",
+			).run();
+			assert.throws(
+				() =>
+					db
+						.prepare(
+							"INSERT INTO rtm_row (run_id, kind, id, nfr_ref, phase, target_sha256) VALUES ('r1', 'rtm', 'RTM-N2', 'NFR-99', 1, 't4')",
+						)
+						.run(),
+				/FOREIGN KEY constraint failed/,
+			);
 			db.prepare(
 				"INSERT INTO atomic_function (run_id, kind, id, name, signature, tier, criticality, sil, is_leaf) VALUES ('r1', 'atomic-functions', 'AF-1', 'doThing', 'doThing(): void', 'basic', 'A', 'none', 1)",
 			).run();
@@ -515,6 +529,7 @@ describe("db-schema — v002 prose columns (Phase 6, §14)", () => {
 			// new prose columns per §14.4. Spot-check a couple of column lists.
 			const rtmCols = (db.prepare("PRAGMA table_info(rtm_row)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.ok(rtmCols.includes("fr_ref"));
+			assert.ok(rtmCols.includes("nfr_ref"));
 			assert.ok(rtmCols.includes("af_ref"));
 			const adrCols = (db.prepare("PRAGMA table_info(adr)").all() as Array<{ name: string }>).map((r) => r.name);
 			assert.ok(adrCols.includes("options"));

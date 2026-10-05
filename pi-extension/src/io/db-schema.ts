@@ -505,3 +505,42 @@ export const SCHEMA_V006_LOCKING = `
 ALTER TABLE artifact_revisions ADD COLUMN locked_at TEXT;
 ALTER TABLE artifact_revisions ADD COLUMN locked_by TEXT;
 `;
+
+/**
+ * v007 — RTM rows may reference an NFR (Phase 3 / N24-16, 2026-10-05).
+ *
+ * `rtm_row.fr_ref` FK'd to `fr(run_id,id)`, but an RTM row legitimately
+ * traces an NFR id, which lives in `nfr`. Including such a row threw
+ * FOREIGN KEY constraint failed; omitting it tripped the coverage orphan
+ * error. `fr_ref` becomes nullable and a second composite FK (`nfr_ref →
+ * nfr(run_id,id)`) is added; the payload validator enforces exactly one of
+ * the two (SQLite cannot express a two-table FK in one column).
+ *
+ * Rebuild, not ALTER: SQLite cannot drop NOT NULL or add an FK in place.
+ * Existing rows are all-FR (plus W4-mirrored parents) and migrate with
+ * `nfr_ref = NULL`.
+ */
+export const SCHEMA_V007_RTM_NFR = `
+DROP TABLE IF EXISTS rtm_row_new;
+CREATE TABLE rtm_row_new (
+	run_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	id TEXT NOT NULL,
+	fr_ref TEXT,
+	nfr_ref TEXT,
+	af_ref TEXT,
+	tc_ref TEXT,
+	phase INTEGER NOT NULL CHECK (phase >= 1),
+	target_sha256 TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+	CHECK ((fr_ref IS NULL) <> (nfr_ref IS NULL)),
+	PRIMARY KEY (run_id, id),
+	FOREIGN KEY (run_id, fr_ref) REFERENCES fr(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, nfr_ref) REFERENCES nfr(run_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (run_id, kind) REFERENCES artifacts(run_id, kind) ON DELETE CASCADE
+) STRICT;
+INSERT INTO rtm_row_new (run_id, kind, id, fr_ref, nfr_ref, af_ref, tc_ref, phase, target_sha256, status)
+	SELECT run_id, kind, id, fr_ref, NULL, af_ref, tc_ref, phase, target_sha256, status FROM rtm_row;
+DROP TABLE rtm_row;
+ALTER TABLE rtm_row_new RENAME TO rtm_row;
+`;

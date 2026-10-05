@@ -206,14 +206,14 @@ describe("stage payload validation (4.3)", () => {
 			rtmRow: [
 				{ id: "RTM-1", frRef: "FR-1", phase: 1, targetSha256: "a1b2c3", bogus: "x" }, // unknown field
 				{ id: "RTM-2", frRef: "FR-1", phase: 0, targetSha256: "a1b2c3" }, // phase < 1
-				{ id: "RTM-3", phase: 1, targetSha256: "a1b2c3" }, // missing frRef
+				{ id: "RTM-3", phase: 1, targetSha256: "a1b2c3" }, // missing both frRef and nfrRef (XOR)
 			],
 		});
 		const result = loadStagePayload(workingDir, "rtm");
 		assert.equal(result.ok, false);
 		assert.ok(result.problems.some((p) => p.includes('unknown field "bogus"')));
 		assert.ok(result.problems.some((p) => p.includes(">= 1")));
-		assert.ok(result.problems.some((p) => p.includes('missing field "frRef"')));
+		assert.ok(result.problems.some((p) => p.includes("exactly one of [frRef, nfrRef]")));
 	});
 
 	test("unknown row-set key is refused; valid payload normalizes inputs/changeLog", () => {
