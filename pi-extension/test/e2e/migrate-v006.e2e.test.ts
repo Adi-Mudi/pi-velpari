@@ -229,7 +229,7 @@ describe("e2e/migrate-v006", () => {
 		);
 		// G7 audit: one migration entry naming from/to/backupPath.
 		assert.ok(out.audit !== null, "audit entry action=migration must exist");
-		assert.strictEqual(out.audit.reason, "schema v5 → v6", "audit reason names the version transition");
+		assert.strictEqual(out.audit.reason, `schema v5 → v${out.maxKnown}`, "audit reason names the version transition");
 		const detail = JSON.parse(out.audit.detailJson) as { from: number; to: number; backupPath: string | null };
 		assert.strictEqual(detail.from, 5, "audit detail.from");
 		assert.strictEqual(detail.to, out.maxKnown, "audit detail.to");
@@ -284,7 +284,12 @@ describe("e2e/migrate-v006", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
-		const out = await runModuleScript<{ version: number; maxKnown: number; snapshotCount: number; backupLines: number }>(
+		const out = await runModuleScript<{
+			version: number;
+			maxKnown: number;
+			snapshotCount: number;
+			backupLines: number;
+		}>(
 			client,
 			`import { readFileSync, readdirSync } from "node:fs"; ` +
 				`import { join } from "node:path"; ` +
