@@ -37,6 +37,9 @@ import {
 	buildWorkingGroupedPath,
 	resolveDocArtifact,
 } from "../core/paths.js";
+import { ARTIFACT_TO_KIND } from "../core/upstream.js";
+// ─── N24-20 — file-or-store artifact resolution for the payload. ───
+import { resolveArtifactAnywhere } from "./artifact-resolve.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { checkMvpCoverage } from "../core/mvp-coverage.js";
 import { computeStaleSet } from "../core/freshness.js";
@@ -90,6 +93,11 @@ export interface ArchitectDocument {
 	/** Freeze reason (N4) — `"handoff (N4)"` in the written payload. */
 	freezeReason?: string | null;
 	// ─── PHASE-D END ───
+	// ─── N24-20 ─── where the entry was resolved from: `"file"` = a
+	// `Doc/` markdown, `"store"` = the store's exported YAML. Absent on
+	// legacy payloads (readers default to `"file"`). ───
+	/** Source marker: `"file"` or `"store"`; absent on legacy payloads. */
+	source?: "file" | "store";
 }
 
 /**
@@ -222,20 +230,30 @@ export function readApprovedArtifacts(projectName: string, cwd: string = process
 	const missing: string[] = [];
 
 	for (const { type, artifact } of REQUIRED_TYPES) {
-		const resolved = resolveDocArtifact(artifact, projectName, cwd);
+		const resolved = resolveArtifactAnywhere(artifact, projectName, cwd);
 		if (resolved) {
 			// Persist the actual on-disk path (absolute) so downstream
-			// tooling can read it without re-deriving the layout.
-			docs.push({ type, path: resolved.path });
+			// tooling can read it without re-deriving the layout. N24-20:
+			// a DB-only publish leaves no Doc/ markdown; the exported YAML
+			// beside the store DB is the committed, fingerprint-covered file.
+			// `source` is emitted ONLY for store hits so file-based
+			// projects keep a byte-identical (legacy) payload.
+			docs.push(
+				resolved.source === "store" ? { type, path: resolved.path, source: "store" } : { type, path: resolved.path },
+			);
 		} else {
 			missing.push(
-				`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))})`,
+				`${join(cwd, buildGroupedPath(artifact, projectName))} (or legacy: ${join(cwd, buildOutputPath(artifact, projectName))}; or a published store head for kind ${ARTIFACT_TO_KIND[artifact.toLowerCase()] ?? "n/a"})`,
 			);
 		}
 	}
 
 	if (missing.length > 0) {
-		throw new Error(`Missing required Doc/ artifacts:\n${missing.map((p) => `  - ${p}`).join("\n")}`);
+		throw new Error(
+			`Missing required artifacts (no published file and no published store head):\n${missing
+				.map((p) => `  - ${p}`)
+				.join("\n")}`,
+		);
 	}
 
 	return docs;
@@ -352,6 +370,12 @@ export function validateSenaiSchema(json: unknown): boolean {
 			throw new Error(`documents[${i}].freezeReason must be a string or null`);
 		}
 		// ─── PHASE-D END ───
+		// ─── N24-20 ─── additive source marker (mirrors the frozen/
+		// freezeReason checks above): absent on legacy payloads passes; a
+		// present value must be one of the two known sources. ───
+		if (doc.source !== undefined && doc.source !== "file" && doc.source !== "store") {
+			throw new Error(`documents[${i}].source must be "file" or "store"`);
+		}
 	}
 	return true;
 }

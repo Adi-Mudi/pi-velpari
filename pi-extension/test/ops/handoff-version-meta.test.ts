@@ -70,7 +70,15 @@ function seedConfig(): void {
 }
 
 function seedAllRequiredDocs(): void {
-	for (const dir of ["requirements", "feasibility", "design", "atomic-functions", "pseudocode", "tests", "development-order"]) {
+	for (const dir of [
+		"requirements",
+		"feasibility",
+		"design",
+		"atomic-functions",
+		"pseudocode",
+		"tests",
+		"development-order",
+	]) {
 		mkdirSync(join(cwd, "Doc", dir), { recursive: true });
 	}
 	const stub = "## section\n\nbody";
@@ -224,9 +232,11 @@ describe("runHandoff — N29 per-document version metadata", () => {
 		// Store rows are frozen too (the payload never outpaces the store).
 		const db = openStoreDb(buildStoreDbPath(PROJECT, cwd));
 		try {
-			const rows = db
-				.prepare("SELECT kind, frozen, freeze_reason FROM artifacts WHERE run_id = ?")
-				.all(RUN) as Array<{ kind: string; frozen: number; freeze_reason: string | null }>;
+			const rows = db.prepare("SELECT kind, frozen, freeze_reason FROM artifacts WHERE run_id = ?").all(RUN) as Array<{
+				kind: string;
+				frozen: number;
+				freeze_reason: string | null;
+			}>;
 			assert.ok(rows.length >= VELPARI_STORE_KINDS.length, "every kind has a row");
 			for (const row of rows) {
 				assert.equal(row.frozen, 1, `${row.kind} row must be frozen`);
@@ -299,7 +309,10 @@ describe("runHandoff — N29 per-document version metadata", () => {
 		const payload = readPayload();
 
 		assert.equal(payload.documents.length, 10, "backend projects keep exactly 10 documents");
-		assert.equal(payload.documents.some((d) => d.type === "Wireframe"), false);
+		assert.equal(
+			payload.documents.some((d) => d.type === "Wireframe"),
+			false,
+		);
 	});
 
 	it("(f) validateSenaiSchema: legacy payload without the keys passes; new payload passes; wrong type rejected", async () => {
@@ -354,5 +367,50 @@ describe("runHandoff — N29 per-document version metadata", () => {
 		assert.equal(loadState(cwd).currentStage, "finalized-design", "stage must not advance");
 		assert.match(allMessages(notices), /Handoff freeze failed/);
 		assert.match(allMessages(notices), /N4/);
+	});
+
+	// ─── N24-20 (plan 1.5 TEST): DB-only publish (Phase 11 default) writes
+	// store rows + the exported YAML beside the DB and NEVER touches Doc/.
+	// Handoff must resolve every required artifact from the store alone.
+	// D2: `test-plan` and `test-cases` both map to kind `testplan` (YAML
+	// label `test-plan`), so BOTH entries point at the same exported YAML.
+	// ────────────────────────────────────────────────────────────────────
+	it('(h) N24-20 store-only (zero Doc/ files) → handoff succeeds, every document is source:"store"', async () => {
+		seedState();
+		seedConfig();
+		seedStoreWithHeads(); // NO seedAllRequiredDocs — DB-only publish leaves no Doc/ tree
+		// Doc/ still exists (seedStoreWithHeads creates Doc/store/<proj>/),
+		// but DB-only publish writes NO markdown — only the store + YAML.
+		assert.equal(
+			existsSync(join(cwd, "Doc", "requirements", `PRD_${PROJECT}.md`)),
+			false,
+			"fixture must have no Doc/ markdown (DB-only publish leaves only Doc/store/)",
+		);
+
+		const { ctx, notices } = makeCtx();
+		await runHandoff(loadState(cwd), ctx, cwd);
+		const payload = readPayload();
+
+		assert.equal(validateSenaiSchema(payload), true, "the store-only payload must pass validation");
+		assert.equal(payload.documents.length, 10, "all 10 required documents resolve from the store");
+		for (const doc of payload.documents) {
+			assert.equal(doc.source, "store", `${doc.type} must be resolved from the store`);
+			assert.ok(
+				doc.path.includes(join("Doc", "store", PROJECT)),
+				`${doc.type}: path must be the store's exported YAML, got ${doc.path}`,
+			);
+		}
+
+		// D2 open item: both testplan entries share one exported YAML.
+		const tp = payload.documents.find((d) => d.type === "Test Plan");
+		const tc = payload.documents.find((d) => d.type === "Test Cases");
+		assert.ok(tp, "Test Plan entry must be present");
+		assert.ok(tc, "Test Cases entry must be present");
+		assert.equal(tp.path, tc.path, "both testplan entries point at the same exported YAML");
+		assert.ok(tp.path.endsWith(`test-plan_${PROJECT}.yaml`), `unexpected testplan YAML: ${tp.path}`);
+
+		// A store-only project completes the handoff end to end.
+		assert.match(allMessages(notices), /Handoff written to/);
+		assert.equal(loadState(cwd).currentStage, "handoff-ready");
 	});
 });
