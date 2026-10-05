@@ -365,7 +365,7 @@ describe("e2e/stage-gates", () => {
 				`await runStage("architecture-generator", ctx, pi, cwd); ` +
 				`const allowedErrors = notes.filter((n) => n.l === "error").map((n) => n.m); ` +
 				`const allowedSent = sent.length; ` +
-				`state = advanceStage(loadState(cwd), "/velpari-architecture-generator", cwd); ` +
+				`state = loadState(cwd); /* N24-01: runStage advances into designing on entry */ ` +
 				`process.stdout.write(JSON.stringify({ rejected, rejectedSent, allowedErrors, allowedSent, stage: state.currentStage }));`,
 		);
 

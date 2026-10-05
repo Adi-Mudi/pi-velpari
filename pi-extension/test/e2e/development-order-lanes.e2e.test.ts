@@ -187,7 +187,7 @@ describe("e2e/development-order-lanes", () => {
 				`const pi = { sendUserMessage: (m) => sent.push(m), appendEntry: () => {}, getFlag: () => undefined }; ` +
 				`await runStage("development-order", ctx, pi, cwd); ` +
 				`const stageErrors = notes.filter((n) => n.l === "error").map((n) => n.m); ` +
-				`state = advanceStage(loadState(cwd), "/velpari-development-order", cwd); ` +
+				`state = loadState(cwd); /* N24-01: runStage advances into ordering-development on entry */ ` +
 				`process.stdout.write(JSON.stringify({ sentCount: sent.length, stageErrors, stage: state.currentStage }));`,
 		);
 
