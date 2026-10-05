@@ -431,3 +431,60 @@ describe("re-brainstorm staling (D8)", () => {
 		);
 	});
 });
+
+describe("store-YAML input resolution (N24-13 / Phase 11)", () => {
+	/** files.json with NO `velpari.markdownWrites` key → markdown writes OFF. */
+	function writeDbOnlyFilesConfig(cwd: string, projectName: string): void {
+		write(cwd, join(PATHS.CONFIG_DIR, "files.json"), JSON.stringify({ version: 4, projectName }));
+	}
+
+	it("resolves a doc input to the store YAML when markdown writes are off and no markdown exists", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/PRD_TestApp.yaml", "fr: []\n");
+		// No Doc/**/PRD*.md anywhere.
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		assert.equal(inputs.length, 1);
+		assert.equal(inputs[0]!.id, "prd:TestApp");
+		assert.equal(inputs[0]!.status, "found");
+		assert.equal(inputs[0]!.path, yamlPath);
+	});
+
+	it("publish-stamp hashes and the stale check agree on the store YAML (no false stale)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/PRD_TestApp.yaml", "fr: []\n");
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		const hashes = computeInputHashes(cwd, inputs);
+		assert.ok(hashes.ok);
+		assert.equal(hashes.hashes["prd:TestApp"], hashFileContent(yamlPath)!);
+		recordPublish(cwd, {
+			artifact: "design",
+			projectName: "TestApp",
+			path: "Doc/design/design_TestApp.md",
+			publishedAt: "2026-10-05T13:00:00.000Z",
+			inputs: hashes.hashes,
+		});
+		assert.deepEqual(computeStaleSet(cwd), [], "the stamped store-YAML input must not stale");
+	});
+
+	it("a stamped prd:X input is satisfied by PRD_X.yaml alone (pins the YAML-label casing fix)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "X");
+		const yamlPath = write(cwd, "Doc/store/X/PRD_X.yaml", "fr: []\n");
+		recordPublish(cwd, {
+			artifact: "design",
+			projectName: "X",
+			path: "Doc/design/design_X.md",
+			publishedAt: "2026-10-05T13:00:00.000Z",
+			inputs: { "prd:X": hashFileContent(yamlPath)! },
+		});
+		assert.deepEqual(computeStaleSet(cwd), [], "PRD_X.yaml on disk must satisfy the stamped prd:X input");
+	});
+});

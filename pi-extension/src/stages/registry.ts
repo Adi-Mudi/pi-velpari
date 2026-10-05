@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Stage } from "../core/constants.js";
+import { STAGE_TRANSITIONS, type Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
 import {
 	computeStaleSet,
@@ -51,7 +51,7 @@ import {
 	resolveDocArtifact,
 	slugify,
 } from "../core/paths.js";
-import { loadState } from "../core/state.js";
+import { advanceStage, loadState } from "../core/state.js";
 import { loadAgentConfig, resolveAgentName, type VelpariRole } from "../core/agents-config.js";
 import type { ScoutSlot } from "../core/prompt.js";
 import { findPackageRoot } from "../core/paths.js";
@@ -376,7 +376,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		key: "final-design",
 		// Stage 10 — runs after Development Order (Stage 9) is approved; or while own draft is open.
 		stageEnum: "finalizing-design",
-		skillName: "design",
+		skillName: "final-design",
 		scouts: ["design-consistency-checker", "design-coverage-checker", "design-contract-checker", "design-finalizer"],
 		workingCopyCategory: "final-design",
 		workingCopyArtifact: "final-design",
@@ -757,7 +757,7 @@ export async function runStage(
 	// ===== END PHASE C PREFLIGHT BLOCK =====
 
 	// 1. Load state + config.
-	const state = loadState(cwd);
+	let state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
 		return;
@@ -995,6 +995,18 @@ export async function runStage(
 	// best-effort call at the single funnel point — never blocks the stage.
 	const baselineErr = recordStageBaselines(cwd, projectName, state.runId!, spec.stageEnum);
 	if (baselineErr) ctx.ui.notify(`Baseline stamp failed (stage continues): ${baselineErr}`, "warning");
+
+	// N24-01: advance into the in-progress stage so the publish tool and the
+	// tool_call folder lock see the correct currentStage. Guarded by the
+	// transition table (not by stage equality): STAGE_TRANSITIONS has no
+	// self-loops and no update-mode re-entry edges, so an unconditional call
+	// would throw on a redraft or an update-mode re-run. Where no transition
+	// exists the stage proceeds without advancing (the atomic-function
+	// precedent, and the known update-mode limitation recorded below).
+	const entryCommand = `/velpari-${stageKey}`;
+	if (STAGE_TRANSITIONS.some((t) => t.from === state.currentStage && t.command === entryCommand)) {
+		state = advanceStage(state, entryCommand, cwd, pi);
+	}
 
 	await runStageWithScouts(stageConfig, ctx, pi);
 }

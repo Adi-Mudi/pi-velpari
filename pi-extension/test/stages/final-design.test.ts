@@ -21,8 +21,8 @@ describe("/velpari-final-design — Stage 10 registry", () => {
 		assert.equal(entry.stageEnum, "finalizing-design");
 	});
 
-	it("skillName is 'design' (the consolidation uses the design skill)", () => {
-		assert.equal(entry.skillName, "design");
+	it("skillName is 'final-design'", () => {
+		assert.equal(entry.skillName, "final-design");
 	});
 
 	it("uses 4 scouts named design-{consistency,coverage,contract,finalizer}", () => {

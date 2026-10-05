@@ -45,8 +45,8 @@ const STAGE_SKILL: Record<Stage, string | undefined> = {
 	"analyzed-atomic-functions": "atomic-function",
 	"ordering-development": "development-order",
 	"ordered-development": "development-order",
-	"finalizing-design": "design",
-	"finalized-design": "design",
+	"finalizing-design": "final-design",
+	"finalized-design": "final-design",
 	"handoff-ready": "handoff",
 };
 

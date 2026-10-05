@@ -256,7 +256,23 @@ export function resolveDeclaredInputs(
 			continue;
 		}
 		if (input.kind === "doc" && input.artifact) {
-			const resolved = resolveDocArtifact(input.artifact, deps.projectName, cwd);
+			// N24-13 / Phase 11: DB-only publish (markdownWrites OFF, the
+			// shipped default) writes store rows + the exported YAML, not
+			// Doc/*.md. Resolve the SAME bytes resolveInputPath hashes —
+			// store YAML first while markdown writes are off, Doc markdown as
+			// the legacy / flag-ON fallback — so the gate, the publish-time
+			// stamp, and the stale check all agree on one source.
+			let markdownWrites = false;
+			try {
+				markdownWrites = markdownWritesEnabled(cwd);
+			} catch {
+				/* corrupt files.json → default OFF */
+			}
+			let resolved = resolveDocArtifact(input.artifact, deps.projectName, cwd);
+			if (!markdownWrites) {
+				const yamlPath = buildStoreYamlPath(deps.projectName, input.artifact, cwd);
+				if (existsSync(yamlPath)) resolved = { path: yamlPath, layout: "grouped" };
+			}
 			out.push({
 				id: manifestKey(input.artifact, deps.projectName),
 				label: input.label,
@@ -354,9 +370,11 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 	// DB-era inputs hash the kind's EXPORTED YAML bytes — rewritten +
 	// fingerprinted at every publish — so `input-changed` keeps firing
 	// after the markdown writes retire (Q3, flag DEFAULT OFF). The input
-	// id's artifact key IS the YAML label (PRD, test-plan, …), so no
-	// mapping table is needed. File resolution remains for legacy /
-	// flag-ON projects and as the fallback when no store YAML exists.
+	// id's kind is lowercase (`prd`, `rtm`) while the exported YAML keeps
+	// the Doc artifact key's casing (`PRD_<proj>.yaml`/`RTM_<proj>.yaml`),
+	// so the path goes through `artifactKeyForKind`. File resolution
+	// remains for legacy / flag-ON projects and as the fallback when no
+	// store YAML exists.
 	// Phase C: corrupt files.json → markdown writes are OFF (the default).
 	let markdownWrites = false;
 	try {
@@ -365,7 +383,7 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 		/* Config section reports UNREADABLE */
 	}
 	if (!markdownWrites) {
-		const yamlPath = buildStoreYamlPath(parsed.id, parsed.kind, cwd);
+		const yamlPath = buildStoreYamlPath(parsed.id, artifactKeyForKind(parsed.kind), cwd);
 		if (existsSync(yamlPath)) return yamlPath;
 	}
 	return resolveDocArtifact(artifactKeyForKind(parsed.kind), parsed.id, cwd)?.path ?? null;
