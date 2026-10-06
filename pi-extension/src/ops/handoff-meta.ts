@@ -21,6 +21,7 @@
 // `ops/protection.ts` read helper.
 // ============================================================================
 
+import { existsSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { closeStoreDb, openStoreDbReadOnly } from "../io/db.js";
 import { getHeadRevision, readArtifact } from "../io/store.js";
@@ -60,12 +61,18 @@ function nullMeta(): DocumentVersionMeta {
  * @returns {T | null} The result, or null when the store could not be read.
  */
 function withReadOnlyStore<T>(projectName: string, cwd: string, fn: (db: DatabaseSync) => T): T | null {
+	const dbPath = buildStoreDbPath(projectName, cwd);
+	// D-F4 amendment (CI e2e ops-doctor, 2026-10-06): an ABSENT store is the
+	// legitimate legacy case (header contract) — stay silent. Only an
+	// existing-but-unreadable store is surfaced, so corruption is visible
+	// without polluting legacy projects or captured output streams.
+	if (!existsSync(dbPath)) return null;
 	let db: DatabaseSync | null = null;
 	try {
-		db = openStoreDbReadOnly(buildStoreDbPath(projectName, cwd));
+		db = openStoreDbReadOnly(dbPath);
 		return fn(db);
 	} catch (err) {
-		// D-F4 (Phase 4): a corrupt/unreadable store must not be indistinguishable
+		// D-F4: a corrupt/unreadable store must not be indistinguishable
 		// from a legitimate legacy project (all-null metadata).
 		console.warn(
 			`velpari handoff: store for '${projectName}' could not be read — ${err instanceof Error ? err.message : String(err)} (falling back to legacy metadata).`,
