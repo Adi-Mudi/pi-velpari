@@ -16,7 +16,7 @@
 // ============================================================================
 
 import { ensureProtectedAssetsSection } from "../../core/agents-md.js";
-import { ensurePreCommitHook } from "../../ops/git-hooks.js";
+import { ensureCommitMsgHook } from "../../ops/git-hooks.js";
 import { manifestKey } from "../../core/freshness.js";
 import {
 	artifactKeyToStoreKind,
@@ -75,7 +75,7 @@ export function gateStoreEnforcement(input: StoreEnforcementInput): StoreEnforce
 		if (sectionDetail !== undefined && !BENIGN_SKIPS.has(sectionDetail)) {
 			warnings.push(`store-enforcement: AGENTS.md section not written (${sectionDetail})`);
 		}
-		const hook = ensurePreCommitHook(input.cwd);
+		const hook = ensureCommitMsgHook(input.cwd);
 		const hookDetail = hook.error ?? hook.skipped;
 		if (hookDetail !== undefined && !BENIGN_SKIPS.has(hookDetail)) {
 			warnings.push(`store-enforcement: commit-msg hook not installed (${hookDetail})`);

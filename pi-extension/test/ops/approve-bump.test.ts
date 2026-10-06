@@ -29,6 +29,8 @@ import { tmpdir } from "node:os";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handleApprove } from "../../src/ops/approve.js";
 import { advanceStage, clearRun, createRun, loadState, saveState } from "../../src/core/state.js";
+import { renderPrdMarkdown } from "../../src/ops/export-doc.js";
+import { validateBump } from "../../src/core/semver.js";
 
 interface Notice {
 	message: string;
@@ -430,5 +432,59 @@ describe("N27 — bump gate decides where the revision gate does not (non-PRD ar
 			"blocked revision must not stamp the published copy",
 		);
 		assert.equal(loadState(tmpDir).currentStage, "finalizing-design", "stage not advanced");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// D-F1 / Q6=a1 — the DB-only bump comparator is LIKE-FOR-LIKE store renders.
+// In the shipped default there is no Doc/ markdown (publishedPath null), so
+// approve.ts compares render(prior store rows) against render(new rows) with
+// the LLM copy's raw frontmatter prepended for the declared `bump:`. These
+// cases pin that exact construction: wording-only → PATCH (the plan's proof),
+// removed id → MAJOR, added id → MINOR. A render compared against the LLM
+// prose would false-block (render table titles like `## Sections` are not
+// doc headings) — the like-for-like pairing is what makes this safe.
+// (The approve.ts wiring — branch condition + store read — is exercised by
+// the continuity dry run in Phase 5.3; here we pin the comparator semantics.)
+// ---------------------------------------------------------------------------
+
+describe("D-F1 / Q6=a1 — store-render bump comparator (DB-only default)", () => {
+	const FM_PATCH = "---\nversion: 1.1.0\nbump: patch\nstatus: draft\n---\n";
+
+	function rows(frIds: string[], objective: string): Record<string, unknown> {
+		return {
+			fr: frIds.map((id, i) => ({ id, phase: i + 1, textHash: `h-${id}`, text: `Seeded prose for ${id}.` })),
+			nfr: [],
+			prdSection: [
+				{ no: 1, title: "Objective", bodyRef: null, body: objective },
+				{ no: 2, title: "Functional Requirements", bodyRef: null, body: "(table below)" },
+			],
+		};
+	}
+
+	it("wording-only change yields PATCH with the LLM's declared bump (proof)", () => {
+		const published = renderPrdMarkdown(rows(["FR-01"], "One paragraph summary of the objective."));
+		const working = FM_PATCH + renderPrdMarkdown(rows(["FR-01"], "One paragraph summary of the objective, clarified."));
+		const verdict = validateBump(published, working);
+		assert.equal(verdict.ok, true, JSON.stringify(verdict));
+		assert.equal(verdict.ok && verdict.actual, "patch");
+		assert.equal(verdict.ok && verdict.declared, "patch");
+	});
+
+	it("an id removed between renders classifies MAJOR (under-declared patch blocks)", () => {
+		const published = renderPrdMarkdown(rows(["FR-01", "FR-02"], "Same body."));
+		const working = FM_PATCH + renderPrdMarkdown(rows(["FR-01"], "Same body."));
+		const verdict = validateBump(published, working);
+		assert.equal(verdict.ok, false, "declared patch must not pass a removed-id change");
+		assert.ok(!verdict.ok && /MAJOR/.test(verdict.problem), verdict.ok ? "" : verdict.problem);
+		assert.ok(!verdict.ok && verdict.evidence !== null && verdict.evidence.removedIds.includes("FR-02"));
+	});
+
+	it("an id added between renders classifies MINOR (under-declared patch blocks)", () => {
+		const published = renderPrdMarkdown(rows(["FR-01"], "Same body."));
+		const working = FM_PATCH + renderPrdMarkdown(rows(["FR-01", "FR-02"], "Same body."));
+		const verdict = validateBump(published, working);
+		assert.equal(verdict.ok, false, "declared patch must not pass an added-id change");
+		assert.ok(!verdict.ok && /MINOR/.test(verdict.problem), verdict.ok ? "" : verdict.problem);
 	});
 });

@@ -128,7 +128,7 @@ export function runPreflight(cwd: string, opts: PreflightOptions): PreflightResu
 		const findings: PreflightFinding[] = [];
 
 		// Row 4/5 — files.json readability, then shape.
-		const configPath = join(cwd, PATHS.STATE_FILE.replace("state.json", "files.json"));
+		const configPath = join(cwd, PATHS.CONFIG_DIR, "files.json");
 		if (existsSync(configPath)) {
 			let parseOk = true;
 			try {
@@ -138,7 +138,7 @@ export function runPreflight(cwd: string, opts: PreflightOptions): PreflightResu
 			}
 			if (!parseOk) {
 				// Row 4 — tracked → auto restore; else manual (no restore source).
-				const tracked = gitTracked(cwd, ".pi/velpari/files.json");
+				const tracked = gitTracked(cwd, join(PATHS.CONFIG_DIR, "files.json"));
 				findings.push({
 					blocking: true,
 					fingerprint: tracked ? "config-restore-git" : "config-unreadable",

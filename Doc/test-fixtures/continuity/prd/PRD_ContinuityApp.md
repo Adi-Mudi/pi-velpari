@@ -1,7 +1,13 @@
 ---
-documentType: PSRS
+artifact: PRD
+project: ContinuityApp
 version: 1
 status: draft
+stage: drafting-prd
+run: continuity
+created: 2026-09-28T00:00:00.000Z
+updated: 2026-09-28T00:00:00.000Z
+documentType: PSRS
 profile: core-psrs-v1
 profileVersion: 1
 mission: Continuity dry-run

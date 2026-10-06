@@ -102,6 +102,12 @@ export function consumerKeysForKind(kind: ArtifactKind): string[] {
 			return ["development-order"];
 		case "final-design":
 			return ["final-design"];
+		default: {
+			// B-F5 (Phase 4): a new ArtifactKind must be mapped here — a silent
+			// fall-through would return undefined and unlock nothing.
+			const unreachable: never = kind;
+			throw new Error(`consumerKeysForKind: unmapped artifact kind ${JSON.stringify(unreachable)}`);
+		}
 	}
 }
 
@@ -134,6 +140,13 @@ export function upstreamArtifactsForPublish(opts: {
 		seen.add(part);
 	}
 	return [...seen].sort();
+}
+
+const softLockFailureReported = new Set<string>();
+function reportSoftLockFailureOnce(where: string, err: unknown): void {
+	if (softLockFailureReported.has(where)) return;
+	softLockFailureReported.add(where);
+	console.error(`velpari soft-lock: ${where} failed open (${err instanceof Error ? err.message : String(err)})`);
 }
 
 /**
@@ -173,6 +186,12 @@ export function markConsumedUpstreams(
 				const locked: SoftLockMark[] = [];
 				const now = new Date().toISOString();
 				for (const kind of kinds) {
+					// B-F5/Q7 (Phase 4): deliberately NO run_id filter — the
+					// store is per-project and a consumer locks whatever is
+					// `published`, whichever run published it. Filtering to
+					// the consumer's run would silently fail-open for pre-store
+					// projects whose live artifacts sit under run id `migrated`.
+					// Pinned by test/db-store/soft-lock.test.ts (cross-run acquire).
 					const rows = db
 						.prepare(
 							"SELECT revision_id, revision_number FROM artifact_revisions " +
@@ -210,8 +229,11 @@ export function markConsumedUpstreams(
 		} finally {
 			closeStoreDb(db);
 		}
-	} catch {
-		return { locked: [] }; // D10 fail-open
+	} catch (err) {
+		// D10 fail-open KEPT (a missing marker never blocks) — but B-F5: a SQL
+		// bug must not be invisible. Once per process, report on stderr.
+		reportSoftLockFailureOnce("markConsumedUpstreams", err);
+		return { locked: [] };
 	}
 }
 
@@ -253,8 +275,11 @@ export function listSoftLocks(cwd: string, projectName: string, kind?: ArtifactK
 		} finally {
 			db.close();
 		}
-	} catch {
-		return []; // D10 fail-open (incl. pre-v006 stores: no locked_at column)
+	} catch (err) {
+		// D10 fail-open (incl. pre-v006 stores: no locked_at column) — B-F5:
+		// report once so a genuine SQL regression is not swallowed silently.
+		reportSoftLockFailureOnce("listSoftLocks", err);
+		return [];
 	}
 }
 

@@ -77,11 +77,15 @@ const SECTION_TITLES = [
  * @param {string} changeLog - Change Log body lines.
  * @returns {string} The PRD markdown.
  */
-function prdMarkdown(version = 1, changeLog = "- 2026-09-27: initial draft."): string {
+function prdMarkdown(version = 1, changeLog = "- 2026-09-27: initial draft.", bump?: string): string {
 	const head = [
 		"---",
 		"documentType: PSRS",
 		`version: ${version}`,
+		// D-F1 addendum (Phase 4, user-approved): a revision must declare
+		// its bump (N27) — the gate was previously inert in DB-only mode,
+		// which is the defect itself. v1 (fresh publish) omits it: exempt.
+		...(bump ? [`bump: ${bump}`] : []),
 		"status: draft",
 		"profile: core-psrs-v1",
 		"profileVersion: 1",
@@ -231,7 +235,7 @@ describe("Phase 1 approve surface — revision outcome (N2)", () => {
 		const runDir = join(dir, ".IDE_Plans", "velpari", "runs", fx.runId);
 		writeFileSync(
 			join(runDir, "prd", `PRD_${PROJECT}.md`),
-			prdMarkdown(2, "- 2026-09-27: revision 2 changes."),
+			prdMarkdown(2, "- 2026-09-27: revision 2 changes.", "patch"),
 			"utf8",
 		);
 		writeFileSync(
@@ -281,7 +285,7 @@ describe("Phase 1 approve surface — revision outcome (N2)", () => {
 		const state = loadState(dir);
 		saveState({ ...state, currentStage: "drafting-prd" }, dir);
 		const runDir = join(dir, ".IDE_Plans", "velpari", "runs", fx.runId);
-		writeFileSync(join(runDir, "prd", `PRD_${PROJECT}.md`), prdMarkdown(2, "- 2026-09-27: revision 2 changes."), "utf8");
+		writeFileSync(join(runDir, "prd", `PRD_${PROJECT}.md`), prdMarkdown(2, "- 2026-09-27: revision 2 changes.", "patch"), "utf8");
 		writeFileSync(
 			join(runDir, "prd", "payload", "prd-payload.json"),
 			JSON.stringify(

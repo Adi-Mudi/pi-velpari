@@ -14,12 +14,12 @@
 //     through a structural `unknown` window, so it compiles whether or not
 //     B has already typed the field on FilesConfig.
 //
-// Also home to the two pure N26 helpers used by the Stage-5 flow: the
-// prompt-path filter (backend prompts never mention a wireframe) and the
+// Also home to the pure N26 helper used by the Stage-5 flow: the
 // approve-side pairing message (self-healing — names path + fix).
+// (The prompt-path wireframe filter was DELETED in Phase 4 — D-F3: no
+// stage prompt ever lists a wireframe path, so the filter was a no-op.)
 // ============================================================================
 
-import { basename } from "node:path";
 import { loadFilesConfig } from "./config.js";
 
 /** Project kinds N26 distinguishes: only `full-app` carries a wireframe. */
@@ -69,19 +69,6 @@ export function projectTypeOf(config: unknown): ProjectType {
  */
 export function projectTypeForCwd(cwd?: string): ProjectType {
 	return projectTypeOf(loadFilesConfig(cwd));
-}
-
-/**
- * Pure N26 prompt filter: drop wireframe working-copy paths from a stage's
- * `additionalWorkingCopies` list unless the project is full-app — backend
- * prompts stay byte-identical to the pre-N26 flow.
- * @param {readonly string[]} paths - Absolute working-copy paths.
- * @param {ProjectType} type - Resolved project type.
- * @returns {string[]} The paths the stage prompt should advertise.
- */
-export function keepWireframeForProjectType(paths: readonly string[], type: ProjectType): string[] {
-	if (type === "full-app") return [...paths];
-	return paths.filter((p) => !basename(p).startsWith("wireframe_"));
 }
 
 /**

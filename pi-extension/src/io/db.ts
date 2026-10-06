@@ -47,7 +47,12 @@ import {
 import { PORTFOLIO_USER_VERSION } from "./portfolio-schema.js";
 import { applyPortfolioSchema } from "./portfolio.js";
 import { GENESIS_HASH, computeEntryHash } from "../core/hashchain.js"; // L0 (D12 move)
-import { createBackupSnapshot } from "../core/backup.js"; // N28: backup-before-migrate (runtime call only — see openStoreDb)
+// N28: backup-before-migrate (runtime call only — see openStoreDb).
+// B-F2 (Phase 4): core/backup imports io/db back — this ESM cycle is safe
+// ONLY because every cross-module reference sits inside a function body.
+// NO top-level use of either side — do not add one (load-time TDZ crash).
+// Pinned by test/db-store/import-order.test.ts (backup-first import order).
+import { createBackupSnapshot } from "../core/backup.js";
 import type { ArtifactKind } from "./store.js"; // type-only: erased at runtime — no store↔db cycle (D12)
 import type { DatabaseSync } from "node:sqlite";
 

@@ -11,11 +11,11 @@ import { join } from "node:path";
 
 import {
 	DEFAULT_PROJECT_TYPE,
-	keepWireframeForProjectType,
 	projectTypeForCwd,
 	projectTypeOf,
 	wireframePairingMissingMessage,
 } from "../../src/core/project-type.js";
+import { STAGE_REGISTRY } from "../../src/stages/registry.js";
 
 let dir: string;
 
@@ -93,22 +93,20 @@ describe("projectTypeForCwd — files.json fixtures", () => {
 	});
 });
 
-describe("keepWireframeForProjectType — prompt filter", () => {
-	const wireframe = "/tmp/run/design/wireframe_TodoApp.md";
-	const design = "/tmp/run/design/design_TodoApp.md";
-
-	test("backend drops wireframe paths, keeps everything else", () => {
-		assert.deepEqual(keepWireframeForProjectType([design, wireframe], "backend"), [design]);
-		assert.deepEqual(keepWireframeForProjectType([wireframe], "backend"), []);
-	});
-
-	test("full-app keeps every path", () => {
-		assert.deepEqual(keepWireframeForProjectType([design, wireframe], "full-app"), [design, wireframe]);
-	});
-
-	test("empty array passes through for both types", () => {
-		assert.deepEqual(keepWireframeForProjectType([], "backend"), []);
-		assert.deepEqual(keepWireframeForProjectType([], "full-app"), []);
+describe("wireframe is never a stage working copy (D-F3)", () => {
+	// Evidence for DELETING the prompt-path filter (Q3 = b): the only
+	// additionalWorkingCopies in the registry is ["test-cases"], and the
+	// wireframe is enforced in the publish layer (ops/approve.ts), so a
+	// prompt-level wireframe filter had nothing to filter — a pure no-op.
+	test("no stage registry entry lists a wireframe path", () => {
+		for (const [stageKey, spec] of Object.entries(STAGE_REGISTRY)) {
+			for (const p of spec.additionalWorkingCopies ?? []) {
+				assert.ok(
+					!p.includes("wireframe"),
+					`${stageKey} advertises a wireframe working copy: ${p}`,
+				);
+			}
+		}
 	});
 });
 

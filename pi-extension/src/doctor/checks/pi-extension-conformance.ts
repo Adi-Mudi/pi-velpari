@@ -78,6 +78,20 @@ function listTsFiles(dir: string): string[] {
  * @param {string} cwd - Project root (extension checkout, install dir, or plain project).
  * @returns {DiagnosticSection} One section; non-extension targets get a single `info` skip line.
  */
+/** Remove `/* … *\/` and `// …` comments (C-F4): a spec in prose is not an import. */
+function stripComments(src: string): string {
+	return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+/** True when `from "prefix…"` or `import("prefix…")` appears in stripped code. */
+function hasImportSpecifier(code: string, prefix: string): boolean {
+	return (
+		code.includes(`from "${prefix}`) ||
+		code.includes(`from '${prefix}`) ||
+		code.includes(`import("${prefix}`) ||
+		code.includes(`import('${prefix}`)
+	);
+}
+
 export function checkPiExtensionConformance(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	try {
@@ -202,12 +216,17 @@ export function checkPiExtensionConformance(cwd: string): DiagnosticSection {
 			} catch {
 				continue;
 			}
+			// C-F4 (Phase 4): the raw scan counted a spec inside a comment as a
+			// violation and missed `await import("...")`. Strip comments first,
+			// then match static AND dynamic import specifiers. Still text-based
+			// on purpose — no parser dependency.
+			const code = stripComments(text);
 			for (const prefix of FORBIDDEN_IMPORT_PREFIXES) {
-				if (text.includes(`from "${prefix}`) || text.includes(`from '${prefix}`)) {
+				if (hasImportSpecifier(code, prefix)) {
 					forbiddenHits.push(`${file.slice(cwd.length + 1)} → ${prefix}`);
 				}
 			}
-			if (text.includes(`from "${REQUIRED_PEER}`) || text.includes(`from '${REQUIRED_PEER}`)) {
+			if (hasImportSpecifier(code, REQUIRED_PEER)) {
 				importsPeer.push(file);
 			}
 		}

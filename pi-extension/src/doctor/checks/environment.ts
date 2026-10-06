@@ -107,11 +107,13 @@ function probe(cmd: string, args: string[]): { ok: boolean; version: string | nu
 
 /**
  * Build the "Environment" section (read-only).
- * @param {string} cwd - Project root (unused by the probes today; kept for signature parity + future cwd-scoped probes).
+ * @param {string} cwd - Project root. Feeds the Phase B config-accessor probes
+ *   (testing.runner / velpari.maxWorktrees / projectType — the `probes` array
+ *   below); the node/pi probes instead resolve the *extension's* own
+ *   package.json (`readEnginesNode` resolves it from `import.meta.url`).
  * @returns {DiagnosticSection} One section; degraded contract states are `info`, missing tooling is `warning`.
  */
 export function checkEnvironmentSection(cwd: string): DiagnosticSection {
-	void cwd;
 	const items: DiagnosticItem[] = [];
 	try {
 		// 1. node vs engines (read from disk)

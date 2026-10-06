@@ -45,7 +45,7 @@ import { atomicWriteFile } from "../io/atomic-write.js";
 import { hashFileContentNormalized } from "../core/fingerprints.js";
 import { buildStoreDbPath } from "../core/paths.js";
 import { checkpointNow, readLatestPublishedRows } from "../io/store.js";
-import { closeStoreDb, openStoreDb } from "../io/db.js";
+import { assertRevisionContentUnlocked, closeStoreDb, openStoreDb } from "../io/db.js";
 import { docArtifactToKind } from "./db-slices.js";
 import {
 	computeStaleSet,
@@ -237,6 +237,14 @@ function appendChangeLogToStoreEnvelope(cwd: string, item: StaleItem, lines: rea
 			existing = [];
 		}
 		const merged = JSON.stringify([...(Array.isArray(existing) ? existing : []), ...lines]);
+		// B-F1 (Phase 4): `artifacts.change_log` is a D7 CONTENT column and this
+		// is a raw UPDATE that bypassed the L1 guard. A revision locked by a
+		// downstream consumer now refuses the write (LockedRevisionError).
+		// CAS publish stays ALLOW — status-only writes are outside the guard.
+		const headRevisionId = latest.envelope.headRevisionId;
+		if (headRevisionId !== null) {
+			assertRevisionContentUnlocked(db, headRevisionId, "reconfirm");
+		}
 		db.prepare("UPDATE artifacts SET change_log = ? WHERE run_id = ? AND kind = ?").run(
 			merged,
 			latest.envelope.runId,

@@ -161,11 +161,9 @@ export function applyBookkeepingAdvance(cwd: string, drift: BookkeepingDrift): {
 /**
  * The expected standard scaffold as repo-relative paths (read-only view —
  * single source of truth shared with `ensureStandardScaffold`).
- * @param {string} cwd - Project root (unused, kept for signature symmetry).
  * @returns {string[]} Expected relative paths: run dirs + Doc categories + config baseline.
  */
-function standardScaffoldPaths(cwd: string): string[] {
-	void cwd;
+function standardScaffoldPaths(): string[] {
 	const rels = [".IDE_Plans/velpari", ".IDE_Plans/velpari/runs"];
 	for (const cat of [...new Set(Object.values(GROUPED_CATEGORIES))]) rels.push(join("Doc", cat));
 	rels.push(".pi/velpari/config-manifest.json");
@@ -181,7 +179,7 @@ function standardScaffoldPaths(cwd: string): string[] {
  */
 export function scaffoldMissingPaths(cwd: string): string[] {
 	try {
-		return standardScaffoldPaths(cwd).filter((rel) => !existsSync(join(cwd, rel)));
+		return standardScaffoldPaths().filter((rel) => !existsSync(join(cwd, rel)));
 	} catch {
 		return []; // fail-soft — a probe error never blocks the preflight
 	}
@@ -198,7 +196,7 @@ export function ensureStandardScaffold(cwd: string): { created: string[]; messag
 	const created: string[] = [];
 	try {
 		// Run-state dirs + Doc/ category dirs (shared path list above).
-		for (const rel of standardScaffoldPaths(cwd)) {
+		for (const rel of standardScaffoldPaths()) {
 			if (rel.endsWith(".json")) continue; // the baseline is handled below (a file, not a dir)
 			const abs = join(cwd, rel);
 			if (!existsSync(abs)) {

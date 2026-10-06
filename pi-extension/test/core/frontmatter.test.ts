@@ -155,9 +155,6 @@ describe("missingFrontmatterFields", () => {
 			"run",
 			"created",
 			"updated",
-			"supersedes",
-			"sunset",
-			"deprecatedAt",
 		]);
 	});
 
@@ -171,10 +168,10 @@ describe("missingFrontmatterFields", () => {
 		assert.deepEqual(missingFrontmatterFields(out), []);
 	});
 
-	it("reports supersedes missing for a fresh publish without one", () => {
+	it("does not demand the conditional trio for a fresh publish without one (N24-14)", () => {
 		const out = withArtifactFrontmatter("# T\n", INPUT);
 		const missing = missingFrontmatterFields(out);
-		assert.deepEqual(missing, ["supersedes", "sunset", "deprecatedAt"]);
+		assert.deepEqual(missing, []);
 	});
 
 	it("v1.2.2: writes sunset when input.sunset is set", () => {

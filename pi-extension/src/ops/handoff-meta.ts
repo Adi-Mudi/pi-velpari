@@ -64,7 +64,12 @@ function withReadOnlyStore<T>(projectName: string, cwd: string, fn: (db: Databas
 	try {
 		db = openStoreDbReadOnly(buildStoreDbPath(projectName, cwd));
 		return fn(db);
-	} catch {
+	} catch (err) {
+		// D-F4 (Phase 4): a corrupt/unreadable store must not be indistinguishable
+		// from a legitimate legacy project (all-null metadata).
+		console.warn(
+			`velpari handoff: store for '${projectName}' could not be read — ${err instanceof Error ? err.message : String(err)} (falling back to legacy metadata).`,
+		);
 		return null;
 	} finally {
 		if (db) closeStoreDb(db);

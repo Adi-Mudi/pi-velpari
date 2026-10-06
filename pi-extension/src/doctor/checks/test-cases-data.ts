@@ -12,6 +12,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { markdownWritesEnabled } from "../../core/config.js";
 import { parseFrontmatterBlock } from "../../core/frontmatter.js";
 import { resolveDocArtifact } from "../../core/paths.js";
 import {
@@ -65,7 +66,16 @@ export function checkTestCasesDataSection(cwd: string, projectName: string): Dia
 			return { title: "Test-cases data sidecar", items };
 		}
 		const dbMd = resolveDocArtifact("test-cases", projectName, cwd);
-		if (dbMd) {
+		// Phase 12 Fix F7 (N24-21): with markdown writes retired (the default) the
+		// published markdown is a legacy VIEW the publish chain never rewrites;
+		// comparing a re-render against it would error on every doctor run.
+		let viewMaintained = false;
+		try {
+			viewMaintained = markdownWritesEnabled(cwd);
+		} catch {
+			/* Phase C: corrupt files.json — Config section reports UNREADABLE */
+		}
+		if (dbMd && viewMaintained) {
 			const renderedBody = parseFrontmatterBlock(renderTestCasesMarkdownFromRows(fromDb.rows))?.body ?? "";
 			const publishedText = readFileSync(dbMd.path, "utf8");
 			const publishedBody = parseFrontmatterBlock(publishedText)?.body ?? publishedText;
@@ -81,7 +91,7 @@ export function checkTestCasesDataSection(cwd: string, projectName: string): Dia
 		}
 		items.push({
 			status: "ok",
-			message: `Test-cases store rows valid — ${tcRows.length} test(s)${dbMd ? ", published view matches the store" : " (no published view yet)"}.`,
+			message: `Test-cases store rows valid — ${tcRows.length} test(s)${dbMd ? (viewMaintained ? ", published view matches the store" : ", legacy view not maintained (DB-only)") : " (no published view yet)"}.`,
 			details: [`Store: Doc/store/${projectName}/index.db (run ${fromDb.envelope.runId} v${fromDb.envelope.version})`],
 		});
 		return { title: "Test-cases data sidecar", items };

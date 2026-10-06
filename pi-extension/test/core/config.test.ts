@@ -328,6 +328,7 @@ describe("rollout config keys (G8): maxWorktrees / testing.runner / projectType"
 		assert.equal(maxWorktreesConfig(cwd), 3);
 		assert.equal(testingRunnerConfig(cwd), "remote");
 		assert.equal(projectTypeConfig(cwd), "backend");
+		assert.equal(devLaneConfig(cwd).maxLanes, 4, "lane-cap default stays 4 when neither key is set");
 	});
 
 	it("(b) set keys are honored (5 / local / full-app)", () => {
@@ -341,6 +342,30 @@ describe("rollout config keys (G8): maxWorktrees / testing.runner / projectType"
 		assert.equal(maxWorktreesConfig(cwd), 5);
 		assert.equal(testingRunnerConfig(cwd), "local");
 		assert.equal(projectTypeConfig(cwd), "full-app");
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 5 }, "lane cap follows maxWorktrees (N32)");
+	});
+
+	it("(b') lane-cap three-way fallback: maxWorktrees → legacy maxLanes → 4", () => {
+		// both keys → maxWorktrees wins (N32 supersedes Phase 7).
+		let cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: 6, maxLanes: 2 } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 6 });
+		// only legacy maxLanes → honored (existing configs keep working).
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: 2 } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 2 });
+		// neither → default 4.
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: {} });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 4 });
+		// invalid WINNER → throws naming the winning key (maxWorktrees).
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: 0, maxLanes: 2 } });
+		assert.throws(() => devLaneConfig(cwd), /velpari\.maxWorktrees is invalid/);
+		// invalid legacy winner (no maxWorktrees) → names maxLanes.
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: -1 } });
+		assert.throws(() => devLaneConfig(cwd), /velpari\.maxLanes is invalid/);
 	});
 
 	it("(c) invalid values throw with the exact message", () => {

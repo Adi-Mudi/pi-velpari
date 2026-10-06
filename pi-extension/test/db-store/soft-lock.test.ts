@@ -150,6 +150,19 @@ describe("core/soft-lock — consumption locks + L1 guard (Phase B)", () => {
 		assert.deepEqual(consumerKeysForKind("feasibility"), ["feasibility-study"]);
 	});
 
+	test("3b. cross-run acquire (Q7/B-F5): a consumer locks a published revision from ANOTHER run", () => {
+		// Pre-store projects hold their live artifacts under run id `migrated`;
+		// a run_id filter on the acquire would silently fail-open for them
+		// (no protection at all). The cross-run acquire is deliberate — pinned
+		// here so it is never "tightened" without a migration story.
+		writeArtifact(db, "prd", "migrated", env(), { fr: FR_SEED });
+		const rev = publishArtifactCas(db, "migrated", "prd", null);
+		const marked = markConsumedUpstreams(dir, project, "design:proj", ["prd"]);
+		assert.equal(marked.locked.length, 1, "cross-run published revision is locked");
+		assert.equal(marked.locked[0]?.revisionId, rev.revisionId);
+		assert.equal(readRevisionLock(db, rev.revisionId)?.lockedBy, "design:proj");
+	});
+
 	test("4. clearLocksForConsumer clears only matching keys (D9 revert path)", () => {
 		writeArtifact(db, "prd", "r1", env(), { fr: FR_SEED });
 		const rev = publishArtifactCas(db, "r1", "prd", null);

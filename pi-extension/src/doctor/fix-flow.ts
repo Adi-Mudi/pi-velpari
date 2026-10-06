@@ -231,7 +231,10 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 		// ONE re-audit — max 1 attempt, no infinite loop.
 		const fresh = await opts.reRun();
 		const clean = fresh.ok && fresh.actionableCount === 0;
-		const remainingManual = clean ? 0 : view.manual.length > 0 ? view.manual.length : fresh.actionableCount;
+		// C-F4 (Phase 4): `fresh.actionableCount` counts ALL actionable items,
+		// not just manual ones — reporting it as "remaining manual" overcounted.
+		// The notify below already reports the accurate actionable total.
+		const remainingManual = clean ? 0 : view.manual.length;
 		if (!clean) {
 			opts.ui.notify(
 				`${fresh.actionableCount} item(s) remain after the batch — fix the manual items below, then re-run the command.`,

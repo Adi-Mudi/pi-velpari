@@ -66,6 +66,7 @@ import { computeInputHashes, recordPublish, resolveDeclaredInputs } from "../cor
 import { runPublishGate } from "../doctor/gate.js";
 import { buildFeasibilityRowsFromSession, kindForWorkingDir, loadStagePayload } from "./stage-payloads.js";
 import { precheckGitForPublish, publishedPrdPath, runDbPublish } from "./db-publish.js";
+import { readLatestPublishedRows } from "../io/store.js";
 import { verifyRunWorktree, verifyUpstreamMoves } from "../stages/worktree-lock.js";
 import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
 import type {
@@ -913,9 +914,42 @@ export async function handleApprove(
 	const bumpErrors: string[] = [];
 	const bumpWarnings: string[] = [];
 	for (const target of targets) {
-		if (!target.publishedPath) continue; // fresh publish — no prior version to compare
-		const publishedContent = readFileSync(target.publishedPath, "utf8");
-		const verdict = validateBump(publishedContent, target.gateContent ?? target.content);
+		// D-F1 (Phase 4, Q6=a1): the DB-only default writes no Doc/ markdown,
+		// so `publishedPath` is always null and this gate was inert. The store
+		// now supplies the prior bytes, LIKE-FOR-LIKE:
+		//   declared bump — read from the LLM copy's raw frontmatter (a render
+		//     carries no frontmatter → would always read bump-missing);
+		//   classification — render(prior store rows) vs render(new payload
+		//     rows): both sides are the store's representation, so table
+		//     titles (`## Sections`, `## Traceability Rows`, …) match on both
+		//     sides while removed/added FR/NFR/AF/TC/DO ids still drive
+		//     MAJOR/MINOR. A render compared against the LLM prose would
+		//     false-block every revision (render headings ≠ doc headings).
+		// Hybrid kinds (design/pseudocode/testplan/final-design/feasibility)
+		// keep the skip: their rendered view is a table summary the authored
+		// doc never matches, and the store keeps no faithful prior full-text
+		// (artifact_revisions holds yaml_bytes, not the authored markdown).
+		let publishedContent: string | null = null;
+		let workingContent = target.gateContent ?? target.content;
+		if (target.publishedPath) {
+			publishedContent = readFileSync(target.publishedPath, "utf8");
+		} else if (
+			storeKind &&
+			target.gateContent !== undefined && // the DB render replaced target.content (dbRendered branch above)
+			DB_RENDERED_FILE_ARTIFACTS.has(target.fileArtifact)
+		) {
+			const renderer = DB_RENDERED_KIND_TO_RENDERER[target.fileArtifact];
+			const prior = renderer ? readLatestPublishedRows(cwd, projectName, storeKind) : null;
+			if (renderer && prior) {
+				// Declared bump rides on the LLM copy's raw frontmatter;
+				// classification runs on the like-for-like render body.
+				const fm = /^---\n[\s\S]*?\n---\n?/.exec(target.gateContent);
+				publishedContent = renderer(prior.rows);
+				workingContent = `${fm?.[0] ?? ""}${target.content}`;
+			}
+		}
+		if (publishedContent === null) continue; // fresh publish / hybrid — no prior version to compare
+		const verdict = validateBump(publishedContent, workingContent);
 		const { errors, warnings } = bumpGateMessages(verdict);
 		for (const e of errors) bumpErrors.push(`[${target.file}] ${e}`);
 		for (const w of warnings) bumpWarnings.push(`[${target.file}] ${w}`);
@@ -1131,7 +1165,11 @@ export async function handleApprove(
 		const doctorReport = runDoctor(cwd, { embedded: true });
 		writeDoctorReport(doctorReport, cwd);
 		const doctorReportPath = join(cwd, PATHS.DOCTOR_REPORT);
-		if (doctorReport.summary.error > 0 || doctorReport.summary.warning > 0) {
+		// N24-15 (severity ruling, Phase 4): warnings are reported, errors block.
+		// Environment-hygiene warnings (multiplexer env, peer deps, unbootstrapped
+		// scouts) are unavoidable in a fresh checkout and made every advance
+		// impossible — N24-15 report-only policy.
+		if (doctorReport.summary.error > 0) {
 			// v1.2.3 UI tweak: group findings by section title instead of a
 			// flat list. Each section gets one line with its title + a count
 			// of error vs warning findings + a short list of status codes.
@@ -1180,8 +1218,7 @@ export async function handleApprove(
 					? `\n…and ${groupedLines.length - 30} more section(s). See ${doctorReportPath} for the full report.`
 					: "";
 			ctx.ui.notify(
-				`Doctor stopped the advance. ${doctorReport.summary.error} error(s), ` +
-					`${doctorReport.summary.warning} warning(s) found across ${groupedLines.length} section(s). ` +
+				`Doctor stopped the advance. ${doctorReport.summary.error} error(s) found across ${groupedLines.length} section(s). ${doctorReport.summary.warning} warning(s) reported (informational, do not block). ` +
 					`Fix and re-run ${approveCommandForStage(state.currentStage)}.\n` +
 					`\n${capped.join("\n")}${more}\n\n` +
 					`Full report: ${doctorReportPath}.`,
@@ -1189,7 +1226,13 @@ export async function handleApprove(
 			);
 			return; // state does NOT advance; user must fix the file and re-approve
 		}
-		ctx.ui.notify(`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.`, "info");
+		ctx.ui.notify(
+			`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.` +
+				(doctorReport.summary.warning > 0
+					? ` (${doctorReport.summary.warning} warning(s) — see ${doctorReportPath}).`
+					: ""),
+			"info",
+		);
 	}
 
 	// Transition state via handleApprove (v1.6.0+).

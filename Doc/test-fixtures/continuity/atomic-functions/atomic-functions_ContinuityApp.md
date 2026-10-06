@@ -1,4 +1,12 @@
 ---
+artifact: atomic-functions
+project: ContinuityApp
+version: 1
+status: published
+stage: analyzing-atomic-functions
+run: continuity
+created: 2026-09-28T00:00:00.000Z
+updated: 2026-09-28T00:00:00.000Z
 bump: patch
 ---
 

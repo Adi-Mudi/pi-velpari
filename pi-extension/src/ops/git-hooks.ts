@@ -43,9 +43,9 @@ export const VELPARI_COMMIT_PREFIX = "velpari(";
  * unless the commit message (first line of "$1") starts with `velpari(`
  * (the publish chain's own marker — D13b: commit-msg is the only hook that
  * reliably sees the message).
- * @returns {string} Hook script (no trailing newline).
+ * @returns {string} commit-msg hook script (no trailing newline).
  */
-export function preCommitHookScript(): string {
+export function commitMsgHookScript(): string {
 	return [
 		"#!/bin/sh",
 		HOOK_MARKER,
@@ -69,7 +69,7 @@ export function preCommitHookScript(): string {
 	].join("\n");
 }
 
-/** Result of one ensurePreCommitHook call (never throws). */
+/** Result of one ensureCommitMsgHook call (never throws). */
 export interface EnsureHookResult {
 	/** true when the hook file was created or rewritten. */
 	changed: boolean;
@@ -126,7 +126,7 @@ function resolveHooksDir(cwd: string): ResolvedHooksDir {
  * @param {string} cwd - Project root.
  * @returns {EnsureHookResult} What happened (see interface).
  */
-export function ensurePreCommitHook(cwd: string): EnsureHookResult {
+export function ensureCommitMsgHook(cwd: string): EnsureHookResult {
 	const fallbackPath = join(cwd, HOOK_RELATIVE_PATH);
 	try {
 		if (!existsSync(join(cwd, ".git"))) {
@@ -143,7 +143,7 @@ export function ensurePreCommitHook(cwd: string): EnsureHookResult {
 					"is not active here; unset it (git config --unset-all core.hooksPath) or set it to .git/hooks",
 			};
 		}
-		const script = preCommitHookScript();
+		const script = commitMsgHookScript();
 		const fileContent = `${script}\n`; // canonical on-disk form
 		if (existsSync(path)) {
 			const existing = readFileSync(path, "utf8");

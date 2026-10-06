@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-	ensurePreCommitHook,
-	preCommitHookScript,
+	ensureCommitMsgHook,
+	commitMsgHookScript,
 	HOOK_MARKER,
 	VELPARI_COMMIT_PREFIX,
 } from "../../src/ops/git-hooks.js";
@@ -69,11 +69,11 @@ function stageStoreFile(dir: string): string {
 	return rel;
 }
 
-describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
+describe("ops/git-hooks — ensureCommitMsgHook + hook behavior", () => {
 	test("(a) staged Doc/store/** + plain message → rejected (exit 1) with our message", () => {
 		const dir = cwd();
 		initRepo(dir);
-		assert.equal(ensurePreCommitHook(dir).changed, true, "hook installed");
+		assert.equal(ensureCommitMsgHook(dir).changed, true, "hook installed");
 		const rel = stageStoreFile(dir);
 		const res = tryCommit(dir, "manual edit", [rel]);
 		assert.equal(res.status, 1, "the store commit is rejected");
@@ -84,7 +84,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 	test("(b) same staging + velpari( message → allowed", () => {
 		const dir = cwd();
 		initRepo(dir);
-		ensurePreCommitHook(dir);
+		ensureCommitMsgHook(dir);
 		const rel = stageStoreFile(dir);
 		const res = tryCommit(dir, `${VELPARI_COMMIT_PREFIX}PRD): p v2 (run r)`, [rel]);
 		assert.equal(res.status, 0, `publish-flow commit must pass: ${res.output}`);
@@ -93,7 +93,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 	test("(c) non-store commit with any message → allowed", () => {
 		const dir = cwd();
 		initRepo(dir);
-		ensurePreCommitHook(dir);
+		ensureCommitMsgHook(dir);
 		writeFileSync(join(dir, "README.md"), "hello\n", "utf8");
 		const res = tryCommit(dir, "docs: whatever", ["README.md"]);
 		assert.equal(res.status, 0, `ordinary commit must pass: ${res.output}`);
@@ -102,10 +102,10 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 	test("(d) idempotent install: second call changed:false, content byte-stable", () => {
 		const dir = cwd();
 		initRepo(dir);
-		const first = ensurePreCommitHook(dir);
+		const first = ensureCommitMsgHook(dir);
 		assert.equal(first.changed, true);
 		const before = readFileSync(first.path, "utf8");
-		const second = ensurePreCommitHook(dir);
+		const second = ensureCommitMsgHook(dir);
 		assert.equal(second.changed, false);
 		assert.ok(second.skipped !== undefined, "result says why nothing changed");
 		assert.equal(readFileSync(first.path, "utf8"), before, "content byte-stable");
@@ -116,7 +116,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 		initRepo(dir);
 		const hookPath = join(dir, ".git", "hooks", "commit-msg");
 		writeFileSync(hookPath, "#!/bin/sh\necho foreign\n", "utf8");
-		const result = ensurePreCommitHook(dir);
+		const result = ensureCommitMsgHook(dir);
 		assert.equal(result.changed, false);
 		assert.match(result.skipped ?? "", /left untouched/);
 		assert.equal(readFileSync(hookPath, "utf8"), "#!/bin/sh\necho foreign\n", "foreign content intact");
@@ -124,7 +124,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 
 	test("(f) non-git dir → skipped, nothing written", () => {
 		const dir = cwd(); // NOT initialized
-		const result = ensurePreCommitHook(dir);
+		const result = ensureCommitMsgHook(dir);
 		assert.equal(result.changed, false);
 		assert.match(result.skipped ?? "", /not a git repository/);
 		assert.equal(existsSync(join(dir, ".git", "hooks", "commit-msg")), false);
@@ -133,7 +133,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 	test("(g) the installed hook is executable (0755)", () => {
 		const dir = cwd();
 		initRepo(dir);
-		const result = ensurePreCommitHook(dir);
+		const result = ensureCommitMsgHook(dir);
 		const mode = statSync(result.path).mode;
 		assert.ok((mode & 0o111) !== 0, `hook must be executable (mode ${mode.toString(8)})`);
 	});
@@ -144,7 +144,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 		const external = mkdtempSync(join(tmpdir(), "velpari-external-hooks-"));
 		try {
 			execFileSync("git", ["config", "core.hooksPath", external], { cwd: dir });
-			const result = ensurePreCommitHook(dir);
+			const result = ensureCommitMsgHook(dir);
 			assert.equal(result.changed, false);
 			assert.match(result.skipped ?? "", /points outside the project/);
 			assert.match(result.skipped ?? "", /not active/);
@@ -159,7 +159,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 		const dir = cwd();
 		initRepo(dir);
 		execFileSync("git", ["config", "core.hooksPath", "githooks"], { cwd: dir });
-		const result = ensurePreCommitHook(dir);
+		const result = ensureCommitMsgHook(dir);
 		assert.equal(result.changed, true);
 		assert.ok(result.path.endsWith(join("githooks", "commit-msg")), `written to ${result.path}`);
 		assert.ok(existsSync(result.path), "hook exists in the custom dir");
@@ -171,7 +171,7 @@ describe("ops/git-hooks — ensurePreCommitHook + hook behavior", () => {
 	});
 
 	test("(i) script shape: marker + prefix constants + e2e hygiene (no backticks/`${...}`)", () => {
-		const script = preCommitHookScript();
+		const script = commitMsgHookScript();
 		assert.ok(script.includes(HOOK_MARKER));
 		assert.ok(script.startsWith("#!/bin/sh"));
 		assert.ok(script.includes(`case "$first_line" in`), "prefix match implemented in sh");

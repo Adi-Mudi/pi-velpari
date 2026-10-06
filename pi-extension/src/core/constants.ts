@@ -106,7 +106,7 @@ export const STAGE_FOLDERS: Readonly<Partial<Record<Stage, string>>> = {
 	designing: "design",
 	"writing-pseudocode": "pseudocode",
 	"planning-tests": "tests",
-	"analyzing-atomic-functions": "atomic-function",
+	"analyzing-atomic-functions": "atomic-functions",
 	"ordering-development": "development-order",
 	"finalizing-design": "final-design",
 };

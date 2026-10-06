@@ -56,20 +56,18 @@ assertions; the driver logs them as `KNOWN-FAIL <id>` (exit 0) instead of a
 failure, and reports `STALE LEDGER` (exit 1) if a listed defect stops
 reproducing:
 
-- `N24-14` — frontmatter doctor errors on the fixture artifacts.
-- `N24-15` — warning policy: the real auto-doctor blocks on any warning and
-  baseline counts never reach zero (driver workaround W3:
-  `VELPARI_SKIP_AUTO_DOCTOR=1` for the chain walk; the driver runs and
-  asserts `runDoctor` itself after every publish).
-- `N24-19` — the store `tc_trace` extractor drops AF targets the
-  fr-af-to-test-cases coverage rule requires.
-- `N24-21` — the test-cases drift check never got the F7 view-maintained
-  gate; right after the testplan publish the driver seeds the fixture
-  test-cases view (Amendment A2 reproducer condition) so every later
-  doctor run errors "has drifted from the store".
+The ledger is EMPTY — any failure is a real failure (exit 1).
 
 Fixed and retired by Phase 3: `N24-01`, `N24-13`, `N24-16`, `N24-17`,
 `N24-18`, `N24-20`, `N24-22`.
+
+Fixed and retired by Phase 4 (2026-10-06): `N24-14` (frontmatter trio is
+conditional), `N24-15` (warnings report / errors block — driver W3 removed),
+`N24-19` (store `tc_trace` extractor keeps AF targets — driver W8 removed),
+`N24-21` (test-cases drift check got the F7 view-maintained gate).
+
+Note: the Amendment A2 test-cases seed right after the testplan publish is
+kept as a labelled condition, not a defect workaround — it now passes.
 
 See `.IDE_Plans/velpari/n24-static-audit-findings_20260928.md` in the master
 checkout for the full findings table.

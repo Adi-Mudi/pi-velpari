@@ -11,7 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
-import { missingFrontmatterFields, withArtifactFrontmatter } from "../../../core/frontmatter.js";
+import { CONDITIONAL_FRONTMATTER_FIELDS, missingFrontmatterFields, withArtifactFrontmatter } from "../../../core/frontmatter.js";
 import { atomicWriteFile } from "../../../io/atomic-write.js";
 import type { RemediateFn, RemediateOutcome } from "./index.js";
 
@@ -50,7 +50,7 @@ export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => 
 		// them, so the canonical-fields list conflates required + optional;
 		// we filter the optional trio out so we don't stamp them just to
 		// "fill" them with empty values.
-		const optional = new Set(["supersedes", "sunset", "deprecatedAt"]);
+		const optional = new Set(CONDITIONAL_FRONTMATTER_FIELDS);
 		const missing = missingFrontmatterFields(existing).filter((f) => !optional.has(f));
 		if (missing.length === 0) continue;
 		const stamped = withArtifactFrontmatter(existing, {

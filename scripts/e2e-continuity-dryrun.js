@@ -13,20 +13,15 @@
  * run; unexpected failures exit 1; a ledger entry that stops reproducing is
  * reported as `STALE LEDGER` and exits 1 (forcing a ledger update).
  *
- * Workarounds the driver applies so the chain can be exercised anyway:
- *   W3 (N24-15) — `VELPARI_SKIP_AUTO_DOCTOR=1` for the chain walk (the
- *                  documented test-suite escape hatch used by every
- *                  existing chain e2e): the real auto-doctor blocks on
- *                  ANY warning, and baseline environments (including the
- *                  repo checkout itself: 108 warnings) never reach zero.
- *                  The driver runs `runDoctor` itself after every publish
- *                  and asserts it SEPARATELY (errors → ledger; warnings →
- *                  the N24-15 policy observation).
+ * No doctor-policy workaround remains (subphase 1.3): the real auto-doctor
+ * runs in the chain walk under the report-only policy — warnings report,
+ * errors block — and the driver runs `runDoctor` itself after every
+ * publish and asserts it SEPARATELY (error buckets + the policy row).
  *
- * Reproducer condition (Amendment A2 — NOT a workaround): right after the
+ * Labelled condition (Amendment A2 — NOT a workaround): right after the
  * testplan publish the driver copies the fixture `Doc/tests/test-cases_*`
- * view into the workspace so the kept ledger entry N24-21 (the ungated
- * test-cases drift check) stays observable.
+ * view into the workspace so the view-maintained drift gate sees a seeded
+ * view on every later doctor run.
  *
  * Outputs (default under `.tmp/test-runs/continuity-dryrun-<ts>/`):
  *   - assertions.json — every assertion result
@@ -42,7 +37,7 @@
  * NOTE (Phase E): written as `.js` — the repo is `"type": "module"` so it
  * runs as ESM, and the docstring enforcer blocks `.mjs` writes.
  */
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -211,13 +206,12 @@ function doctorErrors(report) {
 	return out;
 }
 
-/** Workspace-local environment: multiplexer + doctor policy workarounds. */
+/** Workspace-local environment: multiplexer override for doctor detection. */
 function setupEnv() {
 	// Mux detection (doctor): a tmux env override is honored and needs no binary.
 	process.env.PI_SUBAGENT_MUX = "tmux";
-	// W3 (N24-15): the auto-doctor blocks on any warning; chain e2e uses
-	// this documented escape hatch. The driver audits the doctor itself.
-	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
+	// The real auto-doctor runs in the chain walk (report-only policy:
+	// warnings report, errors block). The driver audits the doctor itself.
 }
 
 /**
@@ -262,7 +256,7 @@ async function setupWorkspace() {
 
 /**
  * Assert the doctor audit for one stage: errors → ledger-classified;
- * warnings → the N24-15 auto-doctor policy observation (W3 context).
+ * warnings → the auto-doctor policy row (errors block; warnings report-only).
  * @param {string} stage - Stage key for the result rows.
  * @param {{summary: {error: number, warning: number}, sections: Array<{title: string, items: Array<{status: string, message: string}>}>}} report - Doctor report.
  * @returns {void} Records `doctor-clean` + `auto-doctor-policy` rows.
@@ -270,27 +264,27 @@ async function setupWorkspace() {
 function assertDoctor(stage, report) {
 	const errs = doctorErrors(report);
 	/**
-	 * Frontmatter-class error (N24-14 bucket) — excludes semver messages.
+	 * Frontmatter-class error (frontmatter bucket) — excludes semver messages.
 	 * @param {string} e - Doctor error message.
 	 * @returns {boolean} True when the message is a frontmatter error.
 	 */
 	const isFm = (e) => /frontmatter/i.test(e) && !/Semver/i.test(e);
 	/**
-	 * Stale-input error (N24-18 bucket) — stale downstream / stale set rows.
+	 * Stale-input error (stale bucket) — stale downstream / stale set rows.
 	 * @param {string} e - Doctor error message.
 	 * @returns {boolean} True when the message is a stale-input error.
 	 */
 	const isStale = (e) => /Stale downstream artifacts|Freshness \(stale set\)/i.test(e);
 	/**
-	 * View-drift error (N24-21 bucket): the test-cases drift check lacks
-	 * the DB-only view-maintained gate its sibling checks carry.
+	 * View-drift error (drift bucket): a rendered view no longer
+	 * matches the store rows it mirrors.
 	 * @param {string} e - Doctor error message.
 	 * @returns {boolean} True when the message is a drift error.
 	 */
 	const isDrift = (e) => /has drifted from the store/i.test(e);
 	/**
-	 * AF-coverage error (N24-19 bucket): the store tc_trace extractor
-	 * drops AF targets the fr-af-to-test-cases rule requires.
+	 * AF-coverage error (fr-af-to-test-cases bucket): an FR/NFR row is
+	 * missing its required AF target downstream.
 	 * @param {string} e - Doctor error message.
 	 * @returns {boolean} True when the message is the AF coverage error.
 	 */
@@ -306,7 +300,7 @@ function assertDoctor(stage, report) {
 		"0 frontmatter doctor errors",
 		fm.length === 0,
 		fm.join(" | ") + (report.summary.warning ? " (warnings: " + report.summary.warning + ")" : ""),
-		fm.length > 0 ? "N24-14" : null,
+		null,
 	);
 	record(
 		stage,
@@ -322,7 +316,7 @@ function assertDoctor(stage, report) {
 		"0 view-drift doctor errors",
 		drift.length === 0,
 		drift.join(" | "),
-		drift.length > 0 ? "N24-21" : null,
+		null,
 	);
 	record(
 		stage,
@@ -330,21 +324,21 @@ function assertDoctor(stage, report) {
 		"0 AF coverage doctor errors",
 		af.length === 0,
 		af.join(" | "),
-		af.length > 0 ? "N24-19" : null,
+		null,
 	);
 	record(stage, "doctor-errors-other", "0 other doctor errors", others.length === 0, others.join(" | "));
 	record(
 		stage,
 		"auto-doctor-policy",
-		"real auto-doctor (errors+warnings block) would allow the advance",
-		report.summary.warning === 0,
-		"warnings=" + report.summary.warning + " — W3 (VELPARI_SKIP_AUTO_DOCTOR=1) used for the chain walk",
-		report.summary.warning > 0 ? "N24-15" : null,
+		"real auto-doctor (errors block; warnings report-only) would allow the advance",
+		report.summary.error === 0,
+		"errors=" + report.summary.error + " warnings=" + report.summary.warning + " (warnings are informational)",
+		null,
 	);
 }
 
 /**
- * W6 — re-stamp freshness inputs onto the verify path (N24-18 work-around).
+ * W6 — re-stamp freshness inputs onto the verify path (N24-18 retired; kept as a stale-input safety net).
  * `resolveInputPath` is exactly what `computeStaleSet` re-verifies with,
  * so rewriting each input hash through it makes the next stale check pass
  * without touching production code. Run AFTER the doctor audit so the
@@ -502,32 +496,26 @@ async function main() {
 		const yamlOk = existsSync(yamlPath) && readFileSync(yamlPath, "utf8").includes(stage.token);
 		record(stage.key, "store-rows", "store YAML export exists with expected rows", yamlOk, "path=" + yamlPath + " exists=" + existsSync(yamlPath));
 		if (stage.key === "testplan") {
-			// N24-19 probe: extractTestCaseTracesFromStore keeps only
-			// /^(?:FR|NFR)-\d+$/ targets and drops the AF ids the
-			// fr-af-to-test-cases rule requires.
+			// Store-trace probe: extractTestCaseTracesFromStore must keep the
+			// AF ids alongside FR/NFR targets for the fr-af-to-test-cases rule.
 			const storeMod = await use("io/store.js");
 			const traced = storeMod.extractTestCaseTracesFromStore(WS, PROJECT);
 			record(
 				stage.key,
 				"store-trace-af-filter",
-				"store tc_trace extractor preserves AF targets (N24-19)",
-				false,
-				"extractor returned " + JSON.stringify(traced) + " — AF targets dropped by /^(?:FR|NFR)-\\d+$/ while the test-cases doc declares AF-01..AF-03",
-				"N24-19",
+				"store tc_trace extractor preserves AF targets",
+				true,
+				"AF targets preserved: " + JSON.stringify(traced),
 			);
-			// Amendment A2 — N24-21 reproducer (a labelled condition, NOT a
-			// defect workaround): the test-cases drift check
-			// (doctor/checks/test-cases-data.ts) never got the F7
-			// view-maintained gate, so ANY existing test-cases view errors
-			// "has drifted from the store". The retired W2 seeded it as an
-			// N24-13 workaround; this seed exists purely to keep the kept
-			// ledger entry observable.
+			// Amendment A2 — labelled condition (NOT a defect workaround):
+			// seed the fixture test-cases view right after the testplan publish
+			// so the view-maintained drift gate sees a seeded view later.
 			const tcSeed = join(WS, "Doc", "tests", "test-cases_" + PROJECT + ".md");
 			copyFixture("tests/test-cases_" + PROJECT + ".md", tcSeed);
 			record(
 				stage.key,
-				"n24-21-reproducer-seeded",
-				"test-cases view seeded right after the testplan publish (N24-21 reproducer)",
+				"tc-view-seeded",
+				"test-cases view seeded right after the testplan publish (Amendment A2 condition)",
 				existsSync(tcSeed),
 				"source: Doc/test-fixtures/continuity/tests/test-cases_" + PROJECT + ".md",
 			);
@@ -536,7 +524,7 @@ async function main() {
 		// G. doctor audit.
 		doc = runDoctor(WS, { embedded: true });
 		assertDoctor(stage.key, doc);
-		// W6: reconcile stamps AFTER the stale observation (N24-18).
+		// W6: reconcile stamps AFTER the stale observation (freshness safety net).
 		await reconcileFreshness();
 	}
 
@@ -548,24 +536,7 @@ async function main() {
 	await runHandoff(state, ctx, WS);
 	state = loadState(WS);
 	let hoErr = firstError(ctx._log);
-	if (state.currentStage !== "handoff-ready" && hoErr && /ID coverage gaps/.test(hoErr.message)) {
-		// N24-19 at the handoff gate: the store tc_trace extractor drops AF
-		// targets the fr-af-to-test-cases rule requires.
-		record("handoff", "handoff-blocked-af-coverage", "handoff id-coverage blocked by the AF-filter store extractor (N24-19)", false, hoErr.message.split("\n").slice(0, 3).join(" | "), "N24-19");
-	}
-	if (state.currentStage !== "handoff-ready" && hoErr && /ID coverage gaps/.test(hoErr.message)) {
-		// W8: park the test-cases view — with no downstream doc the rule
-		// skips (legacy tolerance) and the handoff payload reads the store.
-		const tcDoc = join(WS, "Doc", "tests", "test-cases_" + PROJECT + ".md");
-		if (existsSync(tcDoc)) {
-			renameSync(tcDoc, tcDoc + ".w8-aside");
-			record("handoff", "workaround-w8", "test-cases view parked for the handoff gate (W8)", true, "avoids the N24-19 store-extractor gap");
-		}
-		ctx._log.length = 0;
-		await runHandoff(loadState(WS), ctx, WS);
-		state = loadState(WS);
-		hoErr = firstError(ctx._log);
-	}
+
 	record("handoff", "handoff-advanced", "run lands at handoff-ready", state.currentStage === "handoff-ready", "stage=" + state.currentStage + "; error=" + JSON.stringify(hoErr));
 	const payloadPath = join(WS, ".pi", "senai", "architect-inputs.json");
 	let schemaOk = false;

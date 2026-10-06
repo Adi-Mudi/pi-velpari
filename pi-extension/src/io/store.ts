@@ -757,8 +757,9 @@ export function extractAfIdsFromStore(cwd: string, projectName: string): string[
 /**
  * The test-case→requirement trace ids from the store's `tc_trace` rows
  * (Phase 7 id-coverage edges — the store's machine-written link edges
- * beat sidecar parsing). FR/NFR targets only (AF traces have no RTM row
- * counterpart, matching the legacy sidecar extractor).
+ * beat sidecar parsing). FR/NFR/AF targets, matching the legacy sidecar
+ * extractor's `TRACE_ID_PATTERN` (core/test-cases-data.ts:59) and the
+ * fr-af-to-test-cases coverage rule.
  * @param {string} cwd - Project root (locates the store DB).
  * @param {string} projectName - Project whose testplan edges to read.
  * @returns {string[] | null} Sorted unique trace ids, or null when no published rows exist.
@@ -767,7 +768,7 @@ export function extractTestCaseTracesFromStore(cwd: string, projectName: string)
 	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
 	if (!fromDb) return null;
 	const rows = (fromDb.rows.tcTrace as Array<{ targetId: unknown }> | undefined) ?? [];
-	const ids = rows.map((r) => String(r.targetId)).filter((id) => /^(?:FR|NFR)-\d+$/.test(id));
+	const ids = rows.map((r) => String(r.targetId)).filter((id) => /^(?:FR|NFR|AF)-\d+$/.test(id));
 	return ids.length > 0 ? Array.from(new Set(ids)).sort() : null;
 }
 

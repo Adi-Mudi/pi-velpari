@@ -237,12 +237,13 @@ describe("fixture: continuity dry-run fixture is gate-shaped", () => {
 		}
 	});
 
-	it("expected-failures ledger lists the filed Phase-1 blockers", () => {
+	it("expected-failures ledger is empty after the Phase 4 retirement", () => {
 		const ledger = JSON.parse(read("expected-failures.json")) as {
 			ledger: Array<{ id: string; summary: string }>;
 		};
 		const ids = ledger.ledger.map((e) => e.id);
-		assert.deepEqual(ids.sort(), ["N24-14", "N24-15", "N24-19", "N24-21"]);
+		// Phase 4 retired all four entries (N24-14/15/19/21 fixed in Phase 1).
+		assert.deepEqual(ids.sort(), []);
 		for (const entry of ledger.ledger) {
 			assert.ok(entry.summary.length > 20, `ledger entry ${entry.id} needs a summary`);
 		}

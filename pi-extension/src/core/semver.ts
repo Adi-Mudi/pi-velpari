@@ -34,7 +34,7 @@ export type BumpLevel = "major" | "minor" | "patch";
  * extraction is symmetric over both documents, so an over-broad prefix can
  * only surface when its token actually disappears/appears.
  */
-export const SEMVER_ID_PREFIXES: readonly string[] = ["NFR", "FR", "AF", "TC", "DO", "ADR", "WI", "HELPER"];
+export const SEMVER_ID_PREFIXES: readonly string[] = ["NFR", "FR", "AF", "TC", "DO", "ADR", "WF", "HELPER"];
 
 /** Result of comparing one published document against its working revision. */
 export interface ChangeEvidence {

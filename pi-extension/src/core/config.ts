@@ -44,8 +44,9 @@ export interface FilesConfig {
 			revisions?: number | "all";
 			backups?: number;
 		};
-		/** Phase 7 / N16: lane cap for development-order execution lanes.
-		 *  Absent = 4 (core/dev-lanes.ts DEFAULT_MAX_LANES). */
+		/** Phase 7 / N16 — DEPRECATED (N32 supersedes): lane cap for
+		 *  development-order execution lanes. Absent = 4. Read only as a
+		 *  fallback after `maxWorktrees`. Prefer `maxWorktrees`. */
 		maxLanes?: number;
 		/** N32 — parallel worktree cap. Absent = 3. */
 		maxWorktrees?: number;
@@ -144,25 +145,35 @@ export function retentionConfig(cwd: string = process.cwd()): RetentionConfig {
 
 /** Resolved lane-cap setting for Stage 9 execution lanes (Phase 7 / N16). */
 export interface DevLaneConfig {
-	/** Maximum number of parallel worktree lanes. Default 4. */
+	/** Maximum number of parallel worktree lanes. Resolved from `maxWorktrees` → legacy `maxLanes`. Default 4. */
 	maxLanes: number;
 }
 
 /**
- * Phase 7 / N16 (N16 step 3.4): read `velpari.maxLanes` with the default
- * applied. Same throw-on-invalid idiom as `retentionConfig` — a typo'd cap
- * must surface, not silently default (0, negative, or non-integer values are
- * rejected; absent key = default 4).
+ * N32 fold-in (Phase 4): the lane cap resolves `velpari.maxWorktrees` first
+ * (the confirmed N32 wording — it supersedes Phase-7 `maxLanes`), then the
+ * legacy `velpari.maxLanes` so existing configs keep working, then 4. Same
+ * throw-on-invalid idiom as `retentionConfig` — a typo'd cap must surface,
+ * not silently default (0, negative, or non-integer values are rejected;
+ * absent keys = default 4).
+ *
+ * NOTE: `maxWorktreesConfig` keeps default 3 — that is the *worktree* cap
+ * from N32 ("maximum 3 parallel worktrees"). The *lane* cap default stays 4
+ * (handoff line 92: "default stays 4"). With neither key set the two
+ * defaults therefore differ (3 worktrees / 4 lanes); with either key set,
+ * both read the same value.
  * @param {string} cwd - Project root holding files.json.
  * @returns {DevLaneConfig} The resolved `{ maxLanes }`.
- * @throws {Error} When `velpari.maxLanes` is present but not a positive integer.
+ * @throws {Error} When the winning key is present but not a positive integer.
  */
 export function devLaneConfig(cwd: string = process.cwd()): DevLaneConfig {
-	const raw = loadFilesConfig(cwd).velpari?.maxLanes;
+	const vel = loadFilesConfig(cwd).velpari;
+	const raw = vel?.maxWorktrees ?? vel?.maxLanes;
+	const key = vel?.maxWorktrees !== undefined ? "maxWorktrees" : "maxLanes";
 	if (raw === undefined) return { maxLanes: 4 };
 	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
 		throw new Error(
-			`files.json velpari.maxLanes is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
+			`files.json velpari.${key} is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
 		);
 	}
 	return { maxLanes: raw };

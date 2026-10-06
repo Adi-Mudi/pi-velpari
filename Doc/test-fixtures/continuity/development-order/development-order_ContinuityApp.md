@@ -1,4 +1,12 @@
 ---
+artifact: development-order
+project: ContinuityApp
+version: 1
+status: published
+stage: ordering-development
+run: continuity
+created: 2026-09-28T00:00:00.000Z
+updated: 2026-09-28T00:00:00.000Z
 bump: patch
 ---
 
