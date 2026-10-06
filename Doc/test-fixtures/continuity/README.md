@@ -50,19 +50,26 @@ Working-copy folders: `prd`, `rtm`, `feasibility`, `design`,
 
 ## Known-defect ledger
 
-The dry run runs in the SHIPPED DEFAULT mode (DB-only). Two filed Phase-1
+The dry run runs in the SHIPPED DEFAULT mode (DB-only). Filed Phase-1
 defects make parts of the chain behave differently from the plan's ideal
 assertions; the driver logs them as `KNOWN-FAIL <id>` (exit 0) instead of a
 failure, and reports `STALE LEDGER` (exit 1) if a listed defect stops
 reproducing:
 
-- `N24-01` — stage-entry transitions never advance state (the driver applies
-  documented workaround W1: a manual `advanceStage` so the publish chain can
-  still be exercised).
-- `N24-13` — the publish gate resolves declared inputs as `Doc/*.md` while
-  DB-only publishes leave only store rows (the driver applies documented
-  workaround W2: after each publish it seeds the upstream markdown a
-  write-alongside publish would have produced).
+- `N24-14` — frontmatter doctor errors on the fixture artifacts.
+- `N24-15` — warning policy: the real auto-doctor blocks on any warning and
+  baseline counts never reach zero (driver workaround W3:
+  `VELPARI_SKIP_AUTO_DOCTOR=1` for the chain walk; the driver runs and
+  asserts `runDoctor` itself after every publish).
+- `N24-19` — the store `tc_trace` extractor drops AF targets the
+  fr-af-to-test-cases coverage rule requires.
+- `N24-21` — the test-cases drift check never got the F7 view-maintained
+  gate; right after the testplan publish the driver seeds the fixture
+  test-cases view (Amendment A2 reproducer condition) so every later
+  doctor run errors "has drifted from the store".
+
+Fixed and retired by Phase 3: `N24-01`, `N24-13`, `N24-16`, `N24-17`,
+`N24-18`, `N24-20`, `N24-22`.
 
 See `.IDE_Plans/velpari/n24-static-audit-findings_20260928.md` in the master
 checkout for the full findings table.

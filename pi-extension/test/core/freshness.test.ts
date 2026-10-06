@@ -25,9 +25,13 @@ import {
 	manifestKey,
 	recordPublish,
 	resolveDeclaredInputs,
+	resolveInputPath,
 	saveFreshnessManifest,
+	storeYamlLabel,
 } from "../../src/core/freshness.js";
 import { PATHS } from "../../src/core/constants.js";
+import { ARTIFACT_TO_KIND } from "../../src/core/upstream.js";
+import { KIND_YAML_LABELS } from "../../src/ops/backfill.js";
 
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-fresh-"));
@@ -486,5 +490,38 @@ describe("store-YAML input resolution (N24-13 / Phase 11)", () => {
 			inputs: { "prd:X": hashFileContent(yamlPath)! },
 		});
 		assert.deepEqual(computeStaleSet(cwd), [], "PRD_X.yaml on disk must satisfy the stamped prd:X input");
+	});
+
+	it("a declared test-cases input resolves to test-plan_<proj>.yaml at BOTH resolver sites (Amendment A2)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/test-plan_TestApp.yaml", "test_cases: []\n");
+		// Site 1 — resolveDeclaredInputs (publish gate + stage-start + stamp).
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "test-cases", label: "test-cases" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		assert.equal(inputs[0]!.id, "test-cases:TestApp");
+		assert.equal(inputs[0]!.status, "found", "test-plan_TestApp.yaml is the label the publish chain writes");
+		assert.equal(inputs[0]!.path, yamlPath);
+		// Site 2 — resolveInputPath (stale check + /velpari-reconfirm).
+		assert.equal(
+			resolveInputPath(cwd, "test-cases:TestApp"),
+			yamlPath,
+			"both sites must resolve the SAME store path (gate and stale check cannot drift)",
+		);
+	});
+
+	it("storeYamlLabel mirrors ARTIFACT_TO_KIND → KIND_YAML_LABELS (Amendment A2 parity pin)", () => {
+		for (const [artifact, kind] of Object.entries(ARTIFACT_TO_KIND)) {
+			assert.equal(storeYamlLabel(artifact), KIND_YAML_LABELS[kind], `${artifact} → kind ${kind}`);
+		}
+		// Input ids are lowercase; the registry keeps the PRD/RTM keys.
+		assert.equal(storeYamlLabel("PRD"), "PRD");
+		assert.equal(storeYamlLabel("prd"), "PRD");
+		assert.equal(storeYamlLabel("RTM"), "RTM");
+		assert.equal(storeYamlLabel("rtm"), "RTM");
+		assert.equal(storeYamlLabel("test-cases"), "test-plan");
+		assert.equal(storeYamlLabel("test-plan"), "test-plan");
 	});
 });

@@ -14,12 +14,6 @@
  * reported as `STALE LEDGER` and exits 1 (forcing a ledger update).
  *
  * Workarounds the driver applies so the chain can be exercised anyway:
- *   W1 (N24-01) — after a stage entry that fails to advance state, the
- *                  driver performs the missing `advanceStage` manually.
- *   W2 (N24-13) — before each publish, missing declared-input markdown
- *                  (`Doc/*.md`) is seeded from the upstream stage's
- *                  working copy (what a `markdownWrites` publish would
- *                  have produced).
  *   W3 (N24-15) — `VELPARI_SKIP_AUTO_DOCTOR=1` for the chain walk (the
  *                  documented test-suite escape hatch used by every
  *                  existing chain e2e): the real auto-doctor blocks on
@@ -28,6 +22,11 @@
  *                  The driver runs `runDoctor` itself after every publish
  *                  and asserts it SEPARATELY (errors → ledger; warnings →
  *                  the N24-15 policy observation).
+ *
+ * Reproducer condition (Amendment A2 — NOT a workaround): right after the
+ * testplan publish the driver copies the fixture `Doc/tests/test-cases_*`
+ * view into the workspace so the kept ledger entry N24-21 (the ungated
+ * test-cases drift check) stays observable.
  *
  * Outputs (default under `.tmp/test-runs/continuity-dryrun-<ts>/`):
  *   - assertions.json — every assertion result
@@ -44,7 +43,7 @@
  * runs as ESM, and the docstring enforcer blocks `.mjs` writes.
  */
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -196,20 +195,6 @@ const STAGES = [
 	{ key: "final-design", entry: "/velpari-final-design", from: "ordered-development", inProgress: "finalizing-design", rest: "finalized-design", wrongKey: "prd", workingDir: "final-design", kind: "final-design", yaml: "final-design", token: "Overview", wc: "final-design_ContinuityApp.md", inputs: ["design", "atomic-functions", "pseudocode", "test-plan", "test-cases", "development-order"] },
 ];
 
-/** Fixture source per declared-input artifact (for W2 seeding). */
-const INPUT_SOURCES = {
-	PRD: join(FIXTURE_ROOT, "prd", "PRD_ContinuityApp.md"),
-	RTM: join(FIXTURE_ROOT, "rtm", "RTM_ContinuityApp.md"),
-	"feasibility-study": join(FIXTURE_ROOT, "feasibility", "feasibility-study_ContinuityApp.md"),
-	design: join(FIXTURE_ROOT, "design", "design_ContinuityApp.md"),
-	"atomic-functions": join(FIXTURE_ROOT, "atomic-functions", "atomic-functions_ContinuityApp.md"),
-	pseudocode: join(FIXTURE_ROOT, "pseudocode", "pseudocode_ContinuityApp.md"),
-	"test-plan": join(FIXTURE_ROOT, "tests", "test-plan_ContinuityApp.md"),
-	"test-cases": join(FIXTURE_ROOT, "tests", "test-cases_ContinuityApp.md"),
-	"development-order": join(FIXTURE_ROOT, "development-order", "development-order_ContinuityApp.md"),
-	"final-design": join(FIXTURE_ROOT, "final-design", "final-design_ContinuityApp.md"),
-};
-
 /** Scan error items out of a doctor report. */
 /**
  * Collect error items from a doctor report.
@@ -248,9 +233,8 @@ async function setupWorkspace() {
 	// (fixture-repo precedent in test/helpers/fixture-repo.ts).
 	cpSync(join(REPO_ROOT, "skills"), join(WS, "skills"), { recursive: true });
 	cpSync(join(REPO_ROOT, "package.json"), join(WS, "package.json"));
-	// W9: dist lives INSIDE the workspace so findPackageRoot resolves the
-	// package root to WS — skill lookups then read WS/skills (N24-22 alias
-	// can stay workspace-local instead of touching the repo's skills/).
+	// dist lives INSIDE the workspace so findPackageRoot resolves the
+	// package root to WS — skill lookups then read WS/skills.
 	cpSync(join(REPO_ROOT, "dist"), join(WS, "dist"), { recursive: true });
 	// Peer-dep detection: doctor's first candidate is <cwd>/node_modules/…
 	// (workspace-local stub; no install, no system change).
@@ -330,7 +314,7 @@ function assertDoctor(stage, report) {
 		"0 stale-input doctor errors",
 		stale.length === 0,
 		stale.join(" | ") + " — nothing changes input bytes in this deterministic run",
-		stale.length > 0 ? "N24-18" : null,
+		null,
 	);
 	record(
 		stage,
@@ -357,33 +341,6 @@ function assertDoctor(stage, report) {
 		"warnings=" + report.summary.warning + " — W3 (VELPARI_SKIP_AUTO_DOCTOR=1) used for the chain walk",
 		report.summary.warning > 0 ? "N24-15" : null,
 	);
-}
-
-/**
- * Seed a deterministic reviewer verdict for the atomic-function gate
- * (Tier-1: no LLM subagents run; the reviewer report is part of the
- * fixture, mirroring what the reviewer subagent would write).
- * @param {string} runDir - Active run directory.
- * @returns {string} The verdict file path.
- */
-function seedReviewerVerdict(runDir) {
-	const dir = join(runDir, "atomic-function", "scouts");
-	mkdirSync(dir, { recursive: true });
-	const path = join(dir, "reviewer-report.json");
-	writeFileSync(
-		path,
-		JSON.stringify(
-			{
-				verdict: "approve",
-				issues: [],
-				summary: "Phase E dry run — deterministic reviewer verdict (Tier-1, no LLM).",
-				timestamp: new Date().toISOString(),
-			},
-			null,
-			2,
-		),
-	);
-	return path;
 }
 
 /**
@@ -416,32 +373,6 @@ async function reconcileFreshness() {
 	return changed;
 }
 
-/**
- * W7 — seed the Doc markdown artifacts the handoff gate lists as missing
- * (N24-20: hybrid docs are file-bound, but the default DB-only publish
- * never writes them).
- * @param {string} message - The handoff "Missing required Doc/ artifacts" error text.
- * @returns {string[]} Absolute paths that were seeded from the fixture.
- */
-function seedHandoffFiles(message) {
-	const seeded = [];
-	const re = /^\s+-\s+(\S+)/gm;
-	let m;
-	while ((m = re.exec(message)) !== null) {
-		const abs = m[1];
-		if (existsSync(abs)) continue;
-		const base = basename(abs);
-		if (base.startsWith("test-cases")) continue; // W8: parked deliberately (N24-19)
-		const entry = Object.values(INPUT_SOURCES).find((src) => basename(src) === base);
-		if (entry) {
-			mkdirSync(dirname(abs), { recursive: true });
-			cpSync(entry, abs);
-			seeded.push(abs);
-		}
-	}
-	return seeded;
-}
-
 /** The chain run itself. */
 async function main() {
 	mkdirSync(OUT_DIR, { recursive: true });
@@ -449,8 +380,8 @@ async function main() {
 	console.log("workspace → " + WS);
 	await setupWorkspace();
 	if (!process.argv[2] && !process.env.CONTINUITY_DIST) {
-		// W9: import dist from inside the workspace so findPackageRoot
-		// resolves skill lookups to WS/skills (N24-22 alias stays local).
+		// Import dist from inside the workspace so findPackageRoot
+		// resolves skill lookups to WS/skills.
 		DIST_SRC = join(WS, "dist", "pi-extension", "src");
 	}
 
@@ -462,8 +393,9 @@ async function main() {
 	const handoffMod = await use("ops/handoff.js");
 	const doctorMod = await use("doctor/index.js");
 	const pathsMod = await use("core/paths.js");
+	const freshMod = await use("core/freshness.js");
 
-	const { createRun, loadState, advanceStage, confirmUnderstanding, setFeasibilitySession, saveState } = stateMod;
+	const { createRun, loadState, confirmUnderstanding, setFeasibilitySession, saveState } = stateMod;
 	const { runStage, STAGE_LOCK_SPECS } = registryMod;
 	const { computeLegalCommands } = await use("stages/transition-lock.js");
 	const { handleApprove } = approveMod;
@@ -471,7 +403,6 @@ async function main() {
 	const { handleAtomicFunction } = atomicMod;
 	const { runHandoff, validateSenaiSchema } = handoffMod;
 	const { runDoctor } = doctorMod;
-	const { buildGroupedPath } = pathsMod;
 
 	ledgerIds = JSON.parse(readFileSync(join(FIXTURE_ROOT, "expected-failures.json"), "utf8")).ledger.map((e) => e.id);
 
@@ -499,7 +430,7 @@ async function main() {
 	let doc = runDoctor(WS, { embedded: true });
 	assertDoctor("brainstorm", doc);
 
-	// ── Stages 1–9: entry → seed → W2 → publish → verify ──────────────
+	// ── Stages 1–9: entry → seed → publish → verify ───────────────────
 	for (const stage of STAGES) {
 		console.log("stage " + stage.key + " · " + stage.entry);
 
@@ -525,39 +456,11 @@ async function main() {
 			await runStage(stage.key, ctx, pi, WS);
 		}
 		let entryErr = firstError(ctx._log);
-		if (entryErr && /Stage skill not found/.test(entryErr.message)) {
-			// N24-22: STAGE_SKILL maps finalizing-design to the pre-rename
-			// "design" suffix while the shipped file is velpari-final-design.md.
-			// Observe the block, add the workspace-local alias (W9), retry.
-			record(stage.key, "entry-blocked-skill", "entry blocked by the stale STAGE_SKILL name (N24-22)", false, entryErr.message, "N24-22");
-			cpSync(join(WS, "skills", "velpari-final-design.md"), join(WS, "skills", "velpari-design.md"));
-			record(stage.key, "workaround-w9", "workspace skill alias provides the renamed file (W9)", existsSync(join(WS, "skills", "velpari-design.md")), "skills/velpari-design.md → velpari-final-design.md");
-			before = promptCalls.length;
-			stateBefore = loadState(WS);
-			ctx._log.length = 0;
-			if (stage.bespoke) {
-				await handleAtomicFunction(ctx, pi, WS);
-			} else {
-				await runStage(stage.key, ctx, pi, WS);
-			}
-			entryErr = firstError(ctx._log);
-		}
 		record(stage.key, "entry-unblocked", "entry reports no blocking error", entryErr === null, (entryErr ? entryErr.message : "") + (ctx._log.length ? " | log=" + JSON.stringify(ctx._log.map((e) => e.kind + ":" + e.message.slice(0, 160))) : ""));
 		record(stage.key, "entry-prompt", "entry hands exactly one prompt to the LLM", promptCalls.length === before + 1, "promptCalls delta=" + (promptCalls.length - before));
 		state = loadState(WS);
 		if (state.currentStage === stage.inProgress) {
 			record(stage.key, "entry-advanced", "entry advanced into the in-progress stage", true);
-		} else if (state.currentStage === stateBefore.currentStage) {
-			// N24-01: entry never advances → W1 workaround.
-			record(stage.key, "entry-advanced", "entry advanced into the in-progress stage", false, "state stayed " + state.currentStage, "N24-01");
-			try {
-				advanceStage(loadState(WS), stage.entry, WS);
-				state = loadState(WS);
-				record(stage.key, "workaround-w1", "manual advanceStage compensates (W1)", state.currentStage === stage.inProgress, "stage=" + state.currentStage);
-			} catch (err) {
-				record(stage.key, "workaround-w1", "manual advanceStage compensates (W1)", false, "advance threw: " + String(err && err.message ? err.message : err));
-				break;
-			}
 		} else {
 			record(stage.key, "entry-advanced", "entry advanced into the in-progress stage", false, "unexpected stage " + state.currentStage + " (expected " + stage.inProgress + ")");
 		}
@@ -578,40 +481,19 @@ async function main() {
 			saveState(s, WS);
 		}
 
-		// D. W2: declared inputs must resolve as files for the publish gate
-		// (resolveDeclaredInputs is file-based even when a store YAML exists).
-		const missing = stage.inputs.filter((artifact) => !existsSync(join(WS, buildGroupedPath(artifact, PROJECT))));
-		record(stage.key, "declared-inputs-file-present", "all declared input files resolve for the publish gate", missing.length === 0, "missing: " + missing.join(", "), missing.length > 0 ? "N24-13" : null);
-		if (missing.length > 0) {
-			for (const artifact of missing) {
-				copyFixture(relOf(INPUT_SOURCES[artifact]), join(WS, buildGroupedPath(artifact, PROJECT)));
-			}
-			record(stage.key, "workaround-w2", "seeded upstream markdown for the gate (W2)", stage.inputs.every((a) => existsSync(join(WS, buildGroupedPath(a, PROJECT)))));
-		}
+		// D. declared inputs must resolve for the publish gate — resolver-based
+		// (store YAML first, Doc markdown fallback), the same path gate.ts uses.
+		const declared = freshMod.resolveDeclaredInputs(WS, registryMod.STAGE_REGISTRY[stage.key].inputs, {
+			projectName: PROJECT,
+			topicSlug: pathsMod.slugify(loadState(WS).mission),
+		});
+		const missing = declared.filter((d) => d.status === "missing" && !d.optional);
+		record(stage.key, "declared-inputs-file-present", "all declared inputs resolve (store or file) for the publish gate", missing.length === 0, "missing: " + missing.map((d) => d.id).join(", "));
 
 		// E. real publish (fall-back approve chain).
 		ctx._log.length = 0;
 		await handleApprove(ctx, pi, WS);
 		let pubErr = firstError(ctx._log);
-		if (stage.key === "atomic-function" && pubErr && /Reviewer verdict not found/.test(pubErr.message)) {
-			// N24-17: the legacy always-error verdict requirement blocks the
-			// publish although the basic tier (shipped default) never spawns
-			// the reviewer. Observe the block, seed the deterministic verdict,
-			// then retry.
-			record(
-				stage.key,
-				"publish-blocked-reviewer",
-				"atomic publish blocked although the basic tier skips the reviewer (N24-17)",
-				false,
-				"stage=" + loadState(WS).currentStage + "; error=" + pubErr.message,
-				"N24-17",
-			);
-			seedReviewerVerdict(runDir);
-			record(stage.key, "workaround-w5", "deterministic reviewer verdict seeded (W5)", true, "path=" + join(runDir, "atomic-function", "scouts", "reviewer-report.json"));
-			ctx._log.length = 0;
-			await handleApprove(ctx, pi, WS);
-			pubErr = firstError(ctx._log);
-		}
 		state = loadState(WS);
 		record(stage.key, "publish-advanced", "approve publishes and advances to " + stage.rest, state.currentStage === stage.rest, "stage=" + state.currentStage + "; error=" + (pubErr ? pubErr.message : "none"));
 
@@ -619,16 +501,6 @@ async function main() {
 		const yamlPath = join(WS, "Doc", "store", PROJECT, stage.yaml + "_" + PROJECT + ".yaml");
 		const yamlOk = existsSync(yamlPath) && readFileSync(yamlPath, "utf8").includes(stage.token);
 		record(stage.key, "store-rows", "store YAML export exists with expected rows", yamlOk, "path=" + yamlPath + " exists=" + existsSync(yamlPath));
-		if (stage.key === "rtm") {
-			record(
-				stage.key,
-				"w4-dual-write",
-				"NFR store rows require the W4 fr-mirror (N24-16)",
-				false,
-				"first dry-run attempt: NFR rtm_row fr_ref → FOREIGN KEY constraint failed; the PRD payload now mirrors NFR ids into rows.fr",
-				"N24-16",
-			);
-		}
 		if (stage.key === "testplan") {
 			// N24-19 probe: extractTestCaseTracesFromStore keeps only
 			// /^(?:FR|NFR)-\d+$/ targets and drops the AF ids the
@@ -642,6 +514,22 @@ async function main() {
 				false,
 				"extractor returned " + JSON.stringify(traced) + " — AF targets dropped by /^(?:FR|NFR)-\\d+$/ while the test-cases doc declares AF-01..AF-03",
 				"N24-19",
+			);
+			// Amendment A2 — N24-21 reproducer (a labelled condition, NOT a
+			// defect workaround): the test-cases drift check
+			// (doctor/checks/test-cases-data.ts) never got the F7
+			// view-maintained gate, so ANY existing test-cases view errors
+			// "has drifted from the store". The retired W2 seeded it as an
+			// N24-13 workaround; this seed exists purely to keep the kept
+			// ledger entry observable.
+			const tcSeed = join(WS, "Doc", "tests", "test-cases_" + PROJECT + ".md");
+			copyFixture("tests/test-cases_" + PROJECT + ".md", tcSeed);
+			record(
+				stage.key,
+				"n24-21-reproducer-seeded",
+				"test-cases view seeded right after the testplan publish (N24-21 reproducer)",
+				existsSync(tcSeed),
+				"source: Doc/test-fixtures/continuity/tests/test-cases_" + PROJECT + ".md",
 			);
 		}
 
@@ -678,17 +566,6 @@ async function main() {
 		state = loadState(WS);
 		hoErr = firstError(ctx._log);
 	}
-	if (state.currentStage !== "handoff-ready" && hoErr && /Missing required Doc\/ artifacts/.test(hoErr.message)) {
-		// N24-20: the handoff gate wants file-bound hybrid docs that the
-		// default DB-only publish never writes. Observe, seed (W7), retry.
-		record("handoff", "handoff-blocked-files", "handoff requires Doc markdown the default publish never writes (N24-20)", false, hoErr.message.split("\n").slice(0, 4).join(" | "), "N24-20");
-		const seededPaths = seedHandoffFiles(hoErr.message);
-		record("handoff", "workaround-w7", "seeded missing handoff markdown (W7)", seededPaths.length > 0, "paths=" + seededPaths.join(", "));
-		ctx._log.length = 0;
-		await runHandoff(loadState(WS), ctx, WS);
-		state = loadState(WS);
-		hoErr = firstError(ctx._log);
-	}
 	record("handoff", "handoff-advanced", "run lands at handoff-ready", state.currentStage === "handoff-ready", "stage=" + state.currentStage + "; error=" + JSON.stringify(hoErr));
 	const payloadPath = join(WS, ".pi", "senai", "architect-inputs.json");
 	let schemaOk = false;
@@ -706,15 +583,6 @@ async function main() {
 	record("handoff", "hash-chain-verified", "doctor hash-chain section present and error-free", !chainSection || (chainSection.items ?? []).every((i) => i.status !== "error"), chainSection ? JSON.stringify(chainSection.items) : "section not found (chain check may be named differently)");
 
 	finish();
-}
-
-/**
- * Map an absolute fixture path back to a fixture-relative path.
- * @param {string} abs - Absolute path inside the fixture root.
- * @returns {string} Fixture-relative path (posix separators).
- */
-function relOf(abs) {
-	return abs.slice(FIXTURE_ROOT.length + 1).split("\\").join("/");
 }
 
 /** Known-defect ledger evaluation + report writing + exit code. */

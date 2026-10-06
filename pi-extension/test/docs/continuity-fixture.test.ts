@@ -242,19 +242,7 @@ describe("fixture: continuity dry-run fixture is gate-shaped", () => {
 			ledger: Array<{ id: string; summary: string }>;
 		};
 		const ids = ledger.ledger.map((e) => e.id);
-		assert.deepEqual(ids.sort(), [
-			"N24-01",
-			"N24-13",
-			"N24-14",
-			"N24-15",
-			"N24-16",
-			"N24-17",
-			"N24-18",
-			"N24-19",
-			"N24-20",
-			"N24-21",
-			"N24-22",
-		]);
+		assert.deepEqual(ids.sort(), ["N24-14", "N24-15", "N24-19", "N24-21"]);
 		for (const entry of ledger.ledger) {
 			assert.ok(entry.summary.length > 20, `ledger entry ${entry.id} needs a summary`);
 		}

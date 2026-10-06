@@ -152,6 +152,64 @@ function artifactKeyForKind(kind: string): string {
 	return kind;
 }
 
+/**
+ * Declared-input artifact (any casing) → store kind. L0-local mirror of
+ * `core/upstream.ts:ARTIFACT_TO_KIND` — kept self-contained so freshness
+ * does not import upstream (which type-imports this module) or L1 `ops/`;
+ * `test/core/freshness.test.ts` pins the two tables together.
+ */
+const ARTIFACT_TO_STORE_KIND: Record<string, string> = {
+	prd: "prd",
+	rtm: "rtm",
+	"feasibility-study": "feasibility",
+	design: "design",
+	wireframe: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	"test-plan": "testplan",
+	"test-cases": "testplan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/**
+ * Store kind → the exported-YAML label `buildStoreYamlPath` writes as
+ * `<label>_<project>.yaml`. L0-local mirror of
+ * `ops/backfill.ts:KIND_YAML_LABELS` (layer 0 must not import layer 1);
+ * pinned against the real table by `test/core/freshness.test.ts`.
+ */
+const STORE_KIND_TO_YAML_LABEL: Record<string, string> = {
+	prd: "PRD",
+	rtm: "RTM",
+	feasibility: "feasibility-study",
+	design: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	testplan: "test-plan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/**
+ * Resolve the exported-YAML label for one declared input — artifact →
+ * kind → label (Amendment A2). Aliases sharing a kind share a label:
+ * `test-cases` and `test-plan` are both kind `testplan` → `test-plan`,
+ * so `test-cases_<project>.yaml` (a label no publish ever writes) is
+ * never asked for. BOTH `resolveDeclaredInputs` (gate + publish stamp)
+ * and `resolveInputPath` (stale check + `/velpari-reconfirm`) go through
+ * this ONE helper so they cannot drift apart on a path. `prd`/`rtm` keep
+ * their uppercase `PRD_`/`RTM_` casing; unknown artifacts fall back to
+ * `artifactKeyForKind` (legacy passthrough).
+ * @param artifact - Declared artifact key (`PRD`, `test-cases`) or the
+ * lowercase input-id kind (`prd`, `test-cases`).
+ * @returns The YAML sidecar label for `buildStoreYamlPath`.
+ */
+export function storeYamlLabel(artifact: string): string {
+	const kind = ARTIFACT_TO_STORE_KIND[artifact.toLowerCase()];
+	if (kind !== undefined) return STORE_KIND_TO_YAML_LABEL[kind] ?? artifact;
+	return artifactKeyForKind(artifact.toLowerCase());
+}
+
 /** Split `<kind>:<id>`; returns null when the shape is wrong. */
 function parseInputId(inputId: string): { kind: string; id: string } | null {
 	const idx = inputId.indexOf(":");
@@ -270,7 +328,7 @@ export function resolveDeclaredInputs(
 			}
 			let resolved = resolveDocArtifact(input.artifact, deps.projectName, cwd);
 			if (!markdownWrites) {
-				const yamlPath = buildStoreYamlPath(deps.projectName, input.artifact, cwd);
+				const yamlPath = buildStoreYamlPath(deps.projectName, storeYamlLabel(input.artifact), cwd);
 				if (existsSync(yamlPath)) resolved = { path: yamlPath, layout: "grouped" };
 			}
 			out.push({
@@ -372,9 +430,11 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 	// after the markdown writes retire (Q3, flag DEFAULT OFF). The input
 	// id's kind is lowercase (`prd`, `rtm`) while the exported YAML keeps
 	// the Doc artifact key's casing (`PRD_<proj>.yaml`/`RTM_<proj>.yaml`),
-	// so the path goes through `artifactKeyForKind`. File resolution
-	// remains for legacy / flag-ON projects and as the fallback when no
-	// store YAML exists.
+	// so the path goes through `storeYamlLabel` (artifact → kind → label —
+	// Amendment A2: `test-cases` resolves to the `test-plan_<proj>.yaml`
+	// label the publish chain writes). File resolution remains for
+	// legacy / flag-ON projects and as the fallback when no store YAML
+	// exists.
 	// Phase C: corrupt files.json → markdown writes are OFF (the default).
 	let markdownWrites = false;
 	try {
@@ -383,7 +443,7 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 		/* Config section reports UNREADABLE */
 	}
 	if (!markdownWrites) {
-		const yamlPath = buildStoreYamlPath(parsed.id, artifactKeyForKind(parsed.kind), cwd);
+		const yamlPath = buildStoreYamlPath(parsed.id, storeYamlLabel(parsed.kind), cwd);
 		if (existsSync(yamlPath)) return yamlPath;
 	}
 	return resolveDocArtifact(artifactKeyForKind(parsed.kind), parsed.id, cwd)?.path ?? null;
