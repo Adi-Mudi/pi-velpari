@@ -11,7 +11,11 @@
 
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
-import { CONDITIONAL_FRONTMATTER_FIELDS, missingFrontmatterFields, withArtifactFrontmatter } from "../../../core/frontmatter.js";
+import {
+	CONDITIONAL_FRONTMATTER_FIELDS,
+	missingFrontmatterFields,
+	withArtifactFrontmatter,
+} from "../../../core/frontmatter.js";
 import { atomicWriteFile } from "../../../io/atomic-write.js";
 import type { RemediateFn, RemediateOutcome } from "./index.js";
 

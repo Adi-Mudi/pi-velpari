@@ -170,5 +170,7 @@ export const CONDITIONAL_FRONTMATTER_FIELDS: readonly string[] = ["supersedes", 
 export function missingFrontmatterFields(content: string): string[] {
 	const parsed = parseFrontmatterBlock(content);
 	if (!parsed) return [...ARTIFACT_FRONTMATTER_FIELDS];
-	return ARTIFACT_FRONTMATTER_FIELDS.filter((k) => !(k in parsed.fields) && !CONDITIONAL_FRONTMATTER_FIELDS.includes(k));
+	return ARTIFACT_FRONTMATTER_FIELDS.filter(
+		(k) => !(k in parsed.fields) && !CONDITIONAL_FRONTMATTER_FIELDS.includes(k),
+	);
 }

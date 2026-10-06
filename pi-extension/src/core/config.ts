@@ -172,9 +172,7 @@ export function devLaneConfig(cwd: string = process.cwd()): DevLaneConfig {
 	const key = vel?.maxWorktrees !== undefined ? "maxWorktrees" : "maxLanes";
 	if (raw === undefined) return { maxLanes: 4 };
 	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
-		throw new Error(
-			`files.json velpari.${key} is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
-		);
+		throw new Error(`files.json velpari.${key} is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`);
 	}
 	return { maxLanes: raw };
 }
