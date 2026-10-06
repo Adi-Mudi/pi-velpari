@@ -2,7 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.0.0] — 2026-10-06 — DB-only publish + revision locking (Phases A–G)
+
+The post-rollout upgrade (Phases A–G) lands as one major release: publish is DB-only by default, downstream-consumed revisions are content-locked, every session is bound to its worktree/branch, and the doctor gains a command-start preflight with a self-healing fix flow. The per-phase rollout detail follows below.
+
+### Breaking
+
+- **Publish is DB-only by default.** Approve writes store rows + the YAML export + a git commit and nothing to `Doc/`. Opt in to write-alongside via `files.json` `"velpari": { "markdownWrites": true }`. One-time legacy import via `/velpari-migrate-store` (`--dry-run` → `--execute`).
+- **Doctor severity (N24-15): warnings are report-only; errors still block** publish/advance. The `VELPARI_SKIP_AUTO_DOCTOR` driver workaround is removed from the continuity dry run.
+- **`keepWireframeForProjectType` deleted** (was a no-op prompt filter; wireframe pairing is enforced in the publish layer).
+- **git-hooks API renamed** `preCommit*` → `commitMsg*` (`ops/git-hooks.ts` — it installs `.git/hooks/commit-msg`).
+
+### Added
+
+- **Session gate (N18, Phase A)** — plan-header worktree/branch binding; a mismatching session hard-stops at start, and `tool_call` denies edit/write on mismatch.
+- **Soft-lock (N19/N20, Phase B)** — a revision consumed downstream is content-locked (`assertRevisionContentUnlocked`); status-only updates remain allowed and audited.
+- **Doctor v2 + preflight (N22/N23, Phase C + G v1.3)** — command-start preflight (`COMMAND_PREFLIGHT_CLASS`: 52 classified — 22 wrapped / 11 exempt-stage / 8 exempt-recovery / 11 exempt-view), the self-healing "Fix all" flow (`doctor/fix-flow.ts`), and the `pi-extension-conformance` check.
+- **Design metadata (Phase D)** — wireframe pairing (N26), the semver bump gate (N27) incl. the `WF-` id prefix (D-F2), and Senai payload version metadata (N29).
+- **Excalidraw canvas push (N31, Phase F)** — offer-only-when-reachable; launcher pinned `mcp-excalidraw-server@2.0.0` (never `@latest`); Mermaid stays the source of truth with graceful fallback.
+- **`velpari.maxWorktrees` (N32)** — supersedes `maxLanes`; the lane cap resolves `maxWorktrees` → `maxLanes` → 4 (the worktree cap default stays 3).
+- **`testing.runner` (N33)** + `npm run test:scope` scoped runner (CI still runs the full gate).
+
+### Fixed
+
+- **Phase 3 — N24 blockers** — N24-01 stage-entry advance (`runStage` → `advanceStage`); N24-13 freshness falls back to store envelope bytes (DB-only chain unblocked); N24-16 RTM FK accepts NFR ids; N24-17 reviewer-verdict tier gate; N24-20 handoff accepts store artifacts; N24-22 final-design skill mapping.
+- **Phase 4 — N24 highs + batch-1** — N24-12 atomic-functions folder drift; N24-14 frontmatter trio is conditional; N24-15 severity policy (above); N24-19 store `tc_trace` keeps AF targets; N24-21 test-cases drift check gets the F7 view gate; D-F1 bump gate live on the DB-only path (like-for-like store renders); B-F1 reconfirm respects the content lock; B-F5 lock hygiene (exhaustiveness guard, once-only diagnostics, `commitMsg` naming); B-F2 import cycle pinned with a regression test; C-F4 preflight/fix-flow/conformance cleanups; D-F3 dead wireframe filter removed; D-F2 `WI`→`WF`; D-F4 store corruption surfaces a warning.
+- **Phase 5 — wording** — N24-03/N24-04 skill-doc + injected-rule wording (incl. the A3 class in 6 more skills: stage-entry truth + publish-fallback naming); N31 discussion wording (pinned `@2.0.0`, A1 package-name fix); N18–N33 are now documented across the surfaces (was zero-hit); the continuity dry run is green with an **empty** known-fail ledger (all four entries retired in Phase 4).
+
+### Upgrade notes
+
+1. **Legacy `Doc/` projects:** run `/velpari-migrate-store --dry-run`, review the report, then `--execute` once to import every published document into its project store (idempotent on re-run). Until migrated, opt in to `"velpari": { "markdownWrites": true }` in `files.json` to keep publishing markdown.
+2. **No `Doc/` writes on publish (default):** the `.IDE_Plans/velpari/runs/<run-id>/` working copies remain the review surface; use the `show-*` commands and `/velpari-export` for documents. Existing `Doc/` markdown stays on disk as readable history — never rewritten, never deleted.
+3. **Doctor warnings no longer block** — review and fix them, but only errors stop publish/advance. Remove any `VELPARI_SKIP_AUTO_DOCTOR` workaround from local scripts.
+4. **Config:** prefer `velpari.maxWorktrees` over `velpari.maxLanes` (the legacy key still resolves as a fallback); `testing.runner` selects local vs CI test runs (`npm run test:scope`).
+5. **Embedders of the internals:** the git-hooks API is now `commitMsg*`; `keepWireframeForProjectType` is gone (wireframe pairing is enforced at publish time).
+6. **Sessions are worktree/branch-bound (N18):** run commands from the tree named in the plan header; a mismatching session hard-stops at start and `tool_call` denies edit/write on mismatch.
 
 ### v1.2 — Phase-G remaining-items rollout (2026-09-29)
 
