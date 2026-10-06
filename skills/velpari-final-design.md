@@ -180,11 +180,11 @@ exists), revise the baseline instead of regenerating:
    reorganized (incl. any deprecation), `minor` = backward-compatible
    additions, `patch` = wording only. The publish gate blocks a missing
    or under-declared bump; a first publish needs no bump.
-   The `velpari_stage_publish` tool (which same gate chain as `/velpari-final-design-approve`) blocks publishing without it.
+   The `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-final-design-approve`) blocks publishing without it.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-final-design-approve` runs the same gate chain from the terminal.
 
@@ -198,8 +198,11 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-final-de
   Stage 9 (state `ordered-development`) and before `/velpari-handoff`.
   Handoff is blocked until `finalized-design` is approved — skipping is
   not allowed.
-- **Do NOT mutate `state.json.stage` manually.** State advances only via
-  the `velpari_stage_publish` tool (which same gate chain as `/velpari-final-design-approve`); `runStage` never mutates state.
+- **Do NOT mutate `state.json.stage` manually.** The publish transition
+  (`finalizing-design → finalized-design`) advances only via the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-final-design-approve`); the stage-entry advance runs inside
+  `runStage` (`advanceStage`, N24-01) — you never touch state either way.
 - **Final message ≤ 10 lines.** When done, your reply must include only
   the outcome and the artifact path. Never paste the final-design
   content.

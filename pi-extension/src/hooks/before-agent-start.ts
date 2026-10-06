@@ -86,7 +86,7 @@ function stageRule(state: RunState, cwd: string): string | null {
 			`previous run folder; each scout task must name its -report.json path under ` +
 			`${allowed}/scouts/; write only inside ${allowed}/; when the working copy is ` +
 			`ready and the user confirms the preview, publish via the velpari_stage_publish ` +
-			`tool (or the publish tool as fallback).`
+			`tool (or the matching /velpari-<stage>-approve command as fallback).`
 		);
 	}
 	return null;

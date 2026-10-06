@@ -216,14 +216,14 @@ Revision rules:
    declared bump against the actual change; a missing or under-declared
    bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** The `velpari_stage_publish` tool
-   (same gate chain as `/velpari-pseudocode-approve`) blocks publishing
+   (which runs the same gate chain as `/velpari-pseudocode-approve`) blocks publishing
    without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + pseudocode-reviewer verdict + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + pseudocode-reviewer verdict + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudocode-approve` runs the same gate chain from the terminal.
 
@@ -233,10 +233,10 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudoco
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `writing-pseudocode` via `createRun()`. The next state transition
-  (`wrote-pseudocode`) happens in the `velpari_stage_publish` tool (which
-  same gate chain as `/velpari-pseudocode-approve`). You only write the working copy
-  artifact.
+  `writing-pseudocode` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`wrote-pseudocode`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-pseudocode-approve`). You only write the working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the pseudocode content.
 

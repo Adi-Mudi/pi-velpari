@@ -46,6 +46,18 @@ folder (`core/history.ts`); `state.json` is config-sized. The inline
 `history[]` field stays in the schema as `@deprecated` optional only so legacy
 state files and fixtures still parse; runtime readers use `loadHistory`.
 
+> **Control keys in `files.json` (Phases B/E — N32/N33).** `velpari.maxWorktrees`
+> (worktree cap, default 3) supersedes `velpari.maxLanes`; the *lane* cap resolves
+> `maxWorktrees` → legacy `maxLanes` → default 4 (Q4=a fallback chain). `testing.runner`
+> (`"local"` | `"remote"`, default `"remote"`) selects where the test gate runs
+> (`scripts/run-tests.js`, `npm run test:scope`). `velpari.markdownWrites`
+> (default OFF) opts back into write-alongside `Doc/` markdown.
+
+> **Session gate (N18 — Phase A).** `core/plan-binding.ts` reads `Worktree:` /
+> `Branch:` from the active plan header; at `before_agent_start` a session whose
+> worktree/branch mismatches is hard-stopped (verdict cached per session), and the
+> `tool_call` hook denies edit/write on mismatch.
+
 ## Why this matters
 
 1. A growing state file eventually becomes the bottleneck and the corruption

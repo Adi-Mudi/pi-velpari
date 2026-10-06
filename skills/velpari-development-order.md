@@ -153,7 +153,7 @@ After all 4 scouts complete:
      lane not yet used at this level; else a new lane `lane-<n+1>`.
      (You may use each scout's `laneHint` to pick a lane's `slug` — never to
      change the graph.)
-   - **Cap** — `velpari.maxLanes` (files.json, default 4). Over the cap, the
+   - **Cap** — `velpari.maxWorktrees` (files.json; legacy fallback `velpari.maxLanes`; default 4). Over the cap, the
      smallest lane merges into its most-connected neighbour; steps inside a
      lane are never reordered.
    - **Name-match** — every lane gets
@@ -352,7 +352,7 @@ exists), revise the baseline instead of regenerating:
    entries.
 2. Mark superseded entries `deprecated` with a reason.
 3. Bump the version and add a new Change Log entry.
-   The `velpari_stage_publish` tool (which same gate chain as `/velpari-development-order-approve`) blocks publishing without it.
+   The `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-development-order-approve`) blocks publishing without it.
 4. **Lanes follow the graph.** The lane map is derived from the current
    `stepDep` edges on every publish — a re-run never renumbers step ids,
    and lane ids stay stable for unchanged levels (append-only spirit: new
@@ -361,7 +361,7 @@ exists), revise the baseline instead of regenerating:
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-development-order-approve` runs the same gate chain from the terminal.
 
@@ -372,9 +372,11 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-developm
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage` directly.** Development order is
   Stage 9 (required) and appears in `STAGE_TRANSITIONS` as
-  `planned-tests → ordering-development`. The stage command only writes
-  the working copy; `state.json.stage` is advanced by the
-  `velpari_stage_publish` tool (which same gate chain as `/velpari-development-order-approve`), not by this skill.
+  `planned-tests → ordering-development`. The stage command writes the
+  working copy and runs the stage-entry advance (`runStage` →
+  `advanceStage`, N24-01); the next transition (`ordered-development`) is
+  advanced by the `velpari_stage_publish` tool (which runs the same gate
+  chain as `/velpari-development-order-approve`), not by this skill.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the development order content.
 

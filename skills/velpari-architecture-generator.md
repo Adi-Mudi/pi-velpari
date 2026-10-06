@@ -652,7 +652,7 @@ Revision rules:
    the publish with a message naming the fix; a first publish needs no
    bump.
 5. **Change Log entry required.** The `velpari_stage_publish` tool
-   (same gate chain as `/velpari-architecture-generator-approve`) blocks publishing
+   (which runs the same gate chain as `/velpari-architecture-generator-approve`) blocks publishing
    without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
@@ -716,7 +716,7 @@ Rules: revise the wireframe whenever the architecture it depicts changes
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). For a full-app project verify BOTH first (`test -s <workingCopy>` + `test -s <workingCopyDir>/wireframe_<projectName>.md`) — the tool publishes both and refuses an unpaired publish. It runs the publish gate (revision + arch-sub-cycle gate + ADR gate + design-readiness gate + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). For a full-app project verify BOTH first (`test -s <workingCopy>` + `test -s <workingCopyDir>/wireframe_<projectName>.md`) — the tool publishes both and refuses an unpaired publish. It runs the publish gate (revision + arch-sub-cycle gate + ADR gate + design-readiness gate + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-architecture-generator-approve` runs the same gate chain from the terminal.
 
@@ -726,8 +726,10 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-architec
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `designing` via `createRun()`. The next state transition (`designed`)
-  happens in the `velpari_stage_publish` tool (which same gate chain as `/velpari-architecture-generator-approve`). You only write the working copy
+  `designing` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`designed`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-architecture-generator-approve`). You only write the working copy
   artifact.
 - **Read first, confirm, write.** The handler already loaded context and
   asked the developer to confirm. If you reach this prompt without an

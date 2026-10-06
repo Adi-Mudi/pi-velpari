@@ -34,6 +34,20 @@ stays human-readable and agent-readable.
 | Diagrams (all docs) | **Mermaid** blocks | in the host document | rendered by viewers |
 | Logging plan | Markdown + frontmatter | the `.md` | — |
 
+> **Semver bump gate (N27 — hardened D-F1, 2026-10-06).** Every artifact
+> revision declares `bump: major|minor|patch` (MAJOR = id/structure change,
+> MINOR = backward-compatible additions, PATCH = wording). The publish gate
+> validates the declaration against the classified change (`core/semver.ts`;
+> `WF-` wireframe ids included). DB-rendered kinds compare like-for-like store
+> renders (render-vs-render with the prior frontmatter prepended), so the gate is
+> live on the DB-only default path too.
+
+> **Excalidraw canvas (N31 — Phase F).** Mermaid stays the source of truth. The
+> design/export flows additionally offer "push diagram to canvas" when the local
+> Excalidraw MCP server is reachable — started on demand via
+> `npx -y mcp-excalidraw-server@2.0.0` (pinned; never `@latest`) with graceful
+> fallback to Mermaid when npx/Node/server is unavailable.
+
 ## Internal machine files (JSON — never hand-edited)
 
 | File | Purpose |

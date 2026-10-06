@@ -286,7 +286,7 @@ Revision rules:
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
 4. **Change Log entry required in BOTH files.** The
-   `velpari_stage_publish` tool (which same gate chain as `/velpari-testplan-approve`) blocks publishing without a new Change Log entry.
+   `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-testplan-approve`) blocks publishing without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
@@ -302,10 +302,10 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-testplan
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `planning-tests` via `createRun()`. The next state transition
-  (`planned-tests`) happens in the `velpari_stage_publish` tool (which
-  same gate chain as `/velpari-testplan-approve`). You only write the working
-  copy artifacts.
+  `planning-tests` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`planned-tests`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-testplan-approve`). You only write the working copy artifacts.
 - **Write BOTH files.** `<primaryWorkingCopy>` (test-plan) AND
   `<additionalWorkingCopy>` (test-cases). Both must exist before the
   preview gate.

@@ -257,7 +257,7 @@ Revision rules:
    bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** Add a `## Change Log` section if the
    baseline has none, then add a new entry describing the revision. The
-   `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`) blocks publishing without it.
+   `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-rtm-approve`) blocks publishing without it.
 5. **New rows start `proposed`.** Full lifecycle: `proposed | approved |
    implemented | verified | deferred | deprecated`. Existing coverage
    values (`covered` / `partial` / `missing`) stay valid — update them
@@ -276,7 +276,7 @@ blocks on violations.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-approve` runs the same gate chain from the terminal.
 
@@ -286,9 +286,10 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-appr
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `building-rtm` via `createRun()`. The next state transition (`built-rtm`)
-  happens in the `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`). You only write the working copy
-  artifact.
+  `building-rtm` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`built-rtm`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-rtm-approve`). You only write the working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the RTM content.
 

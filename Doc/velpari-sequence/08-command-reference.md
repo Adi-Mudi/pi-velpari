@@ -53,7 +53,7 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-agents` | View + validate the mapping. |
 | `/velpari-generate-sub-agents` | Per-phase dynamic agent generation (phase auto-detected from run state; `--phase N` overrides) — see `05-sub-agent-generation.md`. |
 
-## Ops / discipline commands (15)
+## Ops / discipline commands (16)
 
 | Command | Purpose |
 |---|---|
@@ -137,6 +137,12 @@ working or published artifacts.
 ## Wrapper (1)
 
 `/velpari-prd-rtm` — runs PRD then RTM in sequence. No auto-approve.
+
+## Export (1)
+
+| Command | Purpose |
+|---|---|
+| `/velpari-export` | On-demand document download from the DB store (read-only — YAML/markdown view export; no publish, no gate changes). |
 
 ## Flags
 

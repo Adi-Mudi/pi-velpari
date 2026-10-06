@@ -137,9 +137,12 @@ phase, no bent rules.
 2. **DRAFT** — working copy written to `.IDE_Plans/velpari/runs/<run-id>/<stage>/`.
    Writes outside the run folder are hard-blocked while a draft is open.
 3. **PREVIEW** — the draft is shown to the developer: yes / fix.
-4. **PUBLISH** — the publish tool (or per-stage `/velpari-<stage>-approve` fallback)
-   runs: publish gate (incl. content validation layers) → atomic write to `Doc/` →
-   full doctor audit. Errors OR warnings = nothing publishes, stage does not advance.
+4. **PUBLISH** — the `velpari_stage_publish` tool (or the per-stage
+   `/velpari-<stage>-approve` fall-back) runs: publish gate (incl. content
+   validation layers) → store publish (DB-only default: store rows + YAML
+   export + git commit; `Doc/` markdown only with the `velpari.markdownWrites`
+   opt-in) → full doctor audit. Errors = nothing publishes, stage does not
+   advance; warnings are reported but never block (N24-15).
 5. **NEXT** — the orchestrator surfaces the single correct next command. The
    developer types it by hand. No auto-chains, ever.
 

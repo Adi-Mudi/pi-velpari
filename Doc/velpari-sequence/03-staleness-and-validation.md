@@ -169,6 +169,22 @@ command. At every moment there is exactly one correct next command, and the
 system says what it is. See `04-brainstorm-and-locking.md` for the full
 transition-lock model.
 
+## Doctor v2 + preflight (N22/N23)
+
+Shipped 2026-09-28 → 2026-10-06 (Phases C + G v1.3):
+
+- **Command-start preflight** (`doctor/preflight.ts` + `COMMAND_PREFLIGHT_CLASS`):
+  every command starts with a millisecond preflight; heavy checks stay on
+  publish/stage-start. 22 wrapped / 11 exempt-stage / 8 exempt-recovery /
+  11 exempt-view = 52; the table is typed `satisfies Record<CommandName, …>` so
+  an unclassified new command fails `tsc`.
+- **Self-healing fix flow** (`doctor/fix-flow.ts`): report → "Fix all
+  (Recommended)" / "Show details" / "Abort" → confirm-gated batched repair →
+  re-run → the original command continues.
+- **`pi-extension-conformance`**: forbidden-import scan over comment-stripped
+  code (static + dynamic specifiers; deliberately no parser dependency).
+- **Severity:** errors block publish/advance; warnings are reported only (N24-15).
+
 ## Community grounding
 
 - **Suspect links (DOORS / Jama / Polarion, IREB CPRE):** the requirements

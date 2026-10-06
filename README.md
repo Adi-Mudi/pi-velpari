@@ -97,6 +97,16 @@ See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-arti
 - **Hash-chain (N15):** `audit_ledger` / `tx_log` rows are hash-chained and verified end-to-end by `/velpari-doctor`.
 - **Execution lanes (N16):** dev-order work is ranked into DAG-derived execution lanes (integration plan + lock rules), carried in the working copy, store kinds and handoff payload.
 
+### Upgrade behaviors (Phases A–F — N17–N33)
+
+- **Session gate (N18):** a session whose worktree/branch does not match the plan header is hard-stopped at start (no changes made); the `tool_call` hook denies edit/write on mismatch.
+- **Doctor v2 + preflight (N22/N23):** commands start with a fast preflight; the doctor's "Fix all" flow is confirm-gated (batched repair → re-run → the original command continues). Errors block; warnings are report-only (N24-15).
+- **Soft-lock (N19/N20):** a revision consumed downstream is content-locked — later content writes (incl. `/velpari-reconfirm`'s Change Log append) refuse; status updates stay audited.
+- **Semver bump gate (N27):** publish validates the declared `bump:` (MAJOR = id/structure change, MINOR = additions, PATCH = wording) against the classified change; DB-rendered kinds compare store renders.
+- **Excalidraw canvas (N31):** design/export flows offer "push diagram to canvas" when the local MCP server is reachable — launcher pinned `mcp-excalidraw-server@2.0.0` (never `@latest`); Mermaid stays the source of truth with graceful fallback.
+- **`velpari.maxWorktrees` (N32):** supersedes `velpari.maxLanes`; the lane cap resolves `maxWorktrees` → `maxLanes` → 4 (worktree cap default 3).
+- **`testing.runner` (N33):** `files.json` key selecting local vs CI test runs (`npm run test:scope`); the full gate runs in CI.
+
 ### Sub-agent generator (v2)
 
 `/velpari-generate-sub-agents` generates project-specific sub-agents for the current pipeline phase (auto-detected from run state; `--phase N` overrides with 1–4). See [`Doc/velpari-sequence/05-sub-agent-generation.md`](Doc/velpari-sequence/05-sub-agent-generation.md) for the full design.
