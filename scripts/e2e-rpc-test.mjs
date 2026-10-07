@@ -6,8 +6,10 @@
 // workspace: configure-inputs → brainstorm → 9 stages (each: stage command →
 // working copy + payload → fall-back approve) → handoff → handoff-ready.
 //
-// Remote-only by design (thermal protocol): run via the tier3 CI job
-// (workflow_dispatch). Local use is limited to `node --check`.
+// Runs on CI via the tier3 workflow_dispatch job, and locally stage-by-stage
+// via E2E_UNTIL_STAGE (plan ruling 6, 2026-10-07: local pi authenticates via
+// kimiCodingOAuth; CI key auth was abandoned). Local runs auto-skip
+// --extension when the global settings packages[] path-loads this repo.
 //
 // Usage:
 //   node scripts/e2e-rpc-test.mjs
@@ -17,6 +19,8 @@
 //                        (default "handoff-ready" = full chain)
 //   E2E_MODEL            optional --model passthrough for the pi spawn
 //   E2E_STAGE_TIMEOUT_MS per-stage agent-quiet timeout (default 1200000 = 20m)
+//   E2E_USE_GLOBAL       "1" force global packages load, "0" force --extension
+//                        (default: auto-detect the global path entry)
 //
 // Fixed env on the pi spawn: PI_SUBAGENT_MUX=tmux (headless multiplexer-gate
 // override, core/multiplexer.ts:36-39), VELPARI_EXCALIDRAW=0 (kill-switch,
@@ -36,7 +40,7 @@ import {
 	readdirSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 // ---------- Configuration ----------
@@ -53,6 +57,24 @@ const STAGE_TIMEOUT_MS = Number(process.env.E2E_STAGE_TIMEOUT_MS ?? 20 * 60 * 10
 const QUIET_MS = 20000;
 const UNTIL_STAGE = process.env.E2E_UNTIL_STAGE ?? "handoff-ready";
 const E2E_MODEL = process.env.E2E_MODEL ?? "";
+const E2E_USE_GLOBAL = process.env.E2E_USE_GLOBAL ?? ""; // "1" force global packages load, "0" force --extension
+
+/** True when the user's global settings.json packages[] path-loads this repo (then --extension would double-load). */
+function globalVelpariLoaded() {
+	try {
+		const settingsFile = join(homedir(), ".pi", "agent", "settings.json");
+		const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+		return (settings.packages ?? []).some(
+			(p) => typeof p === "string" && !p.includes(":") && resolve(join(homedir(), ".pi", "agent"), p) === PROJECT_ROOT,
+		);
+	} catch {
+		return false;
+	}
+}
+
+// Locally the global path entry supplies velpari (single load, OAuth intact);
+// CI has no global config, so it always uses --extension.
+const USE_GLOBAL = E2E_USE_GLOBAL === "1" ? true : E2E_USE_GLOBAL === "0" ? false : globalVelpariLoaded();
 
 // ---------- Result tracking ----------
 const results = [];
@@ -473,13 +495,13 @@ const STAGES = [
 async function main() {
 	console.log("Velpari 2.0.0 Tier-3 RPC full-sequence harness");
 	console.log("==============================================");
-	console.log(`Extension: ${EXTENSION_PATH}`);
+	console.log(`Extension: ${USE_GLOBAL ? "(global packages path entry)" : EXTENSION_PATH}`);
 	console.log(`Workspace: ${WORKSPACE}`);
 	console.log(`Report:    ${REPORT_DIR}`);
 	console.log(`Until:     ${UNTIL_STAGE}`);
 	console.log("");
 
-	if (!existsSync(EXTENSION_PATH)) {
+	if (!USE_GLOBAL && !existsSync(EXTENSION_PATH)) {
 		console.error(`FATAL: ${EXTENSION_PATH} missing — run \`npm run build\` first.`);
 		process.exit(2);
 	}
@@ -493,7 +515,8 @@ async function main() {
 	git("commit", "--allow-empty", "-m", "tier3 workspace init");
 	record("workspace git init + identity", true, WORKSPACE);
 
-	const args = ["--mode", "rpc", "--no-session", "--extension", EXTENSION_PATH];
+	const args = ["--mode", "rpc", "--no-session"];
+	if (!USE_GLOBAL) args.push("--extension", EXTENSION_PATH);
 	if (E2E_MODEL) args.push("--model", E2E_MODEL);
 	// Safety rule 1 (plan ruling 6): strip API keys so local pi authenticates
 	// via kimiCodingOAuth instead of a (possibly stale) key env var.
