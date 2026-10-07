@@ -311,6 +311,10 @@ async function waitSettled(client, mark, timeoutMs, condition) {
 	for (;;) {
 		if ((condition ? condition() : false) || sawSettled()) break;
 		if (Date.now() >= deadline) throw new Error(`timeout waiting for step to settle (${timeoutMs}ms)`);
+		// Fail fast on a dead model/account (e.g. 429 quota, 401 auth): each
+		// round would otherwise burn a full stage timeout on a guaranteed error.
+		if (assistantErrorStreak(client) >= 2)
+			throw new Error(`fail-fast: consecutive assistant errors — ${lastAssistantError(client).slice(0, 300)}`);
 		await sleep(2000);
 	}
 	for (;;) {
@@ -344,6 +348,28 @@ async function lastAssistantText(client) {
 	} catch {
 		return "(get_last_assistant_text failed)";
 	}
+}
+
+/** Consecutive assistant messages ending stopReason:"error" (newest first; reset by any success). */
+function assistantErrorStreak(client) {
+	let streak = 0;
+	for (let i = client.eventLog.length - 1; i >= 0; i--) {
+		const e = client.eventLog[i];
+		if (e.type !== "message_end" || e.message?.role !== "assistant") continue;
+		if (e.message.stopReason === "error") streak++;
+		else break;
+	}
+	return streak;
+}
+
+function lastAssistantError(client) {
+	for (let i = client.eventLog.length - 1; i >= 0; i--) {
+		const e = client.eventLog[i];
+		if (e.type === "message_end" && e.message?.role === "assistant" && e.message.stopReason === "error") {
+			return String(e.message.errorMessage ?? "unknown assistant error");
+		}
+	}
+	return "unknown assistant error";
 }
 
 const BRAINSTORM_GUIDANCE = [
