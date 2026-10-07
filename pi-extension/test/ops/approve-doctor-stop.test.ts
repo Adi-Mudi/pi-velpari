@@ -239,8 +239,31 @@ afterEach(() => {
 });
 
 describe("publish — auto doctor audit (v1.2.1)", () => {
-	it("publishes the RTM then blocks the advance because doctor has errors on this cwd (e.g. no files.json, no agents, no MCP, etc.)", async () => {
+	it("publishes the RTM then blocks the advance because the doctor flags a real error (web-tool-lock violation)", async () => {
 		enterBuildingRtm();
+		// Deliberate doctor error source: a stranger agent carrying websearch
+		// trips the REAL web-tool-lock check (the allowlist only covers
+		// web-search-agent / web-research). Needed since 2026-10-08 — the
+		// bare fixture became doctor-clean once the doctor was scoped for
+		// user projects (stage-skills package-root + readiness skip).
+		const agentsDir = path.join(tmpDir, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentsDir, "stranger-agent.md"),
+			[
+				"---",
+				"name: stranger-agent",
+				"description: deliberate web-tool-lock violator",
+				"tools: read, websearch",
+				"thinking: minimal",
+				"session-mode: standalone",
+				"auto-exit: true",
+				"spawning: false",
+				"---",
+				"",
+			].join("\n"),
+			"utf8",
+		);
 		const stageBefore = loadState(tmpDir).currentStage;
 
 		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
@@ -305,5 +328,20 @@ describe("publish — auto doctor audit (v1.2.1)", () => {
 				`v1.2.3 notify must carry section-grouped lines; got: ${doctorMsg.slice(0, 400)}`,
 			);
 		}
+	});
+
+	it("rest-state re-approve: publishes, stays put, never throws (2026-10-08 crash fix)", async () => {
+		enterBuildingRtm();
+		// Jump straight to the RTM REST state — re-approving from here must
+		// re-publish WITHOUT advancing (no (rest, <stage>-approve) transition
+		// row exists; advancing would throw — the latent crash this guards).
+		saveState({ ...loadState(tmpDir), currentStage: "built-rtm" }, tmpDir);
+
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
+
+		const mdPath = path.join(tmpDir, "Doc", "requirements", "RTM_TestApp.md");
+		assert.ok(fs.existsSync(mdPath), "re-publish from the rest state still writes the artifact");
+		assert.equal(loadState(tmpDir).currentStage, "built-rtm", "rest-state re-approve must not advance");
+		assert.match(allMessages(), /Re-published at rest state|stage unchanged/);
 	});
 });

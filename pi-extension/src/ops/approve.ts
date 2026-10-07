@@ -209,15 +209,15 @@ export function approveCommandForStage(stage: Stage): string {
 }
 
 /**
- * Map the current in-progress stage to its v1.6.0 per-stage approve
- * command. Used as the actor string passed to `advanceStage` (and
- * therefore recorded in state.json:history). STAGE_TRANSITIONS rows
- * for each publishable stage use the exact string returned here.
- * Derived from STAGE_APPROVE_MAP (D4) — keyed on the in-progress stage
- * (`stages[0]`) only, so rest-state lookups keep the legacy default.
+ * Map the current stage (in-progress OR rest state) to its v1.6.0
+ * per-stage approve command. Used as the actor string passed to
+ * `advanceStage` (and therefore recorded in state.json:history).
+ * Matched on the full STAGE_APPROVE_MAP stage pair (stages.includes)
+ * so a rest-state re-approve records its OWN approve command, never
+ * the brainstorm fallback (verifier ruling 2026-10-08).
  */
 function perStageApproveCommand(stage: Stage): string {
-	return STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ?? "/velpari-approve-brainstorm";
+	return STAGE_APPROVE_MAP.find((r) => r.stages.includes(stage))?.command ?? "/velpari-approve-brainstorm";
 }
 
 /**
@@ -1240,7 +1240,13 @@ export async function handleApprove(
 	// command for `currentStage`. The publish tool and the per-stage fall-
 	// back commands both call handleApprove, so the actor string is uniform
 	// regardless of which surface invoked the publish.
-	let next = advanceStage(state, perStageApproveCommand(state.currentStage), cwd, pi);
+	// Rest-state re-approve (currentStage === stages[1] of a map row, e.g.
+	// "designed"): publish + stamp only — NO advance. Leaving a rest state
+	// is the NEXT stage command's transition (constants STAGE_TRANSITIONS);
+	// no (rest, <stage>-approve) row exists, so advancing would throw.
+	const approveRow = STAGE_APPROVE_MAP.find((r) => r.stages.includes(state.currentStage));
+	const isRestReApprove = approveRow !== undefined && approveRow.stages[1] === state.currentStage;
+	let next = isRestReApprove ? state : advanceStage(state, perStageApproveCommand(state.currentStage), cwd, pi);
 	if (mapping.artifact === "feasibility-study") {
 		// Feasibility v2: the publish gate passed, so the session (decision,
 		// language, spikes) is settled — clear it so a later re-run starts clean.
@@ -1250,7 +1256,12 @@ export async function handleApprove(
 	// v0.5.1 Phase J.2: reflect the new stage in the footer status bar
 	// via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
-	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
+	ctx.ui.notify(
+		isRestReApprove
+			? `Re-published at rest state "${next.currentStage}" — stage unchanged.`
+			: `Stage advanced to "${next.currentStage}".`,
+		"info",
+	);
 
 	// v1.6.2: surface a clear "Next: /velpari-<cmd>" suggestion for every
 	// stage so the user always knows which command to run by hand. The
