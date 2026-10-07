@@ -296,14 +296,23 @@ async function sendPrompt(client, message) {
 	return { ok: true, mark, notifyMark };
 }
 
-/** Wait for an agent_settled after `mark`, then for QUIET_MS of no events. */
-async function waitSettled(client, mark, timeoutMs) {
+/**
+ * Wait for a step to settle after `mark`, then QUIET_MS of no events.
+ * LLM-driving prompts emit agent_settled (fast-path). Pure extension
+ * commands NEVER emit it — pi 0.87.1 agent-session.js:1218-1224 returns
+ * early ("Extension command executed, no prompt to send"); _emitAgentSettled
+ * (:531) fires only from _runAgentPrompt (:1103). So extension-command
+ * callers MUST pass `condition` (expected notify / state / file), polled
+ * every 2s; agent_settled remains the fallback for either kind.
+ */
+async function waitSettled(client, mark, timeoutMs, condition) {
 	const deadline = Date.now() + timeoutMs;
-	await client.waitForEvent(
-		(e) => e.type === "agent_settled",
-		Math.max(1000, deadline - Date.now()),
-		mark,
-	);
+	const sawSettled = () => client.eventLog.slice(mark).some((e) => e.type === "agent_settled");
+	for (;;) {
+		if ((condition ? condition() : false) || sawSettled()) break;
+		if (Date.now() >= deadline) throw new Error(`timeout waiting for step to settle (${timeoutMs}ms)`);
+		await sleep(2000);
+	}
 	for (;;) {
 		const idleFor = Date.now() - client.lastEventAt;
 		if (idleFor >= QUIET_MS) return;
@@ -478,7 +487,7 @@ async function main() {
 		console.log("\n--- Step 2: /velpari-status (no run) ---");
 		{
 			const { ok, mark, notifyMark } = await sendPrompt(client, "/velpari-status");
-			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS);
+			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS, () => newNotifies(client, notifyMark).length > 0);
 			record(
 				"status reports no active run",
 				ok && notifyMatched(client, notifyMark, /No active Velpari run/),
@@ -491,7 +500,7 @@ async function main() {
 		console.log("\n--- Step 3: /velpari-configure-inputs ---");
 		{
 			const { ok, mark, notifyMark } = await sendPrompt(client, "/velpari-configure-inputs");
-			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS);
+			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS, () => newNotifies(client, notifyMark).length > 0);
 			record(
 				"configure-inputs saved",
 				ok && notifyMatched(client, notifyMark, /Configuration saved/),
@@ -511,7 +520,12 @@ async function main() {
 		{
 			const { ok, mark, notifyMark } = await sendPrompt(client, `/velpari-brainstorm ${MISSION}`);
 			if (!ok) throw new Error("brainstorm prompt rejected");
-			await waitSettled(client, mark, STAGE_TIMEOUT_MS);
+			await waitSettled(
+				client,
+				mark,
+				STAGE_TIMEOUT_MS,
+				() => readState().currentStage === "brainstorming" || newNotifies(client, notifyMark).length > 0,
+			);
 			let state = readState();
 			runId = state.runId;
 			record("run created", state.currentStage === "brainstorming" && !!runId, `stage=${state.currentStage} runId=${runId}`);
@@ -525,7 +539,6 @@ async function main() {
 				if (n.ok) await waitSettled(client, n.mark, STAGE_TIMEOUT_MS);
 			}
 			assertFile("brainstorm notes working copy", notesPath);
-			void notifyMark;
 		}
 
 		// Step 5: /velpari-approve-brainstorm — publish + advance
@@ -536,7 +549,12 @@ async function main() {
 			for (let attempt = 1; attempt <= 2 && !approved; attempt++) {
 				const { ok, mark, notifyMark } = await sendPrompt(client, "/velpari-approve-brainstorm");
 				if (!ok) break;
-				await waitSettled(client, mark, STAGE_TIMEOUT_MS);
+				await waitSettled(
+					client,
+					mark,
+					STAGE_TIMEOUT_MS,
+					() => readState().currentStage === "brainstormed" || newNotifies(client, notifyMark).length > 0,
+				);
 				approved = readState().currentStage === "brainstormed";
 				if (!approved && attempt === 1) {
 					const blockers = notifyDump(client, notifyMark);
@@ -573,7 +591,12 @@ async function main() {
 				chainAborted = true;
 				continue;
 			}
-			await waitSettled(client, start.mark, STAGE_TIMEOUT_MS);
+			await waitSettled(
+				client,
+				start.mark,
+				STAGE_TIMEOUT_MS,
+				() => readState().currentStage === s.during || newNotifies(client, start.notifyMark).length > 0,
+			);
 			record(`${s.cmd} → ${s.during}`, readState().currentStage === s.during, `stage=${readState().currentStage}`);
 
 			const g = await sendPrompt(client, stageGuidance(s.extra));
@@ -603,7 +626,12 @@ async function main() {
 			for (let attempt = 1; attempt <= 2 && !advanced; attempt++) {
 				const a = await sendPrompt(client, s.approve);
 				if (!a.ok) break;
-				await waitSettled(client, a.mark, STAGE_TIMEOUT_MS);
+				await waitSettled(
+					client,
+					a.mark,
+					STAGE_TIMEOUT_MS,
+					() => readState().currentStage === s.after || newNotifies(client, a.notifyMark).length > 0,
+				);
 				advanced = readState().currentStage === s.after;
 				if (!advanced && attempt === 1) {
 					const blockers = notifyDump(client, a.notifyMark);
@@ -633,7 +661,7 @@ async function main() {
 			record("/velpari-handoff (skipped)", true, chainAborted ? "chain aborted" : `E2E_UNTIL_STAGE=${UNTIL_STAGE} reached`);
 		} else {
 			const { ok, mark, notifyMark } = await sendPrompt(client, "/velpari-handoff");
-			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS);
+			if (ok) await waitSettled(client, mark, STAGE_TIMEOUT_MS, () => newNotifies(client, notifyMark).length > 0);
 			const finalStage = readState().currentStage;
 			record("handoff → handoff-ready", ok && finalStage === "handoff-ready", `stage=${finalStage}; ${notifyDump(client, notifyMark)}`);
 			assertFile("handoff payload", join(WORKSPACE, ".pi", "senai", "architect-inputs.json"));
