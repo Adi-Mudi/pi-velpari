@@ -308,14 +308,23 @@ function makeUiRouter(client) {
 
 // ---------- Driver helpers ----------
 async function sendPrompt(client, message) {
-	const mark = client.eventLog.length;
-	const notifyMark = client.notifyLog.length;
-	const resp = await client.sendCommand({ type: "prompt", message });
-	if (!resp.success) {
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		const mark = client.eventLog.length;
+		const notifyMark = client.notifyLog.length;
+		const resp = await client.sendCommand({ type: "prompt", message });
+		if (resp.success) return { ok: true, mark, notifyMark };
+		// Stage commands self-start their lifecycle agent runs, so a follow-up
+		// prompt can land while the agent is still processing — wait for it to
+		// settle, then resend (rpc "Agent is already processing" rejection).
+		if (/already processing/i.test(String(resp.error))) {
+			await waitSettled(client, mark, STAGE_TIMEOUT_MS).catch(() => {});
+			continue;
+		}
 		record(`prompt rejected: ${message.slice(0, 60)}`, false, String(resp.error));
 		return { ok: false, mark, notifyMark };
 	}
-	return { ok: true, mark, notifyMark };
+	record(`prompt rejected after retries: ${message.slice(0, 60)}`, false, "agent stayed busy");
+	return { ok: false, mark: client.eventLog.length, notifyMark: client.notifyLog.length };
 }
 
 /**
