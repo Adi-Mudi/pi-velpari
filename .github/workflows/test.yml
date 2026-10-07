@@ -177,8 +177,7 @@ jobs:
       - name: Tier 3 full-sequence run
         env:
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          MOONSHOT_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          E2E_MODEL: moonshotai/kimi-k2.6
+          E2E_MODEL: kimi-coding/kimi-for-coding
           PI_SUBAGENT_MUX: "tmux"
         run: |
           if [ -z "$KIMI_API_KEY" ]; then
