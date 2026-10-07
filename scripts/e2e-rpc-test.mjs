@@ -634,7 +634,7 @@ async function main() {
 		console.log("\n--- Step 5: /velpari-approve-brainstorm ---");
 		{
 			let approved = false;
-			for (let attempt = 1; attempt <= 2 && !approved; attempt++) {
+			for (let attempt = 1; attempt <= 4 && !approved; attempt++) {
 				const { ok, mark, notifyMark } = await sendPrompt(client, "/velpari-approve-brainstorm");
 				if (!ok) break;
 				await waitSettled(
@@ -711,7 +711,7 @@ async function main() {
 			}
 
 			let advanced = false;
-			for (let attempt = 1; attempt <= 2 && !advanced; attempt++) {
+			for (let attempt = 1; attempt <= 4 && !advanced; attempt++) {
 				const a = await sendPrompt(client, s.approve);
 				if (!a.ok) break;
 				await waitSettled(
