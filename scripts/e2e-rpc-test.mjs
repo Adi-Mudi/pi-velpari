@@ -336,6 +336,16 @@ function notifyDump(client, notifyMark) {
 		.slice(0, 600);
 }
 
+/** Last assistant message text, for UNDERSTAND-loop diagnosis (rpc-types.d.ts:361-367). */
+async function lastAssistantText(client) {
+	try {
+		const resp = await client.sendCommand({ type: "get_last_assistant_text" });
+		return resp.success && resp.data?.text ? String(resp.data.text) : "(no assistant text)";
+	} catch {
+		return "(get_last_assistant_text failed)";
+	}
+}
+
 const BRAINSTORM_GUIDANCE = [
 	"Work autonomously — do NOT ask me questions, make reasonable assumptions for a small CLI todo app.",
 	"Complete the brainstorm lifecycle now: skip scans and subagent spawning;",
@@ -468,6 +478,7 @@ async function main() {
 	client.onUiRequest = makeUiRouter(client);
 	let chainAborted = false;
 	let runId = "";
+	const assistantLog = [];
 
 	try {
 		// Step 1: command surface — exactly 52 velpari-* commands
@@ -530,13 +541,21 @@ async function main() {
 			runId = state.runId;
 			record("run created", state.currentStage === "brainstorming" && !!runId, `stage=${state.currentStage} runId=${runId}`);
 
-			const g = await sendPrompt(client, BRAINSTORM_GUIDANCE);
-			if (g.ok) await waitSettled(client, g.mark, STAGE_TIMEOUT_MS);
-
 			const notesPath = join(WORKSPACE, ".IDE_Plans", "velpari", "runs", runId, "brainstorm", "brainstorm-notes.md");
-			if (!existsSync(notesPath)) {
-				const n = await sendPrompt(client, "The brainstorm notes file is still missing. Write it now with all required sections filled, then stop.");
-				if (n.ok) await waitSettled(client, n.mark, STAGE_TIMEOUT_MS);
+			// UNDERSTAND loop responder (plan subphase 1.2 spec): the v2.1
+			// understand-first hard lock makes the LLM confirm conversationally
+			// BEFORE writing notes — answer with canned proceed replies, logging
+			// the assistant text each round for diagnosability. Cap 5 rounds.
+			let reply = BRAINSTORM_GUIDANCE;
+			for (let round = 1; round <= 5 && !existsSync(notesPath); round++) {
+				const p = await sendPrompt(client, reply);
+				if (!p.ok) break;
+				await waitSettled(client, p.mark, STAGE_TIMEOUT_MS);
+				if (existsSync(notesPath)) break;
+				const text = await lastAssistantText(client);
+				assistantLog.push({ step: "brainstorm", round, text: text.slice(0, 2000) });
+				reply =
+					'Yes — confirmed. Proceed fully autonomously: call the velpari_brainstorm_session tool with action "confirm-understanding", skip scans, resolve every decision-ledger question (nothing stays in draft/discussing), and write the complete brainstorm-notes.md working copy now (all required sections, no _TBD_). Do not ask me anything.';
 			}
 			assertFile("brainstorm notes working copy", notesPath);
 		}
@@ -710,6 +729,12 @@ async function main() {
 		"",
 		...Object.entries(uiSummary).map(([k, c]) => `- ${k} ×${c}`),
 		"",
+		"## Assistant log (UNDERSTAND rounds)",
+		"",
+		...(assistantLog.length
+			? assistantLog.map((a) => `- [${a.step} round ${a.round}] ${a.text.replace(/\s+/g, " ").slice(0, 300)}`)
+			: ["- (none)"]),
+		"",
 		"## Verdict",
 		"",
 		fail === 0 ? "**PASS** — full sequence reached the target stage." : `**FAIL** — ${fail} assertion(s) failed.`,
@@ -718,7 +743,7 @@ async function main() {
 	writeFileSync(join(REPORT_DIR, "report.md"), reportLines.join("\n"));
 	writeFileSync(
 		join(REPORT_DIR, "results.json"),
-		JSON.stringify({ pass, fail, runId, workspace: WORKSPACE, results, uiLog: client.uiLog, notifies: client.notifyLog }, null, 2),
+		JSON.stringify({ pass, fail, runId, workspace: WORKSPACE, results, uiLog: client.uiLog, notifies: client.notifyLog, assistantLog }, null, 2),
 	);
 	console.log(`\nReport written to ${REPORT_DIR}`);
 	console.log(`SUMMARY: ${pass}/${results.length} passed, ${fail} failed`);
