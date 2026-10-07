@@ -10,7 +10,8 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +25,7 @@ import {
 	VALID_SESSION_MODES,
 	VALID_SPAWNING,
 	VALID_THINKING_LEVELS,
+	checkStageSkillsSection,
 	parseFrontmatter,
 } from "../../../src/doctor/checks/agents.js";
 
@@ -100,6 +102,28 @@ describe("doctor/checks/agents constants", () => {
 				existsSync(join(repoRoot, "skills", `velpari-${stage}.md`)),
 				`skills/velpari-${stage}.md must exist for the STAGES_WITH_SKILL_MARKDOWN entry "${stage}"`,
 			);
+		}
+	});
+});
+
+describe("checkStageSkillsSection — package-root scoping", () => {
+	it("passes from a bare temp cwd (skills resolve from the velpari package root)", () => {
+		const bare = mkdtempSync(join(tmpdir(), "velpari-stage-skills-bare-"));
+		try {
+			const section = checkStageSkillsSection(bare);
+			const missing = section.items.filter((i) => /MISSING/.test(i.message));
+			assert.equal(
+				missing.length,
+				0,
+				`unexpected MISSING errors from a bare cwd: ${missing.map((m) => m.message).join("; ")}`,
+			);
+			assert.equal(
+				section.items.filter((i) => i.status === "error").length,
+				0,
+				`unexpected errors: ${JSON.stringify(section.items.filter((i) => i.status === "error"))}`,
+			);
+		} finally {
+			rmSync(bare, { recursive: true, force: true });
 		}
 	});
 });

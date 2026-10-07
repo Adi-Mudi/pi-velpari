@@ -2,8 +2,8 @@
  * Tests for doctor/checks/web-tool-lock.ts.
  * Phase 2: closes the 35% coverage gap.
  *
- * The check enforces that ONLY the `web-search-agent` may carry
- * `websearch` or `fetchurl` in its tools list.
+ * The check enforces that ONLY the allowlisted agents (`web-search-agent`,
+ * `web-research`) may carry `websearch` or `fetchurl` in their tools list.
  */
 
 import { describe, it } from "node:test";
@@ -98,6 +98,47 @@ describe("checkWebToolLock — agents without web tools", () => {
 				0,
 				`unexpected errors: ${JSON.stringify(section.items)}`,
 			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("returns ok for the allowed web-research agent carrying web tools (brainstorm-v3 design)", () => {
+		const cwd = makeCwd();
+		try {
+			writeAgent(cwd, "web-research.md", {
+				...BASE_FM,
+				name: "web-research",
+				tools: "read, websearch, fetchurl",
+			});
+			const section = checkWebToolLock(cwd);
+			assert.equal(
+				section.items.filter((i) => i.status === "error").length,
+				0,
+				`unexpected errors: ${JSON.stringify(section.items)}`,
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("still errors when a stranger agent carries websearch alongside the allowlisted agents", () => {
+		const cwd = makeCwd();
+		try {
+			writeAgent(cwd, "web-research.md", {
+				...BASE_FM,
+				name: "web-research",
+				tools: "read, websearch",
+			});
+			writeAgent(cwd, "stranger-agent.md", {
+				...BASE_FM,
+				name: "stranger-agent",
+				tools: "read, websearch",
+			});
+			const section = checkWebToolLock(cwd);
+			const errors = section.items.filter((i) => i.status === "error");
+			assert.ok(errors.length >= 1);
+			assert.match(errors[0]!.message, /stranger-agent/);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

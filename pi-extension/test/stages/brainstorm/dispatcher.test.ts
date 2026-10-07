@@ -2,7 +2,7 @@
  * Brainstorm scan dispatcher tests (Phase 3).
  *
  * Covers: scan-type → scout role mapping, per-type cap (2), total cap (3),
- * read-only tool stripping (code/doc → read,grep,glob; community keeps
+ * read-only tool stripping (code/doc → read,grep,find; community keeps
  * websearch+fetchurl), FR-52 enforcement (web-search-agent rejected for
  * non-community scans), unknown scout rejection, timeouts (30s/90s),
  * artifact path containment, and the prepared payload shape.
@@ -66,7 +66,7 @@ describe("SCAN_TYPE_ROLES + DEFAULT_SCANS", () => {
 
 describe("enforceReadOnlyTools", () => {
 	it("strips write/edit/bash for code and doc scans", () => {
-		assert.deepEqual(enforceReadOnlyTools(["read", "write", "grep", "bash", "glob"], "code"), ["read", "grep", "glob"]);
+		assert.deepEqual(enforceReadOnlyTools(["read", "write", "grep", "bash", "find"], "code"), ["read", "grep", "find"]);
 		assert.deepEqual(enforceReadOnlyTools(["write", "edit"], "doc"), []);
 	});
 
@@ -82,6 +82,10 @@ describe("enforceReadOnlyTools", () => {
 	it("rejects unknown tools", () => {
 		assert.deepEqual(enforceReadOnlyTools(["read", "mcp/foo"], "code"), ["read"]);
 	});
+
+	it("drops glob (not a pi tool) and keeps find", () => {
+		assert.deepEqual(enforceReadOnlyTools(["read", "find", "glob"], "code"), ["read", "find"]);
+	});
 });
 
 describe("prepareDispatch", () => {
@@ -91,7 +95,7 @@ describe("prepareDispatch", () => {
 		if (!res.ok) return;
 		assert.equal(res.prepared.agent, "extractor");
 		assert.equal(res.prepared.scanType, "code");
-		assert.deepEqual(res.prepared.tools, ["read", "grep", "glob"]);
+		assert.deepEqual(res.prepared.tools, ["read", "grep", "find"]);
 		assert.equal(res.prepared.subagentArgs.timeoutMs, BRAINSTORM_DISPATCH_TIMEOUT_MS);
 		assert.equal(BRAINSTORM_DISPATCH_TIMEOUT_MS, 30_000);
 	});

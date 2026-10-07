@@ -41,6 +41,9 @@ const GOOD_PKG = {
 function writePackage(cwd: string, overrides: Record<string, unknown> = {}): void {
 	const pkg = { ...GOOD_PKG, ...overrides };
 	writeFileSync(join(cwd, "package.json"), JSON.stringify(pkg, null, 2), "utf8");
+	// Source-checkout marker — the readiness checks now run ONLY when cwd is
+	// the @adi-mudi/pi-velpari checkout (pkg name + pi-extension/src present).
+	mkdirSync(join(cwd, "pi-extension", "src"), { recursive: true });
 }
 
 function writeNpmignore(cwd: string, lines: string[]): void {
@@ -123,9 +126,7 @@ describe("checkOfficialReadiness — pi.extensions check", () => {
 	it("errors when pi object is missing", () => {
 		const cwd = makeCwd();
 		try {
-			const pkg = { ...GOOD_PKG };
-			delete (pkg as Record<string, unknown>).pi;
-			writeFileSync(join(cwd, "package.json"), JSON.stringify(pkg, null, 2));
+			writePackage(cwd, { pi: undefined });
 			const section = checkOfficialReadiness(cwd);
 			assert.ok(section.items.some((i) => i.status === "error"));
 		} finally {
@@ -231,13 +232,58 @@ describe("checkOfficialReadiness — README install line check", () => {
 });
 
 describe("checkOfficialReadiness — malformed package.json", () => {
-	it("treats corrupt package.json as missing", () => {
+	it("treats corrupt package.json as not-the-package and skips (info, never errors)", () => {
 		const cwd = makeCwd();
 		try {
 			writeFileSync(join(cwd, "package.json"), "{not-json", "utf8");
 			const section = checkOfficialReadiness(cwd);
-			// Without a readable package.json, every check fails.
-			assert.ok(section.items.some((i) => i.status === "error"));
+			assert.equal(section.items.filter((i) => i.status === "error").length, 0);
+			assert.ok(section.items.some((i) => i.status === "info" && /not the velpari package/.test(i.message)));
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("checkOfficialReadiness — scoping (plain user projects)", () => {
+	it("skips with one info line in a bare project (no package.json)", () => {
+		const cwd = makeCwd();
+		try {
+			const section = checkOfficialReadiness(cwd);
+			assert.equal(section.items.length, 1);
+			assert.equal(section.items[0]!.status, "info");
+			assert.match(section.items[0]!.message, /not the velpari package/);
+			assert.equal(section.items.filter((i) => i.status === "error").length, 0);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("skips when package.json belongs to a different package", () => {
+		const cwd = makeCwd();
+		try {
+			writeFileSync(
+				join(cwd, "package.json"),
+				JSON.stringify({ name: "some-user-app", version: "0.1.0" }),
+				"utf8",
+			);
+			const section = checkOfficialReadiness(cwd);
+			assert.equal(section.items.filter((i) => i.status === "error").length, 0);
+			assert.ok(section.items.some((i) => i.status === "info" && /not the velpari package/.test(i.message)));
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("still runs the checks inside the velpari source checkout", () => {
+		const cwd = makeCwd();
+		try {
+			writePackage(cwd);
+			writeNpmignore(cwd, ["coverage/"]);
+			writeReadme(cwd, "Install: `pi install npm:@adi-mudi/pi-velpari`\n");
+			const section = checkOfficialReadiness(cwd);
+			assert.ok(section.items.length > 1, "expected the full check set, not the skip line");
+			assert.ok(!section.items.some((i) => /not the velpari package/.test(i.message)));
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

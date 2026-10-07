@@ -64,7 +64,7 @@ export const DEFAULT_SCANS: readonly ScanType[] = Object.freeze([]);
 
 /** Read-only tools every brainstorm dispatch keeps after stripping.
  *  Lowercase pi tool names (velpari convention). */
-const READ_ONLY_ALLOWED_TOOLS: readonly string[] = ["read", "grep", "glob"];
+const READ_ONLY_ALLOWED_TOOLS: readonly string[] = ["read", "grep", "find"];
 
 /** Extra read-only tools allowed for COMMUNITY scans only — the
  *  web-search-agent needs them to do web research. */
@@ -168,7 +168,7 @@ type DispatchPrepResult = { ok: true; prepared: PreparedDispatch } | { ok: false
 // ─────────────────────────────────────────────────────────────────────────
 
 /** Strip forbidden tools from a scout's tool list. Community scans keep
- *  websearch + fetchurl; every other scan keeps only read/grep/glob.
+ *  websearch + fetchurl; every other scan keeps only read/grep/find.
  *
  *  Examples:
  *    enforceReadOnlyTools(["read", "write", "grep"], "code")      → ["read", "grep"]

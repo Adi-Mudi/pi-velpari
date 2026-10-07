@@ -19,10 +19,12 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 import { STAGE_REGISTRY } from "../../stages/registry.js";
+import { findPackageRoot } from "../../core/paths.js";
 import {
 	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
@@ -295,18 +297,43 @@ export function checkAgentMappingSection(cwd: string): DiagnosticSection {
  * Walk every stage in STAGES_WITH_SKILL_MARKDOWN, check that the skill
  * file exists, mentions every scout, and references the v2.0 machinery.
  * Returns a DiagnosticSection.
+ *
+ * The skill markdown ships with the extension package, so the directory
+ * is resolved from the velpari PACKAGE root (import.meta.url →
+ * findPackageRoot, same pattern as environment.ts:readEnginesNode) —
+ * a user project's cwd never has it. Falls back to `<cwd>/skills`
+ * when package-root resolution fails.
  */
+
+/**
+ * Resolve the directory holding the bundled stage skill markdown.
+ * @param {string} cwd - Project root (legacy fallback location).
+ * @returns {string} `<packageRoot>/skills`, or `<cwd>/skills` on failure.
+ */
+function resolveSkillsDir(cwd: string): string {
+	try {
+		const start = dirname(fileURLToPath(import.meta.url));
+		const root = findPackageRoot(start);
+		const dir = join(root, "skills");
+		if (existsSync(dir)) return dir;
+	} catch {
+		/* fall through to the cwd legacy path */
+	}
+	return join(cwd, "skills");
+}
+
 export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	let totalIssues = 0;
 
+	const skillsDir = resolveSkillsDir(cwd);
 	for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
-		const skillPath = join(cwd, "skills", `velpari-${stage}.md`);
+		const skillPath = join(skillsDir, `velpari-${stage}.md`);
 		if (!existsSync(skillPath)) {
 			totalIssues++;
 			items.push({
 				status: "error",
-				message: `skills/velpari-${stage}.md MISSING`,
+				message: `skills/velpari-${stage}.md MISSING (looked in ${skillsDir})`,
 				suggestion: suggestionFor("skill-missing"),
 			});
 			continue;

@@ -33,6 +33,7 @@ const SUBAGENTS_MIN_VERSION = "3.7.2";
 const CORE_PEER_DEPS = ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"] as const;
 
 interface PackageJsonShape {
+	name?: unknown;
 	keywords?: unknown;
 	pi?: { extensions?: unknown; skills?: unknown };
 	peerDependencies?: Record<string, unknown>;
@@ -203,11 +204,15 @@ export function checkOfficialReadiness(cwd: string = process.cwd()): DiagnosticS
 	const items: DiagnosticItem[] = [];
 	const pkg = readPackageJson(cwd);
 
-	if (pkg === null) {
+	// npm-publish readiness only applies to the velpari source checkout
+	// (same target detection as pi-extension-conformance.ts:99-115). In a
+	// plain user project report one info line — never errors.
+	const isSourceCheckout =
+		pkg !== null && pkg.name === "@adi-mudi/pi-velpari" && existsSync(join(cwd, "pi-extension", "src"));
+	if (!isSourceCheckout) {
 		items.push({
-			status: "error",
-			message: "package.json missing or unreadable at project root.",
-			suggestion: suggestionFor("official.missing-package-json"),
+			status: "info",
+			message: "not the velpari package — npm-readiness checks skipped.",
 		});
 		return { title: "Official-extension readiness", items };
 	}
