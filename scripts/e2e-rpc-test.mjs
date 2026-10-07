@@ -495,10 +495,15 @@ async function main() {
 
 	const args = ["--mode", "rpc", "--no-session", "--extension", EXTENSION_PATH];
 	if (E2E_MODEL) args.push("--model", E2E_MODEL);
+	// Safety rule 1 (plan ruling 6): strip API keys so local pi authenticates
+	// via kimiCodingOAuth instead of a (possibly stale) key env var.
+	const spawnEnv = { ...process.env, PI_SUBAGENT_MUX: "tmux", VELPARI_EXCALIDRAW: "0" };
+	delete spawnEnv.KIMI_API_KEY;
+	delete spawnEnv.MOONSHOT_API_KEY;
 	const pi = spawn("pi", args, {
 		cwd: WORKSPACE,
 		stdio: ["pipe", "pipe", "pipe"],
-		env: { ...process.env, PI_SUBAGENT_MUX: "tmux", VELPARI_EXCALIDRAW: "0" },
+		env: spawnEnv,
 	});
 	const client = new RpcClient(pi, STDERR_LOG);
 	client.onUiRequest = makeUiRouter(client);
