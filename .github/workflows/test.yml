@@ -65,8 +65,8 @@ jobs:
       - name: Install pi (for Tier 1 e2e)
         run: |
           if ! command -v pi >/dev/null 2>&1; then
-            echo "Installing @earendil-works/pi-coding-agent@0.84.3..."
-            npm install -g @earendil-works/pi-coding-agent@0.84.3 || echo "::warning::pi install failed; e2e will be skipped"
+            echo "Installing @earendil-works/pi-coding-agent@0.87.1..."
+            npm install -g @earendil-works/pi-coding-agent@0.87.1 || echo "::warning::pi install failed; e2e will be skipped"
           fi
 
       - name: E2E Tier 1
@@ -155,3 +155,37 @@ jobs:
           path: |
             .tmp/tier2/
             dist/pi-extension/test/e2e/*.test.js
+
+  tier3:
+    name: Tier 3 full-sequence RPC e2e (manual dispatch only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install pi + subagents plugin + tmux
+        run: |
+          npm install -g @earendil-works/pi-coding-agent@0.87.1
+          pi install git:github.com/HazAT/pi-interactive-subagents
+          sudo apt-get update && sudo apt-get install -y tmux
+      - name: Tier 3 full-sequence run
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          PI_SUBAGENT_MUX: "tmux"
+        run: |
+          if [ -z "$KIMI_API_KEY" ]; then
+            echo "::warning::KIMI_API_KEY not set; Tier 3 skipped (add the secret and re-dispatch)"
+            exit 0
+          fi
+          npm run test:e2e:tier3
+      - name: Tier 3 result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier3-result
+          path: .tmp/tier3/
