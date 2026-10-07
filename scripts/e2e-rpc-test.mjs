@@ -18,6 +18,8 @@
 //   E2E_UNTIL_STAGE      stop after reaching this currentStage value
 //                        (default "handoff-ready" = full chain)
 //   E2E_MODEL            optional --model passthrough for the pi spawn
+//   E2E_MISSION          optional mission override (default "Build a CLI todo
+//                        list manager") — use a tiny mission for fast smoke runs
 //   E2E_STAGE_TIMEOUT_MS per-stage agent-quiet timeout (default 1200000 = 20m)
 //   E2E_USE_GLOBAL       "1" force global packages load, "0" force --extension
 //                        (default: auto-detect the global path entry)
@@ -51,7 +53,7 @@ const TS = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const REPORT_DIR = join(PROJECT_ROOT, ".tmp", "tier3", `run-${TS}`);
 const STDERR_LOG = join(REPORT_DIR, "pi-stderr.log");
 const PROJECT_NAME = "RPCTestApp";
-const MISSION = "Build a CLI todo list manager";
+const MISSION = process.env.E2E_MISSION ?? "Build a CLI todo list manager";
 const COMMAND_TIMEOUT_MS = 120000;
 const STAGE_TIMEOUT_MS = Number(process.env.E2E_STAGE_TIMEOUT_MS ?? 20 * 60 * 1000);
 const QUIET_MS = 20000;
