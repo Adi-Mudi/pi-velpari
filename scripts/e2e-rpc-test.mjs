@@ -23,7 +23,7 @@
 // core/excalidraw.ts:164-168). VELPARI_SKIP_DB_PUBLISH is deliberately NOT
 // set — stages 3+ read upstream artifacts only from the store.
 //
-// Outputs (under .tmp/tier3/run-<ts>/): report.md, results.json, pi-stderr.log
+// Outputs (under .tmp/tier3/run-<ts>/): report.md, results.json, events.jsonl, pi-stderr.log
 // Exit codes: 0 = all assertions pass, 1 = assertion failure, 2 = harness error.
 
 import { spawn, spawnSync } from "node:child_process";
@@ -494,6 +494,12 @@ async function main() {
 			`found ${velpariCmds.length}`,
 		);
 
+		// Resolved model — recorded because provider/endpoint mismatches surface
+		// as silent empty agent runs (no assistant text, no stderr).
+		const stateResp = await client.sendCommand({ type: "get_state" });
+		const model = stateResp.success ? stateResp.data?.model : null;
+		record("model resolved", !!model, model ? `${model.provider}/${model.id}` : "none");
+
 		// Step 2: /velpari-status — no active run (ops/status.ts:133-137).
 		console.log("\n--- Step 2: /velpari-status (no run) ---");
 		{
@@ -745,6 +751,7 @@ async function main() {
 		join(REPORT_DIR, "results.json"),
 		JSON.stringify({ pass, fail, runId, workspace: WORKSPACE, results, uiLog: client.uiLog, notifies: client.notifyLog, assistantLog }, null, 2),
 	);
+	writeFileSync(join(REPORT_DIR, "events.jsonl"), client.eventLog.map((e) => JSON.stringify(e)).join("\n"));
 	console.log(`\nReport written to ${REPORT_DIR}`);
 	console.log(`SUMMARY: ${pass}/${results.length} passed, ${fail} failed`);
 	process.exit(fail === 0 ? 0 : 1);
