@@ -35,7 +35,7 @@ import { extractAfIdsFromStore, extractTestCaseTracesFromStore, extractDevOrderA
 import { extractTestCaseTracesFromSidecar } from "./test-cases-data.js";
 import { extractDevOrderAfRefsFromSidecar } from "./dev-order-data.js";
 import { resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
-import { extractIdsFromTable, readSectionBody } from "./psrs.js";
+import { extractIdsFromTable, readSectionBody, splitTableRow } from "./psrs.js";
 
 // ---------------------------------------------------------------------------
 // Types + rule table
@@ -135,10 +135,7 @@ export function extractIds(text: string, prefixes: string[]): string[] {
  * @returns {string[]} The trimmed cell strings.
  */
 function splitCells(line: string): string[] {
-	return line
-		.split("|")
-		.map((c) => c.trim())
-		.filter((c) => c.length > 0);
+	return splitTableRow(line).filter((c) => c.length > 0);
 }
 
 /**

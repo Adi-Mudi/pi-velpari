@@ -12,6 +12,24 @@
 
 const PLACEHOLDER_HINTS = ["todo", "tbd", "tba", "fill in", "placeholder", "<placeholder>", "xxx", "lorem ipsum", "??"];
 
+/**
+ * Split a markdown table row on UNESCAPED pipes only, trim each cell, and
+ * unescape `\|` → `|`. Naive `.split("|")` breaks rows whose cell text uses
+ * the GFM escape, shifting every later column (tier-3 phantom
+ * psrs-fr-status-invalid / psrs-fr-phase-invalid findings). Empty edge cells
+ * from the leading/trailing `|` are dropped; interior empty cells are kept
+ * so column positions stay aligned with the header.
+ */
+export function splitTableRow(line: string): string[] {
+	const cells = line
+		.trim()
+		.split(/(?<!\\)\|/)
+		.map((c) => c.trim().replace(/\\\|/g, "|"));
+	if (cells[0] === "") cells.shift();
+	if (cells[cells.length - 1] === "") cells.pop();
+	return cells;
+}
+
 interface PsrsMetadata {
 	documentType: string;
 	version: string;
@@ -165,10 +183,7 @@ export function extractIdsFromTable(
 	for (const line of lines) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const cells = trimmed
-			.split("|")
-			.map((c) => c.trim())
-			.filter((c) => c.length > 0);
+		const cells = splitTableRow(trimmed).filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		const matched = idPrefixes.find((p) => first.startsWith(p));
@@ -192,10 +207,7 @@ export function extractIdRows(
 	for (const line of lines) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const cells = trimmed
-			.split("|")
-			.map((c) => c.trim())
-			.filter((c) => c.length > 0);
+		const cells = splitTableRow(trimmed).filter((c) => c.length > 0);
 		if (cells.length < 1) continue;
 		const first = cells[0]!;
 		const matched = idPrefixes.find((p) => first.startsWith(p));
@@ -288,9 +300,8 @@ function checkStatusColumn(
 		.map((l) => l.trim())
 		.filter((l) => l.startsWith("|"));
 	if (lines.length === 0) return;
-	const headerCells = lines[0]!
-		.split("|")
-		.map((c) => c.trim().toLowerCase())
+	const headerCells = splitTableRow(lines[0]!)
+		.map((c) => c.toLowerCase())
 		.filter((c) => c.length > 0);
 	const statusIdx = headerCells.indexOf("status");
 	if (statusIdx === -1) {
@@ -303,10 +314,7 @@ function checkStatusColumn(
 		return;
 	}
 	for (const line of lines.slice(2)) {
-		const cells = line
-			.split("|")
-			.map((c) => c.trim())
-			.filter((c) => c.length > 0);
+		const cells = splitTableRow(line).filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		if (!first.startsWith(idPrefix)) continue;
@@ -343,9 +351,8 @@ function checkPhaseColumn(
 		.map((l) => l.trim())
 		.filter((l) => l.startsWith("|"));
 	if (lines.length === 0) return;
-	const headerCells = lines[0]!
-		.split("|")
-		.map((c) => c.trim().toLowerCase())
+	const headerCells = splitTableRow(lines[0]!)
+		.map((c) => c.toLowerCase())
 		.filter((c) => c.length > 0);
 	const phaseIdx = headerCells.indexOf("phase");
 	if (phaseIdx === -1) {
@@ -358,10 +365,7 @@ function checkPhaseColumn(
 		return;
 	}
 	for (const line of lines.slice(2)) {
-		const cells = line
-			.split("|")
-			.map((c) => c.trim())
-			.filter((c) => c.length > 0);
+		const cells = splitTableRow(line).filter((c) => c.length > 0);
 		if (cells.length < 2) continue;
 		const first = cells[0]!;
 		if (!first.startsWith(idPrefix)) continue;
@@ -398,17 +402,13 @@ export function extractRequirementPhases(markdown: string): Map<string, number> 
 			.map((l) => l.trim())
 			.filter((l) => l.startsWith("|"));
 		if (lines.length === 0) continue;
-		const headerCells = lines[0]!
-			.split("|")
-			.map((c) => c.trim().toLowerCase())
+		const headerCells = splitTableRow(lines[0]!)
+			.map((c) => c.toLowerCase())
 			.filter((c) => c.length > 0);
 		const phaseIdx = headerCells.indexOf("phase");
 		if (phaseIdx === -1) continue;
 		for (const line of lines.slice(2)) {
-			const cells = line
-				.split("|")
-				.map((c) => c.trim())
-				.filter((c) => c.length > 0);
+			const cells = splitTableRow(line).filter((c) => c.length > 0);
 			if (cells.length < 2) continue;
 			const first = cells[0]!;
 			if (!first.startsWith(idPrefix)) continue;
@@ -745,10 +745,7 @@ function collectTableIds(markdown: string): Set<string> {
 	for (const line of markdown.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed.startsWith("|")) continue;
-		const first = trimmed
-			.split("|")
-			.map((c) => c.trim())
-			.filter((c) => c.length > 0)[0];
+		const first = splitTableRow(trimmed).filter((c) => c.length > 0)[0];
 		if (first && COMPARE_ID_PREFIXES.some((p) => first.startsWith(p))) {
 			ids.add(first);
 		}

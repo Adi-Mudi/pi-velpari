@@ -15,7 +15,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { readSectionBody } from "./psrs.js";
+import { readSectionBody, splitTableRow } from "./psrs.js";
 import { resolveDocArtifact } from "./paths.js";
 import { loadRtmDataForEngine, type RtmRow } from "./rtm-data.js";
 
@@ -92,10 +92,7 @@ export function extractRequirementFingerprints(psrsMarkdown: string): Map<string
 		for (const line of body.split("\n")) {
 			const trimmed = line.trim();
 			if (!/^\|\s*(?:FR|NFR)-\d+\s*\|/.test(trimmed)) continue;
-			const cells = trimmed
-				.split("|")
-				.slice(1, -1)
-				.map((c) => c.trim());
+			const cells = splitTableRow(trimmed);
 			if (cells.length < 3) continue;
 			const id = cells[0]!;
 			// Drop the ID cell and the trailing Status cell.

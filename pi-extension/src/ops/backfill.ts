@@ -20,6 +20,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { splitTableRow } from "../core/psrs.js";
 import type { ArtifactKind, ArtifactPayload } from "../io/store.js";
 import {
 	KIND_ORDER,
@@ -51,12 +52,7 @@ export interface ParsedTable {
 }
 
 function splitRow(line: string): string[] {
-	return line
-		.trim()
-		.replace(/^\|/, "")
-		.replace(/\|$/, "")
-		.split("|")
-		.map((c) => c.trim().replace(/\\\|/g, "|"));
+	return splitTableRow(line);
 }
 
 function isSeparator(line: string): boolean {
