@@ -87,7 +87,7 @@ export async function handleDesignLogging(
 	const mux = detectMultiplexer();
 	if (mux.mux === "unknown" && !process.env.PI_SUBAGENT_MUX) {
 		ctx.ui.notify(
-			"Logging design requires a multiplexer (zellij/tmux/wezterm/cmux) for visible subagents. " +
+			"Logging design requires a multiplexer (zellij/tmux/wezterm/cmux/herdr) for visible subagents. " +
 				"Override with PI_SUBAGENT_MUX=1 for wrappers and tests.",
 			"error",
 		);

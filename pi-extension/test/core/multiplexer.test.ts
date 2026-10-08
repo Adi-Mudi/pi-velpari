@@ -5,6 +5,7 @@
  *   - Each supported mux is detected via its primary env var
  *   - Zellij secondary env var fallback
  *   - Wezterm and cmux env var detection
+ *   - Herdr env var detection (HERDR_ENV primary, HERDR_PANE_ID secondary)
  *   - PI_SUBAGENT_MUX override beats every other signal
  *   - "unknown" when no mux env vars are set
  *   - isSupportedMux returns false only for "unknown"
@@ -21,6 +22,11 @@ import {
 	type MultiplexerInfo,
 } from "../../src/core/multiplexer.js";
 
+/**
+ * Build a process env with all mux-related vars cleared, then apply overrides.
+ * @param {Record<string, string | undefined>} overrides - Env vars to set (undefined clears them)
+ * @returns {NodeJS.ProcessEnv} Env suitable for detectMultiplexer
+ */
 function env(overrides: Record<string, string | undefined>): NodeJS.ProcessEnv {
 	const base: Record<string, string | undefined> = {
 		TMUX: undefined,
@@ -30,6 +36,8 @@ function env(overrides: Record<string, string | undefined>): NodeJS.ProcessEnv {
 		WEZTERM_EXECUTABLE: undefined,
 		CMUX_PANE_ID: undefined,
 		CMUX_SESSION_NAME: undefined,
+		HERDR_ENV: undefined,
+		HERDR_PANE_ID: undefined,
 		PI_SUBAGENT_MUX: undefined,
 	};
 	for (const [k, v] of Object.entries(overrides)) base[k] = v;
@@ -78,6 +86,37 @@ describe("detectMultiplexer", () => {
 		const info = detectMultiplexer(env({ CMUX_SESSION_NAME: "s1" }));
 		assert.equal(info.mux, "cmux");
 		assert.equal(info.source, "CMUX_SESSION_NAME");
+	});
+
+	it("detects herdr via HERDR_ENV=1", () => {
+		const info = detectMultiplexer(env({ HERDR_ENV: "1" }));
+		assert.equal(info.mux, "herdr");
+		assert.equal(info.source, "HERDR_ENV");
+		assert.ok(isSupportedMux(info));
+	});
+
+	it("detects herdr via HERDR_PANE_ID when present", () => {
+		const info = detectMultiplexer(env({ HERDR_PANE_ID: "p1" }));
+		assert.equal(info.mux, "herdr");
+		assert.equal(info.source, "HERDR_PANE_ID");
+	});
+
+	it("prefers HERDR_PANE_ID as source when both herdr vars are set", () => {
+		const info = detectMultiplexer(env({ HERDR_ENV: "1", HERDR_PANE_ID: "p1" }));
+		assert.equal(info.mux, "herdr");
+		assert.equal(info.source, "HERDR_PANE_ID");
+	});
+
+	it("PI_SUBAGENT_MUX override with 'herdr' is honored", () => {
+		const info = detectMultiplexer(env({ PI_SUBAGENT_MUX: "herdr", TMUX: "x" }));
+		assert.equal(info.mux, "herdr");
+		assert.equal(info.source, "PI_SUBAGENT_MUX");
+	});
+
+	it("tmux wins over herdr when both TMUX and HERDR_ENV are set (herdr check is last)", () => {
+		const info = detectMultiplexer(env({ TMUX: "/tmp/tmux-1000/default,12345,0", HERDR_ENV: "1" }));
+		assert.equal(info.mux, "tmux");
+		assert.equal(info.source, "TMUX");
 	});
 
 	it("returns 'unknown' when no mux env vars are set", () => {
@@ -132,6 +171,7 @@ describe("isSupportedMux", () => {
 		[{ mux: "zellij", source: "ZELLIJ_PANE_ID" }, true],
 		[{ mux: "wezterm", source: "WEZTERM_PANE" }, true],
 		[{ mux: "cmux", source: "CMUX_PANE_ID" }, true],
+		[{ mux: "herdr", source: "HERDR_ENV" }, true],
 		[{ mux: "unknown", source: "(none)" }, false],
 	];
 	for (const [info, expected] of cases) {
@@ -142,8 +182,8 @@ describe("isSupportedMux", () => {
 });
 
 describe("SUPPORTED_MULTIPLEXERS", () => {
-	it("lists exactly the four supported muxes", () => {
-		assert.deepEqual([...SUPPORTED_MULTIPLEXERS], ["zellij", "tmux", "wezterm", "cmux"]);
+	it("lists exactly the five supported muxes", () => {
+		assert.deepEqual([...SUPPORTED_MULTIPLEXERS], ["zellij", "tmux", "wezterm", "cmux", "herdr"]);
 	});
 
 	it("does not include 'unknown'", () => {
@@ -158,6 +198,7 @@ describe("multiplexerRequiredMessage", () => {
 		assert.match(msg, /tmux/);
 		assert.match(msg, /wezterm/);
 		assert.match(msg, /cmux/);
+		assert.match(msg, /herdr/);
 	});
 
 	it("mentions the PI_SUBAGENT_MUX override env var", () => {
