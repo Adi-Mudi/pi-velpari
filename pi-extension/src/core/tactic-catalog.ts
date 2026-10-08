@@ -266,9 +266,9 @@ export const TACTIC_BY_ID: ReadonlyMap<string, Tactic> = new Map(TACTIC_CATALOG.
 /** All tactic ids (lowercase). Useful for quick validation. */
 export const TACTIC_IDS: ReadonlyArray<string> = TACTIC_CATALOG.map((t) => t.id);
 
-/** True if `id` is a known tactic in the catalog. */
+/** True if `id` is a known tactic in the catalog. Case-insensitive: label forms like `Encapsulate` match. */
 export function isKnownTactic(id: string): boolean {
-	return TACTIC_BY_ID.has(id);
+	return TACTIC_BY_ID.has(id.toLowerCase());
 }
 
 /**
