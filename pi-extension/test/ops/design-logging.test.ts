@@ -13,7 +13,9 @@
  *
  * Note: we don't mock the multiplexer module (node:test lacks
  * `mock.module`). Instead we use PI_SUBAGENT_MUX to drive the
- * multiplexer gate in both directions.
+ * multiplexer gate in both directions, and beforeEach clears the
+ * whole MUX_ENV_KEYS set (incl. HERDR_ENV/HERDR_PANE_ID, OP-7) so the
+ * machine's real multiplexer can never leak into a test.
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -32,6 +34,23 @@ let cwd: string;
 let notices: Notice[];
 let sentMessages: string[];
 let prevPiSubagentMux: string | undefined;
+
+/** Every env var detectMultiplexer (core/multiplexer.ts) sniffs. The
+ * multiplexer-gate test must control ALL of them — leaving TMUX, HERDR_ENV
+ * or any other signal to the real machine makes the suite fail inside a mux. */
+const MUX_ENV_KEYS = [
+	"PI_SUBAGENT_MUX",
+	"TMUX",
+	"ZELLIJ_PANE_ID",
+	"ZELLIJ_SESSION_NAME",
+	"WEZTERM_PANE",
+	"WEZTERM_EXECUTABLE",
+	"CMUX_PANE_ID",
+	"CMUX_SESSION_NAME",
+	"HERDR_ENV",
+	"HERDR_PANE_ID",
+] as const;
+let savedMuxEnv: Record<string, string | undefined> = {};
 
 function seedState(patch: Partial<RunState> = {}): void {
 	const state: RunState = {
@@ -97,7 +116,14 @@ function makeCtx(): { ctx: Ctx; pi: Api } {
 beforeEach(() => {
 	cwd = mkdtempSync(join(tmpdir(), "vp-handler-"));
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
-	prevPiSubagentMux = process.env.PI_SUBAGENT_MUX;
+	// Snapshot + clear the WHOLE mux env set so the machine's real
+	// multiplexer (tmux/zellij/wezterm/cmux/herdr) can never leak into a test.
+	savedMuxEnv = {};
+	for (const k of MUX_ENV_KEYS) {
+		savedMuxEnv[k] = process.env[k];
+		delete process.env[k];
+	}
+	prevPiSubagentMux = savedMuxEnv.PI_SUBAGENT_MUX;
 	// Default: bypass the multiplexer gate so the happy-path tests don't
 	// need a real terminal multiplexer in CI. The dedicated "no mux" test
 	// unsets it.
@@ -106,10 +132,10 @@ beforeEach(() => {
 
 afterEach(() => {
 	rmSync(cwd, { recursive: true, force: true });
-	if (prevPiSubagentMux === undefined) {
-		delete process.env.PI_SUBAGENT_MUX;
-	} else {
-		process.env.PI_SUBAGENT_MUX = prevPiSubagentMux;
+	for (const k of MUX_ENV_KEYS) {
+		const v = savedMuxEnv[k];
+		if (v === undefined) delete process.env[k];
+		else process.env[k] = v;
 	}
 });
 
@@ -179,9 +205,13 @@ describe("handleDesignLogging — multiplexer gate", () => {
 		const ctx = makeCtx();
 		await handleDesignLogging(ctx.ctx, ctx.pi, cwd);
 		const error = notices.find((n) => n.level === "error");
-		// Either the multiplexer gate or an earlier gate — we don't assert
-		// which. We assert that an error was emitted (not the happy path).
+		// beforeEach cleared every mux env var, so this is env-independent:
+		// the multiplexer gate (ops/design-logging.ts) must be the refuser.
 		assert.ok(error, "expected an error notify when multiplexer is missing");
+		assert.ok(
+			error!.msg.includes("requires a multiplexer"),
+			`expected the multiplexer-gate message, got: ${error!.msg}`,
+		);
 		assert.strictEqual(sentMessages.length, 0);
 	});
 });
