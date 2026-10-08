@@ -31,13 +31,13 @@ without surprises. `/velpari-final-design-approve` remains as the manual fallbac
 ## Sequence
 
 ```
-published artifacts (concatenated into prompt by handler):
-  - Doc/design_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
-  - Doc/pseudocode_<projectName>.md
-  - Doc/tests/test-plan_<projectName>.md
-  - Doc/tests/test-cases_<projectName>.md
-  - Doc/development-order_<projectName>.md
+upstream artifacts (pre-loaded into the prompt's `## DB Input Slices`
+block from the project store — NEVER open Doc/ files):
+  - design slice (Modules, Module Source FRs, ADRs)
+  - atomic-functions slice (AF catalog with tier/criticality)
+  - pseudocode slice (blocks with content)
+  - testplan slice (Test Cases + Traces — covers both test-plan and test-cases)
+  - development-order slice (Steps, Step AFs, Step Deps)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -76,9 +76,10 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
   artifact path it must write. The 3 cross-checkers write JSON reports
   into `<scoutReportDir>`; the finalizer writes the working copy at
   `<workingCopy>`.
-- **Task content** — Pass the concatenated published-artifacts content
+- **Task content** — Pass the `## DB Input Slices` block content
   (in the prompt), the report path (or working-copy path for the
   finalizer), and the cross-references to the other scouts' inputs.
+  Scouts must NOT open Doc/ files.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
   `subagent_interrupt` (Pi-backed only) if a scout hangs.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation
@@ -173,12 +174,17 @@ exists), revise the baseline instead of regenerating:
 1. Append new entries with new IDs — never renumber or delete existing
    entries.
 2. Mark superseded entries `deprecated` with a reason.
-3. Bump the version and add a new Change Log entry.
-   The `velpari_stage_publish` tool (which same gate chain as `/velpari-final-design-approve`) blocks publishing without it.
+3. Bump the version, add a new Change Log entry, and declare the bump
+   (N27): add `bump: major|minor|patch` (exact lowercase) to the
+   working copy's frontmatter — `major` = ids removed/sections
+   reorganized (incl. any deprecation), `minor` = backward-compatible
+   additions, `patch` = wording only. The publish gate blocks a missing
+   or under-declared bump; a first publish needs no bump.
+   The `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-final-design-approve`) blocks publishing without it.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-final-design-approve` runs the same gate chain from the terminal.
 
@@ -192,11 +198,44 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-final-de
   Stage 9 (state `ordered-development`) and before `/velpari-handoff`.
   Handoff is blocked until `finalized-design` is approved — skipping is
   not allowed.
-- **Do NOT mutate `state.json.stage` manually.** State advances only via
-  the `velpari_stage_publish` tool (which same gate chain as `/velpari-final-design-approve`); `runStage` never mutates state.
+- **Do NOT mutate `state.json.stage` manually.** The publish transition
+  (`finalizing-design → finalized-design`) advances only via the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-final-design-approve`); the stage-entry advance runs inside
+  `runStage` (`advanceStage`, N24-01) — you never touch state either way.
 - **Final message ≤ 10 lines.** When done, your reply must include only
   the outcome and the artifact path. Never paste the final-design
   content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/final-design-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "finalizing-design",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "development-order": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "finalSection": [{ "no": 1, "title": "Overview", "sourceArtifact": "design", "sourceIds": "M-1,ADR-1" }]
+  }
+}
+```
+
+`sourceIds` is an optional comma-separated id string. Every row must trace
+to the working copy content (zero hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

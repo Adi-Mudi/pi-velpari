@@ -10,10 +10,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { renderWriteSetPreview } from "../../src/ui/write-set-preview.js";
-import type {
-	RegenerationPreview,
-	WriteAgentsResult,
-} from "../../src/core/agents-generator.js";
+import type { RegenerationPreview, WriteAgentsResult } from "../../src/core/agents-generator.js";
 
 describe("write-set-preview (Phase 5)", () => {
 	describe("empty result", () => {
@@ -168,9 +165,7 @@ describe("write-set-preview (Phase 5)", () => {
 
 		it("defaults to 80-char width (sane terminal default)", () => {
 			const path80 = ".pi/agents/" + "x".repeat(60) + "-name.md";
-			const md = renderWriteSetPreview(
-				{ created: [path80], regenerated: [], keptDrifted: [], skipped: [] },
-			);
+			const md = renderWriteSetPreview({ created: [path80], regenerated: [], keptDrifted: [], skipped: [] });
 			for (const line of md.split("\n")) {
 				assert.ok(
 					visibleWidth(line) <= 80,

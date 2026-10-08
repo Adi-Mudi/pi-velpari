@@ -26,6 +26,9 @@ import { runPreCondition } from "../../../src/stages/atomic-function/pre-conditi
 import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../../src/core/atomic-tier.js";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { RunState } from "../../../src/core/state.js";
+import { openStoreDb, closeStoreDb } from "../../../src/io/db.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../../src/io/store.js";
+import { buildStoreDbPath } from "../../../src/core/paths.js";
 
 let tmpDir: string;
 let notices: Array<{ message: string; level: string }>;
@@ -41,9 +44,12 @@ function makeCtx(): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
-function makeState(stage: RunState["currentStage"], opts: {
-	standardsProfile?: { id: string; version: string };
-} = {}): void {
+function makeState(
+	stage: RunState["currentStage"],
+	opts: {
+		standardsProfile?: { id: string; version: string };
+	} = {},
+): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
@@ -60,10 +66,7 @@ function makeState(stage: RunState["currentStage"], opts: {
 	fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 
-function makeFilesConfig(opts: {
-	projectName: string;
-	atomic?: Partial<AtomicProfile>;
-}): void {
+function makeFilesConfig(opts: { projectName: string; atomic?: Partial<AtomicProfile> }): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
@@ -93,25 +96,60 @@ function makeAllInputs(projectName: string): void {
 	for (const a of artifacts) {
 		fs.writeFileSync(path.join(docDir, `${a}_${projectName}.md`), `# ${a}\n`, "utf8");
 	}
+	seedStore(projectName);
+}
+
+/**
+ * Phase 6: the atomic-function stage resolves its inputs from the project
+ * store (strict DB read, §14.1) — publish the four upstream kinds so the
+ * dispatch fixture's pre-condition/slice gate passes.
+ */
+function seedStore(projectName: string): void {
+	const db = openStoreDb(buildStoreDbPath(projectName, tmpDir));
+	try {
+		const env = (stage: string): ArtifactEnvelopeInput => ({
+			version: 1,
+			stage,
+			generatedAt: "2026-09-23T00:00:00.000Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		});
+		writeArtifact(db, "prd", "r1", env("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse input" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+		writeArtifact(db, "rtm", "r1", env("building-rtm"), {
+			rtmRow: [{ id: "FR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "a".repeat(64) }],
+		});
+		publishArtifact(db, "r1", "rtm");
+		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-23T00:00:00.000Z",
+				webSearchConsent: 0,
+			},
+		});
+		publishArtifact(db, "r1", "feasibility");
+		writeArtifact(db, "design", "r1", env("designing"), {
+			designModule: [{ id: "M-1", name: "core", description: "core logic" }],
+		});
+		publishArtifact(db, "r1", "design");
+	} finally {
+		closeStoreDb(db);
+	}
 }
 
 /** Pre-populate `.pi/agents/` so ensureStageAgents has nothing to do. */
 function preInstallAllScouts(): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
-	const scouts = [
-		"af-source-rtm",
-		"af-source-design",
-		"af-source-prd",
-		"af-source-feas",
-		"reviewer",
-	];
+	const scouts = ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"];
 	for (const s of scouts) {
-		fs.writeFileSync(
-			path.join(agentsDir, `${s}.md`),
-			`---\nname: ${s}\ndescription: stub\n---\n# stub\n`,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(agentsDir, `${s}.md`), `---\nname: ${s}\ndescription: stub\n---\n# stub\n`, "utf8");
 	}
 }
 
@@ -144,10 +182,7 @@ describe("dispatchScouts — bootstrap", () => {
 		// And the files should now exist on disk
 		const agentsDir = path.join(tmpDir, ".pi", "agents");
 		for (const name of ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"]) {
-			assert.ok(
-				fs.existsSync(path.join(agentsDir, `${name}.md`)),
-				`expected ${name}.md to be installed`,
-			);
+			assert.ok(fs.existsSync(path.join(agentsDir, `${name}.md`)), `expected ${name}.md to be installed`);
 		}
 	});
 

@@ -70,9 +70,7 @@ describe("spawnPersistentSessions — happy path", () => {
 		assert.equal(result.calls.length, 2);
 
 		const web = result.calls.find((c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.web);
-		const doc = result.calls.find(
-			(c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.docCode,
-		);
+		const doc = result.calls.find((c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.docCode);
 		assert.ok(web, "web call must exist");
 		assert.ok(doc, "doc call must exist");
 		assert.equal(web.session, BRAINSTORM_SESSION_HANDLES.web);
@@ -139,9 +137,7 @@ describe("spawnPersistentSessions — happy path", () => {
 		assert.equal(result.ok, true);
 		if (!result.ok || result.alreadySpawned) return;
 		const web = result.calls.find((c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.web);
-		const doc = result.calls.find(
-			(c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.docCode,
-		);
+		const doc = result.calls.find((c) => c.agent === BRAINSTORM_PERSISTENT_AGENTS.docCode);
 		assert.match(web!.prompt, /handle: web/);
 		assert.match(doc!.prompt, /handle: doc-code/);
 	});
@@ -170,11 +166,7 @@ describe("spawnPersistentSessions — idempotency", () => {
 
 	it("does not emit new calls when already spawned", () => {
 		let state = createRun("Mission", tmpDir);
-		state = persistSpawnHandles(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			tmpDir,
-		);
+		state = persistSpawnHandles(state, { web: "web", docCode: "doc-code" }, tmpDir);
 
 		const result = spawnPersistentSessions({ cwd: tmpDir, mission: "Mission" });
 
@@ -214,11 +206,7 @@ describe("spawnPersistentSessions — error paths", () => {
 describe("persistSpawnHandles", () => {
 	it("writes both handles to state and round-trips through loadState", () => {
 		const state = createRun("Mission", tmpDir);
-		const next = persistSpawnHandles(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			tmpDir,
-		);
+		const next = persistSpawnHandles(state, { web: "web", docCode: "doc-code" }, tmpDir);
 
 		assert.equal(next.activeSubagents?.web, "web");
 		assert.equal(next.activeSubagents?.docCode, "doc-code");

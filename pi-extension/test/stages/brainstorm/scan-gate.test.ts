@@ -21,10 +21,7 @@ import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	runScanGatePicker,
-	type ScanGateResult,
-} from "../../../src/stages/brainstorm/scan-gate.js";
+import { runScanGatePicker, type ScanGateResult } from "../../../src/stages/brainstorm/scan-gate.js";
 import type { FilesConfig } from "../../../src/core/config.js";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
@@ -73,11 +70,7 @@ function makeCtx(
 }
 
 /** Run the picker with the mock ctx, returning the rich result. */
-async function run(
-	ctx: MockCtx,
-	config: FilesConfig,
-	cwd: string,
-): Promise<ScanGateResult> {
+async function run(ctx: MockCtx, config: FilesConfig, cwd: string): Promise<ScanGateResult> {
 	const extCtx = ctx as unknown as ExtensionCommandContext;
 	return runScanGatePicker(extCtx, { config, cwd });
 }

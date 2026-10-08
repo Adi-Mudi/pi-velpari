@@ -214,16 +214,20 @@ describe("validateFirstADR", () => {
 			{ id: "B", label: "Y", pros: "", cons: "" },
 		];
 		const issues = validateFirstADR([adr]);
-		assert.ok(issues.some((i) => /accepted/.test(i)), JSON.stringify(issues));
+		assert.ok(
+			issues.some((i) => /accepted/.test(i)),
+			JSON.stringify(issues),
+		);
 	});
 
 	it("flags first ADR with fewer than 2 options (rubber-stamp)", () => {
 		const adr = makeADR({});
-		adr.options = [
-			{ id: "A", label: "Only choice", pros: "", cons: "" },
-		];
+		adr.options = [{ id: "A", label: "Only choice", pros: "", cons: "" }];
 		const issues = validateFirstADR([adr]);
-		assert.ok(issues.some((i) => /rubber-stamp/.test(i) || /2 options/.test(i)), JSON.stringify(issues));
+		assert.ok(
+			issues.some((i) => /rubber-stamp/.test(i) || /2 options/.test(i)),
+			JSON.stringify(issues),
+		);
 	});
 
 	it("flags first ADR with wrong stage", () => {
@@ -233,6 +237,9 @@ describe("validateFirstADR", () => {
 			{ id: "B", label: "Y", pros: "", cons: "" },
 		];
 		const issues = validateFirstADR([adr]);
-		assert.ok(issues.some((i) => /stage/.test(i)), JSON.stringify(issues));
+		assert.ok(
+			issues.some((i) => /stage/.test(i)),
+			JSON.stringify(issues),
+		);
 	});
 });

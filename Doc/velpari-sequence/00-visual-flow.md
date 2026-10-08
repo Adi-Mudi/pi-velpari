@@ -118,7 +118,7 @@ preview-yes → velpari_stage_publish tool (or /velpari-<stage>-approve fallback
    1. revision gate (append-only IDs, version bump, Change Log)
    2. artifact gate (L1 hash + L2 ID coverage + L3 reviewer verdict)
    3. atomic write to Doc/
-   4. full doctor audit — errors OR warnings ⇒ nothing publishes
+   4. full doctor audit — errors ⇒ nothing publishes (warnings reported, never block — N24-15)
    5. advanceStage + Next: hint
 ```
 

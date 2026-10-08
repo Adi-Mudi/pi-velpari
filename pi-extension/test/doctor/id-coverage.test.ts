@@ -133,7 +133,10 @@ describe("runPublishGate — id-coverage branch", () => {
 			projectName: "TestApp",
 		});
 		assert.equal(gate.errors.length, 0, `unexpected errors: ${gate.errors.join(" | ")}`);
-		assert.ok(!gate.warnings.some((w) => w.includes("id-coverage")), `unexpected warnings: ${gate.warnings.join(" | ")}`);
+		assert.ok(
+			!gate.warnings.some((w) => w.includes("id-coverage")),
+			`unexpected warnings: ${gate.warnings.join(" | ")}`,
+		);
 	});
 
 	it("rule skipped when the upstream artifact is absent", () => {
@@ -147,7 +150,10 @@ describe("runPublishGate — id-coverage branch", () => {
 			projectName: "TestApp",
 		});
 		assert.ok(!gate.errors.some((e) => e.includes("id-coverage")), `unexpected errors: ${gate.errors.join(" | ")}`);
-		assert.ok(!gate.warnings.some((w) => w.includes("id-coverage")), `unexpected warnings: ${gate.warnings.join(" | ")}`);
+		assert.ok(
+			!gate.warnings.some((w) => w.includes("id-coverage")),
+			`unexpected warnings: ${gate.warnings.join(" | ")}`,
+		);
 	});
 });
 

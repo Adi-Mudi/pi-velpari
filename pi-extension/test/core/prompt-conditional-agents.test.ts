@@ -11,10 +11,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	buildStagePrompt,
-	type BuildStagePromptInput,
-} from "../../src/core/prompt.js";
+import { buildStagePrompt, type BuildStagePromptInput } from "../../src/core/prompt.js";
 import { STAGE_KEYS, STAGE_REGISTRY } from "../../src/stages/registry.js";
 
 function baseInput(): BuildStagePromptInput {

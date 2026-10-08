@@ -23,10 +23,10 @@ overall verdict filled, the user has approved the preview, and the
 
 ## Read-First Rule (HARD)
 
-1. **Read every input artifact BEFORE asking the user anything.** The RTM
-   path is in the prompt; read it fully. If PRD/brainstorm paths are
-   available, read them too.
-2. **Never ask a question whose answer exists in an input artifact.**
+1. **Read every input BEFORE asking the user anything.** The RTM slice is
+   pre-loaded in the prompt's `## DB Input Slices` block — read it fully.
+   Never open Doc/ files; the slice is the input.
+2. **Never ask a question whose answer exists in an input.**
    An orchestra that asks before reading is broken.
 3. **Default to "Insufficient data".** If the inputs are silent on a
    dimension, the scout marks it "Insufficient data — collect more before
@@ -38,7 +38,7 @@ overall verdict filled, the user has approved the preview, and the
 ## Sequence
 
 ```
-RTM (already in prompt as inputArtifact)
+RTM slice (already in prompt as `## DB Input Slices` — from the project store)
         │
         ▼
 READ all inputs fully (Read-First Rule)
@@ -335,10 +335,14 @@ Revision rules:
 2. **Deprecate, don't delete.** Conditions, risks, or open questions that
    no longer apply stay in the document marked `deprecated` with a
    reason. Never delete them silently.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when anything is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when anything is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** The `velpari_stage_publish` tool
-   (same gate chain as `/velpari-feasibility-approve`) blocks publishing
+   (which runs the same gate chain as `/velpari-feasibility-approve`) blocks publishing
    without a new Change Log entry.
 5. **New content is appended** under the existing sections.
 
@@ -346,7 +350,7 @@ The 4 scouts still run fresh — never reuse old scout reports.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + feasibility v2 session + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + feasibility v2 session + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-feasibility-approve` runs the same gate chain from the terminal.
 
@@ -356,12 +360,47 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-feasibil
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `analyzing-feasibility` via `createRun()`. The next state transition
-  (`analyzed-feasibility`) happens in the `velpari_stage_publish` tool
-  (same gate chain as `/velpari-feasibility-approve`). You only write the
-  working copy artifact.
+  `analyzing-feasibility` at stage entry (`runStage` → `advanceStage`,
+  N24-01). The next state transition (`analyzed-feasibility`) happens in
+  the `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-feasibility-approve`). You only write the working copy
+  artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the feasibility content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/feasibility-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "analyzing-feasibility",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": {},
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "reuseScan": [{ "candidate": "lib-a", "license": "MIT", "repoFreshness": "fresh", "verdict": "reuse" }]
+  }
+}
+```
+
+FEASIBILITY SPECIAL CASE: the `feasibilityDecision` and `feasibilitySpike`
+rows are built BY CODE from `state.feasibilitySession` at publish time —
+the decision is written VERBATIM (`reuse` / `partial` / `build`), language
+= `selectedLanguage`, decidedBy = `selectedBy`, spikes from
+`spikeResults`. Do NOT put them in the payload; the payload carries the
+envelope + optional `reuseScan` rows only.
 
 ## Known issue: zellij `close-pane` bug
 

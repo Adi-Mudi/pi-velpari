@@ -20,10 +20,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { registerSessionStartHook } from "../../src/hooks/session-start.js";
 import { createRun } from "../../src/core/state.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
-} from "../../src/core/fingerprints.js";
+import { extractRequirementFingerprints, stampFingerprints } from "../../src/core/fingerprints.js";
 
 const PSRS = [
 	"# PSRS",

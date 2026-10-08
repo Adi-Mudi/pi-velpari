@@ -9,7 +9,7 @@
 
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -25,6 +25,24 @@ import {
 	type CustomRole,
 	type CustomRolesConfig,
 } from "../../src/core/custom-roles.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 let cwd: string;
 
@@ -54,11 +72,7 @@ describe("loadCustomRoles", () => {
 			invocationHint: "spawn on test trigger",
 			outOfScope: ["do not break things"],
 		};
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 1, roles: [role] }, null, 2),
-			"utf8",
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 1, roles: [role] }, null, 2), "utf8");
 
 		const config = loadCustomRoles(cwd);
 		assert.ok(config !== null);
@@ -88,23 +102,13 @@ describe("loadCustomRoles", () => {
 	it("throws on bad JSON", () => {
 		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 		writeFileSync(getCustomRolesPath(cwd), "not json", "utf8");
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on wrong version", () => {
 		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 2, roles: [] }),
-			"utf8",
-		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 2, roles: [] }), "utf8");
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on missing required field", () => {
@@ -117,10 +121,7 @@ describe("loadCustomRoles", () => {
 			}),
 			"utf8",
 		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/invalid custom-roles config/i,
-		);
+		assert.throws(() => loadCustomRoles(cwd), /invalid custom-roles config/i);
 	});
 
 	it("throws on duplicate role ids", () => {
@@ -133,15 +134,8 @@ describe("loadCustomRoles", () => {
 			invocationHint: "i",
 			outOfScope: ["o"],
 		};
-		writeFileSync(
-			getCustomRolesPath(cwd),
-			JSON.stringify({ version: 1, roles: [role, role] }, null, 2),
-			"utf8",
-		);
-		assert.throws(
-			() => loadCustomRoles(cwd),
-			/duplicate role id/i,
-		);
+		writeFileSync(getCustomRolesPath(cwd), JSON.stringify({ version: 1, roles: [role, role] }, null, 2), "utf8");
+		assert.throws(() => loadCustomRoles(cwd), /duplicate role id/i);
 	});
 });
 

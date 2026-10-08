@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../../core/paths.js";
 import {
+	CONDITIONAL_FRONTMATTER_FIELDS,
 	missingFrontmatterFields,
 	withArtifactFrontmatter,
 } from "../../../core/frontmatter.js";
@@ -30,6 +31,9 @@ const ARTIFACT_KEYS: readonly string[] = [
 	"brainstorm",
 	"feasibility-study",
 	"design",
+	// Phase C (D Integration request 2) — paired full-app wireframe;
+	// `if (!found) continue;` keeps backend projects error-free.
+	"wireframe",
 	"pseudocode",
 	"test-plan",
 	"test-cases",
@@ -50,10 +54,8 @@ export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => 
 		// them, so the canonical-fields list conflates required + optional;
 		// we filter the optional trio out so we don't stamp them just to
 		// "fill" them with empty values.
-		const optional = new Set(["supersedes", "sunset", "deprecatedAt"]);
-		const missing = missingFrontmatterFields(existing).filter(
-			(f) => !optional.has(f),
-		);
+		const optional = new Set(CONDITIONAL_FRONTMATTER_FIELDS);
+		const missing = missingFrontmatterFields(existing).filter((f) => !optional.has(f));
 		if (missing.length === 0) continue;
 		const stamped = withArtifactFrontmatter(existing, {
 			artifact,

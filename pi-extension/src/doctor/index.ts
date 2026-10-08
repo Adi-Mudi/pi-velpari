@@ -24,12 +24,7 @@ import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
 import { loadState } from "../core/state.js";
 import { loadHistory } from "../core/history.js";
 import { buildWorkingGroupedPath } from "../core/paths.js";
-import {
-	type DiagnosticItem,
-	type DiagnosticReport,
-	type DiagnosticSection,
-	summarize,
-} from "./_types.js";
+import { type DiagnosticItem, type DiagnosticReport, type DiagnosticSection, summarize } from "./_types.js";
 import { writeDoctorReport } from "./report.js";
 import { checkGroupedLegacyPathsSection } from "./checks/paths.js";
 import { checkWorkingPublishedSeparationSection } from "./checks/working-published.js";
@@ -41,6 +36,7 @@ import { checkTraceLinkConsistencySection } from "./checks/trace-link-consistenc
 import { checkAfDataSection } from "./checks/af-data.js";
 import { checkTestCasesDataSection } from "./checks/test-cases-data.js";
 import { checkDevOrderDataSection } from "./checks/dev-order-data.js";
+import { checkDevLanesSection } from "./checks/dev-lanes.js";
 import { checkFeasibilityRecordSection } from "./checks/feasibility-record.js";
 import { checkFingerprintsSection } from "./checks/fingerprints.js";
 import { checkPhaseConsistencySection } from "./checks/phase-consistency.js";
@@ -65,15 +61,32 @@ import { checkAgentFreshnessSection } from "./checks/agent-freshness.js";
 import { checkVerifierVerdictsSection } from "./checks/reviewer-verdict.js";
 import { checkDesignReadiness } from "./checks/design-readiness.js";
 import { checkShapeCompatibilityAll } from "./checks/shape-compatibility.js";
-import {
-	checkGateWiringSection,
-	checkStaleDownstreamSection,
-} from "./checks/stale-downstream.js";
+import { checkGateWiringSection, checkStaleDownstreamSection } from "./checks/stale-downstream.js";
+import { checkRunLockSection } from "./checks/stale-lock.js";
+import { checkWorktreeRemovalSection } from "./checks/worktree-removal.js";
 import { checkFreshnessSection } from "./checks/freshness.js";
+import { checkDbIntegritySection } from "./checks/integrity.js";
+import { checkDbLinkOrphansSection } from "./checks/db-link-orphans.js";
+// Phase 6 — versioning/locking/recovery visibility (N15 hash chain,
+// F7 baselines, N11 last verified backup).
+import { checkHashChainSection } from "./checks/hash-chain.js";
+import { checkBaselinesSection } from "./checks/baselines.js";
+import { checkLastBackupSection } from "./checks/last-backup.js";
+import { checkGitIntegrationSection } from "./checks/git-integration.js";
+import { checkPortfolioSection } from "./checks/portfolio.js";
 import { checkIdCoverageSection } from "./checks/id-coverage.js";
 import { checkScanOptions } from "./checks/scan-options.js";
 import { checkLoggingPlanSection } from "./checks/logging-plan.js";
 import { suggestionFor } from "./checks/fix-suggestions.js";
+// Phase C (N22) — Doctor v2 concern sections.
+import { checkEnvironmentSection } from "./checks/environment.js";
+import { checkPiExtensionConformance } from "./checks/pi-extension-conformance.js";
+import { checkConfigTamperSection } from "./checks/config-tamper.js";
+import { checkGeneratedFilesSection } from "./checks/generated-files.js";
+import { checkBindingMatchSection } from "./checks/binding-match.js";
+import { checkStoreLocksSection } from "./checks/store-locks.js";
+import { checkDigestGitSection } from "./checks/digest-git.js";
+import { checkSemverBumpSection } from "./checks/semver-bump.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
  * Each is sourced from its own check submodule so callers can import
@@ -106,6 +119,11 @@ export {
 // Helpers: read projectName and build small inline sections.
 // ---------------------------------------------------------------------------
 
+/**
+ * Read the configured project name, failing soft to "".
+ * @param {string} cwd - Project root.
+ * @returns {string} `projectName` when files.json validates, else `""`.
+ */
 function readProjectName(cwd: string): string {
 	try {
 		const cfg = loadFilesConfig(cwd);
@@ -150,11 +168,29 @@ function loadDesignWorkingContent(cwd: string): string | null {
 	}
 }
 
+/**
+ * Build the "Run state" section (stage, run id, lock/session info).
+ * @param {string} cwd - Project root.
+ * @returns {DiagnosticSection} The run-state section (info items when absent).
+ */
 function buildStateSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const statePath = join(cwd, PATHS.STATE_FILE);
 	if (existsSync(statePath)) {
-		const state = loadState(cwd);
+		// Phase C (N22) render hardening: a corrupt state.json must RENDER,
+		// not crash the doctor (the preflight row 6 reports it too).
+		let state: ReturnType<typeof loadState>;
+		try {
+			state = loadState(cwd);
+		} catch (err) {
+			items.push({
+				status: "error",
+				message: `Run state: UNREADABLE (${(err as Error).message})`,
+				suggestion:
+					"Repair `.pi/velpari/state.json` by hand, or delete it to start a fresh run via /velpari-brainstorm.",
+			});
+			return { title: "Run state", items };
+		}
 		items.push({
 			status: "ok",
 			message: `Run: ${state.runId}`,
@@ -180,17 +216,33 @@ function buildStateSection(cwd: string): DiagnosticSection {
 	return { title: "Run state", items };
 }
 
+/**
+ * Build the "Config" section — validates files.json and renders a
+ * corrupt file as an `UNREADABLE` error instead of throwing (Phase C).
+ * @param {string} cwd - Project root.
+ * @returns {DiagnosticSection} The config section (ok / invalid / unreadable / missing).
+ */
 function buildConfigSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const configPath = join(cwd, PATHS.CONFIG_DIR, "files.json");
 	if (existsSync(configPath)) {
-		const config = loadFilesConfig(cwd);
-		const valid = validateFilesConfig(config);
-		items.push({
-			status: valid ? "ok" : "error",
-			message: `Config: ${valid ? "VALID" : "INVALID"} (projectName="${config.projectName}")`,
-			suggestion: valid ? undefined : suggestionFor("config-invalid"),
-		});
+		// Phase C (N22): a corrupt files.json must RENDER as an error, not crash the doctor.
+		try {
+			const config = loadFilesConfig(cwd);
+			const valid = validateFilesConfig(config);
+			items.push({
+				status: valid ? "ok" : "error",
+				message: `Config: ${valid ? "VALID" : "INVALID"} (projectName="${config.projectName}")`,
+				suggestion: valid ? undefined : suggestionFor("config-invalid"),
+			});
+		} catch (err) {
+			items.push({
+				status: "error",
+				message: `Config: UNREADABLE (JSON parse failed: ${(err as Error).message})`,
+				suggestion: suggestionFor("config-invalid"),
+				details: ["Restore it via /velpari-doctor --velpari-fix (config-restore-git) or edit the file by hand."],
+			});
+		}
 	} else {
 		items.push({
 			status: "info",
@@ -201,6 +253,11 @@ function buildConfigSection(cwd: string): DiagnosticSection {
 	return { title: "Config", items };
 }
 
+/**
+ * Build the "Doc/ artifacts" section listing every published `.md`.
+ * @param {string} cwd - Project root.
+ * @returns {DiagnosticSection} The artifacts section (info item when Doc/ is absent).
+ */
 function buildDocArtifactsSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const docDir = join(cwd, "Doc");
@@ -213,6 +270,12 @@ function buildDocArtifactsSection(cwd: string): DiagnosticSection {
 		return { title: "Doc/ artifacts", items };
 	}
 
+	/**
+	 * Recursively collect `.md` file paths under one directory.
+	 * @param {string} dir - Directory to walk.
+	 * @param {string} prefix - Repo-relative prefix accumulated so far (e.g. `requirements/`).
+	 * @returns {string[]} Relative paths of every `.md` file below `dir`.
+	 */
 	const recurse = (dir: string, prefix: string): string[] => {
 		const out: string[] = [];
 		for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -241,6 +304,11 @@ function buildDocArtifactsSection(cwd: string): DiagnosticSection {
 	return { title: "Doc/ artifacts", items };
 }
 
+/**
+ * Build the multiplexer-detection section (zellij/tmux/wezterm/…).
+ * @param {string} cwd - Project root (reserved for future file probes).
+ * @returns {DiagnosticSection} The multiplexer section (warning when unknown).
+ */
 function buildMultiplexerSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const mux = detectMultiplexer();
@@ -248,10 +316,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 		status: mux.mux === "unknown" ? "warning" : "ok",
 		message: `Multiplexer detected: ${mux.mux} (env: ${mux.source})`,
 		details: ["Required for /velpari-brainstorm v2.0 visible subagents."],
-		suggestion:
-			mux.mux === "unknown"
-				? suggestionFor("unknown-multiplexer")
-				: undefined,
+		suggestion: mux.mux === "unknown" ? suggestionFor("unknown-multiplexer") : undefined,
 	});
 
 	const subagentsVersion = detectInteractiveSubagentsVersion(cwd);
@@ -277,11 +342,9 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 	if (mux.mux === "zellij") {
 		items.push({
 			status: "warning",
-			message: "zellij known bug [pi-interactive-subagents Issue #19]: `zellij action close-pane` closes the FOCUSED pane, not the target.",
-			details: [
-				suggestionFor("zellij-close-pane"),
-				"cmux/tmux/wezterm are not affected.",
-			],
+			message:
+				"zellij known bug [pi-interactive-subagents Issue #19]: `zellij action close-pane` closes the FOCUSED pane, not the target.",
+			details: [suggestionFor("zellij-close-pane"), "cmux/tmux/wezterm are not affected."],
 		});
 	}
 
@@ -300,7 +363,7 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
  * Run the full audit. Returns the structured report; the caller decides
  * whether to format it, write it to disk, or notify it.
  */
-export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
+export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolean } = {}): DiagnosticReport {
 	const projectName = readProjectName(cwd);
 
 	const sections: DiagnosticSection[] = [
@@ -319,6 +382,10 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkAfDataSection(cwd, projectName),
 		checkTestCasesDataSection(cwd, projectName),
 		checkDevOrderDataSection(cwd, projectName),
+		// Phase 7 (N16) — execution-lane integrity: step-in-one-lane,
+		// cross-lane deps without an integration point, DAG acyclicity,
+		// name-match. Legacy artifacts (no lane rows) stay not-checkable.
+		checkDevLanesSection(cwd, projectName),
 		checkFingerprintsSection(cwd, projectName),
 		checkPhaseConsistencySection(cwd, projectName),
 		checkMvpCoverageSection(cwd, projectName),
@@ -326,8 +393,31 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		checkFeasibilityRecordSection(cwd, projectName),
 		checkStaleDownstreamSection(cwd, projectName),
 		checkFreshnessSection(cwd),
+		// Standalone runs stamp store_meta.integrity_checked_at; the
+		// embedded post-publish run (approve.ts) passes embedded: true and
+		// never writes — the DB file was just git-committed (Phase 7).
+		checkDbIntegritySection(cwd, { embedded: opts.embedded === true }),
+		checkDbLinkOrphansSection(cwd),
+		// Phase 6 — store-level recovery visibility: broken hash chain is
+		// an ERROR naming the row (N15), drifted baselines report (F7),
+		// and the newest snapshot is proven on the spot (N11).
+		checkHashChainSection(cwd),
+		checkBaselinesSection(cwd),
+		checkLastBackupSection(cwd),
+		// Phase 9 — G2a visibility: user-repo git protection for the raw
+		// store DB (binary attr + WAL ignores). Warnings only; the next
+		// publish auto-heals via ops/git-attributes.ts.
+		checkGitIntegrationSection(cwd),
+		// Phase 10 — §15.5 drift visibility: portfolio registry vs the
+		// per-project DBs + D8 image-asset existence (traversal rejected).
+		checkPortfolioSection(cwd),
 		checkIdCoverageSection(cwd),
 		checkGateWiringSection(cwd),
+		// Phase 6 — run-level recovery visibility: N13 stale lock (with the
+		// /velpari-reset path) + N14 worktree-removal warning. Gate-wiring's
+		// lock line is an info pointer to these (D5 — one defect, one severity).
+		checkRunLockSection(cwd),
+		checkWorktreeRemovalSection(cwd),
 		buildMultiplexerSection(cwd),
 		checkSubagentExtension(),
 		checkStrayFiles(cwd),
@@ -350,6 +440,15 @@ export function runDoctor(cwd: string = process.cwd()): DiagnosticReport {
 		// Audits Doc/observability/logging-plan_<project>.md. Hard error
 		// when an active standards overlay requires logging.
 		checkLoggingPlanSection(cwd, projectName),
+		// Phase C — Doctor v2 (N22): Senai-style + new concern sections.
+		checkEnvironmentSection(cwd),
+		checkPiExtensionConformance(cwd),
+		checkConfigTamperSection(cwd),
+		checkGeneratedFilesSection(cwd),
+		checkBindingMatchSection(cwd),
+		checkStoreLocksSection(cwd, projectName),
+		checkDigestGitSection(cwd, projectName),
+		checkSemverBumpSection(cwd, projectName),
 	];
 
 	// Phase 5: prepend an "Action items" callout so errors and warnings

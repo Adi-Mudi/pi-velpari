@@ -20,12 +20,7 @@ import { copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot } from "../core/paths.js";
-import {
-	resolveAgentName,
-	VELPARI_ROLES,
-	type AgentConfig,
-	type VelpariRole,
-} from "../core/agents-config.js";
+import { resolveAgentName, VELPARI_ROLES, type AgentConfig, type VelpariRole } from "../core/agents-config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

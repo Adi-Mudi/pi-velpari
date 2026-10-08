@@ -123,11 +123,14 @@ describe("renderDecision + renderAuditLog", () => {
 	it("renders the full log with marker on line 1 and a summary section", () => {
 		const s = createAuditSession(RUN_ID, "todo CLI app");
 		appendDecision(s, decision({ decision: "dispatched", agent: "extractor" }));
-		const log = renderAuditLog(s, buildSummary(s, {
-			wallClockMs: 5000,
-			notesSectionsFilled: 7,
-			notesSectionsTotal: 7,
-		}));
+		const log = renderAuditLog(
+			s,
+			buildSummary(s, {
+				wallClockMs: 5000,
+				notesSectionsFilled: 7,
+				notesSectionsTotal: 7,
+			}),
+		);
 		assert.ok(log.split("\n")[0] === AUDIT_LOG_MARKER);
 		assert.match(log, /- Run: 2026-09-12-02-30-audit-run/);
 		assert.match(log, /- Seed: "todo CLI app"/);
@@ -138,11 +141,14 @@ describe("renderDecision + renderAuditLog", () => {
 
 	it("renders the empty-decisions fallback", () => {
 		const s = createAuditSession(RUN_ID, "seed");
-		const log = renderAuditLog(s, buildSummary(s, {
-			wallClockMs: 0,
-			notesSectionsFilled: 0,
-			notesSectionsTotal: 7,
-		}));
+		const log = renderAuditLog(
+			s,
+			buildSummary(s, {
+				wallClockMs: 0,
+				notesSectionsFilled: 0,
+				notesSectionsTotal: 7,
+			}),
+		);
 		assert.match(log, /no scout dispatches/);
 	});
 });
@@ -150,23 +156,42 @@ describe("renderDecision + renderAuditLog", () => {
 describe("countNotesSections", () => {
 	it("counts filled sections against the 7 required ones", () => {
 		const doc = [
-			"## Mission", "x", "",
-			"## Interview Answers", "x", "",
-			"## Scout Proposals", "x", "",
-			"## Decision Summary", "x", "",
-			"## Agreed", "x", "",
-			"## Not wanted", "x", "",
-			"## Open", "x",
+			"## Mission",
+			"x",
+			"",
+			"## Interview Answers",
+			"x",
+			"",
+			"## Scout Proposals",
+			"x",
+			"",
+			"## Decision Summary",
+			"x",
+			"",
+			"## Agreed",
+			"x",
+			"",
+			"## Not wanted",
+			"x",
+			"",
+			"## Open",
+			"x",
 		].join("\n");
 		assert.deepEqual(countNotesSections(doc), { filled: 7, total: 7 });
 	});
 
 	it("does not count missing, empty, or _TBD_-only sections", () => {
 		const doc = [
-			"## Mission", "x", "",
-			"## Interview Answers", "_TBD_", "",
-			"## Scout Proposals", "",
-			"## Decision Summary", "x",
+			"## Mission",
+			"x",
+			"",
+			"## Interview Answers",
+			"_TBD_",
+			"",
+			"## Scout Proposals",
+			"",
+			"## Decision Summary",
+			"x",
 		].join("\n");
 		assert.deepEqual(countNotesSections(doc), { filled: 2, total: 7 });
 	});
@@ -176,15 +201,17 @@ describe("writeAuditLog / readAuditLog round-trip", () => {
 	it("writes atomically to the run's brainstorm folder and reads back", () => {
 		const s = createAuditSession(RUN_ID, "todo CLI app");
 		appendDecision(s, decision({ decision: "dispatched", agent: "extractor" }));
-		const written = writeAuditLog(tmpDir, s, buildSummary(s, {
-			wallClockMs: 1000,
-			notesSectionsFilled: 7,
-			notesSectionsTotal: 7,
-		}));
-
-		const expected = path.join(
-			tmpDir, ".IDE_Plans", "velpari", "runs", RUN_ID, "brainstorm", "brainstorm-dispatch.md",
+		const written = writeAuditLog(
+			tmpDir,
+			s,
+			buildSummary(s, {
+				wallClockMs: 1000,
+				notesSectionsFilled: 7,
+				notesSectionsTotal: 7,
+			}),
 		);
+
+		const expected = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", RUN_ID, "brainstorm", "brainstorm-dispatch.md");
 		assert.equal(written, expected);
 		assert.equal(auditLogPath(RUN_ID, tmpDir), expected);
 
@@ -203,11 +230,15 @@ describe("writeAuditLog / readAuditLog round-trip", () => {
 		assert.equal(readAuditLog(tmpDir, "no-such-run"), null);
 
 		const s = createAuditSession(RUN_ID, "seed");
-		const filePath = writeAuditLog(tmpDir, s, buildSummary(s, {
-			wallClockMs: 0,
-			notesSectionsFilled: 0,
-			notesSectionsTotal: 7,
-		}));
+		const filePath = writeAuditLog(
+			tmpDir,
+			s,
+			buildSummary(s, {
+				wallClockMs: 0,
+				notesSectionsFilled: 0,
+				notesSectionsTotal: 7,
+			}),
+		);
 		fs.writeFileSync(filePath, "not an audit log", "utf8");
 		assert.equal(readAuditLog(tmpDir, RUN_ID), null);
 	});

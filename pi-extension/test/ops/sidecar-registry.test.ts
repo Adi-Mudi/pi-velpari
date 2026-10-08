@@ -29,12 +29,7 @@ const VALID_RTM = [
 
 describe("SIDECAR_REGISTRY shape", () => {
 	it("exposes entries keyed by artifact kind", () => {
-		assert.deepEqual(Object.keys(SIDECAR_REGISTRY), [
-			"RTM",
-			"atomic-functions",
-			"test-cases",
-			"development-order",
-		]);
+		assert.deepEqual(Object.keys(SIDECAR_REGISTRY), ["RTM", "atomic-functions", "test-cases", "development-order"]);
 		const entry = SIDECAR_REGISTRY.RTM!;
 		assert.equal(entry.artifact, "RTM");
 		assert.equal(entry.label, "RTM");
@@ -54,23 +49,14 @@ describe("SIDECAR_REGISTRY shape", () => {
 		assert.equal(af.artifact, "atomic-functions");
 		assert.equal(typeof af.validateWithCtx, "function");
 		assert.equal(af.sidecarName("TestApp"), "atomic-functions_TestApp.yaml");
-		assert.equal(
-			af.detectWorkingSidecar(["atomic-functions_TestApp.yaml", "x.md"]),
-			"atomic-functions_TestApp.yaml",
-		);
+		assert.equal(af.detectWorkingSidecar(["atomic-functions_TestApp.yaml", "x.md"]), "atomic-functions_TestApp.yaml");
 		assert.equal(af.detectWorkingSidecar(["atomic-functions_TestApp.md"]), null);
 	});
 
 	it("detect prefers .yaml over legacy .json (D4)", () => {
 		const entry = SIDECAR_REGISTRY.RTM!;
-		assert.equal(
-			entry.detectWorkingSidecar(["RTM_TestApp.json", "RTM_TestApp.yaml", "notes.md"]),
-			"RTM_TestApp.yaml",
-		);
-		assert.equal(
-			entry.detectWorkingSidecar(["RTM_TestApp.json", "RTM_TestApp.md"]),
-			"RTM_TestApp.json",
-		);
+		assert.equal(entry.detectWorkingSidecar(["RTM_TestApp.json", "RTM_TestApp.yaml", "notes.md"]), "RTM_TestApp.yaml");
+		assert.equal(entry.detectWorkingSidecar(["RTM_TestApp.json", "RTM_TestApp.md"]), "RTM_TestApp.json");
 		assert.equal(entry.detectWorkingSidecar(["RTM_TestApp.md"]), null);
 	});
 

@@ -8,13 +8,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	renderADRSection,
-	supersedeADR,
-	findOrphanADRs,
-	parseADRSection,
-	type ADR,
-} from "../../src/core/adr.js";
+import { renderADRSection, supersedeADR, findOrphanADRs, parseADRSection, type ADR } from "../../src/core/adr.js";
 
 function makeADR(overrides: Partial<ADR> = {}): ADR {
 	return {

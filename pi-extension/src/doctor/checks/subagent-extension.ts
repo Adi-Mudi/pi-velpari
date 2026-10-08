@@ -21,12 +21,7 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
 /** Provider packages we know about; >1 = ambiguous tool resolution. */
-const SUBAGENT_PROVIDER_PACKAGES = [
-	"pi-interactive-subagents",
-	"pi-subagents",
-	"pi-teams",
-	"extensions/subagent",
-];
+const SUBAGENT_PROVIDER_PACKAGES = ["pi-interactive-subagents", "pi-subagents", "pi-teams", "extensions/subagent"];
 
 /** Minimum version of pi-interactive-subagents that Velpari requires. */
 const MIN_PROVIDER_VERSION = "3.7.2";
@@ -91,9 +86,7 @@ export function checkSubagentExtension(agentDirOverride?: string): DiagnosticSec
 	}
 
 	// 2. Multiple sub-agent providers installed.
-	const providers = packages.filter((pkg) =>
-		SUBAGENT_PROVIDER_PACKAGES.some((known) => pkg.includes(known)),
-	);
+	const providers = packages.filter((pkg) => SUBAGENT_PROVIDER_PACKAGES.some((known) => pkg.includes(known)));
 	if (providers.length > 1) {
 		items.push({
 			status: "warning",
@@ -119,14 +112,7 @@ export function checkSubagentExtension(agentDirOverride?: string): DiagnosticSec
 	} else {
 		let version: string | null = null;
 		try {
-			const pkgJson = join(
-				agentDir,
-				"git",
-				"github.com",
-				"HazAT",
-				"pi-interactive-subagents",
-				"package.json",
-			);
+			const pkgJson = join(agentDir, "git", "github.com", "HazAT", "pi-interactive-subagents", "package.json");
 			version = (JSON.parse(readFileSync(pkgJson, "utf8")) as { version?: string }).version ?? null;
 		} catch {
 			version = null;
@@ -140,9 +126,7 @@ export function checkSubagentExtension(agentDirOverride?: string): DiagnosticSec
 			items.push({
 				status: "warning",
 				message: `pi-interactive-subagents ${version} is older than ${MIN_PROVIDER_VERSION}.`,
-				details: [
-					"Older versions lack the failure reporting Velpari relies on.",
-				],
+				details: ["Older versions lack the failure reporting Velpari relies on."],
 				suggestion: suggestionFor("subagent-ext-missing"),
 			});
 		} else {

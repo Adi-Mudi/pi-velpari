@@ -5,10 +5,12 @@ description: Pi-Velpari Atomic Function stage (required Stage 6, FR-35) — orch
 
 # Atomic Function Stage
 
-(Required Stage 6 — runs after the design stage is approved.) Read the published artifacts and propose
+(Required Stage 6 — runs after the design stage is approved.) Read the
+DB Input Slices and propose
 atomic function splits — small, leaf-node functions that can be unit-tested
-in isolation. The handler has already concatenated the PRD, RTM,
-pseudocode, and test cases into the prompt. Your job is to spawn 4
+in isolation. The handler has already loaded the PRD, RTM, feasibility,
+and design rows from the project store into the prompt's `## DB Input
+Slices` block. Your job is to spawn 4
 subagents in parallel, read their reports, and write the working-copy
 atomic-functions doc.
 
@@ -22,12 +24,12 @@ preview, and the `velpari_stage_publish` tool can publish the artifact to
 ## Sequence
 
 ```
-published artifacts (concatenated into prompt by handler):
-  - Doc/brainstorm-<slug>.md
-  - Doc/PRD_<projectName>.md
-  - Doc/RTM_<projectName>.md
-  - Doc/feasibility-study_<projectName>.md
-  - Doc/design_<projectName>.md
+upstream artifacts (pre-loaded into the prompt's `## DB Input Slices`
+block from the project store — NEVER open Doc/ files):
+  - prd slice   (FR, NFR rows with prose)
+  - rtm slice   (Traceability Rows)
+  - feasibility slice (Decision, Spikes, Reuse Scan)
+  - design slice (Modules, Module Source FRs, ADRs)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -68,9 +70,11 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
 - **Working directory** — Pass `cwd: <runDir>` so scouts can use relative paths.
 - **Explicit output path** — Each scout's `task:` MUST include the exact
   artifact path it must write.
-- **Task content** — Pass the concatenated published-artifacts content (in
+- **Task content** — Pass the `## DB Input Slices` block content (in
   the prompt) and the scout's own report path. Each scout's skill markdown
-  describes what to extract from which artifact.
+  describes what to extract from which slice row-set. Scouts must NOT open
+  Doc/ files. The reviewer agent is the sole exception: it reads the DB
+  slice AND the published Doc/ view — a mismatch is a finding.
 - **No turn cap** — The `subagent` tool has NO turn-cap parameter. Use
   `subagent_interrupt` (Pi-backed only) if a scout hangs.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation or
@@ -126,7 +130,10 @@ After all 4 scouts complete:
 5. Render the markdown table FROM the YAML and write it to `<workingCopy>`
    (`atomic-functions_<projectName>.md`). The publish gate re-generates
    the published markdown from the YAML — the published table is always
-   derived from the data, never from hand-written markdown.
+   derived from the data, never from hand-written markdown. (The DB-only
+   publish default writes NOTHING to `Doc/` — the published view comes from
+   `/velpari-export`; the working-copy markdown + YAML stay the review
+   surface.)
 
 ## Output Format
 
@@ -170,7 +177,12 @@ publish gate blocks on any missing one). Array fields
 string lists; `complexity` / `argCount` / `storyPoints` are numbers.
 Update mode: never delete a function — keep it with
 `status: deprecated` + a `reason`, bump the version, add a `changeLog`
-entry.
+entry, and declare the bump (N27): add `bump: major|minor|patch`
+(exact lowercase) to the working copy's frontmatter — `major` = ids
+removed/sections reorganized (incl. any deprecation), `minor` =
+backward-compatible additions, `patch` = wording only. The publish
+gate blocks a missing or under-declared bump; a first publish needs no
+bump.
 
 ### File 2: `atomic-functions_<projectName>.md` — rendered preview
 
@@ -287,7 +299,7 @@ exists), revise the baseline instead of regenerating:
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + atomic-tier reviewer verdict + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + atomic-tier reviewer verdict + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-atomic-function-approve` runs the same gate chain from the terminal.
 
@@ -304,6 +316,37 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-atomic-f
   not by this skill.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the atomic functions content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/atomic-functions-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "analyzing-atomic-functions",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "design": "<sha256 hex>" },
+    "reviewerVerdict": "<reviewer verdict or null>",
+    "changeLog": []
+  },
+  "rows": {
+    "atomicFunction": [{ "id": "AF-1", "name": "doThing", "signature": "doThing(): void", "tier": "basic", "criticality": "A", "sil": "none", "isLeaf": 1 }]
+  }
+}
+```
+
+`tier` ∈ entry | basic | intermediate | advanced. `criticality` ∈ A | B | C.
+`sil` ∈ none | sil-1 | sil-2 | sil-3 | sil-4. `isLeaf` is 0 or 1. Every row
+must trace to the working copy content (zero hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

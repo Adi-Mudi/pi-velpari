@@ -24,6 +24,12 @@ Notes:
 - `/velpari-final-design` produces a consolidation document, not HTML
   (historical name; the `/velpari-html-design` name is reserved for a future
   mockup generator).
+- **Publish target (Phase 11, Q3):** the `Doc/…` paths above are what a stage
+  writes when markdown writes are ON. The **default is DB-only** — approve
+  writes store rows + the YAML export beside the DB + a git commit and
+  NOTHING to `Doc/`; the `Doc/…` files are then the store kind's human view
+  (`/velpari-export` + the `show` commands). Legacy projects keep their
+  files; opt in with `"velpari": {"markdownWrites": true}` in `files.json`.
 
 ## Approve commands (10)
 
@@ -40,23 +46,33 @@ typed approve commands exist for recovery when that path is unavailable.
 
 | Command | Purpose |
 |---|---|
-| `/velpari-configure-inputs` | Framework, projectName, code/test/doc/excluded paths → `files.json`. Empty-project safe. |
+| `/velpari-configure-inputs` | Framework, projectName, code/test/doc/excluded paths → `files.json`. Empty-project safe. Also the home of the `projectType` config key: edit `files.json` by hand to set `"projectType": "backend"` (default when absent) or `"full-app"` — read by `core/project-type.ts`; only `full-app` pairs Stage 5 with a wireframe artifact (N26). |
 | `/velpari-configure-requirements` | Requirements profile (optional; default = common PSRS core). |
 | `/velpari-configure-standards` | Standards overlay (optional). |
 | `/velpari-configure-agents` | Role → custom agent name mapping → `agents.json`. |
 | `/velpari-agents` | View + validate the mapping. |
 | `/velpari-generate-sub-agents` | Per-phase dynamic agent generation (phase auto-detected from run state; `--phase N` overrides) — see `05-sub-agent-generation.md`. |
 
-## Ops / discipline commands (6)
+## Ops / discipline commands (16)
 
 | Command | Purpose |
 |---|---|
 | `/velpari-status` | Current stage, run, staleness summary, the single correct next command. |
-| `/velpari-doctor` | Full audit anytime: setup, secrets, agents, formats, freshness/staleness, ID coverage, reviewer verdicts. |
-| `/velpari-reset` | Discard the current run (destructive; confirmed). |
+| `/velpari-doctor` | Full audit anytime: setup, secrets, agents, formats, freshness/staleness, ID coverage, reviewer verdicts, DB integrity/links/portfolio. |
+| `/velpari-reset` | Discard the current run (destructive; confirmed). Published store rows — including run `migrated` — survive; only the run's draft rows are deleted. |
 | `/velpari-handoff` | Final validation → `.pi/senai/architect-inputs.json`. Blocks on any staleness. |
 | `/velpari-design-logging` | Cross-cutting logging architecture plan (after Design approved; not a stage). |
 | `/velpari-reconfirm` | Re-confirm a stale artifact whose changed inputs have no impact (see below). |
+| `/velpari-backfill <kind>` | One-step import of a pre-store project into its store DB (`--from-export` rebuilds from the YAML beside the DB). Store-only; no stage advance. |
+| `/velpari-portfolio` | List the portfolio registry (`Doc/store/portfolio.db`); `--repair` rebuilds it from the spokes. |
+| `/velpari-migrate-store` | One-time legacy migration (Phase 11, RES-3): `--dry-run` reports per project/kind and writes nothing; `--execute` confirms first, then imports into the store under run `migrated`, re-exports the YAMLs beside each DB, verifies, and commits per project. |
+| `/velpari-db-reset [runId]` | DB-only reset: delete one run's DRAFT store rows (published rows and revisions are never touched). Confirms first; audits; takes a pre-reset backup snapshot. |
+| `/velpari-freeze` | Freeze or unfreeze a published artifact (N4): a frozen artifact refuses publish, supersession and tombstone. Unfreezing requires a typed reason; every action is audited. |
+| `/velpari-tombstone` | Retract one published revision as a tracked modification (F16): status becomes withdrawn, bytes stay, the reason is audited. Typed reason + two confirmations. |
+| `/velpari-rollback` | Roll one artifact back by publishing a NEW revision carrying an older revision's exact content (F21). History is never rewritten; typed reason required. |
+| `/velpari-retention-prune` | Retention cleanup (N7): delete superseded revisions beyond keep-last-N (`velpari.retention.revisions`). Confirmed + audited; head and baselined revisions are never pruned. |
+| `/velpari-merge-back` | Guided merge-back of a parallel line (N12) — dry-run plan, then `--execute`: confirm → git merge → store verify → doctor → staleness → F14 flags. |
+| `/velpari-revision-status` | View a revision's F16 status and restore withdrawn → published (typed reason + confirmation, audited). Withdrawal stays on `/velpari-tombstone`; `superseded` is system-owned (set only by a new publish). |
 
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 
@@ -77,10 +93,39 @@ republish. Gates and behavior:
   with current normalized hashes + a `reconfirmedAt` marker (RTM JSON
   sidecar `extraPaths` recomputed too); (c) a `history.jsonl` entry when a
   run is active.
+- **Write target (Phase 11):** the target is chosen by EXISTENCE. A published
+  `Doc/` file → the line is appended to it (legacy / flag-ON projects). No
+  published file (the DB-only default) → the line appends to the store
+  envelope's `changeLog` column, followed by a checkpoint — the audit trail
+  survives the retired markdown write.
 - Freshness hashing for re-confirmed/newly published entries excludes the
   `## Change Log` section (`hashv: 2`), so the audit line itself never
   re-stales downstream consumers. Legacy (`hashv`-less) entries keep
   whole-file checking until their next publish or re-confirm.
+
+### Revisions, freeze & protection
+
+- **`/velpari-freeze` / unfreeze (N4):** a frozen artifact refuses publish,
+  supersession and tombstone; unfreezing requires a typed reason. One
+  executor home: `ops/freeze.ts` — gate code calls into it, no second home.
+- **`/velpari-tombstone` (F16)** withdraws a revision — bytes stay, status
+  flips, reason audited. **`/velpari-rollback` (F21)** restores an older
+  revision's exact content as a NEW revision; history is never rewritten.
+- **`/velpari-db-reset`** deletes only one run's DRAFT store rows (published
+  rows and revisions survive) — the row-only counterpart to
+  `/velpari-reset`, which also clears run state.
+- **`/velpari-retention-prune` (N7)** enforces `velpari.retention.revisions`
+  (keep-last-N, default keep-forever); head and baselined revisions are
+  never pruned.
+- **`/velpari-merge-back` (N12)** syncs a parallel line back upstream:
+  dry-run plan, then `--execute` (confirm → git merge → store verify →
+  doctor → staleness → F14 flags).
+- **Automatic backups (N9–N11):** every publish / `/velpari-db-reset` /
+  `/velpari-migrate-store` snapshots the store (`VACUUM INTO`, never a raw
+  copy) into gitignored `Backup/velpari/<project>/index-<UTC>-<sha>.db` with
+  a `manifest.jsonl` record (SHA-256, git commit, quick-check result),
+  pruned FIFO keep-last-N; restore runs only through the runbook
+  (`skills/db-store-merge-runbook.md`).
 
 ## View commands (8)
 
@@ -92,6 +137,12 @@ working or published artifacts.
 ## Wrapper (1)
 
 `/velpari-prd-rtm` — runs PRD then RTM in sequence. No auto-approve.
+
+## Export (1)
+
+| Command | Purpose |
+|---|---|
+| `/velpari-export` | On-demand document download from the DB store (read-only — YAML/markdown view export; no publish, no gate changes). |
 
 ## Flags
 
@@ -114,6 +165,8 @@ static table is filtered by the dynamic transition lock — see
 
 Every stage reads **all prior published artifacts** + `files.json` +
 requirements profile (compact) + standards overlay + agent mapping. The
-machine-enforced per-command scope is declared in `COMMAND_SCOPE` and checked
-before any LLM call. The finalized addition: scope checking also verifies
-input **freshness**, not just presence (`03-staleness-and-validation.md`).
+per-command scope is checked before any LLM call (the historical
+`COMMAND_SCOPE` table name; the live surface is
+`commands/index.ts:COMMAND_NAMES`). The finalized addition: scope checking
+also verifies input **freshness**, not just presence
+(`03-staleness-and-validation.md`).

@@ -26,20 +26,16 @@ export function getEffectiveProjectNames(cfg: FilesConfig): string[] {
 	const hasMulti = Array.isArray(multi) && multi.length > 0;
 
 	if (hasSingle && hasMulti) {
-		throw new Error(
-			"files.json sets both `projectName` and `projectNames` — exactly one is required.",
-		);
+		throw new Error("files.json sets both `projectName` and `projectNames` — exactly one is required.");
 	}
 	if (!hasSingle && !hasMulti) {
-		throw new Error(
-			"files.json must set either `projectName` (single design) or `projectNames` (multi-design).",
-		);
+		throw new Error("files.json must set either `projectName` (single design) or `projectNames` (multi-design).");
 	}
 	if (hasMulti) {
 		// De-duplicate while preserving order. Throw on empty strings.
 		const seen = new Set<string>();
 		const out: string[] = [];
-		for (const n of (multi as string[])) {
+		for (const n of multi as string[]) {
 			if (typeof n !== "string" || n.length === 0) {
 				throw new Error("`projectNames` entries must be non-empty strings.");
 			}

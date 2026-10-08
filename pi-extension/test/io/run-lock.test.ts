@@ -14,20 +14,26 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	acquireRunLock,
-	readLockInfo,
-	runLockDir,
-	withRunLock,
-	type RunLockMeta,
-} from "../../src/io/run-lock.js";
+import { fileURLToPath } from "node:url";
+import { acquireRunLock, readLockInfo, readLockStatus, runLockDir, withRunLock, type RunLockMeta } from "../../src/io/run-lock.js";
 
 let tmpDir: string;
 
+/**
+ * Absolute path of the lock's meta.json under the current fixture cwd.
+ * @returns {string} Path to `meta.json` inside the lock directory.
+ */
 function lockFile(): string {
 	return path.join(runLockDir(tmpDir), "meta.json");
 }
 
+/**
+ * Write a stale/foreign meta.json (creating the lock dir first) so a test
+ * can drive the steal-vs-wait paths. Defaults to an invalid pid and a
+ * 120s-old heartbeat unless overridden.
+ * @param {Partial<RunLockMeta>} overrides - Field overrides for the fixture metadata.
+ * @returns {void}
+ */
 function writeStaleMeta(overrides: Partial<RunLockMeta>): void {
 	fs.mkdirSync(runLockDir(tmpDir), { recursive: true });
 	const old = new Date(Date.now() - 120_000).toISOString();
@@ -74,6 +80,46 @@ describe("acquireRunLock / release", () => {
 			assert.equal(second.holder?.pid, process.pid);
 		}
 		first.handle.release();
+	});
+
+	it("the atomic claim is non-recursive, so the EEXIST contention branch is reachable (Phase I10.1)", () => {
+		// Source-level pin (same technique as approve-command-names): the
+		// claim inside tryAcquire must be a plain mkdirSync — with
+		// `recursive: true` an existing dir is a success, EEXIST never
+		// fires, and two processes could both think they hold the lock.
+		const file = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"..",
+			"..",
+			"src",
+			"io",
+			"run-lock.js",
+		);
+		const source = fs.readFileSync(file, "utf8");
+		const claim = source.match(/try \{\s*fs\.mkdirSync\(dir([^)]*)\);\s*\}\s*catch/s);
+		assert.ok(claim, "tryAcquire's claim (mkdir inside try/catch) not found");
+		assert.ok(!claim[1]!.includes("recursive"), "the atomic claim must not be recursive:true");
+		// Behavioural half: a pre-existing lock dir + live-fresh holder
+		// (pid 1 — init is always alive; EPERM counts as alive) must take
+		// the EEXIST → steal-vs-wait path and come back busy.
+		fs.mkdirSync(runLockDir(tmpDir), { recursive: true });
+		fs.writeFileSync(
+			path.join(runLockDir(tmpDir), "meta.json"),
+			JSON.stringify({
+				pid: 1,
+				host: "other-host",
+				command: "other-command",
+				startedAt: new Date().toISOString(),
+				heartbeatAt: new Date().toISOString(),
+			} satisfies RunLockMeta),
+			"utf8",
+		);
+		const res = acquireRunLock(tmpDir, "second", 0);
+		assert.equal(res.ok, false);
+		if (!res.ok) {
+			assert.match(res.reason, /Lock busy/);
+			assert.equal(res.holder?.pid, 1);
+		}
 	});
 
 	it("steals a stale lock (dead pid + old heartbeat)", () => {
@@ -149,5 +195,43 @@ describe("withRunLock", () => {
 		});
 		assert.equal(ran, true);
 		assert.equal(value, "ok");
+	});
+});
+
+describe("readLockStatus — corrupt-lock reporting (I11.3)", () => {
+	it("garbage meta.json → corrupt true, holder null, stale false (never reported as free)", () => {
+		fs.mkdirSync(runLockDir(tmpDir), { recursive: true });
+		fs.writeFileSync(lockFile(), "{not json", "utf8");
+		const status = readLockStatus(tmpDir);
+		assert.equal(status.corrupt, true);
+		assert.equal(status.holder, null);
+		assert.equal(status.stale, false, "stale applies to holders; corrupt is the flag for unreadable meta");
+	});
+
+	it("lock dir without meta.json → corrupt true (half-written acquisition)", () => {
+		fs.mkdirSync(runLockDir(tmpDir), { recursive: true });
+		const status = readLockStatus(tmpDir);
+		assert.equal(status.corrupt, true);
+		assert.equal(status.holder, null);
+	});
+
+	it("no lock at all → corrupt false", () => {
+		const status = readLockStatus(tmpDir);
+		assert.equal(status.corrupt, false);
+		assert.equal(status.holder, null);
+	});
+
+	it("healthy live holder → corrupt false, stale false", () => {
+		const now = new Date().toISOString();
+		fs.mkdirSync(runLockDir(tmpDir), { recursive: true });
+		fs.writeFileSync(
+			lockFile(),
+			JSON.stringify({ pid: process.pid, host: "test-host", command: "velpari-prd", startedAt: now, heartbeatAt: now }),
+			"utf8",
+		);
+		const status = readLockStatus(tmpDir);
+		assert.equal(status.corrupt, false);
+		assert.equal(status.stale, false);
+		assert.equal(status.holder?.pid, process.pid);
 	});
 });

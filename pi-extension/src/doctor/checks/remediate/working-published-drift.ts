@@ -27,6 +27,9 @@ const ARTIFACTS: readonly string[] = [
 	"RTM",
 	"feasibility-study",
 	"design",
+	// Phase C (D Integration request 2) — paired full-app wireframe;
+	// presence-based: backend projects have no wireframe file → skipped.
+	"wireframe",
 	"pseudocode",
 	"test-plan",
 	"test-cases",
@@ -42,12 +45,7 @@ export const remediate: RemediateFn = async (ctx): Promise<RemediateOutcome> => 
 	for (const artifact of ARTIFACTS) {
 		const category = categoryFor(artifact);
 		if (!category) continue;
-		const workingPath = buildWorkingGroupedPath(
-			ctx.cwd,
-			state.runId,
-			artifact,
-			ctx.projectName,
-		);
+		const workingPath = buildWorkingGroupedPath(ctx.cwd, state.runId, artifact, ctx.projectName);
 		if (!existsSync(workingPath)) continue;
 
 		const pub = resolveDocArtifact(artifact, ctx.projectName, ctx.cwd);

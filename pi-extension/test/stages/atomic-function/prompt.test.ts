@@ -177,16 +177,7 @@ describe("renderTierFields — full field list per tier", () => {
 		const fields = renderTierFields("entry");
 		const list = fields.split(", ");
 		assert.equal(list.length, 8);
-		for (const required of [
-			"afId",
-			"name",
-			"purpose",
-			"signature",
-			"source",
-			"cohesion",
-			"verification",
-			"testable",
-		]) {
+		for (const required of ["afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable"]) {
 			assert.ok(list.includes(required), `entry missing ${required}`);
 		}
 	});

@@ -9,12 +9,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	compareSpikes,
-	needsSpikes,
-	validateSpikeResult,
-	type SpikeResult,
-} from "../../src/core/spike.js";
+import { compareSpikes, needsSpikes, validateSpikeResult, type SpikeResult } from "../../src/core/spike.js";
 
 function spike(overrides: Partial<SpikeResult> = {}): SpikeResult {
 	return {
@@ -53,11 +48,17 @@ describe("compareSpikes", () => {
 			spike({ language: "python", buildOk: true, runOk: false }),
 			spike({ language: "go" }),
 		]);
-		assert.deepEqual(ranked.map((r) => r.language), ["go", "python", "rust"]);
+		assert.deepEqual(
+			ranked.map((r) => r.language),
+			["go", "python", "rust"],
+		);
 	});
 	it("breaks ties alphabetically for determinism", () => {
 		const ranked = compareSpikes([spike({ language: "typescript" }), spike({ language: "go" })]);
-		assert.deepEqual(ranked.map((r) => r.language), ["go", "typescript"]);
+		assert.deepEqual(
+			ranked.map((r) => r.language),
+			["go", "typescript"],
+		);
 	});
 });
 

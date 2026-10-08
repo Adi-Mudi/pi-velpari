@@ -33,10 +33,7 @@ function makeTui() {
 	} as unknown as import("@earendil-works/pi-tui").TUI;
 }
 
-function makeFallbackCtx(
-	selects: (string | undefined)[],
-	capturedSelectOptions?: string[][],
-): ExtensionContext {
+function makeFallbackCtx(selects: (string | undefined)[], capturedSelectOptions?: string[][]): ExtensionContext {
 	let index = 0;
 	return {
 		cwd: "/tmp",
@@ -122,14 +119,9 @@ describe("runRolePicker fallback", () => {
 	it("omits the agent suffix in the label when agent is an empty string", async () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx(["⬜ Finish"], captured);
-		const items: RolePickerItem[] = [
-			{ id: "role-x", label: "Role X", agent: "", summary: "nothing", assigned: false },
-		];
+		const items: RolePickerItem[] = [{ id: "role-x", label: "Role X", agent: "", summary: "nothing", assigned: false }];
 		const result = await runRolePicker(ctx, { title: "Test", items });
-		assert.deepStrictEqual(captured[0], [
-			"⬜ role-x: Role X — nothing",
-			"⬜ Finish",
-		]);
+		assert.deepStrictEqual(captured[0], ["⬜ role-x: Role X — nothing", "⬜ Finish"]);
 		assert.ok(!(captured[0]?.[0] ?? "").includes("()"));
 		assert.deepStrictEqual(result, { kind: "finish" });
 	});
@@ -306,10 +298,7 @@ describe("runRolePicker custom TUI", () => {
 		const comp = getComponent() as { render: (width: number) => string[] };
 		const lines = comp.render(80);
 		assert.ok(lines.some((line) => line.includes("Pick one role per line.")));
-		assert.ok(
-			!lines.some((line) => line.includes(DEFAULT_SUBTITLE)),
-			"default subtitle is replaced by the custom one",
-		);
+		assert.ok(!lines.some((line) => line.includes(DEFAULT_SUBTITLE)), "default subtitle is replaced by the custom one");
 		getDone()({ kind: "back" });
 		await promise;
 	});
@@ -339,12 +328,22 @@ describe("role picker guidance tags", () => {
 	it("renders the guidance tag text in the custom picker", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "scout-1", label: "Scout 1", agent: "scout", summary: "not set", assigned: false, guidance: "design-defined" },
+			{
+				id: "scout-1",
+				label: "Scout 1",
+				agent: "scout",
+				summary: "not set",
+				assigned: false,
+				guidance: "design-defined",
+			},
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const comp = getComponent() as { render: (width: number) => string[] };
 		const lines = comp.render(80);
-		assert.ok(lines.some((l) => l.includes("[design-defined]")), "custom row carries the tag");
+		assert.ok(
+			lines.some((l) => l.includes("[design-defined]")),
+			"custom row carries the tag",
+		);
 		getDone()({ kind: "back" });
 		await promise;
 	});
@@ -363,12 +362,7 @@ describe("role picker guidance tags", () => {
 		const custom = async (factory: any): Promise<any> =>
 			new Promise((resolve) => {
 				doneFn = resolve;
-				component = factory(
-					{ requestRender: () => {} },
-					recordingTheme,
-					{},
-					resolve,
-				);
+				component = factory({ requestRender: () => {} }, recordingTheme, {}, resolve);
 			});
 		const ctx = {
 			cwd: "/tmp",
@@ -377,15 +371,31 @@ describe("role picker guidance tags", () => {
 		} as unknown as ExtensionContext;
 
 		const items: RolePickerItem[] = [
-			{ id: "scout-1", label: "Scout 1", agent: "scout", summary: "not set", assigned: false, guidance: "design-defined" },
+			{
+				id: "scout-1",
+				label: "Scout 1",
+				agent: "scout",
+				summary: "not set",
+				assigned: false,
+				guidance: "design-defined",
+			},
 			{ id: "scout-2", label: "Scout 2", agent: "scout", summary: "not set", assigned: false, guidance: "recommended" },
 			{ id: "scout-3", label: "Scout 3", agent: "scout", summary: "not set", assigned: false, guidance: "optional" },
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const lines = component!.render(80);
-		assert.ok(lines.some((l) => l.includes("success:[design-defined]")), "design-defined is green");
-		assert.ok(lines.some((l) => l.includes("warning:[recommended]")), "recommended is yellow");
-		assert.ok(lines.some((l) => l.includes("dim:[optional]")), "optional is dim");
+		assert.ok(
+			lines.some((l) => l.includes("success:[design-defined]")),
+			"design-defined is green",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("warning:[recommended]")),
+			"recommended is yellow",
+		);
+		assert.ok(
+			lines.some((l) => l.includes("dim:[optional]")),
+			"optional is dim",
+		);
 		doneFn({ kind: "back" });
 		await promise;
 	});
@@ -406,7 +416,14 @@ describe("role picker guidance edge cases", () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx([undefined], captured);
 		const items: RolePickerItem[] = [
-			{ id: "planner", label: "Planner", agent: "planner", summary: "truth=docs/PRD.md", assigned: true, guidance: "recommended" },
+			{
+				id: "planner",
+				label: "Planner",
+				agent: "planner",
+				summary: "truth=docs/PRD.md",
+				assigned: true,
+				guidance: "recommended",
+			},
 		];
 		await runRolePicker(ctx, { title: "t", items });
 		assert.ok((captured[0]?.[0] ?? "").startsWith("✅"), "assigned marker present");
@@ -417,7 +434,14 @@ describe("role picker guidance edge cases", () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx([undefined], captured);
 		const items: RolePickerItem[] = [
-			{ id: "scout-1", label: "Scout 1", agent: "scout", summary: "not set", assigned: false, guidance: "design-defined" },
+			{
+				id: "scout-1",
+				label: "Scout 1",
+				agent: "scout",
+				summary: "not set",
+				assigned: false,
+				guidance: "design-defined",
+			},
 			{ id: "scout-3", label: "Scout 3", agent: "scout", summary: "not set", assigned: false, guidance: "optional" },
 		];
 		await runRolePicker(ctx, { title: "t", items });
@@ -428,7 +452,14 @@ describe("role picker guidance edge cases", () => {
 	it("renders no tag on the Finish row", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "scout-1", label: "Scout 1", agent: "scout", summary: "not set", assigned: false, guidance: "design-defined" },
+			{
+				id: "scout-1",
+				label: "Scout 1",
+				agent: "scout",
+				summary: "not set",
+				assigned: false,
+				guidance: "design-defined",
+			},
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const comp = getComponent() as { render: (width: number) => string[] };
@@ -474,7 +505,14 @@ describe("role picker guidance edge cases", () => {
 	it("renders assigned rows with the tag in the custom picker", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "planner", label: "Planner", agent: "planner", summary: "truth=docs/PRD.md", assigned: true, guidance: "recommended" },
+			{
+				id: "planner",
+				label: "Planner",
+				agent: "planner",
+				summary: "truth=docs/PRD.md",
+				assigned: true,
+				guidance: "recommended",
+			},
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const comp = getComponent() as { render: (width: number) => string[] };
@@ -493,16 +531,33 @@ describe("role picker needs labels", () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx([undefined], captured);
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "not set", assigned: false, needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "not set",
+				assigned: false,
+				needs: "RTM / traceability document",
+			},
 		];
 		await runRolePicker(ctx, { title: "t", items });
-		assert.ok((captured[0]?.[0] ?? "").includes("(needs: RTM / traceability document)"), "fallback label carries the needs text");
+		assert.ok(
+			(captured[0]?.[0] ?? "").includes("(needs: RTM / traceability document)"),
+			"fallback label carries the needs text",
+		);
 	});
 
 	it("renders the needs text in the custom picker and omits it when unset", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "not set", assigned: false, needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "not set",
+				assigned: false,
+				needs: "RTM / traceability document",
+			},
 			{ id: "scout-2", label: "Scout 2", agent: "scout", summary: "not set", assigned: false },
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
@@ -520,11 +575,21 @@ describe("role picker needs labels", () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx([undefined], captured);
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "not set", assigned: false, guidance: "recommended", needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "not set",
+				assigned: false,
+				guidance: "recommended",
+				needs: "RTM / traceability document",
+			},
 		];
 		await runRolePicker(ctx, { title: "t", items });
 		assert.ok(
-			(captured[0]?.[0] ?? "").includes("Reviewer — Correctness (needs: RTM / traceability document) (rev) — not set [recommended]"),
+			(captured[0]?.[0] ?? "").includes(
+				"Reviewer — Correctness (needs: RTM / traceability document) (rev) — not set [recommended]",
+			),
 			"needs sits after the label, before the agent part",
 		);
 	});
@@ -533,18 +598,35 @@ describe("role picker needs labels", () => {
 		const captured: string[][] = [];
 		const ctx = makeFallbackCtx([undefined], captured);
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "truth=docs/RTM.md", assigned: true, needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "truth=docs/RTM.md",
+				assigned: true,
+				needs: "RTM / traceability document",
+			},
 		];
 		await runRolePicker(ctx, { title: "t", items });
 		assert.ok((captured[0]?.[0] ?? "").startsWith("✅"), "assigned marker present");
-		assert.ok((captured[0]?.[0] ?? "").includes("(needs: RTM / traceability document)"), "needs present on assigned row");
+		assert.ok(
+			(captured[0]?.[0] ?? "").includes("(needs: RTM / traceability document)"),
+			"needs present on assigned row",
+		);
 		assert.ok((captured[0]?.[0] ?? "").includes("truth=docs/RTM.md"), "assigned summary present");
 	});
 
 	it("keeps the needs text on the focused row in the custom picker", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "not set", assigned: false, needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "not set",
+				assigned: false,
+				needs: "RTM / traceability document",
+			},
 			{ id: "scout-2", label: "Scout 2", agent: "scout", summary: "not set", assigned: false },
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
@@ -578,7 +660,15 @@ describe("role picker needs labels", () => {
 		} as unknown as ExtensionContext;
 
 		const items: RolePickerItem[] = [
-			{ id: "reviewer-correctness", label: "Reviewer — Correctness", agent: "rev", summary: "not set", assigned: false, guidance: "recommended", needs: "RTM / traceability document" },
+			{
+				id: "reviewer-correctness",
+				label: "Reviewer — Correctness",
+				agent: "rev",
+				summary: "not set",
+				assigned: false,
+				guidance: "recommended",
+				needs: "RTM / traceability document",
+			},
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const lines = component!.render(200);
@@ -639,9 +729,7 @@ describe("coverage audit gaps", () => {
 			dim: (text: string) => text,
 		} as unknown as import("@earendil-works/pi-coding-agent").Theme;
 
-		let component:
-			| { render: (width: number) => string[]; handleInput: (data: string) => void }
-			| undefined;
+		let component: { render: (width: number) => string[]; handleInput: (data: string) => void } | undefined;
 		let doneFn: (result: unknown) => void = () => {};
 		const custom = async (factory: any): Promise<any> =>
 			new Promise((resolve) => {
@@ -826,7 +914,14 @@ describe("width clamping edge cases", () => {
 	it("keeps the guidance tag when there is enough space", async () => {
 		const { ctx, getComponent, getDone } = makeTuiCtx();
 		const items: RolePickerItem[] = [
-			{ id: "planner", label: "Planner", agent: "planner", summary: "reads=1", assigned: true, guidance: "recommended" },
+			{
+				id: "planner",
+				label: "Planner",
+				agent: "planner",
+				summary: "reads=1",
+				assigned: true,
+				guidance: "recommended",
+			},
 		];
 		const promise = runRolePicker(ctx, { title: "t", items });
 		const comp = getComponent() as { render: (width: number) => string[] };

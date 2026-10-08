@@ -13,9 +13,9 @@
  *   - VELPARI_ROLES cross-check against STAGE_REGISTRY and SCAN_TYPE_ROLES
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -42,15 +42,50 @@ import { STAGE_TRANSITIONS } from "../../src/core/constants.js";
 import { STAGE_KEYS, STAGE_REGISTRY } from "../../src/stages/registry.js";
 import { SCAN_TYPE_ROLES } from "../../src/stages/brainstorm/dispatcher.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-agents-config-"));
 }
 
+/**
+ * Write raw text to .pi/velpari/agents.json (bypassing saveAgentConfig).
+ * @param {string} cwd - Project root to write into.
+ * @param {string} raw - Exact file content to write.
+ * @returns {void}
+ */
 function writeRaw(cwd: string, raw: string): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "velpari", AGENTS_CONFIG_FILE), raw, "utf8");
 }
 
+/**
+ * Write a project-local agent markdown file under .pi/agents/.
+ * @param {string} cwd - Project root to write into.
+ * @param {string} name - Agent name (file name without .md).
+ * @param {string} description - Frontmatter description value.
+ * @returns {void}
+ */
 function writeProjectAgent(cwd: string, name: string, description = "Custom test agent."): void {
 	mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
 	writeFileSync(
@@ -99,10 +134,7 @@ describe("saveAgentConfig → loadAgentConfig round-trip", () => {
 		};
 		saveAgentConfig(cwd, config);
 
-		const onDisk = JSON.parse(readFileSync(getAgentConfigPath(cwd), "utf8")) as Record<
-			string,
-			unknown
-		>;
+		const onDisk = JSON.parse(readFileSync(getAgentConfigPath(cwd), "utf8")) as Record<string, unknown>;
 		assert.equal(onDisk._comment, AGENTS_CONFIG_COMMENT);
 
 		const loaded = loadAgentConfig(cwd);
@@ -214,10 +246,7 @@ describe("VELPARI_ROLES cross-check", () => {
 	it("covers every SCAN_TYPE_ROLES entry", () => {
 		const scanRoles = Object.values(SCAN_TYPE_ROLES).flat();
 		for (const name of scanRoles) {
-			assert.ok(
-				(VELPARI_ROLES as readonly string[]).includes(name),
-				`scan role "${name}" missing from VELPARI_ROLES`,
-			);
+			assert.ok((VELPARI_ROLES as readonly string[]).includes(name), `scan role "${name}" missing from VELPARI_ROLES`);
 		}
 	});
 });
@@ -280,10 +309,12 @@ describe("GENERATION_PHASES (generator v2)", () => {
 	});
 
 	it("logging scouts stay bundled-only (not phase-mapped)", () => {
-		const allPhaseRoles = [1, 2, 3, 4].flatMap((p) => [
-			...GENERATION_PHASES[p as 1 | 2 | 3 | 4].roles,
-		]);
-		for (const loggingRole of ["logging-standards-researcher", "logging-architecture-designer", "logging-compliance-mapper"]) {
+		const allPhaseRoles = [1, 2, 3, 4].flatMap((p) => [...GENERATION_PHASES[p as 1 | 2 | 3 | 4].roles]);
+		for (const loggingRole of [
+			"logging-standards-researcher",
+			"logging-architecture-designer",
+			"logging-compliance-mapper",
+		]) {
 			assert.ok(!allPhaseRoles.includes(loggingRole), `${loggingRole} must not be phase-mapped`);
 		}
 	});

@@ -10,10 +10,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	buildStagePrompt,
-	type BuildStagePromptInput,
-} from "../../src/core/prompt.js";
+import { buildStagePrompt, type BuildStagePromptInput } from "../../src/core/prompt.js";
 import { formatScanPlanLines } from "../../src/stages/brainstorm/dispatcher.js";
 
 function baseInput(): BuildStagePromptInput {

@@ -49,10 +49,7 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { Type } from "typebox";
-import {
-	withFileMutationQueue,
-	type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadFilesConfig } from "../core/config.js";
 import {
 	appendWebDispatchConsent,
@@ -71,11 +68,7 @@ import {
 } from "../core/state.js";
 import { PATHS } from "../core/constants.js";
 import { buildRunDir } from "../core/paths.js";
-import {
-	runExtraScanPicker,
-	runScanGatePicker,
-	runWebDispatchConsent,
-} from "./brainstorm/scan-gate.js";
+import { runExtraScanPicker, runScanGatePicker, runWebDispatchConsent } from "./brainstorm/scan-gate.js";
 import { syncDecisionsToNotes } from "./brainstorm/notes.js";
 
 export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
@@ -104,7 +97,7 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 			"upsert-question (record one question state change during DISCUSS; reason is required for not-wanted/replaced), " +
 			"spawn-sessions (v3: persist the 2 persistent sub-agent session handles returned from the AUTOMATIC SPAWN subagent() calls; needs web + docCode strings), " +
 			"close-sessions (v3: clear state.activeSubagents after subagent_interrupt fires on both panes — called by /velpari-approve-brainstorm on graceful close), " +
-			"discard (close the session WITHOUT publishing — clears the session fields and resumes the paused stage, or \"none\" on a first run; no artifact is written). " +
+			'discard (close the session WITHOUT publishing — clears the session fields and resumes the paused stage, or "none" on a first run; no artifact is written). ' +
 			"Returns the updated session snapshot.",
 		parameters: Type.Object({
 			action: Type.Union([
@@ -136,17 +129,14 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 						text: Type.String(),
 						suggestedAnswer: Type.Optional(Type.String()),
 						state: Type.Union(BRAINSTORM_QUESTION_STATES.map((s) => Type.Literal(s))),
-						reason: Type.Optional(
-							Type.String({ description: "Required when state is not-wanted or replaced." }),
-						),
+						reason: Type.Optional(Type.String({ description: "Required when state is not-wanted or replaced." })),
 					},
 					{ description: "Required for upsert-question." },
 				),
 			),
 			web: Type.Optional(
 				Type.String({
-					description:
-						"v3 spawn-sessions: session handle for the web-research persistent session (typically 'web').",
+					description: "v3 spawn-sessions: session handle for the web-research persistent session (typically 'web').",
 				}),
 			),
 			docCode: Type.Optional(
@@ -160,9 +150,7 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 			return withFileMutationQueue(join(ctx.cwd, PATHS.STATE_FILE), async () => {
 				const state = loadState(ctx.cwd);
 				if (!state.runId || state.currentStage !== "brainstorming") {
-					return errorResult(
-						"No active brainstorm. Run /velpari-brainstorm <topic> first.",
-					);
+					return errorResult("No active brainstorm. Run /velpari-brainstorm <topic> first.");
 				}
 
 				if (params.action === "confirm-understanding") {
@@ -199,13 +187,9 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					if (!scans) {
 						return errorResult("set-scans needs a scans array (may be empty).");
 					}
-					const invalid = scans.filter(
-						(s) => !(SCAN_TYPES as readonly string[]).includes(s),
-					);
+					const invalid = scans.filter((s) => !(SCAN_TYPES as readonly string[]).includes(s));
 					if (invalid.length > 0) {
-						return errorResult(
-							`Unknown scan type(s): ${invalid.join(", ")}. Allowed: ${SCAN_TYPES.join(", ")}.`,
-						);
+						return errorResult(`Unknown scan type(s): ${invalid.join(", ")}. Allowed: ${SCAN_TYPES.join(", ")}.`);
 					}
 					const next = setScansSelected(state, scans, ctx.cwd);
 					persistEntry(next);
@@ -218,20 +202,15 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					// when the developer mentions community / web / official /
 					// industrial and the active brainstorm has not opted in yet.
 					const config = loadFilesConfig(ctx.cwd);
-					const result = await runExtraScanPicker(
-						ctx as unknown as Parameters<typeof runScanGatePicker>[0],
-						{
-							config,
-							cwd: ctx.cwd,
-							alreadySelected: state.scansSelected ?? [],
-						},
-					);
+					const result = await runExtraScanPicker(ctx as unknown as Parameters<typeof runScanGatePicker>[0], {
+						config,
+						cwd: ctx.cwd,
+						alreadySelected: state.scansSelected ?? [],
+					});
 					if (result.cancelled) {
 						return okResult({ ...snapshot(state), addedScans: [], cancelled: true });
 					}
-					const merged = Array.from(
-						new Set([...(state.scansSelected ?? []), ...result.scans]),
-					) as ScanType[];
+					const merged = Array.from(new Set([...(state.scansSelected ?? []), ...result.scans])) as ScanType[];
 					const next = setScansSelected(state, merged, ctx.cwd);
 					persistEntry(next);
 					return okResult({
@@ -250,14 +229,9 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					// honors the consent result before calling subagent().
 					const topic = (params.topic as string | undefined)?.trim();
 					if (!topic) {
-						return errorResult(
-							"confirm-web-dispatch needs a non-empty topic.",
-						);
+						return errorResult("confirm-web-dispatch needs a non-empty topic.");
 					}
-					const ok = await runWebDispatchConsent(
-						ctx as unknown as Parameters<typeof runScanGatePicker>[0],
-						topic,
-					);
+					const ok = await runWebDispatchConsent(ctx as unknown as Parameters<typeof runScanGatePicker>[0], topic);
 					if (!ok) {
 						return okResult({ ...snapshot(state), cancelled: true });
 					}
@@ -275,9 +249,7 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					const web = (params.web as string | undefined)?.trim();
 					const docCode = (params.docCode as string | undefined)?.trim();
 					if (!web || !docCode) {
-						return errorResult(
-							"spawn-sessions needs both `web` and `docCode` non-empty handles.",
-						);
+						return errorResult("spawn-sessions needs both `web` and `docCode` non-empty handles.");
 					}
 					const next = setActiveSubagents(state, { web, docCode }, ctx.cwd);
 					persistEntry(next);
@@ -332,9 +304,7 @@ export function registerBrainstormSessionTool(pi: ExtensionAPI): void {
 					(question.state === "not-wanted" || question.state === "replaced") &&
 					(!question.reason || question.reason.trim() === "")
 				) {
-					return errorResult(
-						`State "${question.state}" requires a reason (deferred, not forgotten).`,
-					);
+					return errorResult(`State "${question.state}" requires a reason (deferred, not forgotten).`);
 				}
 				const next = upsertBrainstormQuestion(state, question, ctx.cwd);
 				// The decision ledger lives in the notes file: regenerate the

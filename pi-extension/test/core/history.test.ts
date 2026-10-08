@@ -13,22 +13,13 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	appendHistory,
-	historyFilePath,
-	loadHistory,
-	migrateInlineHistory,
-} from "../../src/core/history.js";
+import { appendHistory, historyFilePath, loadHistory, migrateInlineHistory } from "../../src/core/history.js";
 import type { HistoryEntry } from "../../src/core/state.js";
 
 let tmpDir: string;
 const RUN_ID = "2026-09-20-12-00-test-run";
 
-function entry(
-	stage: HistoryEntry["stage"],
-	command: string,
-	timestamp: string,
-): HistoryEntry {
+function entry(stage: HistoryEntry["stage"], command: string, timestamp: string): HistoryEntry {
 	return { stage, command, timestamp };
 }
 

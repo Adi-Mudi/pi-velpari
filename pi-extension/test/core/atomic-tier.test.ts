@@ -23,6 +23,8 @@ import {
 	isSafetyClass,
 	isSil,
 	requiredFieldsFor,
+	setRunReviewerFlagResolver,
+	shouldRunReviewer,
 	tierLabel,
 	validateAtomicProfile,
 } from "../../src/core/atomic-tier.js";
@@ -33,16 +35,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 			assert.equal(BASE_CORE_FIELDS.length, 8);
 			assert.deepEqual(
 				[...BASE_CORE_FIELDS].sort(),
-				[
-					"afId",
-					"cohesion",
-					"name",
-					"purpose",
-					"signature",
-					"source",
-					"testable",
-					"verification",
-				].sort(),
+				["afId", "cohesion", "name", "purpose", "signature", "source", "testable", "verification"].sort(),
 			);
 		});
 	});
@@ -53,18 +46,9 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 		});
 		it("basic has 5 cross-reference fields", () => {
 			assert.equal(TIER_FIELDS.basic.length, 5);
-			const expected = [
-				"calledByFrIds",
-				"designRef",
-				"extractedFrom",
-				"satisfactionFrId",
-				"feasibilityRef",
-			] as const;
+			const expected = ["calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef"] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.basic as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.basic as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 		it("intermediate adds 11 EARS / V-Model / Clean Code fields", () => {
@@ -83,10 +67,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 				"nameIntent",
 			] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.intermediate as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.intermediate as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 		it("advanced adds 11 INCOSE / PMBOK / maintenance fields", () => {
@@ -105,10 +86,7 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 				"changeLog",
 			] as const;
 			for (const f of expected) {
-				assert.ok(
-					(TIER_FIELDS.advanced as readonly string[]).includes(f),
-					`missing ${f}`,
-				);
+				assert.ok((TIER_FIELDS.advanced as readonly string[]).includes(f), `missing ${f}`);
 			}
 		});
 	});
@@ -125,6 +103,11 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 			}
 		});
 		it("returns true for tier-specific fields only at their tier or higher", () => {
+			/**
+			 * Build a minimal tiered profile for the field-requirement matrix.
+			 * @param {"entry" | "basic" | "intermediate" | "advanced"} tier - ISO/IEC 29110 tier to test.
+			 * @returns {{ tier: string; safetyClass: "A"; sil: "none"; overlayId: null }} Profile with fixed safety class, SIL, and no overlay.
+			 */
 			const profile = (tier: "entry" | "basic" | "intermediate" | "advanced") => ({
 				tier,
 				safetyClass: "A" as const,
@@ -248,6 +231,47 @@ describe("atomic-tier schema (ISO/IEC 29110 + IEC 61508/IEC 62304)", () => {
 				const label = tierLabel(tier);
 				assert.ok(label.length > 10);
 				assert.ok(/ISO\/IEC 29110/i.test(label));
+			}
+		});
+	});
+
+	describe("shouldRunReviewer flag OR (G-F1, v1.2)", () => {
+		it("pure OR: resolver true forces true regardless of tier/overlay/reviewerMode", () => {
+			setRunReviewerFlagResolver(() => true);
+			try {
+				assert.equal(shouldRunReviewer({ profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "entry" } }), true);
+				assert.equal(
+					shouldRunReviewer({
+						profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "basic" },
+						reviewerMode: "never",
+					}),
+					true,
+				);
+				assert.equal(
+					shouldRunReviewer({
+						profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "basic" },
+						overlayRequiresReviewer: false,
+					}),
+					true,
+				);
+			} finally {
+				setRunReviewerFlagResolver(null);
+			}
+		});
+		it("resolver unset/false → config/tier behavior unchanged", () => {
+			setRunReviewerFlagResolver(() => false);
+			try {
+				assert.equal(shouldRunReviewer({ profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "basic" } }), false);
+				assert.equal(shouldRunReviewer({ profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "advanced" } }), true);
+				assert.equal(
+					shouldRunReviewer({
+						profile: { ...DEFAULT_ATOMIC_PROFILE, tier: "basic" },
+						reviewerMode: "never",
+					}),
+					false,
+				);
+			} finally {
+				setRunReviewerFlagResolver(null);
 			}
 		});
 	});

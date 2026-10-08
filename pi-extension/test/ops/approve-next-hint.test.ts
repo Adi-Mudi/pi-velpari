@@ -51,12 +51,7 @@ function allMessages(): string {
 /** Drive a fresh run into building-rtm and write the RTM working copy. */
 function enterBuildingRtm(): void {
 	let state = createRun("TestApp", tmpDir);
-	for (const cmd of [
-		"/velpari-approve-brainstorm",
-		"/velpari-prd",
-		"/velpari-prd-approve",
-		"/velpari-rtm",
-	]) {
+	for (const cmd of ["/velpari-approve-brainstorm", "/velpari-prd", "/velpari-prd-approve", "/velpari-rtm"]) {
 		state = advanceStage(state, cmd, tmpDir);
 	}
 	// B4: the publish gate refuses an RTM publish when its declared input
@@ -70,11 +65,7 @@ function enterBuildingRtm(): void {
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM\n", "utf8");
 	// B3/D6: an RTM publish requires the sidecar — it is the source of
 	// truth. Empty rows pass the gate against the minimal PRD fixture.
-	fs.writeFileSync(
-		path.join(dir, "RTM_TestApp.yaml"),
-		'project: TestApp\nversion: 1.0.0\nrows: []\n',
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "RTM_TestApp.yaml"), "project: TestApp\nversion: 1.0.0\nrows: []\n", "utf8");
 }
 
 function seedPublishedFeasibility(): void {
@@ -97,7 +88,7 @@ afterEach(() => {
 describe("/velpari-architecture-generator-approve — built-rtm next-step hint", () => {
 	it("suggests only /velpari-feasibility when no feasibility doc is published", async () => {
 		enterBuildingRtm();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		// nextCommandsFor(built-rtm) without feasibilitySkip returns only
@@ -109,7 +100,7 @@ describe("/velpari-architecture-generator-approve — built-rtm next-step hint",
 	it("suggests the design skip plus feasibility revise when a doc exists", async () => {
 		enterBuildingRtm();
 		seedPublishedFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		// nextCommandsFor(built-rtm, { feasibilitySkip: true }) returns both
@@ -117,14 +108,8 @@ describe("/velpari-architecture-generator-approve — built-rtm next-step hint",
 		// STAGE_TRANSITIONS order). The post-RTM branch appends a
 		// "feasibility already published; you may skip ahead to architecture."
 		// note so the user understands why both options are shown.
-		assert.match(
-			allMessages(),
-			/Next: \/velpari-feasibility or \/velpari-architecture-generator/,
-		);
-		assert.match(
-			allMessages(),
-			/feasibility already published; you may skip ahead to architecture/,
-		);
+		assert.match(allMessages(), /Next: \/velpari-feasibility or \/velpari-architecture-generator/);
+		assert.match(allMessages(), /feasibility already published; you may skip ahead to architecture/);
 	});
 });
 
@@ -151,16 +136,15 @@ const STUDY_SECTIONS = [
 	"Change Log",
 ];
 
-const STUDY =
-	["# Feasibility Study — TestApp", ""]
-		.concat(
-			STUDY_SECTIONS.flatMap((s, i) => [
-				`## ${i + 1}. ${s}`,
-				s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
-				"",
-			]),
-		)
-		.join("\n");
+const STUDY = ["# Feasibility Study — TestApp", ""]
+	.concat(
+		STUDY_SECTIONS.flatMap((s, i) => [
+			`## ${i + 1}. ${s}`,
+			s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
+			"",
+		]),
+	)
+	.join("\n");
 
 /** Drive a fresh run into analyzing-feasibility with a settled session. */
 function enterSettledFeasibility(): void {
@@ -204,7 +188,7 @@ function writePhase3GeneratedAgents(): void {
 describe("phase-boundary generation hint (generator v2, D5)", () => {
 	it("feasibility-approve crossing into Phase 3 prepends the generation hint", async () => {
 		enterSettledFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "analyzed-feasibility");
 		assert.match(
@@ -215,7 +199,7 @@ describe("phase-boundary generation hint (generator v2, D5)", () => {
 
 	it("same-phase approves never show the generation hint", async () => {
 		enterBuildingRtm();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "built-rtm");
 		assert.ok(!allMessages().includes("generate Phase"), "no generation hint on a same-phase advance");
@@ -224,7 +208,7 @@ describe("phase-boundary generation hint (generator v2, D5)", () => {
 	it("fresh Phase 3 agents suppress the hint", async () => {
 		enterSettledFeasibility();
 		writePhase3GeneratedAgents();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.equal(loadState(tmpDir).currentStage, "analyzed-feasibility");
 		assert.ok(!allMessages().includes("generate Phase"), "hint suppressed when Phase 3 agents are fresh");

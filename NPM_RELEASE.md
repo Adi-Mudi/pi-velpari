@@ -127,7 +127,7 @@ npm dist-tag rm @adi-mudi/pi-velpari <tag-name>
 | `EOTP` "one-time password" | WebAuthn URL was redacted in some AI-tool output | Run the publish command in your **local terminal** — the URL is visible there, not when piped through AI tooling |
 | `EPUBLISHCONFLICT` | That version already exists on npm | Bump `package.json` version and re-run |
 | `ENEEDAUTH` "need auth" | Login session expired | `npm login --auth-type=web`, then retry |
-| `ETARGET` / `EBADENGINE` | Node version mismatch | `engines.node: ">=22"` is required — check `node --version` |
+| `ETARGET` / `EBADENGINE` | Node version mismatch | `engines.node: ">=22.13.0"` is required (exact value from `package.json`) — check `node --version` |
 | `npm warn publish repository.url normalized` | Auto-fix from `https://...` to `git+https://...` | Harmless. Run `npm pkg fix` to clean up |
 | Tarball contains a CHANGELOG.md with `<<<<<<<` markers | Forgot to resolve merge conflict | Fix CHANGELOG.md in working tree (npm publishes from working tree, not git) |
 | Tarball contains files you didn't expect | `.npmignore` is missing rules | Edit `.npmignore`, then `npm pack --dry-run` to verify |
@@ -150,6 +150,5 @@ npm dist-tag rm @adi-mudi/pi-velpari <tag-name>
 
 ## See also
 
-- `velpari-full-sequence.md` — full stage sequence overview
 - `Doc/velpari-sequence/` — published sequence doc set (README as entry)
 - `.github/workflows/publish-dev.yml` — CI publish workflow (Trusted Publishing via OIDC, alternative to local publish)

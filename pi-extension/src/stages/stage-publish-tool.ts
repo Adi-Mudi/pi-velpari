@@ -20,10 +20,7 @@
 
 import { join } from "node:path";
 import { Type } from "typebox";
-import {
-	withFileMutationQueue,
-	type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadState } from "../core/state.js";
 import { PATHS } from "../core/constants.js";
 import { handleApprove } from "../ops/approve.js";
@@ -38,7 +35,8 @@ import { STAGE_LOCK_SPECS } from "./registry.js";
  */
 const PUBLISHABLE_STAGES = STAGE_LOCK_SPECS.map((s) => s.gate[s.gate.length - 1]!);
 
-export function registerStagePublishTool(pi: ExtensionAPI): void { // (publish tool)
+export function registerStagePublishTool(pi: ExtensionAPI): void {
+	// (publish tool)
 	pi.registerTool({
 		name: "velpari_stage_publish",
 		label: "Publish stage working copy",
@@ -55,52 +53,41 @@ export function registerStagePublishTool(pi: ExtensionAPI): void { // (publish t
 			"(that stage uses /velpari-brainstorm-approve).",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			return withFileMutationQueue(
-				join(ctx.cwd, PATHS.STATE_FILE),
-				async () => {
-					const state = loadState(ctx.cwd);
-					if (!state.runId || state.currentStage === "none") {
-						return errorResult(
-							"No active run to publish. Run a stage command (e.g. /velpari-prd) first.",
-						);
-					}
-					if (state.currentStage === "brainstorming" || state.currentStage === "brainstormed") {
-						return errorResult(
-							`Use /velpari-approve-brainstorm for the brainstorm stage. ` +
-								`Current stage: "${state.currentStage}".`,
-						);
-					}
-					if (
-						!(PUBLISHABLE_STAGES as readonly string[]).includes(state.currentStage)
-					) {
-						const completed = !state.currentStage.startsWith("drafting-") &&
-							(state.currentStage.endsWith("-prd") ||
-								state.currentStage.endsWith("-rtm") ||
-								state.currentStage.endsWith("ed"));
-						return errorResult(
-							completed
-								? `Stage "${state.currentStage}" is already published. Run the next stage command (see /velpari-status).`
-								: `Cannot publish at stage "${state.currentStage}". Run the correct stage command first (see /velpari-status).`,
-						);
-					}
-
-					// Delegate to the battle-tested approve handler. It notifies
-					// the user on every blocked path (revision gate, publish
-					// gate, doctor audit) and advances the stage on success.
-					await handleApprove(
-						ctx as unknown as Parameters<typeof handleApprove>[0],
-						pi,
-						ctx.cwd,
+			return withFileMutationQueue(join(ctx.cwd, PATHS.STATE_FILE), async () => {
+				const state = loadState(ctx.cwd);
+				if (!state.runId || state.currentStage === "none") {
+					return errorResult("No active run to publish. Run a stage command (e.g. /velpari-prd) first.");
+				}
+				if (state.currentStage === "brainstorming" || state.currentStage === "brainstormed") {
+					return errorResult(
+						`Use /velpari-approve-brainstorm for the brainstorm stage. ` + `Current stage: "${state.currentStage}".`,
 					);
+				}
+				if (!(PUBLISHABLE_STAGES as readonly string[]).includes(state.currentStage)) {
+					const completed =
+						!state.currentStage.startsWith("drafting-") &&
+						(state.currentStage.endsWith("-prd") ||
+							state.currentStage.endsWith("-rtm") ||
+							state.currentStage.endsWith("ed"));
+					return errorResult(
+						completed
+							? `Stage "${state.currentStage}" is already published. Run the next stage command (see /velpari-status).`
+							: `Cannot publish at stage "${state.currentStage}". Run the correct stage command first (see /velpari-status).`,
+					);
+				}
 
-					const after = loadState(ctx.cwd);
-					return okResult({
-						published: after.currentStage !== state.currentStage,
-						stage: after.currentStage,
-						runId: after.runId,
-					});
-				},
-			);
+				// Delegate to the battle-tested approve handler. It notifies
+				// the user on every blocked path (revision gate, publish
+				// gate, doctor audit) and advances the stage on success.
+				await handleApprove(ctx as unknown as Parameters<typeof handleApprove>[0], pi, ctx.cwd);
+
+				const after = loadState(ctx.cwd);
+				return okResult({
+					published: after.currentStage !== state.currentStage,
+					stage: after.currentStage,
+					runId: after.runId,
+				});
+			});
 		},
 	});
 }
@@ -113,9 +100,7 @@ interface PublishResult {
 
 function okResult(state: PublishResult) {
 	return {
-		content: [
-			{ type: "text" as const, text: JSON.stringify(state, null, 2) },
-		],
+		content: [{ type: "text" as const, text: JSON.stringify(state, null, 2) }],
 		details: state,
 	};
 }

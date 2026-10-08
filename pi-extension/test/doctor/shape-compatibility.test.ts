@@ -10,7 +10,11 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { computeShapeVerdict, checkShapeCompatibility, shapeStatusLine } from "../../src/doctor/checks/shape-compatibility.js";
+import {
+	computeShapeVerdict,
+	checkShapeCompatibility,
+	shapeStatusLine,
+} from "../../src/doctor/checks/shape-compatibility.js";
 import {
 	parseSemVerMajor,
 	countTopLevelSections,
@@ -180,8 +184,7 @@ describe("checkShapeCompatibility", () => {
 
 	it("published v1.1.0 with 14 sections → upgrade ok", () => {
 		const md =
-			"---\nversion: 1.1.0\n---\n\n" +
-			Array.from({ length: 14 }, (_, i) => `## ${i}. Section ${i}`).join("\n");
+			"---\nversion: 1.1.0\n---\n\n" + Array.from({ length: 14 }, (_, i) => `## ${i}. Section ${i}`).join("\n");
 		writePublished(md);
 		const section = checkShapeCompatibility(tmpDir, "TodoApp");
 		assert.equal(section.items[0]?.status, "ok");
@@ -189,14 +192,7 @@ describe("checkShapeCompatibility", () => {
 	});
 
 	it("sunset date in the past → error on top of path verdict", () => {
-		const md = [
-			"---",
-			"version: 1.0.2",
-			"sunset: 2024-01-01",
-			"---",
-			"",
-			"## 0. Foo",
-		].join("\n");
+		const md = ["---", "version: 1.0.2", "sunset: 2024-01-01", "---", "", "## 0. Foo"].join("\n");
 		writePublished(md);
 		const section = checkShapeCompatibility(tmpDir, "TodoApp");
 		// Expect migration warning AND sunset error.
@@ -207,14 +203,7 @@ describe("checkShapeCompatibility", () => {
 	});
 
 	it("sunset date in the future → info, no error", () => {
-		const md = [
-			"---",
-			"version: 1.0.2",
-			"sunset: 2099-01-01",
-			"---",
-			"",
-			"## 0. Foo",
-		].join("\n");
+		const md = ["---", "version: 1.0.2", "sunset: 2099-01-01", "---", "", "## 0. Foo"].join("\n");
 		writePublished(md);
 		const section = checkShapeCompatibility(tmpDir, "TodoApp");
 		const hasError = section.items.some((i) => i.status === "error");
@@ -231,15 +220,11 @@ describe("shapeStatusLine", () => {
 	it("returns a one-line string for each path", () => {
 		assert.match(shapeStatusLine(tmpDir, "TodoApp"), /Path: fresh/);
 
-		const md =
-			"---\nversion: 1.0.2\n---\n\n" +
-			Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
+		const md = "---\nversion: 1.0.2\n---\n\n" + Array.from({ length: 8 }, (_, i) => `## ${i}. S`).join("\n");
 		writePublished(md);
 		assert.match(shapeStatusLine(tmpDir, "TodoApp"), /Path: migration/);
 
-		const md2 =
-			"---\nversion: 1.1.0\n---\n\n" +
-			Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
+		const md2 = "---\nversion: 1.1.0\n---\n\n" + Array.from({ length: 14 }, (_, i) => `## ${i}. S`).join("\n");
 		fs.writeFileSync(path.join(tmpDir, "Doc", "design", "design_TodoApp.md"), md2, "utf8");
 		assert.match(shapeStatusLine(tmpDir, "TodoApp"), /Path: upgrade/);
 	});

@@ -12,11 +12,7 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	COVERAGE_RULES,
-	checkIdCoverage,
-	extractIds,
-} from "../../src/core/id-coverage.js";
+import { COVERAGE_RULES, checkIdCoverage, extractIds } from "../../src/core/id-coverage.js";
 
 let tmpDir: string;
 
@@ -185,10 +181,7 @@ describe("checkIdCoverage — af-to-pseudocode", () => {
 				"",
 			].join("\n"),
 		);
-		writeDoc(
-			"Doc/pseudocode/pseudocode_TestApp.md",
-			"# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n",
-		);
+		writeDoc("Doc/pseudocode/pseudocode_TestApp.md", "# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n");
 		const results = resultsFor("af-to-pseudocode");
 		assert.equal(results[0]!.status, "missing");
 		assert.deepEqual(results[0]!.missingIds, ["AF-2", "AF-3"]);
@@ -197,10 +190,7 @@ describe("checkIdCoverage — af-to-pseudocode", () => {
 	it("D7: malformed sidecar falls back to markdown scraping", () => {
 		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.md", AF_DOC);
 		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.yaml", "not: [an af doc]\n");
-		writeDoc(
-			"Doc/pseudocode/pseudocode_TestApp.md",
-			"# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n",
-		);
+		writeDoc("Doc/pseudocode/pseudocode_TestApp.md", "# Pseudocode\n\n## validateEmail\n\nAF: AF-1\n");
 		const results = resultsFor("af-to-pseudocode");
 		assert.equal(results[0]!.status, "missing");
 		assert.deepEqual(results[0]!.missingIds, ["AF-2"]);
@@ -258,7 +248,46 @@ describe("checkIdCoverage — af-to-dev-order", () => {
 		assert.equal(results[0]!.status, "ok");
 		assert.deepEqual(results[0]!.duplicateIds, []);
 	});
+
+	// Phase 7 — lanes are ADDITIVE: the Execution Lanes section must not
+	// disturb AFs:-line coverage for either document shape.
+	it("(a) lane-shaped dev-order → af-to-dev-order still ok (AFs: lines unchanged)", () => {
+		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.md", AF_DOC);
+		writeDoc("Doc/development-order/development-order_TestApp.md", laneDevOrderDoc(true));
+		const results = resultsFor("af-to-dev-order");
+		assert.equal(results[0]!.status, "ok");
+		assert.deepEqual(results[0]!.missingIds, []);
+		assert.deepEqual(results[0]!.duplicateIds, []);
+	});
+
+	it("(c) lane doc with zero parseable AF refs → not-checkable, never missing (D1)", () => {
+		writeDoc("Doc/atomic-functions/atomic-functions_TestApp.md", AF_DOC);
+		writeDoc("Doc/development-order/development-order_TestApp.md", laneDevOrderDoc(false));
+		const results = resultsFor("af-to-dev-order");
+		assert.equal(results[0]!.status, "not-checkable");
+		assert.deepEqual(results[0]!.missingIds, []);
+	});
 });
+
+/** Lane-shaped development-order doc; with/without the AFs: lines. */
+function laneDevOrderDoc(withAfs: boolean): string {
+	return [
+		"# Development Order",
+		"",
+		"## Execution Lanes",
+		"",
+		"| Lane | Status | Steps (in order) | Worktree | Branch |",
+		"| --- | --- | --- | --- | --- |",
+		"| lane-1 | active | S-1, S-2 | testapp/lane-1-core | testapp/lane-1-core |",
+		"",
+		"- `git worktree add ../testapp/lane-1-core -b testapp/lane-1-core`",
+		"",
+		"## Recommended Execution Plan",
+		"",
+		withAfs ? "1. Step 1\n   AFs: AF-1\n2. Step 2\n   AFs: AF-2" : "1. Step 1\n2. Step 2",
+		"",
+	].join("\n");
+}
 
 describe("checkIdCoverage — skips", () => {
 	it("no artifacts → empty report", () => {

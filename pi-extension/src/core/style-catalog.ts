@@ -39,14 +39,12 @@ export const STYLE_CATALOG: ReadonlyArray<ArchitecturalStyle> = [
 		favouredQAs: ["modifiability", "testability"],
 		disfavouredQAs: ["scalability", "elasticity"],
 		bestForDomains: ["CRUD apps", "internal tools", "ERP"],
-		notes:
-			"Smallest cognitive load. Hard to scale horizontally; deployment unit is large.",
+		notes: "Smallest cognitive load. Hard to scale horizontally; deployment unit is large.",
 	},
 	{
 		id: "modular-monolith",
 		label: "Modular Monolith",
-		description:
-			"One deployable, well-bounded modules inside (per Velocity / Modular Monolith).",
+		description: "One deployable, well-bounded modules inside (per Velocity / Modular Monolith).",
 		favouredQAs: ["modifiability", "deployability", "testability"],
 		disfavouredQAs: ["scalability", "availability"],
 		bestForDomains: ["SMB SaaS", "startups", "MVC replacements"],
@@ -56,107 +54,86 @@ export const STYLE_CATALOG: ReadonlyArray<ArchitecturalStyle> = [
 	{
 		id: "pipeline",
 		label: "Pipeline",
-		description:
-			"Data flows through chained filters / pipes / transformations.",
+		description: "Data flows through chained filters / pipes / transformations.",
 		favouredQAs: ["performance", "availability"],
 		disfavouredQAs: ["modifiability", "usability"],
 		bestForDomains: ["ETL", "stream processing", "image / video / shell"],
-		notes:
-			"Bad for stateful, transactional workflows. Excellent for throughput-oriented processing.",
+		notes: "Bad for stateful, transactional workflows. Excellent for throughput-oriented processing.",
 	},
 	{
 		id: "microkernel",
 		label: "Microkernel",
-		description:
-			"Core system + plug-ins loaded at runtime. Plugin registry is the seam.",
+		description: "Core system + plug-ins loaded at runtime. Plugin registry is the seam.",
 		favouredQAs: ["modifiability", "extensibility", "deployability"],
 		disfavouredQAs: ["performance"],
 		bestForDomains: ["IDEs", "browsers", "middleware", "Jenkins"],
-		notes:
-			"Stable core, plug-ins can be deployed independently. Plugin isolation is a real engineering effort.",
+		notes: "Stable core, plug-ins can be deployed independently. Plugin isolation is a real engineering effort.",
 	},
 	{
 		id: "service-based",
 		label: "Service-Based",
-		description:
-			"A handful of coarse-grained services, domain-driven boundaries, not yet microservices.",
+		description: "A handful of coarse-grained services, domain-driven boundaries, not yet microservices.",
 		favouredQAs: ["modifiability", "deployability"],
 		disfavouredQAs: ["performance", "elasticity"],
 		bestForDomains: ["Mid-large systems", "monolith → services refactors"],
-		notes:
-			"Simpler than microservices, but still benefits from independent deployment.",
+		notes: "Simpler than microservices, but still benefits from independent deployment.",
 	},
 	{
 		id: "event-driven",
 		label: "Event-Driven",
-		description:
-			"Asynchronous producer / consumer interactions via a broker (Kafka, SNS/SQS).",
+		description: "Asynchronous producer / consumer interactions via a broker (Kafka, SNS/SQS).",
 		favouredQAs: ["scalability", "availability", "extensibility"],
 		disfavouredQAs: ["modifiability", "testability"],
 		bestForDomains: ["Integration", "real-time updates", "Sagas"],
-		notes:
-			"Debugging and consistency are harder. Eventual consistency is the default mental model.",
+		notes: "Debugging and consistency are harder. Eventual consistency is the default mental model.",
 	},
 	{
 		id: "microservices",
 		label: "Microservices",
-		description:
-			"Many small, independently deployable services, each owning its data.",
+		description: "Many small, independently deployable services, each owning its data.",
 		favouredQAs: ["deployability", "scalability", "modifiability"],
 		disfavouredQAs: ["performance", "simplicity"],
 		bestForDomains: ["Large teams", "large systems", "Amazon / Netflix scale"],
-		notes:
-			"Maximum team autonomy, maximum operational complexity. The hardest style to do well.",
+		notes: "Maximum team autonomy, maximum operational complexity. The hardest style to do well.",
 	},
 	{
 		id: "space-based",
 		label: "Space-Based",
-		description:
-			"Processing grid + in-memory data grid. Removes the database as the bottleneck.",
+		description: "Processing grid + in-memory data grid. Removes the database as the bottleneck.",
 		favouredQAs: ["scalability", "elasticity", "performance"],
 		disfavouredQAs: ["modifiability", "cost"],
 		bestForDomains: ["Ticketing", "trading", "auctions"],
-		notes:
-			"Designed for elastic, extreme concurrency. Infrastructure-heavy; not for small user base.",
+		notes: "Designed for elastic, extreme concurrency. Infrastructure-heavy; not for small user base.",
 	},
 	{
 		id: "hexagonal",
 		label: "Hexagonal (Ports & Adapters)",
-		description:
-			"Inside-out: domain at center, ports on the boundary, adapters on the outside.",
+		description: "Inside-out: domain at center, ports on the boundary, adapters on the outside.",
 		favouredQAs: ["modifiability", "testability"],
 		disfavouredQAs: ["simplicity", "performance"],
 		bestForDomains: ["Long-lived domains", "integrations"],
-		notes:
-			"Pairs well with any of the deployment-side styles (Layered, Microservices, Service-Based).",
+		notes: "Pairs well with any of the deployment-side styles (Layered, Microservices, Service-Based).",
 	},
 	{
 		id: "serverless",
 		label: "Serverless / FaaS",
-		description:
-			"Stateless functions on demand; backend services managed by the cloud.",
+		description: "Stateless functions on demand; backend services managed by the cloud.",
 		favouredQAs: ["elasticity", "cost-at-rest"],
 		disfavouredQAs: ["performance", "modifiability"],
 		bestForDomains: ["Bursty workloads", "event pipelines"],
-		notes:
-			"Vendor lock-in is the cost. Cold start and per-invocation latency must be designed around.",
+		notes: "Vendor lock-in is the cost. Cold start and per-invocation latency must be designed around.",
 	},
 ] as const;
 
 /** Map style id → ArchitecturalStyle for direct lookup. */
-export const STYLE_BY_ID: ReadonlyMap<string, ArchitecturalStyle> = new Map(
-	STYLE_CATALOG.map((s) => [s.id, s]),
-);
+export const STYLE_BY_ID: ReadonlyMap<string, ArchitecturalStyle> = new Map(STYLE_CATALOG.map((s) => [s.id, s]));
 
 /**
  * Score a style against a set of QA scenarios. Deterministic; no LLM.
  * Higher score = better fit. Score is bounded to [-N, +N] where N is
  * the number of scenarios.
  */
-export function scoreStyleAgainstQAs(
-	style: ArchitecturalStyle,
-	scenarios: ReadonlyArray<QualityScenario>,
-): number {
+export function scoreStyleAgainstQAs(style: ArchitecturalStyle, scenarios: ReadonlyArray<QualityScenario>): number {
 	let score = 0;
 	for (const s of scenarios) {
 		// Map QA stimulus back to a canonical id best-effort: look at

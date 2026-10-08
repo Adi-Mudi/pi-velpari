@@ -23,33 +23,19 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
-import {
-	makeMinimalProjectFiles,
-	seedVelpariConfigV3,
-} from "./helpers/fixtures.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
+import { makeMinimalProjectFiles, seedVelpariConfigV3 } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
 const SKIP_MESSAGE = "Tier 1 E2E tests require pi binary on PATH, RUN_E2E=1, and a built extension";
 
 /** Run `script` (ESM source) in the temp project via the RPC bash
  *  channel and return the JSON payload it printed to stdout. */
-async function runModuleScript<T>(
-	client: RpcClient,
-	script: string,
-): Promise<T> {
+async function runModuleScript<T>(client: RpcClient, script: string): Promise<T> {
 	const result = await client.request<any>("bash", {
 		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
 	});
-	assert.ok(
-		result.success === true,
-		`subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-	);
+	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
 	return JSON.parse(output) as T;
@@ -83,17 +69,10 @@ describe("e2e/config", () => {
 
 		assert.strictEqual(cfg.version, 4, "config not migrated to version 4");
 		assert.strictEqual(cfg.projectName, "E2EFixture", "projectName lost in migration");
-		assert.deepStrictEqual(
-			cfg.framework,
-			{ language: "typescript", runtime: "node" },
-			"framework lost in migration",
-		);
+		assert.deepStrictEqual(cfg.framework, { language: "typescript", runtime: "node" }, "framework lost in migration");
 		assert.ok(Array.isArray(cfg.codePaths), "v4 codePaths missing");
 		assert.ok(Array.isArray(cfg.testPaths), "v4 testPaths missing");
-		assert.ok(
-			cfg.excludedPaths.includes("node_modules/"),
-			"v4 excludedPaths missing DEFAULT_EXCLUDED_PATHS entries",
-		);
+		assert.ok(cfg.excludedPaths.includes("node_modules/"), "v4 excludedPaths missing DEFAULT_EXCLUDED_PATHS entries");
 		// Migration is in-memory only — the on-disk file stays v3 until the
 		// user re-saves via /velpari-configure-inputs.
 	});
@@ -174,10 +153,7 @@ describe("e2e/config", () => {
 		assert.strictEqual(out.fallback, "consolidator", "unmapped role did not fall back to its default");
 		assert.deepStrictEqual(out.okErrors, [], "valid mapping reported validation errors");
 		assert.strictEqual(out.ghostErrors.length, 1, "missing agent mapping should produce exactly one error");
-		assert.ok(
-			String(out.ghostErrors[0]).includes("ghost-agent"),
-			"validation error should name the missing agent",
-		);
+		assert.ok(String(out.ghostErrors[0]).includes("ghost-agent"), "validation error should name the missing agent");
 	});
 
 	it("discoverAgents sees project agents and bundled defaults", { timeout: 60_000 }, async (t) => {

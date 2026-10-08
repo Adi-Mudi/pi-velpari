@@ -13,15 +13,8 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-	loadCatalogue,
-	findOverlay,
-} from "../../src/core/standards-catalogue.js";
-import {
-	saveState,
-	loadState,
-	type RunState,
-} from "../../src/core/state.js";
+import { loadCatalogue, findOverlay } from "../../src/core/standards-catalogue.js";
+import { saveState, loadState, type RunState } from "../../src/core/state.js";
 import { findPackageRoot } from "../../src/core/paths.js";
 import { gateStandardsProfile } from "../../src/doctor/checks/standards-profile.js";
 

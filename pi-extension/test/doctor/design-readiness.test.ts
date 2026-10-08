@@ -135,27 +135,27 @@ function buildValidDesign(): string {
 		"```mermaid",
 		"C4Context",
 		"  title System Context — TodoApp",
-		"  Person(user, \"End user\")",
-		"  System(system, \"TodoApp\", \"Tasks\")",
-		"  Rel(user, system, \"Uses\")",
+		'  Person(user, "End user")',
+		'  System(system, "TodoApp", "Tasks")',
+		'  Rel(user, system, "Uses")',
 		"```",
 		"",
 		"### 14.2 Container view (C4 Level 2)",
 		"```mermaid",
 		"C4Container",
 		"  title Container view — TodoApp",
-		"  Person(user, \"End user\")",
-		"  System_Boundary(c1, \"TodoApp\") { Container(app, \"Web app\", \"Node\") }",
-		"  Rel(user, app, \"Uses\")",
+		'  Person(user, "End user")',
+		'  System_Boundary(c1, "TodoApp") { Container(app, "Web app", "Node") }',
+		'  Rel(user, app, "Uses")',
 		"```",
 		"",
 		"### 14.3 Component view (C4 Level 3)",
 		"```mermaid",
 		"C4Component",
 		"  title API components",
-		"  Container(app, \"Web app\", \"Node\")",
-		"  Container_Boundary(api, \"API\") { Component(c, \"Core\", \"Node\") }",
-		"  Rel(app, c, \"Calls\")",
+		'  Container(app, "Web app", "Node")',
+		'  Container_Boundary(api, "API") { Component(c, "Core", "Node") }',
+		'  Rel(app, c, "Calls")',
 		"```",
 		"",
 		"## 8. Architecture Decisions",
@@ -225,7 +225,10 @@ describe("gateDesignReadiness", () => {
 			"|---|---|---|---|---|---|---|---|---|\n\n" +
 			"## 8. Architecture Decisions\n";
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.empty-qa-table"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.empty-qa-table"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("§5 row missing Response measure → error design.qa-row-incomplete", () => {
@@ -246,19 +249,28 @@ describe("gateDesignReadiness", () => {
 		);
 		const errors = gateDesignReadiness(md);
 		const rowErrors = errors.filter((e) => e.code === "design.qa-row-incomplete");
-		assert.ok(rowErrors.some((e) => /Approach/.test(e.message)), JSON.stringify(errors));
+		assert.ok(
+			rowErrors.some((e) => /Approach/.test(e.message)),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("missing §9 Context View → error", () => {
 		const md = buildValidDesign().replace(/## 9\. Context View[\s\S]*?(?=## 10\.)/, "");
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.missing-context-view"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.missing-context-view"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("missing §10 Deployment View → error", () => {
 		const md = buildValidDesign().replace(/## 10\. Deployment View[\s\S]*?(?=## 8\.)/, "");
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.missing-deployment-view"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.missing-deployment-view"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("valid design (now including §9 + §10) → 0 errors", () => {
@@ -269,19 +281,28 @@ describe("gateDesignReadiness", () => {
 	it("missing §11 Crosscutting Concepts → error", () => {
 		const md = buildValidDesign().replace(/## 11\. Crosscutting Concepts[\s\S]*?(?=## 12\.)/, "");
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.missing-crosscutting"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.missing-crosscutting"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("missing §12 Risks & Tech Debt → error", () => {
 		const md = buildValidDesign().replace(/## 12\. Risks & Tech Debt[\s\S]*?(?=## 13\.)/, "");
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.missing-risks"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.missing-risks"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("missing §13 Glossary → error", () => {
 		const md = buildValidDesign().replace(/## 13\. Glossary[\s\S]*?(?=## 8\.)/, "");
 		const errors = gateDesignReadiness(md);
-		assert.ok(errors.some((e) => e.code === "design.missing-glossary"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "design.missing-glossary"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("complete design (§0 + §1 + §5 + §9 + §10 + §11 + §12 + §13 + §8) → 0 errors", () => {

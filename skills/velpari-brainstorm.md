@@ -503,7 +503,7 @@ monitor. Use the `subagent` tool (provided by `pi-interactive-subagents`):
   it calls `subagent_done`. If a scout loops without progress, interrupt it.
 - **No isolation parameter** — The `subagent` tool has no pane-isolation
   or worktree parameter; never pass one.
-- **Read-only tools** — Dispatches carry only read/grep/glob (plus
+- **Read-only tools** — Dispatches carry only read/grep/find (plus
   websearch/fetchurl for the community scan). If you call `subagent()`
   with a tools list, keep it inside that allowlist.
 

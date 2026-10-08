@@ -31,10 +31,11 @@
 import { readFileSync } from "node:fs";
 import { loadFilesConfig } from "./config.js";
 import { extractAfIdsFromSidecar } from "./af-data.js";
+import { extractAfIdsFromStore, extractTestCaseTracesFromStore, extractDevOrderAfRefsFromStore } from "../io/store.js";
 import { extractTestCaseTracesFromSidecar } from "./test-cases-data.js";
 import { extractDevOrderAfRefsFromSidecar } from "./dev-order-data.js";
 import { resolveDocArtifact, resolveDocArtifactAll } from "./paths.js";
-import { extractIdsFromTable, readSectionBody } from "./psrs.js";
+import { extractIdsFromTable, readSectionBody, splitTableRow } from "./psrs.js";
 
 // ---------------------------------------------------------------------------
 // Types + rule table
@@ -126,13 +127,24 @@ export function extractIds(text: string, prefixes: string[]): string[] {
 	return text.match(re) ?? [];
 }
 
+/**
+ * Split a markdown table row line into its cell strings, trimming
+ * whitespace and dropping the empty edge-cells produced by the
+ * leading/trailing `|`.
+ * @param {string} line - A raw markdown table row line.
+ * @returns {string[]} The trimmed cell strings.
+ */
 function splitCells(line: string): string[] {
-	return line
-		.split("|")
-		.map((c) => c.trim())
-		.filter((c) => c.length > 0);
+	return splitTableRow(line).filter((c) => c.length > 0);
 }
 
+/**
+ * True when every cell is a markdown table separator (e.g. `---`,
+ * `:---`, `---:`, `:---:`). Used to skip the row that appears under
+ * a markdown table header.
+ * @param {string[]} cells - The cell strings of one table row.
+ * @returns {boolean} true when the row is a separator.
+ */
 function isSeparatorRow(cells: string[]): boolean {
 	return cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
@@ -141,11 +153,7 @@ function isSeparatorRow(cells: string[]): boolean {
  * Extract ids from the named columns of the FIRST markdown table in a
  * section body. Column match is case-insensitive on the header row.
  */
-function extractColumnIds(
-	body: string,
-	columnNames: string[],
-	prefixes: string[],
-): string[] {
+function extractColumnIds(body: string, columnNames: string[], prefixes: string[]): string[] {
 	const tableLines = body
 		.split("\n")
 		.map((l) => l.trim())
@@ -214,6 +222,12 @@ function extractDownstreamRefs(rule: CoverageRule, markdown: string): string[] {
 // Rule evaluation
 // ---------------------------------------------------------------------------
 
+/**
+ * Deduplicate and sort a list of id strings (lexicographic, ASC).
+ * Used to produce stable, comparable id sets for coverage diffs.
+ * @param {string[]} ids - The raw id list (may contain duplicates).
+ * @returns {string[]} Unique, sorted ids.
+ */
 function uniqueSorted(ids: string[]): string[] {
 	return Array.from(new Set(ids)).sort();
 }
@@ -243,9 +257,7 @@ function evaluateRule(
 		const markdown = upstreamMarkdown.get(source.artifact);
 		if (markdown !== undefined) upstreamIds.push(...extractUpstreamIds(source, markdown));
 	}
-	const refs = downstreamRefsOverride
-		? [...downstreamRefsOverride]
-		: extractDownstreamRefs(rule, downstreamMarkdown);
+	const refs = downstreamRefsOverride ? [...downstreamRefsOverride] : extractDownstreamRefs(rule, downstreamMarkdown);
 	// D1 — zero parseable references → pre-A4-format doc, not machine-checkable.
 	if (refs.length === 0) {
 		return { rule, projectName, status: "not-checkable", missingIds: [], duplicateIds: [] };
@@ -297,15 +309,28 @@ export function checkDownstreamCoverage(
 			}
 			upstreamMarkdown.set(source.artifact, readFileSync(found.path, "utf8"));
 			// D7 — sidecar-first (af→pseudocode, af→dev-order): AF ids come
-			// from the YAML sidecar when one exists; markdown scraping is
-			// the fallback (legacy not-checkable behavior unchanged).
+			// from the project store (Phase 6 §14.3 DB-primary readers) when
+			// one exists; sidecar fallback (legacy not-checkable) unchanged.
 			if (source.artifact === "atomic-functions") {
-				const sidecarIds = extractAfIdsFromSidecar(found.path);
-				if (sidecarIds) upstreamIdOverrides.set(source.artifact, sidecarIds);
+				const dbIds = extractAfIdsFromStore(cwd, projectName);
+				if (dbIds) upstreamIdOverrides.set(source.artifact, dbIds);
+				else {
+					const sidecarIds = extractAfIdsFromSidecar(found.path);
+					if (sidecarIds) upstreamIdOverrides.set(source.artifact, sidecarIds);
+				}
 			}
 		}
 		if (skipped) continue;
-		out.push(evaluateRule(rule, upstreamMarkdown, downstreamMarkdown, projectName, upstreamIdOverrides, downstreamRefsOverride));
+		out.push(
+			evaluateRule(
+				rule,
+				upstreamMarkdown,
+				downstreamMarkdown,
+				projectName,
+				upstreamIdOverrides,
+				downstreamRefsOverride,
+			),
+		);
 	}
 	return out;
 }
@@ -320,7 +345,14 @@ export function checkDownstreamCoverage(
  */
 export function checkIdCoverage(cwd: string): IdCoverageReport {
 	const results: IdCoverageRuleResult[] = [];
-	const config = loadFilesConfig(cwd);
+	// Phase C render hardening: corrupt files.json → no configured names
+	// (disk-discovered artifacts are still checked); Config reports it.
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		config = {};
+	}
 	const configuredNames = config.projectNames ?? (config.projectName ? [config.projectName] : []);
 	for (const rule of COVERAGE_RULES) {
 		const downstreams = new Map<string, { path: string; projectName: string }>();
@@ -335,11 +367,22 @@ export function checkIdCoverage(cwd: string): IdCoverageReport {
 			// D7 — sidecar-first downstream refs: when the downstream
 			// artifact carries a machine-readable sidecar, its ids win
 			// over markdown scraping (test-cases traces / dev-order afs).
+			// Phase 7 (intended enhancement, plan v1.1 review item 5):
+			// the store's LINKS TABLE is the primary edge source when the
+			// kind is published — machine-written edges beat sidecar
+			// parsing. Sidecar fallback (legacy projects) unchanged;
+			// whole-doc scan stays the final fallback.
 			let downstreamRefsOverride: readonly string[] | undefined;
 			if (rule.downstream === "test-cases") {
-				downstreamRefsOverride = extractTestCaseTracesFromSidecar(downstream.path) ?? undefined;
+				downstreamRefsOverride =
+					extractTestCaseTracesFromStore(cwd, downstream.projectName) ??
+					extractTestCaseTracesFromSidecar(downstream.path) ??
+					undefined;
 			} else if (rule.downstream === "development-order") {
-				downstreamRefsOverride = extractDevOrderAfRefsFromSidecar(downstream.path) ?? undefined;
+				downstreamRefsOverride =
+					extractDevOrderAfRefsFromStore(cwd, downstream.projectName) ??
+					extractDevOrderAfRefsFromSidecar(downstream.path) ??
+					undefined;
 			}
 			results.push(
 				...checkDownstreamCoverage(

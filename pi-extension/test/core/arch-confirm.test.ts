@@ -86,10 +86,7 @@ describe("confirmWithDeveloper — pick different profile", () => {
 
 describe("confirmWithDeveloper — no UI", () => {
 	it("returns 'no-ui' when ui.select is missing", async () => {
-		const result = await confirmWithDeveloper(
-			{} as unknown as Parameters<typeof confirmWithDeveloper>[0],
-			makeCtx(),
-		);
+		const result = await confirmWithDeveloper({} as unknown as Parameters<typeof confirmWithDeveloper>[0], makeCtx());
 		assert.strictEqual(result.outcome, "no-ui");
 		assert.strictEqual(result.confirmed, false);
 	});

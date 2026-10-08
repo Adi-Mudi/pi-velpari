@@ -41,15 +41,9 @@ interface RolePickerOptions {
 	showBack?: boolean;
 }
 
-type RolePickerResult =
-	| { kind: "role"; role: string }
-	| { kind: "finish" }
-	| { kind: "back" };
+type RolePickerResult = { kind: "role"; role: string } | { kind: "finish" } | { kind: "back" };
 
-export async function runRolePicker(
-	ctx: ExtensionContext,
-	options: RolePickerOptions,
-): Promise<RolePickerResult> {
+export async function runRolePicker(ctx: ExtensionContext, options: RolePickerOptions): Promise<RolePickerResult> {
 	if (!isTui(ctx)) {
 		return runFallbackRolePicker(ctx, options);
 	}
@@ -84,10 +78,7 @@ function makeFallbackOptions(
 	return { options, idMap };
 }
 
-async function runFallbackRolePicker(
-	ctx: ExtensionContext,
-	options: RolePickerOptions,
-): Promise<RolePickerResult> {
+async function runFallbackRolePicker(ctx: ExtensionContext, options: RolePickerOptions): Promise<RolePickerResult> {
 	const { options: labels, idMap } = makeFallbackOptions(options.items, options.showBack);
 	const choice = await ctx.ui.select(options.title, labels);
 	if (!choice) return { kind: "back" };
@@ -97,10 +88,7 @@ async function runFallbackRolePicker(
 	return { kind: "role", role: id };
 }
 
-async function runCustomRolePicker(
-	ctx: ExtensionContext,
-	options: RolePickerOptions,
-): Promise<RolePickerResult> {
+async function runCustomRolePicker(ctx: ExtensionContext, options: RolePickerOptions): Promise<RolePickerResult> {
 	return ctx.ui.custom<RolePickerResult>((tui, theme, _keybindings, done) => {
 		const pageSize = options.pageSize ?? 15;
 		const items = [...options.items];
@@ -123,9 +111,7 @@ async function runCustomRolePicker(
 
 		let selectedIndex = Math.max(
 			0,
-			options.initialSelectedId
-				? items.findIndex((i) => i.id === options.initialSelectedId)
-				: 0,
+			options.initialSelectedId ? items.findIndex((i) => i.id === options.initialSelectedId) : 0,
 		);
 		let scrollOffset = 0;
 
@@ -141,9 +127,7 @@ async function runCustomRolePicker(
 			const prefix = focused ? "→ " : "  ";
 			const agentPart = item.agent ? ` (${item.agent})` : "";
 			const needsPart = item.needs ? ` (needs: ${item.needs})` : "";
-			const guidancePart = item.guidance
-				? ` ${theme.fg(GUIDANCE_COLORS[item.guidance], `[${item.guidance}]`)}`
-				: "";
+			const guidancePart = item.guidance ? ` ${theme.fg(GUIDANCE_COLORS[item.guidance], `[${item.guidance}]`)}` : "";
 			const base = truncateToWidth(
 				`${item.label}${needsPart}${agentPart} — ${item.summary}${guidancePart}`,
 				Math.max(1, width - 2),
@@ -167,12 +151,7 @@ async function runCustomRolePicker(
 			const lines: string[] = [];
 			const border = "─".repeat(Math.max(2, width));
 			lines.push(theme.fg("accent", border));
-			lines.push(
-				theme.fg(
-					"accent",
-					theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width))),
-				),
-			);
+			lines.push(theme.fg("accent", theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width)))));
 			const subtitle = options.subtitle ?? " Pick a role to review its agent mapping; Finish when done.";
 			lines.push(theme.fg("warning", truncateToWidth(subtitle, Math.max(2, width))));
 			lines.push(theme.fg("accent", border));
@@ -186,15 +165,7 @@ async function runCustomRolePicker(
 			}
 
 			lines.push(theme.fg("accent", border));
-			lines.push(
-				theme.fg(
-					"dim",
-					truncateToWidth(
-						"↑↓ navigate • enter select • esc cancel",
-						Math.max(2, width),
-					),
-				),
-			);
+			lines.push(theme.fg("dim", truncateToWidth("↑↓ navigate • enter select • esc cancel", Math.max(2, width))));
 			lines.push(theme.fg("accent", border));
 			return lines.map((l) => truncateToWidth(l, Math.max(2, width)));
 		}

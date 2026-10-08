@@ -20,22 +20,12 @@
  */
 
 import { existsSync } from "node:fs";
-import {
-	BASE_CORE_FIELDS,
-	isAtomicTier,
-	requiredFieldsFor,
-	type AtomicTier,
-} from "./atomic-tier.js";
+import { BASE_CORE_FIELDS, isAtomicTier, requiredFieldsFor, type AtomicTier } from "./atomic-tier.js";
 import { compareVersions, readYamlFile } from "./yaml-data.js";
+import { resolveDocArtifact } from "./paths.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
-const AF_STATUSES = [
-	"proposed",
-	"approved",
-	"implemented",
-	"verified",
-	"deferred",
-	"deprecated",
-] as const;
+const AF_STATUSES = ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"] as const;
 type AfStatus = (typeof AF_STATUSES)[number];
 
 interface AfRecord {
@@ -107,6 +97,47 @@ export function loadAfSidecarData(mdPath: string): unknown | null {
 }
 
 /**
+ * Engine-side loader: DB-first with sidecar fallback (Phase 6 §14.3).
+ * Returns the legacy `AfData` shape so downstream engines (id-coverage,
+ * etc.) keep working unchanged. The DB atomic_function shape carries a
+ * subset of fields; missing legacy fields get safe defaults.
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose AF data to load.
+ * @returns {AfData | null} The legacy AfData shape, or null when neither DB nor sidecar has published rows.
+ */
+export function loadAfDataForEngine(cwd: string, projectName: string): AfData | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "atomic-functions");
+	if (fromDb) {
+		const rows = (fromDb.rows.atomicFunction as Array<Record<string, unknown>> | undefined) ?? [];
+		return {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			tier: "basic",
+			functions: rows.map((r) => ({
+				afId: String(r.id),
+				name: String(r.name ?? ""),
+				filePath: "",
+				purpose: r.purpose !== undefined && r.purpose !== null ? String(r.purpose) : "",
+				signature: String(r.signature ?? ""),
+				source: r.source !== undefined && r.source !== null ? String(r.source) : "",
+				cohesion: r.cohesion !== undefined && r.cohesion !== null ? String(r.cohesion) : "",
+				verification: r.verification !== undefined && r.verification !== null ? String(r.verification) : "",
+				testable: r.testable !== undefined && r.testable !== null ? String(r.testable) : "",
+				tier: String(r.tier ?? "basic"),
+				criticality: String(r.criticality ?? "A"),
+				sil: String(r.sil ?? "none"),
+				isLeaf: r.isLeaf !== undefined ? Number(r.isLeaf) : 1,
+			})),
+		};
+	}
+	const md = resolveDocArtifact("atomic-functions", projectName, cwd);
+	if (!md) return null;
+	const sidecar = loadAfSidecarData(md.path);
+	if (!sidecar) return null;
+	return sidecar as AfData;
+}
+
+/**
  * Loose AF-id extraction (D7): ids from the sidecar when one exists and
  * carries a `functions` array with string afIds, null otherwise (caller
  * falls back to markdown scraping). Never throws.
@@ -152,9 +183,7 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 		return { ok: false, issues };
 	}
 
-	const required: readonly string[] = opts?.tier
-		? requiredFieldsFor(opts.tier)
-		: BASE_CORE_FIELDS;
+	const required: readonly string[] = opts?.tier ? requiredFieldsFor(opts.tier) : BASE_CORE_FIELDS;
 	const seen = new Set<string>();
 	for (let i = 0; i < data.functions.length; i++) {
 		const fn = data.functions[i] as Record<string, unknown>;
@@ -180,7 +209,10 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 			issues.push(`${at}.filePath: missing or empty.`);
 		}
 		for (const field of ARRAY_FIELDS) {
-			if (fn[field] !== undefined && (!Array.isArray(fn[field]) || (fn[field] as unknown[]).some((v) => typeof v !== "string"))) {
+			if (
+				fn[field] !== undefined &&
+				(!Array.isArray(fn[field]) || (fn[field] as unknown[]).some((v) => typeof v !== "string"))
+			) {
 				issues.push(`${at}.${field}: must be an array of strings when present.`);
 			}
 		}
@@ -196,7 +228,10 @@ export function validateAfData(value: unknown, opts?: { tier?: AtomicTier }): Af
 			issues.push(`${at}.reason: deprecated functions must record a reason.`);
 		}
 	}
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -296,6 +331,14 @@ const TABLE_BASE_ORDER = [
 	"testable",
 ] as const;
 
+/**
+ * Build the markdown table column list for one AF dataset.
+ * Starts from the base column order, adds tier-required fields not in
+ * the base, then keeps any extra per-function keys in first-appearance
+ * order so no authored data is dropped.
+ * @param {AfData} data - The AF dataset to derive columns from.
+ * @returns {string[]} The ordered list of column names.
+ */
 function columnsFor(data: AfData): string[] {
 	const cols: string[] = [...TABLE_BASE_ORDER];
 	const tierFields = data.tier
@@ -312,6 +355,14 @@ function columnsFor(data: AfData): string[] {
 	return [...cols, ...extras];
 }
 
+/**
+ * Render a single table-cell value as markdown text.
+ * `undefined` / `null` / `""` become `(none)`; arrays become a
+ * comma-joined string (or `(none)` when empty); everything else is
+ * coerced via `String(v)`.
+ * @param {unknown} v - The raw cell value (any type).
+ * @returns {string} The markdown-safe string for the cell.
+ */
 function cellValue(v: unknown): string {
 	if (v === undefined || v === null || v === "") return "(none)";
 	if (Array.isArray(v)) return v.length > 0 ? v.join(", ") : "(none)";
@@ -346,10 +397,7 @@ export function renderAfMarkdown(data: AfData): string {
 		`|${cols.map(() => "---").join("|")}|`,
 		...data.functions.map((fn) => {
 			const row = cols.map((c) => cellValue(fn[c]));
-			const status =
-				fn.status === "deprecated" && typeof fn.reason === "string"
-					? ` (deprecated: ${fn.reason})`
-					: "";
+			const status = fn.status === "deprecated" && typeof fn.reason === "string" ? ` (deprecated: ${fn.reason})` : "";
 			return `| ${row.join(" | ")}${status} |`;
 		}),
 		"",

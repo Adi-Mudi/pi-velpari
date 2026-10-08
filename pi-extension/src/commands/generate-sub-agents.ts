@@ -94,11 +94,7 @@ function roleDefsForPhase(phase: GenerationPhase): GeneratedRoleDef[] {
  *   - `regen`:  the role is mapped to `<slug>-<role>` (a previous gen)
  *   - `custom`: the role has any other mapping (the user owns it)
  */
-function classifyTargets(
-	cwd: string,
-	slug: string,
-	defs: readonly GeneratedRoleDef[],
-): TargetSet {
+function classifyTargets(cwd: string, slug: string, defs: readonly GeneratedRoleDef[]): TargetSet {
 	const config = loadAgentConfig(cwd);
 	const fresh: GeneratedRoleDef[] = [];
 	const regen: GeneratedRoleDef[] = [];
@@ -133,10 +129,7 @@ async function resolveResources(
 	const matched = matchTechnologies(stackHints, resources);
 
 	if (matched.length === 0) {
-		ctx.ui.notify(
-			"No technology resources found. Check resources/technologies/ in the extension.",
-			"error",
-		);
+		ctx.ui.notify("No technology resources found. Check resources/technologies/ in the extension.", "error");
 		return null;
 	}
 
@@ -214,10 +207,7 @@ export async function runAgentGenerator(
 	const targetRoles = [...targets.fresh, ...targets.regen];
 
 	if (targetRoles.length === 0) {
-		ctx.ui.notify(
-			`All Phase ${phase} roles already have custom agents. Nothing to generate.`,
-			"info",
-		);
+		ctx.ui.notify(`All Phase ${phase} roles already have custom agents. Nothing to generate.`, "info");
 		return emptyResult;
 	}
 
@@ -232,11 +222,9 @@ export async function runAgentGenerator(
 	const filesConfig = loadFilesConfig(cwd);
 	const projectName = filesConfig.projectName || filesConfig.projectNames?.[0] || "";
 	const record = phase >= 3 && projectName ? loadFeasibilityRecord(cwd, projectName) : null;
-	const languageOnDisk =
-		record?.selectedLanguage?.trim() || filesConfig.framework?.language?.trim() || "";
+	const languageOnDisk = record?.selectedLanguage?.trim() || filesConfig.framework?.language?.trim() || "";
 	const frameworkOnDisk =
-		(filesConfig.framework?.libraries?.length ?? 0) > 0 ||
-		!!filesConfig.framework?.runtime?.trim();
+		(filesConfig.framework?.libraries?.length ?? 0) > 0 || !!filesConfig.framework?.runtime?.trim();
 
 	const stackHints: string[] = [...report.techStack];
 
@@ -257,9 +245,7 @@ export async function runAgentGenerator(
 	stackHints.push(projectType);
 
 	if (!languageOnDisk) {
-		const language = await ctx.ui.input(
-			"Primary language? (e.g., typescript, python, apps script)",
-		);
+		const language = await ctx.ui.input("Primary language? (e.g., typescript, python, apps script)");
 		if (!language || language.trim() === "") {
 			ctx.ui.notify("Primary language is required. Aborting.", "error");
 			return { ...emptyResult, cancelled: true };
@@ -291,15 +277,14 @@ export async function runAgentGenerator(
 
 	// 7. Build the write-set preview. Always classify via previewRegeneration
 	//    so the dialog matches what the user will actually see after write.
-	const preview = previewRegeneration(cwd, plans.map((p) => p.agentName));
+	const preview = previewRegeneration(
+		cwd,
+		plans.map((p) => p.agentName),
+	);
 	const previewText = renderWriteSetPreview(preview, { regenerateMode: true });
 
 	// 8. ONE confirmation gate (Rule 7).
-	const confirmed = await runSimpleConfirm(
-		ctx,
-		`Generate Phase ${phase} sub-agents?`,
-		previewText,
-	);
+	const confirmed = await runSimpleConfirm(ctx, `Generate Phase ${phase} sub-agents?`, previewText);
 	if (!confirmed) {
 		ctx.ui.notify("Agent generation cancelled.", "info");
 		return { ...emptyResult, cancelled: true };
@@ -316,10 +301,7 @@ export async function runAgentGenerator(
 
 	// 11. Post-write summary + doctor hint.
 	ctx.ui.notify(formatSummary(writeResult, mappingsAdded), "info");
-	ctx.ui.notify(
-		"Run /velpari-doctor afterwards to verify the generator completeness section is clean.",
-		"info",
-	);
+	ctx.ui.notify("Run /velpari-doctor afterwards to verify the generator completeness section is clean.", "info");
 
 	return {
 		created: writeResult.created.length,
@@ -347,9 +329,7 @@ function formatSummary(
 		parts.push(`${write.skipped.length} skipped (unknown origin)`);
 	}
 	if (mappingsAdded > 0) {
-		parts.push(
-			`${mappingsAdded} mapping${mappingsAdded === 1 ? "" : "s"} added to .pi/velpari/agents.json`,
-		);
+		parts.push(`${mappingsAdded} mapping${mappingsAdded === 1 ? "" : "s"} added to .pi/velpari/agents.json`);
 	}
 	if (parts.length === 0) {
 		return "No changes made.";

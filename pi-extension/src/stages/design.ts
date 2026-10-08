@@ -22,14 +22,7 @@ import { runStage } from "./registry.js";
 import { loadArchContext, type ArchContext } from "../core/arch-context.js";
 import { confirmWithDeveloper } from "../core/arch-confirm.js";
 import { loadState, saveState, type RunState } from "../core/state.js";
-import {
-	parseADRSection,
-	renderADR,
-	renderADRSection,
-	supersedeADR,
-	validateADR,
-	type ADR,
-} from "../core/adr.js";
+import { parseADRSection, renderADR, renderADRSection, supersedeADR, validateADR, type ADR } from "../core/adr.js";
 
 export async function handleDesign(
 	ctx: ExtensionCommandContext,
@@ -46,10 +39,7 @@ export async function handleDesign(
  * persist state. Returns the loaded ArchContext if the developer confirmed;
  * `null` otherwise (handler should stop and ask the developer to adjust).
  */
-async function runSubCyclePrelude(
-	ctx: ExtensionCommandContext,
-	cwd: string,
-): Promise<ArchContext | null> {
+async function runSubCyclePrelude(ctx: ExtensionCommandContext, cwd: string): Promise<ArchContext | null> {
 	const state = loadState(cwd);
 	const runId = state?.runId ?? "no-run";
 	const mission = state?.mission ?? "";
@@ -102,11 +92,4 @@ function persistSubCycleState(
 //   4. appendADRToWorkingCopy(workingCopyPath, adr) → updates design doc
 // Re-exports below let the parent LLM import them directly.
 
-export {
-	parseADRSection,
-	renderADR,
-	renderADRSection,
-	supersedeADR,
-	validateADR,
-	type ADR,
-};
+export { parseADRSection, renderADR, renderADRSection, supersedeADR, validateADR, type ADR };

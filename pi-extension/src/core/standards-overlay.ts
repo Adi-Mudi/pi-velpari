@@ -176,8 +176,6 @@ function isValidScout(s: unknown): s is OverlayScout {
 	if (!s || typeof s !== "object") return false;
 	const obj = s as Record<string, unknown>;
 	return (
-		typeof obj.role === "string" &&
-		typeof obj.description === "string" &&
-		typeof obj.reportPathTemplate === "string"
+		typeof obj.role === "string" && typeof obj.description === "string" && typeof obj.reportPathTemplate === "string"
 	);
 }

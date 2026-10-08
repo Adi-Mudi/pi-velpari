@@ -129,10 +129,7 @@ export function validateADR(adr: Partial<ADR>): string[] {
 	if (typeof adr.id !== "string" || !/^ADR-\d+$/.test(adr.id ?? "")) {
 		issues.push("id must match pattern ADR-<digits>");
 	}
-	if (
-		adr.status !== undefined &&
-		!["proposed", "accepted", "rejected", "superseded"].includes(adr.status)
-	) {
+	if (adr.status !== undefined && !["proposed", "accepted", "rejected", "superseded"].includes(adr.status)) {
 		issues.push("status must be one of proposed | accepted | rejected | superseded");
 	}
 	if (Array.isArray(adr.options) && adr.options.length > 0) {

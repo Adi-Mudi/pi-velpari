@@ -10,11 +10,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	buildFixBrief,
-	findFingerprintFromSuggestion,
-	renderFixBrief,
-} from "../../src/doctor/fix-brief.js";
+import { buildFixBrief, findFingerprintFromSuggestion, renderFixBrief } from "../../src/doctor/fix-brief.js";
 import type { ActionableItem } from "../../src/doctor/fix-dispatch.js";
 
 function item(suggestion: string): ActionableItem {
@@ -40,8 +36,7 @@ const MVP_INCOMPLETE_SUGGESTION =
 const RTM_UNKNOWN_ID_SUGGESTION =
 	"Either add the missing ids to the PSRS or remove them from the RTM. Traceability is bidirectional.";
 
-const PSRS_MISSING_SUGGESTION =
-	"Run `/velpari-brainstorm` first, then `/velpari-prd`.";
+const PSRS_MISSING_SUGGESTION = "Run `/velpari-brainstorm` first, then `/velpari-prd`.";
 
 const FRONTMATTER_MISSING_SUGGESTION =
 	"Republish the artifact: re-run its stage command, then `/velpari-rtm-approve` — frontmatter is auto-injected at publish time.";
@@ -52,22 +47,10 @@ const FRONTMATTER_MISSING_SUGGESTION =
 
 describe("findFingerprintFromSuggestion", () => {
 	it("returns the matching key for an exact suggestion text match", () => {
-		assert.equal(
-			findFingerprintFromSuggestion(FINGERPRINT_SUSPECT_SUGGESTION),
-			"fingerprint-suspect",
-		);
-		assert.equal(
-			findFingerprintFromSuggestion(PHASE_MISMATCH_SUGGESTION),
-			"phase-mismatch",
-		);
-		assert.equal(
-			findFingerprintFromSuggestion(MVP_INCOMPLETE_SUGGESTION),
-			"mvp-incomplete",
-		);
-		assert.equal(
-			findFingerprintFromSuggestion(RTM_UNKNOWN_ID_SUGGESTION),
-			"rtm-unknown-id",
-		);
+		assert.equal(findFingerprintFromSuggestion(FINGERPRINT_SUSPECT_SUGGESTION), "fingerprint-suspect");
+		assert.equal(findFingerprintFromSuggestion(PHASE_MISMATCH_SUGGESTION), "phase-mismatch");
+		assert.equal(findFingerprintFromSuggestion(MVP_INCOMPLETE_SUGGESTION), "mvp-incomplete");
+		assert.equal(findFingerprintFromSuggestion(RTM_UNKNOWN_ID_SUGGESTION), "rtm-unknown-id");
 	});
 
 	it("returns undefined for unknown text", () => {

@@ -35,12 +35,7 @@ export type PreviewOption = (typeof PREVIEW_OPTIONS)[number];
  * before saying "yes".
  */
 export function formatPreviewQuestion(deps: PreviewQuestionDeps): string {
-	const workingCopyPath = buildWorkingGroupedPath(
-		deps.cwd,
-		deps.runId,
-		"atomic-functions",
-		deps.projectName,
-	);
+	const workingCopyPath = buildWorkingGroupedPath(deps.cwd, deps.runId, "atomic-functions", deps.projectName);
 	return [
 		`Publish preview?`,
 		`Working copy: ${workingCopyPath}`,

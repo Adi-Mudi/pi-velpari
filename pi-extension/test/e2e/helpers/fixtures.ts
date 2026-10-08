@@ -9,12 +9,17 @@ export function makeMinimalProjectFiles(): Array<{ path: string; content: string
 	return [
 		{
 			path: "package.json",
-			content: JSON.stringify({
-				name: "pi-velpari-e2e-fixture",
-				version: "0.0.0",
-				type: "module",
-				private: true,
-			}, null, 2) + "\n",
+			content:
+				JSON.stringify(
+					{
+						name: "pi-velpari-e2e-fixture",
+						version: "0.0.0",
+						type: "module",
+						private: true,
+					},
+					null,
+					2,
+				) + "\n",
 		},
 		{
 			path: "README.md",
@@ -28,10 +33,7 @@ export function makeMinimalProjectFiles(): Array<{ path: string; content: string
  *  commands have a projectName to read. Matches the v4 shape defined
  *  in `pi-extension/src/core/config.ts` — defaults are imported from
  *  the source module so fixture and code never drift. */
-export function seedVelpariConfig(
-	home: TestHome,
-	opts: { projectName?: string } = {},
-): void {
+export function seedVelpariConfig(home: TestHome, opts: { projectName?: string } = {}): void {
 	const cfgDir = path.join(home.cwd, ".pi", "velpari");
 	fs.mkdirSync(cfgDir, { recursive: true });
 	const projectName = opts.projectName ?? "E2EFixture";
@@ -51,10 +53,7 @@ export function seedVelpariConfig(
 
 /** Write a legacy v3 `.pi/velpari/files.json`. Used by the migration
  *  e2e test — `loadFilesConfig` must upgrade it to v4 on load. */
-export function seedVelpariConfigV3(
-	home: TestHome,
-	opts: { projectName?: string } = {},
-): void {
+export function seedVelpariConfigV3(home: TestHome, opts: { projectName?: string } = {}): void {
 	const cfgDir = path.join(home.cwd, ".pi", "velpari");
 	fs.mkdirSync(cfgDir, { recursive: true });
 	const projectName = opts.projectName ?? "E2EFixture";

@@ -23,10 +23,7 @@ let cwd: string;
 
 function writePublished(projectName: string, content: string): void {
 	mkdirSync(join(cwd, "Doc", "observability"), { recursive: true });
-	writeFileSync(
-		join(cwd, "Doc", "observability", `logging-plan_${projectName}.md`),
-		content,
-	);
+	writeFileSync(join(cwd, "Doc", "observability", `logging-plan_${projectName}.md`), content);
 }
 
 const completePlan = (overlay?: string) => `---
@@ -164,9 +161,7 @@ describe("checkLoggingPlanSection", () => {
 		const bad = completePlan().replace("artifact: logging-plan", "artifact: wrong");
 		writePublished("Demo", bad);
 		const section = checkLoggingPlanSection(cwd, "Demo");
-		const item = section.items.find((i) =>
-			i.message.includes('Frontmatter artifact must be "logging-plan"'),
-		);
+		const item = section.items.find((i) => i.message.includes('Frontmatter artifact must be "logging-plan"'));
 		assert.ok(item, "should have wrong-artifact error");
 		assert.strictEqual(item!.status, "error");
 	});
@@ -177,9 +172,7 @@ describe("checkLoggingPlanSection", () => {
 		const truncated = completePlan().replace(/## 13\.[\s\S]*?(?=## 14\.)/, "");
 		writePublished("Demo", truncated);
 		const section = checkLoggingPlanSection(cwd, "Demo");
-		const item = section.items.find((i) =>
-			i.message.includes("Missing section heading(s)"),
-		);
+		const item = section.items.find((i) => i.message.includes("Missing section heading(s)"));
 		assert.ok(item, "should have missing-sections warning");
 		assert.strictEqual(item!.status, "warning");
 	});
@@ -213,9 +206,7 @@ describe("checkLoggingPlanSection", () => {
 		);
 		writePublished("Demo", noTamper);
 		const section = checkLoggingPlanSection(cwd, "Demo");
-		const item = section.items.find((i) =>
-			i.message.includes("Tamper-evident storage is required"),
-		);
+		const item = section.items.find((i) => i.message.includes("Tamper-evident storage is required"));
 		assert.ok(item, "should have tamper-evident-missing error");
 		assert.strictEqual(item!.status, "error");
 	});

@@ -51,10 +51,7 @@ function deprecatedPrdIds(prsContent: string): string[] {
 	return out.sort();
 }
 
-export function checkStaleDownstreamSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkStaleDownstreamSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -75,11 +72,7 @@ export function checkStaleDownstreamSection(
 			(candidate) => candidate.workingCopyArtifact.toLowerCase() === item.artifact,
 		);
 		const command =
-			item.artifact === "brainstorm"
-				? "/velpari-brainstorm"
-				: upstreamSpec
-					? `/velpari-${upstreamSpec.key}`
-					: null;
+			item.artifact === "brainstorm" ? "/velpari-brainstorm" : upstreamSpec ? `/velpari-${upstreamSpec.key}` : null;
 		items.push({
 			status: "error",
 			message:
@@ -102,10 +95,7 @@ export function checkStaleDownstreamSection(
 		deprecatedChecked = deprecated.length;
 		for (const id of deprecated) {
 			const liveRow = rtmLines.find(
-				(line) =>
-					line.trim().startsWith("|") &&
-					line.includes(id) &&
-					!line.toLowerCase().includes("deprecated"),
+				(line) => line.trim().startsWith("|") && line.includes(id) && !line.toLowerCase().includes("deprecated"),
 			);
 			if (liveRow) {
 				items.push({
@@ -173,10 +163,13 @@ export function checkGateWiringSection(cwd: string): DiagnosticSection {
 				message: `Run lock: held by pid=${holder.pid} (${holder.command}) — a state mutation is in flight.`,
 			});
 		} else {
+			// Phase 6 / D5: the N13 section ("Run lock (N13)") owns the
+			// stale-lock warning + recovery path — this line only points
+			// there so one defect is never reported twice with two
+			// different severities.
 			items.push({
-				status: "warning",
-				message: `Run lock: STALE (pid=${holder.pid}, command=${holder.command}). It is auto-stolen on the next state mutation.`,
-				suggestion: suggestionFor("stale-run-lock"),
+				status: "info",
+				message: `Run lock: STALE (pid=${holder.pid}, command=${holder.command}) — see the "Run lock (N13)" section for holder details and recovery.`,
 			});
 		}
 	}

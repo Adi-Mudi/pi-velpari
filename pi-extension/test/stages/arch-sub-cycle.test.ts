@@ -17,10 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-	gateArchSubCycle,
-	checkArchSubCycle,
-} from "../../src/doctor/checks/arch-sub-cycle.js";
+import { gateArchSubCycle, checkArchSubCycle } from "../../src/doctor/checks/arch-sub-cycle.js";
 import { loadState, saveState, advanceStage, createRun, type RunState } from "../../src/core/state.js";
 
 let tmpDir: string;

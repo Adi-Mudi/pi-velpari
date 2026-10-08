@@ -8,12 +8,7 @@
  * below. No other file needs to change.
  */
 
-import type {
-	BuiltInProfile,
-	ProfileRecommendation,
-	RequirementsAnswers,
-	RequirementsProfile,
-} from "./profile.js";
+import type { BuiltInProfile, ProfileRecommendation, RequirementsAnswers, RequirementsProfile } from "./profile.js";
 import { COMMON_PSRS_CORE_PROFILE_ID, REQUIREMENTS_PROFILE_VERSION } from "./profile.js";
 
 /** Stable id for the common PSRS core profile (re-exported for callers). */
@@ -217,9 +212,7 @@ export function recommendProfiles(answers: RequirementsAnswers): ProfileRecommen
 
 /** Find the closest (highest-score) built-in profile, regardless of exact match. */
 export function closestBuiltInProfile(answers: RequirementsAnswers): BuiltInProfile | undefined {
-	const recommended = recommendProfiles(answers).find(
-		(r) => r.kind === "built-in" && r.builtIn !== undefined,
-	);
+	const recommended = recommendProfiles(answers).find((r) => r.kind === "built-in" && r.builtIn !== undefined);
 	return recommended?.builtIn;
 }
 
@@ -240,14 +233,10 @@ function scoreCommonCore(answers: RequirementsAnswers): Scored {
 		);
 	}
 	if (answers.domain !== "general") {
-		tradeoffs.push(
-			`Domain is "${answers.domain}"; the common core is more generic than a domain-specific built-in.`,
-		);
+		tradeoffs.push(`Domain is "${answers.domain}"; the common core is more generic than a domain-specific built-in.`);
 	}
 	if (answers.securityLevel === "high") {
-		tradeoffs.push(
-			"Security level is high; the common core may not satisfy stricter security review checklists.",
-		);
+		tradeoffs.push("Security level is high; the common core may not satisfy stricter security review checklists.");
 	}
 	return { score, reasons, tradeoffs };
 }
@@ -280,14 +269,10 @@ function scoreBuiltIn(p: BuiltInProfile, answers: RequirementsAnswers): ScoredBu
 	}
 
 	if (p.requiredSections.length > 0) {
-		tradeoffs.push(
-			`Adds required sections: ${p.requiredSections.join(", ")}.`,
-		);
+		tradeoffs.push(`Adds required sections: ${p.requiredSections.join(", ")}.`);
 	}
 	if (p.outputVariant === "compliance" && !answers.regulated) {
-		tradeoffs.push(
-			"Output variant is compliance-oriented even though the project is not flagged as regulated.",
-		);
+		tradeoffs.push("Output variant is compliance-oriented even though the project is not flagged as regulated.");
 	}
 
 	return { score: Math.min(100, score), reasons, tradeoffs, builtIn: p };

@@ -1,0 +1,3 @@
+# Added by pi-velpari (DB-primary storage, Phase 9) — dogfood/CI protection.
+# The per-user-project heal is code-side: ops/git-attributes.ts:ensureStoreGitIntegration.
+Doc/store/**/index.db binary

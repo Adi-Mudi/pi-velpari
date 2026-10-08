@@ -16,10 +16,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-	confirmWithDeveloper,
-	type ConfirmOutcome,
-} from "../../src/core/arch-confirm.js";
+import { confirmWithDeveloper, type ConfirmOutcome } from "../../src/core/arch-confirm.js";
 import { loadArchContext } from "../../src/core/arch-context.js";
 
 let tmpDir: string;
@@ -27,10 +24,7 @@ let tmpDir: string;
 function writeFilesConfig(projectName: string) {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "files.json"),
-		JSON.stringify({ version: 4, projectName }),
-	);
+	fs.writeFileSync(path.join(dir, "files.json"), JSON.stringify({ version: 4, projectName }));
 }
 
 function writeRequirementsProfile(projectName = "TestApp") {

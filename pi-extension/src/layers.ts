@@ -18,9 +18,13 @@
 //           (sub-agent generator core — Phase 2 of /velpari-generate-sub-agents),
 //           multiplexer (Phase 2), scan-options (Phase 2),
 //           standards-catalogue, standards-overlay,
-//           logging-plan (v1.4.0 — /velpari-design-logging discipline command)
+//           logging-plan (v1.4.0 — /velpari-design-logging discipline command),
+//           hashchain + backup (Foundation 2026-09-27 — N15 tamper-evident
+//           chain primitives; N9/N10/N11 backup contract, no-op until Phase 3)
 //   io/     atomic-write (every fs write goes through here),
-//           agents-install
+//           agents-install,
+//           db (v1.5+ DB-primary storage — SQLite store factory on
+//           node:sqlite; the ONLY node:sqlite importer, per decision D9)
 //
 // ------------------------------------------------------------------------
 // Layer 1 — Stage logic (imports only Layer 0)

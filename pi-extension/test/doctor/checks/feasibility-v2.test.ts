@@ -89,9 +89,9 @@ describe("checkFeasibilityV2Section — published study validation", () => {
 		try {
 			const dir = join(cwd, "Doc", "feasibility");
 			mkdirSync(dir, { recursive: true });
-			const body = REQUIRED_SECTIONS
-				.map((s, i) => `## ${i + 1}. ${s}\n\n${s === "Overall Verdict" ? "incomplete" : `${s} content.`}`)
-				.join("\n\n");
+			const body = REQUIRED_SECTIONS.map(
+				(s, i) => `## ${i + 1}. ${s}\n\n${s === "Overall Verdict" ? "incomplete" : `${s} content.`}`,
+			).join("\n\n");
 			writeFileSync(join(dir, "feasibility-study_TestApp.md"), `# Feasibility\n\n${body}\n`, "utf8");
 			const section = checkFeasibilityV2Section(cwd, "TestApp");
 			const errors = section.items.filter((i) => i.status === "error");
@@ -129,9 +129,7 @@ describe("checkFeasibilityV2Section — open session progress (active stage)", (
 				"utf8",
 			);
 			const section = checkFeasibilityV2Section(cwd, "TestApp");
-			const warn = section.items.find(
-				(i) => i.status === "warning" && /INCOMPLETE/i.test(i.message),
-			);
+			const warn = section.items.find((i) => i.status === "warning" && /INCOMPLETE/i.test(i.message));
 			assert.ok(warn, "incomplete session should be flagged");
 			assert.ok(Array.isArray(warn!.details));
 			assert.ok(warn!.details!.some((d) => /Decision/i.test(d)));

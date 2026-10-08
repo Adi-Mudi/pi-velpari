@@ -70,6 +70,12 @@ describe("isKnownTactic", () => {
 		assert.equal(isKnownTactic("magic-cache"), false);
 		assert.equal(isKnownTactic(""), false);
 	});
+
+	it("matches tactic label forms case-insensitively", () => {
+		assert.equal(isKnownTactic("Encapsulate"), true);
+		assert.equal(isKnownTactic("Cache"), true);
+		assert.equal(isKnownTactic("RETRY"), true);
+	});
 });
 
 describe("tacticsForQA", () => {

@@ -16,12 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handleApprove } from "../../src/ops/approve.js";
-import {
-	advanceStage,
-	createRun,
-	loadState,
-	setFeasibilitySession,
-} from "../../src/core/state.js";
+import { advanceStage, createRun, loadState, setFeasibilitySession } from "../../src/core/state.js";
 import { loadFeasibilityRecord } from "../../src/core/feasibility-record.js";
 import { loadFreshnessManifest } from "../../src/core/freshness.js";
 
@@ -65,16 +60,15 @@ const STUDY_SECTIONS = [
 	"Change Log",
 ];
 
-const STUDY =
-	["# Feasibility Study — TestApp", ""]
-		.concat(
-			STUDY_SECTIONS.flatMap((s, i) => [
-				`## ${i + 1}. ${s}`,
-				s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
-				"",
-			]),
-		)
-		.join("\n");
+const STUDY = ["# Feasibility Study — TestApp", ""]
+	.concat(
+		STUDY_SECTIONS.flatMap((s, i) => [
+			`## ${i + 1}. ${s}`,
+			s === "Overall Verdict" ? "All pass.\nFinal: Go" : `${s} content.`,
+			"",
+		]),
+	)
+	.join("\n");
 
 function publishedStudyPath(): string {
 	return path.join(tmpDir, "Doc", "feasibility", "feasibility-study_TestApp.md");
@@ -123,7 +117,7 @@ afterEach(() => {
 describe("/velpari-atomic-function-approve — feasibility session gate", () => {
 	it("blocks when no session exists (no decision, no language)", async () => {
 		enterFeasibility();
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Feasibility stage is not settled/);
 		assert.match(allMessages(), /build-vs-reuse decision missing/);
@@ -139,7 +133,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 	it("blocks when decision is set but language is missing", async () => {
 		enterFeasibility();
 		setFeasibilitySession(loadState(tmpDir), { decision: "build" }, tmpDir);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /language not selected/);
 		assert.ok(!allMessages().includes("build-vs-reuse decision missing"));
@@ -170,7 +164,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 			},
 			tmpDir,
 		);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.ok(fs.existsSync(publishedStudyPath()), "study published");
 		const state = loadState(tmpDir);
@@ -179,12 +173,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 
 		// B3/D9 — the decision record was serialized BEFORE the session
 		// was cleared, carrying the D9 session fields.
-		const recordPath = path.join(
-			tmpDir,
-			"Doc",
-			"feasibility",
-			"feasibility-decision_TestApp.yaml",
-		);
+		const recordPath = path.join(tmpDir, "Doc", "feasibility", "feasibility-decision_TestApp.yaml");
 		assert.ok(fs.existsSync(recordPath), "decision record written");
 		const record = loadFeasibilityRecord(tmpDir, "TestApp")!;
 		assert.equal(record.verdict, "build");
@@ -217,7 +206,7 @@ describe("/velpari-atomic-function-approve — feasibility session gate", () => 
 		fs.mkdirSync(dir, { recursive: true });
 		fs.writeFileSync(path.join(dir, "PRD_TestApp.md"), "# draft\n", "utf8");
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		assert.ok(!allMessages().includes("Feasibility stage is not settled"));
 	});
 });

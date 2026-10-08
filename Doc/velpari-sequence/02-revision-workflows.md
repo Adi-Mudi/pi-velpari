@@ -108,6 +108,13 @@ frontmatter), re-stamps the freshness manifest with normalized hashes
 never re-stales downstream) plus a `reconfirmedAt` marker, and writes a
 history entry.
 
+> **Soft-lock (N19/N20 — shipped Phase B).** A revision a downstream consumer
+> has adopted is **content-locked**: `assertRevisionContentUnlocked` (`io/db.ts`)
+> refuses content writes (including `/velpari-reconfirm`'s Change Log append),
+> while status-only updates stay allowed and audited. `/velpari-freeze` is the
+> human-facing hard lock; the soft-lock is the automatic consumer-side one
+> (`core/soft-lock.ts`, D10 fail-open with a once-only diagnostic).
+
 ## What triggers a revision run
 
 Always `/velpari-brainstorm`. Brainstorm is the single entry point for

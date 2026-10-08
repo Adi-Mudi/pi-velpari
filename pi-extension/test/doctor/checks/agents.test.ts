@@ -10,7 +10,12 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { findPackageRoot } from "../../../src/core/paths.js";
 import {
 	ALL_STAGE_SCOUTS,
 	KNOWN_TOOL_NAMES,
@@ -20,6 +25,7 @@ import {
 	VALID_SESSION_MODES,
 	VALID_SPAWNING,
 	VALID_THINKING_LEVELS,
+	checkStageSkillsSection,
 	parseFrontmatter,
 } from "../../../src/doctor/checks/agents.js";
 
@@ -86,8 +92,38 @@ describe("doctor/checks/agents constants", () => {
 
 	it("STAGES_WITH_SKILL_MARKDOWN lists stages that ship a skill markdown", () => {
 		assert.ok(STAGES_WITH_SKILL_MARKDOWN.length > 0);
+		const repoRoot = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 		for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
 			assert.ok(typeof stage === "string");
+			// Phase 6: every listed suffix must name a file that actually
+			// ships under skills/ (guards the stale "design" entry that
+			// made every doctor run report 2 phantom errors).
+			assert.ok(
+				existsSync(join(repoRoot, "skills", `velpari-${stage}.md`)),
+				`skills/velpari-${stage}.md must exist for the STAGES_WITH_SKILL_MARKDOWN entry "${stage}"`,
+			);
+		}
+	});
+});
+
+describe("checkStageSkillsSection — package-root scoping", () => {
+	it("passes from a bare temp cwd (skills resolve from the velpari package root)", () => {
+		const bare = mkdtempSync(join(tmpdir(), "velpari-stage-skills-bare-"));
+		try {
+			const section = checkStageSkillsSection(bare);
+			const missing = section.items.filter((i) => /MISSING/.test(i.message));
+			assert.equal(
+				missing.length,
+				0,
+				`unexpected MISSING errors from a bare cwd: ${missing.map((m) => m.message).join("; ")}`,
+			);
+			assert.equal(
+				section.items.filter((i) => i.status === "error").length,
+				0,
+				`unexpected errors: ${JSON.stringify(section.items.filter((i) => i.status === "error"))}`,
+			);
+		} finally {
+			rmSync(bare, { recursive: true, force: true });
 		}
 	});
 });

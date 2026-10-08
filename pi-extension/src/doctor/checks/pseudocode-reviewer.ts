@@ -14,10 +14,7 @@ import type { DiagnosticSection } from "../_types.js";
 
 const PSEUDOCODE_SPEC = REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "pseudocode")!;
 
-export function loadPseudocodeReviewerVerdict(
-	cwd: string,
-	profile: AtomicProfile,
-): DiagnosticSection {
+export function loadPseudocodeReviewerVerdict(cwd: string, profile: AtomicProfile): DiagnosticSection {
 	const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
 	return loadReviewerVerdictForStage(cwd, PSEUDOCODE_SPEC, tierContext, profile);
 }

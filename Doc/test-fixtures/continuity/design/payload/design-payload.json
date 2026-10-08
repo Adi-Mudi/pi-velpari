@@ -1,0 +1,38 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "designing",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture design."]
+	},
+	"rows": {
+		"designModule": [
+			{ "id": "M-1", "name": "storage", "description": "Persist todos to a JSON file." },
+			{ "id": "M-2", "name": "sync", "description": "Cross-device sync (Phase 2)." },
+			{ "id": "M-3", "name": "export", "description": "CSV export." }
+		],
+		"moduleSourceFr": [
+			{ "moduleId": "M-1", "frId": "FR-01" },
+			{ "moduleId": "M-2", "frId": "FR-02" },
+			{ "moduleId": "M-3", "frId": "FR-03" }
+		],
+		"adr": [
+			{
+				"id": "ADR-001",
+				"adrStatus": "accepted",
+				"options": "layered; modular-monolith",
+				"chosen": "layered",
+				"rationale": "fixture style choice"
+			}
+		],
+		"diagram": [
+			{ "id": "D-1", "diagramKind": "c4-context", "mermaidText": "C4Context\n  Person(user, \"Local user\")\n  System(cli, \"ContinuityApp\")" }
+		],
+		"approach": [
+			{ "moduleId": "M-2", "tacticId": "cache" },
+			{ "moduleId": "M-3", "tacticId": "progress-indicator" }
+		]
+	}
+}

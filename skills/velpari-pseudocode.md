@@ -20,9 +20,10 @@ to `Doc/pseudocode_<projectName>.md` without surprises. `/velpari-pseudocode-app
 ## Sequence
 
 ```
-design + atomic functions (concatenated into prompt by handler):
-  - Doc/design_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
+design + atomic functions (pre-loaded into the prompt's `## DB Input
+Slices` block from the project store — NEVER open Doc/ files):
+  - design slice (Modules, Module Source FRs, ADRs)
+  - atomic-functions slice (AF catalog with tier/criticality)
         │
         ▼
 spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:
@@ -208,17 +209,21 @@ Revision rules:
    appended with the next free ID — never renumber or reuse.
 2. **Deprecate, don't delete.** A function that is removed stays marked
    `deprecated` with a reason. Never delete it.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when anything is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when anything is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** The `velpari_stage_publish` tool
-   (same gate chain as `/velpari-pseudocode-approve`) blocks publishing
+   (which runs the same gate chain as `/velpari-pseudocode-approve`) blocks publishing
    without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + pseudocode-reviewer verdict + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + pseudocode-reviewer verdict + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudocode-approve` runs the same gate chain from the terminal.
 
@@ -228,12 +233,43 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-pseudoco
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `writing-pseudocode` via `createRun()`. The next state transition
-  (`wrote-pseudocode`) happens in the `velpari_stage_publish` tool (which
-  same gate chain as `/velpari-pseudocode-approve`). You only write the working copy
-  artifact.
+  `writing-pseudocode` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`wrote-pseudocode`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-pseudocode-approve`). You only write the working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the pseudocode content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/pseudocode-payload.json` (the
+directory that holds the working copy, plus `payload/`). The publish gate
+validates it and writes the DB rows; a missing or invalid payload BLOCKS
+the publish (the gate error names the exact path + problem).
+
+Shape (unknown fields are rejected):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "writing-pseudocode",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "atomic-functions": "<sha256 hex>" },
+    "reviewerVerdict": "<reviewer verdict or null>",
+    "changeLog": []
+  },
+  "rows": {
+    "pseudocodeBlock": [{ "id": "PC-1", "afRef": "AF-1", "contentHash": "<sha256 of the block text>" }]
+  }
+}
+```
+
+`afRef` must reference an atomic function that exists in the store (written
+by the atomic-functions publish). Every row must trace to the working copy
+content (zero hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

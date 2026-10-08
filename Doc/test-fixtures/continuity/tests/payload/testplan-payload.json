@@ -1,0 +1,51 @@
+{
+	"envelope": {
+		"version": 1,
+		"stage": "planning-tests",
+		"generatedAt": "2026-09-28T00:00:00.000Z",
+		"inputs": {},
+		"reviewerVerdict": null,
+		"changeLog": ["2026-09-28: continuity fixture test cases."]
+	},
+	"rows": {
+		"testCase": [
+			{
+				"id": "TC-01",
+				"tcKind": "TC",
+				"strategyRef": "unit",
+				"steps": "add todo; list todos",
+				"objective": "Store a todo once",
+				"expected": "one row stored"
+			},
+			{
+				"id": "TC-02",
+				"tcKind": "TC",
+				"strategyRef": "unit",
+				"steps": "add todos; export",
+				"objective": "Export CSV golden file",
+				"expected": "header + rows exact"
+			},
+			{
+				"id": "IT-01",
+				"tcKind": "IT",
+				"strategyRef": "integration",
+				"steps": "seed local; sync",
+				"objective": "Sync across devices",
+				"expected": "remote matches local"
+			},
+			{
+				"id": "IT-02",
+				"tcKind": "IT",
+				"strategyRef": "integration",
+				"steps": "seed 1000 todos; sync",
+				"objective": "Sync under 2 seconds",
+				"expected": "completes under 2 seconds"
+			}
+		],
+		"tcTrace": [
+			{ "tcId": "TC-01", "targetKind": "af", "targetId": "AF-01" },
+			{ "tcId": "TC-02", "targetKind": "af", "targetId": "AF-02" },
+			{ "tcId": "IT-01", "targetKind": "af", "targetId": "AF-03" }
+		]
+	}
+}

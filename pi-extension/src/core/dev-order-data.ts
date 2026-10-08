@@ -17,6 +17,8 @@
 
 import { existsSync } from "node:fs";
 import { compareVersions, readYamlFile } from "./yaml-data.js";
+import { resolveDocArtifact } from "./paths.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
 export interface DevOrderStep {
 	/** Step id, e.g. "DO-1". */
@@ -64,6 +66,57 @@ export function resolveDevOrderSidecar(mdPath: string): string | null {
 }
 
 /**
+ * Engine-side loader: DB-first with sidecar fallback (Phase 6 §14.3).
+ * Returns the legacy `DevOrderData` shape (steps with afs + deps) so
+ * downstream engines keep working unchanged. The DB dev_step / step_af /
+ * step_dep shapes carry a subset of fields; missing legacy decorations
+ * get safe defaults.
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose dev-order to load.
+ * @returns {DevOrderData | null} The legacy DevOrderData shape, or null when neither DB nor sidecar has published rows.
+ */
+export function loadDevOrderDataForEngine(cwd: string, projectName: string): DevOrderData | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "development-order");
+	if (fromDb) {
+		const steps = (fromDb.rows.devStep as Array<Record<string, unknown>> | undefined) ?? [];
+		const afs = (fromDb.rows.stepAf as Array<Record<string, unknown>> | undefined) ?? [];
+		const deps = (fromDb.rows.stepDep as Array<Record<string, unknown>> | undefined) ?? [];
+		const afMap = new Map<string, string[]>();
+		for (const a of afs) {
+			const stepId = String(a.stepId);
+			const list = afMap.get(stepId) ?? [];
+			list.push(String(a.afId));
+			afMap.set(stepId, list);
+		}
+		const depMap = new Map<string, string[]>();
+		for (const d of deps) {
+			const stepId = String(d.stepId);
+			const list = depMap.get(stepId) ?? [];
+			list.push(String(d.dependsOnId));
+			depMap.set(stepId, list);
+		}
+		return {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			steps: steps.map((s) => ({
+				id: String(s.id),
+				module: String(s.module ?? ""),
+				afs: afMap.get(String(s.id)) ?? [],
+				dependsOn: depMap.get(String(s.id)) ?? [],
+				status: "proposed",
+			})),
+		};
+	}
+	const md = resolveDocArtifact("development-order", projectName, cwd);
+	if (!md) return null;
+	const sidecar = resolveDevOrderSidecar(md.path);
+	if (!sidecar) return null;
+	const data = readYamlFile(sidecar);
+	if (!data) return null;
+	return data as DevOrderData;
+}
+
+/**
  * Loose AF-ref extraction (D7): the union of every step's `afs` when a
  * sidecar exists and parses, null otherwise (caller falls back to
  * markdown scraping). Never throws.
@@ -99,10 +152,19 @@ export function extractDevOrderAfRefsFromSidecar(mdPath: string): string[] | nul
  */
 export function findDependencyCycle(steps: readonly DevOrderStep[]): string[] | null {
 	const deps = new Map(steps.map((s) => [s.id, s.dependsOn]));
-	const WHITE = 0, GRAY = 1, BLACK = 2;
+	const WHITE = 0,
+		GRAY = 1,
+		BLACK = 2;
 	const color = new Map<string, number>(steps.map((s) => [s.id, WHITE]));
 	const stack: string[] = [];
 
+	/**
+	 * DFS visit one step (DFS three-color cycle detection). Records
+	 * the path on the call stack; returns the cycle slice on a back-edge,
+	 * null on success, and propagates a non-null return up.
+	 * @param {string} id - The step id to visit.
+	 * @returns {string[] | null} The cycle path as a list of step ids when a back-edge is detected; null on success.
+	 */
 	const visit = (id: string): string[] | null => {
 		color.set(id, GRAY);
 		stack.push(id);
@@ -170,7 +232,9 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 			issues.push(`${at}.module: missing or empty.`);
 		}
 		if (!Array.isArray(step.afs) || step.afs.some((a) => typeof a !== "string" || !AF_ID_PATTERN.test(a))) {
-			issues.push(`${at}.afs: must be an array of AF-<n> ids (use [] when none — every AF must appear in exactly one step overall).`);
+			issues.push(
+				`${at}.afs: must be an array of AF-<n> ids (use [] when none — every AF must appear in exactly one step overall).`,
+			);
 		}
 		if (!Array.isArray(step.dependsOn) || step.dependsOn.some((d) => typeof d !== "string")) {
 			issues.push(`${at}.dependsOn: must be an array of step ids (use [] for a foundation step).`);
@@ -178,8 +242,12 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 		if (step.rationale !== undefined && typeof step.rationale !== "string") {
 			issues.push(`${at}.rationale: must be a string when present.`);
 		}
-		if (typeof step.id === "string" && STEP_ID_PATTERN.test(step.id)
-			&& Array.isArray(step.dependsOn) && step.dependsOn.every((d) => typeof d === "string")) {
+		if (
+			typeof step.id === "string" &&
+			STEP_ID_PATTERN.test(step.id) &&
+			Array.isArray(step.dependsOn) &&
+			step.dependsOn.every((d) => typeof d === "string")
+		) {
 			steps.push({
 				id: step.id,
 				module: typeof step.module === "string" ? step.module : "",
@@ -195,7 +263,9 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 	for (const step of steps) {
 		for (const dep of step.dependsOn) {
 			if (!ids.has(dep)) {
-				issues.push(`steps.${step.id}.dependsOn: unknown step "${dep}" — dependsOn references step ids declared in this file.`);
+				issues.push(
+					`steps.${step.id}.dependsOn: unknown step "${dep}" — dependsOn references step ids declared in this file.`,
+				);
 			}
 		}
 	}
@@ -212,12 +282,17 @@ export function validateDevOrderData(value: unknown): DevOrderValidation {
 	for (const step of steps) {
 		for (const dep of step.dependsOn) {
 			if (ids.has(dep) && position.get(dep)! >= position.get(step.id)!) {
-				issues.push(`order violation: step "${step.id}" is listed before "${dep}" which it depends on — list dependencies first.`);
+				issues.push(
+					`order violation: step "${step.id}" is listed before "${dep}" which it depends on — list dependencies first.`,
+				);
 			}
 		}
 	}
 
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -244,9 +319,7 @@ export function diffDevOrderData(baseline: DevOrderData, updated: DevOrderData):
 		}
 	}
 	if (compareVersions(updated.version, baseline.version) <= 0) {
-		issues.push(
-			`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`,
-		);
+		issues.push(`version must strictly increase (baseline ${baseline.version} → revision ${updated.version}).`);
 	}
 	return { ok: issues.length === 0, issues };
 }
@@ -275,8 +348,10 @@ export function renderDevOrderMarkdown(data: DevOrderData): string {
 		"",
 		"| Rank | Module | Depends on | Rationale |",
 		"|---|---|---|---|",
-		...data.steps.map((s, i) =>
-			`| ${i + 1} | ${s.module} | ${s.dependsOn.length > 0 ? s.dependsOn.join(", ") : "—"} | ${s.rationale ?? "—"} |`),
+		...data.steps.map(
+			(s, i) =>
+				`| ${i + 1} | ${s.module} | ${s.dependsOn.length > 0 ? s.dependsOn.join(", ") : "—"} | ${s.rationale ?? "—"} |`,
+		),
 		"",
 		"## Recommended Execution Plan",
 		"",

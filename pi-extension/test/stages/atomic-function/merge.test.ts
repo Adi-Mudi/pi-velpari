@@ -25,20 +25,8 @@ import {
 describe("BASE_CORE_FIELDS", () => {
 	it("has 8 fields, every one required at every tier", () => {
 		assert.equal(BASE_CORE_FIELDS.length, 8);
-		for (const required of [
-			"afId",
-			"name",
-			"purpose",
-			"signature",
-			"source",
-			"cohesion",
-			"verification",
-			"testable",
-		]) {
-			assert.ok(
-				(BASE_CORE_FIELDS as readonly string[]).includes(required),
-				`base-core missing ${required}`,
-			);
+		for (const required of ["afId", "name", "purpose", "signature", "source", "cohesion", "verification", "testable"]) {
+			assert.ok((BASE_CORE_FIELDS as readonly string[]).includes(required), `base-core missing ${required}`);
 		}
 	});
 });
@@ -51,30 +39,21 @@ describe("TIER_FIELDS", () => {
 	it("basic has 5 cross-reference fields", () => {
 		assert.equal(TIER_FIELDS.basic.length, 5);
 		for (const required of ["calledByFrIds", "designRef", "extractedFrom", "satisfactionFrId", "feasibilityRef"]) {
-			assert.ok(
-				(TIER_FIELDS.basic as readonly string[]).includes(required),
-				`basic missing ${required}`,
-			);
+			assert.ok((TIER_FIELDS.basic as readonly string[]).includes(required), `basic missing ${required}`);
 		}
 	});
 
 	it("intermediate has 11 V-Model + EARS fields", () => {
 		assert.equal(TIER_FIELDS.intermediate.length, 11);
 		for (const required of ["earsPattern", "complexity", "coupling", "argCount"]) {
-			assert.ok(
-				(TIER_FIELDS.intermediate as readonly string[]).includes(required),
-				`intermediate missing ${required}`,
-			);
+			assert.ok((TIER_FIELDS.intermediate as readonly string[]).includes(required), `intermediate missing ${required}`);
 		}
 	});
 
 	it("advanced has 11 INCOSE + maintenance fields", () => {
 		assert.equal(TIER_FIELDS.advanced.length, 11);
 		for (const required of ["owner", "priority", "securityClass", "risk", "changeLog"]) {
-			assert.ok(
-				(TIER_FIELDS.advanced as readonly string[]).includes(required),
-				`advanced missing ${required}`,
-			);
+			assert.ok((TIER_FIELDS.advanced as readonly string[]).includes(required), `advanced missing ${required}`);
 		}
 	});
 });
@@ -103,10 +82,7 @@ describe("requiredFieldsFor — cumulative per tier", () => {
 		const advanced = requiredFieldsFor("advanced");
 		for (const f of entry) {
 			assert.ok((basic as readonly string[]).includes(f), `basic missing entry field ${f}`);
-			assert.ok(
-				(intermediate as readonly string[]).includes(f),
-				`intermediate missing entry field ${f}`,
-			);
+			assert.ok((intermediate as readonly string[]).includes(f), `intermediate missing entry field ${f}`);
 			assert.ok((advanced as readonly string[]).includes(f), `advanced missing entry field ${f}`);
 		}
 	});

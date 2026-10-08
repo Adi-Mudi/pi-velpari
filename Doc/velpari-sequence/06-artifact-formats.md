@@ -34,6 +34,20 @@ stays human-readable and agent-readable.
 | Diagrams (all docs) | **Mermaid** blocks | in the host document | rendered by viewers |
 | Logging plan | Markdown + frontmatter | the `.md` | — |
 
+> **Semver bump gate (N27 — hardened D-F1, 2026-10-06).** Every artifact
+> revision declares `bump: major|minor|patch` (MAJOR = id/structure change,
+> MINOR = backward-compatible additions, PATCH = wording). The publish gate
+> validates the declaration against the classified change (`core/semver.ts`;
+> `WF-` wireframe ids included). DB-rendered kinds compare like-for-like store
+> renders (render-vs-render with the prior frontmatter prepended), so the gate is
+> live on the DB-only default path too.
+
+> **Excalidraw canvas (N31 — Phase F).** Mermaid stays the source of truth. The
+> design/export flows additionally offer "push diagram to canvas" when the local
+> Excalidraw MCP server is reachable — started on demand via
+> `npx -y mcp-excalidraw-server@2.0.0` (pinned; never `@latest`) with graceful
+> fallback to Mermaid when npx/Node/server is unavailable.
+
 ## Internal machine files (JSON — never hand-edited)
 
 | File | Purpose |
@@ -112,9 +126,21 @@ stays human-readable and agent-readable.
   present (af→pseudocode, af→dev-order); downstream refs come from the
   test-cases sidecar `traces` and dev-order sidecar `afs` when present;
   markdown scraping remains the fallback (legacy not-checkable unchanged).
-- **Freshness semantics (D5).** Sidecars join their own artifact's
-  `extraPaths` only; downstream declared inputs keep hashing the rendered
-  markdown. Switching the hash target to sidecars is a deferred cleanup.
+- **Freshness semantics (D5 + Phase 11).** Sidecars join their own artifact's
+  `extraPaths` only. Downstream declared inputs hash the rendered markdown for
+  legacy / flag-ON projects; for DB-era projects (markdown writes retired, Q3
+  DEFAULT OFF) they hash the kind's EXPORTED YAML bytes beside the store DB —
+  that is where the deferred "switch the hash target" cleanup landed, because a
+  file nothing rewrites would freeze every hash and silently kill
+  `input-changed` (decision record §15.6.9).
+- **DB-only publish (Phase 11, Q3).** `approve` no longer writes the published
+  markdown to `Doc/`: publish = store rows + the YAML export beside the DB + a
+  git commit, with write-alongside as the explicit opt-IN hatch
+  (`"velpari": {"markdownWrites": true}` in `files.json`; absent = OFF). So
+  the `Doc/…` paths named in this document are the store kind's human view
+  (`/velpari-export` + the `show` commands); legacy files stay on disk
+  untouched, and a pre-store project imports once via `/velpari-migrate-store`
+  (`--dry-run` first, then the confirm-gated `--execute`).
 - **Requirement↔test link authority (c8 — shipped 2026-09-21).** The RTM
   sidecar `rows[].tests[]` is the authoritative record of which tests verify
   which requirement; the test-cases sidecar `traces[]` is the per-test

@@ -10,12 +10,7 @@
  */
 
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
-import {
-	findOrphanADRs,
-	parseADRSection,
-	validateADR,
-	validateFirstADR,
-} from "../../core/adr.js";
+import { findOrphanADRs, parseADRSection, validateADR, validateFirstADR } from "../../core/adr.js";
 
 interface AdrGateError {
 	code: string;

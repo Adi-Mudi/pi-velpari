@@ -2,7 +2,214 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.0.0] — 2026-10-06 — DB-only publish + revision locking (Phases A–G)
+
+The post-rollout upgrade (Phases A–G) lands as one major release: publish is DB-only by default, downstream-consumed revisions are content-locked, every session is bound to its worktree/branch, and the doctor gains a command-start preflight with a self-healing fix flow. The per-phase rollout detail follows below.
+
+### Breaking
+
+- **Publish is DB-only by default.** Approve writes store rows + the YAML export + a git commit and nothing to `Doc/`. Opt in to write-alongside via `files.json` `"velpari": { "markdownWrites": true }`. One-time legacy import via `/velpari-migrate-store` (`--dry-run` → `--execute`).
+- **Doctor severity (N24-15): warnings are report-only; errors still block** publish/advance. The `VELPARI_SKIP_AUTO_DOCTOR` driver workaround is removed from the continuity dry run.
+- **`keepWireframeForProjectType` deleted** (was a no-op prompt filter; wireframe pairing is enforced in the publish layer).
+- **git-hooks API renamed** `preCommit*` → `commitMsg*` (`ops/git-hooks.ts` — it installs `.git/hooks/commit-msg`).
+
+### Added
+
+- **Session gate (N18, Phase A)** — plan-header worktree/branch binding; a mismatching session hard-stops at start, and `tool_call` denies edit/write on mismatch.
+- **Soft-lock (N19/N20, Phase B)** — a revision consumed downstream is content-locked (`assertRevisionContentUnlocked`); status-only updates remain allowed and audited.
+- **Doctor v2 + preflight (N22/N23, Phase C + G v1.3)** — command-start preflight (`COMMAND_PREFLIGHT_CLASS`: 52 classified — 22 wrapped / 11 exempt-stage / 8 exempt-recovery / 11 exempt-view), the self-healing "Fix all" flow (`doctor/fix-flow.ts`), and the `pi-extension-conformance` check.
+- **Design metadata (Phase D)** — wireframe pairing (N26), the semver bump gate (N27) incl. the `WF-` id prefix (D-F2), and Senai payload version metadata (N29).
+- **Excalidraw canvas push (N31, Phase F)** — offer-only-when-reachable; launcher pinned `mcp-excalidraw-server@2.0.0` (never `@latest`); Mermaid stays the source of truth with graceful fallback.
+- **`velpari.maxWorktrees` (N32)** — supersedes `maxLanes`; the lane cap resolves `maxWorktrees` → `maxLanes` → 4 (the worktree cap default stays 3).
+- **`testing.runner` (N33)** + `npm run test:scope` scoped runner (CI still runs the full gate).
+
+### Fixed
+
+- **Phase 3 — N24 blockers** — N24-01 stage-entry advance (`runStage` → `advanceStage`); N24-13 freshness falls back to store envelope bytes (DB-only chain unblocked); N24-16 RTM FK accepts NFR ids; N24-17 reviewer-verdict tier gate; N24-20 handoff accepts store artifacts; N24-22 final-design skill mapping.
+- **Phase 4 — N24 highs + batch-1** — N24-12 atomic-functions folder drift; N24-14 frontmatter trio is conditional; N24-15 severity policy (above); N24-19 store `tc_trace` keeps AF targets; N24-21 test-cases drift check gets the F7 view gate; D-F1 bump gate live on the DB-only path (like-for-like store renders); B-F1 reconfirm respects the content lock; B-F5 lock hygiene (exhaustiveness guard, once-only diagnostics, `commitMsg` naming); B-F2 import cycle pinned with a regression test; C-F4 preflight/fix-flow/conformance cleanups; D-F3 dead wireframe filter removed; D-F2 `WI`→`WF`; D-F4 store corruption surfaces a warning.
+- **Phase 5 — wording** — N24-03/N24-04 skill-doc + injected-rule wording (incl. the A3 class in 6 more skills: stage-entry truth + publish-fallback naming); N31 discussion wording (pinned `@2.0.0`, A1 package-name fix); N18–N33 are now documented across the surfaces (was zero-hit); the continuity dry run is green with an **empty** known-fail ledger (all four entries retired in Phase 4).
+
+### Upgrade notes
+
+1. **Legacy `Doc/` projects:** run `/velpari-migrate-store --dry-run`, review the report, then `--execute` once to import every published document into its project store (idempotent on re-run). Until migrated, opt in to `"velpari": { "markdownWrites": true }` in `files.json` to keep publishing markdown.
+2. **No `Doc/` writes on publish (default):** the `.IDE_Plans/velpari/runs/<run-id>/` working copies remain the review surface; use the `show-*` commands and `/velpari-export` for documents. Existing `Doc/` markdown stays on disk as readable history — never rewritten, never deleted.
+3. **Doctor warnings no longer block** — review and fix them, but only errors stop publish/advance. Remove any `VELPARI_SKIP_AUTO_DOCTOR` workaround from local scripts.
+4. **Config:** prefer `velpari.maxWorktrees` over `velpari.maxLanes` (the legacy key still resolves as a fallback); `testing.runner` selects local vs CI test runs (`npm run test:scope`).
+5. **Embedders of the internals:** the git-hooks API is now `commitMsg*`; `keepWireframeForProjectType` is gone (wireframe pairing is enforced at publish time).
+6. **Sessions are worktree/branch-bound (N18):** run commands from the tree named in the plan header; a mismatching session hard-stops at start and `tool_call` denies edit/write on mismatch.
+
+### v1.2 — Phase-G remaining-items rollout (2026-09-29)
+
+- **Fixes:** `checkDigestGitSection` opens the store read-only and renders a skip warning on a corrupt store instead of failing (C-F1); the doctor "Fix all" confirm list now shows the full safe whitelist and the batch always runs what it displayed (C-F2); `readLatestPublishedRows` is read-only + fail-soft (D6); retention skips content-locked revisions and re-stamps the store content digest inside the prune txn (B2); the handoff payload carries the suite-wide `_comment` marker (B4); **`--velpari-run-reviewer` — documented since the reviewer plan but never registered — is registered in `index.ts` and ORs into `shouldRunReviewer` at decision time (G-F1, pure-OR ruling)**.
+- **Wireframe export (phase-D D3):** exporting a design revision also materializes `Doc/design/wireframe_<slug>.md` from its `diagram` rows — presence-driven, skip+warn on an existing file unless overwrite — so DB-only handoffs resolve the published wireframe.
+- **New command (52nd):** `/velpari-revision-status` — view a revision's F16 status; restore withdrawn → published (typed reason + confirmation, audited). `superseded` stays system-owned; withdrawal stays on `/velpari-tombstone`.
+- **Testing:** `npm run test:scope` wires the existing N33 `scripts/run-tests.js` runner (scope from `testing.runner`; CI still runs the full gate).
+
+### Versioning, locking & recovery rollout — Phases F/1–7 integration (2026-09-27)
+
+The whole foundation + Phase 1–7 rollout lands as one user-visible set: every publish creates an immutable, CAS-guarded snapshot revision; `/velpari-freeze` freezes an artifact at handoff with a typed reason (one executor home), `/velpari-tombstone` withdraws a revision without losing its bytes, `/velpari-rollback` restores older content as a NEW revision, and `/velpari-db-reset` clears only one run's draft rows. The store auto-snapshots (`VACUUM INTO`, never a raw copy) at publish / db-reset / migrate into gitignored, manifest-proven `Backup/velpari/<project>/` (FIFO keep-last-N) with a documented restore sequence, and `/velpari-retention-prune` enforces keep-last-N revisions. Runs are bound to a git worktree/branch — wrong-tree commands are gated, an upstream-moved notice surfaces every turn, and the doctor reports a worktree removed mid-run. `audit_ledger`/`tx_log` rows are hash-chained and doctor-verified; `/velpari-merge-back` guides a parallel line home; dev-order work ranks into DAG-derived execution lanes carried through the working copy, store kinds and handoff payload. The command surface is 51 (the docs still said 45). Phase I completes the integration: registry reconciliation (one canonical 51-name list, one count pin), the N4 executor collapse into `ops/freeze.ts`, a dedicated L0 export-revision reader, the worktree-removal check's L0 import swap, the docs sweep, and the review-defect fixes (approve-message, run-lock/never-throws/lock-semantics, read-only doctor opens, temp-dir hygiene). No new dependencies.
+
+#### Added
+
+- **Revisioned publish + protection (N4/F7/F16/F21)** — immutable snapshot revisions on every publish (CAS in `io/store.ts:publishArtifactCas`); `/velpari-freeze` (freeze/unfreeze, typed reason — a frozen artifact refuses publish, supersession, tombstone), `/velpari-tombstone` (withdraw: bytes stay, reason audited), `/velpari-rollback` (restore as a new revision — history never rewritten), `/velpari-db-reset` (draft store rows only; published rows/revisions survive).
+- **Automatic backups (N9–N11)** — snapshots at publish / `/velpari-db-reset` / `/velpari-migrate-store` into `Backup/velpari/<project>/` with `manifest.jsonl` (SHA-256, git commit, quick-check), FIFO keep-last-N; restore sequence documented at `skills/db-store-merge-runbook.md` §7 (close sessions → lock check → verify → confirm → `restoreBackupSnapshot` → doctor re-audit).
+- **`/velpari-retention-prune` (N7)** — keep-last-N revisions (`velpari.retention.revisions`), confirmed + audited; head and baselined revisions never pruned.
+- **`/velpari-merge-back` (N12)** — dry-run plan → confirm → `git merge --no-ff` → store verify → doctor → staleness → F14 flags, with a per-step `audit_ledger` trail (runbook §8).
+- **Run enforcement (N5/N6/N8/N14)** — run binding (`state.json` ↔ worktree/branch), the worktree/branch gate (`stages/worktree-lock.ts`), the upstream-moved notice, and the doctor's worktree-removal report.
+- **Doctor checks** — hash-chain (`audit_ledger`/`tx_log` verification), baselines (withdrawn/superseded adoption), last-verified backup (N11), stale run lock (N13), worktree removal (N14).
+- **Execution lanes (N16)** — DAG-derived lane map, integration plan and lock rules in the dev-order working copy, store kinds and handoff payload.
+- **Command surface 45 → 51** — docs reconciled with the runtime registry (Phase 2 protection ×4, Phase 4 retention, Phase 6 merge-back on top of the 45).
+
+#### Changed
+
+- **Registry reconciliation** — the Phase 2/4/6 integration-request markers folded out of `commands/index.ts`; one canonical `COMMAND_NAMES` (51 names, each once) and a single integration-time count pin in `test/integration/command-registration.test.ts` (no more per-phase 49→50→51 CI churn).
+- **N4 executor collapse** — `SingleKindFreezeInput`/`SingleKindFreezeOutcome`/`applySingleKindFreeze`/`finalizeUnfreeze` moved to `ops/freeze.ts`; gate code calls into it (one home, no duplicated mechanics).
+- **L0 export reader (Phase 4 deferred request)** — `io/store.ts:listExportableRevisions` (direct read, excludes withdrawn) behind `ops/export-revision.ts`.
+- **Worktree-removal import swap** — `doctor/checks/worktree-removal.ts` consumes the Phase-5 L0 worktree module.
+- **Docs sweep** — root `AGENTS.md` (design principles 15–20, 51-command surface + sum, `Doc/store/**` guard wording aligned with the D3 bash rejection, 10g lanes sentence), `pi-extension/src/AGENTS.md` (L0/L1/L3 layer rows), `README.md` (51 commands + versioning/locking/recovery summary), `Doc/velpari-sequence/08-command-reference.md` (15-row discipline table + “Revisions, freeze & protection” §), `skills/db-store-merge-runbook.md` (new §7 restore, cross-links).
+
+#### Fixed
+
+- **Approve surface naming the wrong command** — the post-approve message now points at the actual next command instead of a stale stage name.
+- **Run-lock / never-throws / lock semantics** — the run-lock race, the non-never-throwing paths, and the stale-set threading fixed at review.
+- **Read-only doctor opens** — doctor opens the store read-only where it only audits.
+- **Temp-dir hygiene** — test temp dirs cleaned; shared picker helper deduplicated.
+
+#### Security
+
+- **Tamper evidence** — hash-chained `audit_ledger`/`tx_log` verified by the doctor; backup snapshots proven by manifest SHA-256 (unproven/tampered = refusal, zero writes); schema-ceiling and active-run guards on restore.
+
+### DB-primary storage Phase 12 — shipped-path fixes + integration proof (2026-09-24)
+
+The shipped DB-only default had never been executed end-to-end, and doing so exposed three real defects — all fixed here. `ops/approve.ts` now gates DB-rendered kinds on the **LLM working copy** (the artifact the user reviewed) instead of the lossy DB render, so a PRD publish and a PRD **revision** pass their gates under the default (before: 21 `psrs-*` errors, nothing could publish). The G8 `prd-file` mirror hash is required only when a PRD markdown is **already published** and is compared against that pre-publish file, so a first publish in write-alongside mode no longer fails on a hash the caller cannot predict. The three DB-rendered doctor drift checks are DB-only aware, so a migrated project's legacy markdown no longer reports phantom drift. Coverage: an approve-level suite for the shipped default, a migrated-project end-to-end suite, a Tier-1 e2e through a real `pi`, and the e2e README refresh. No new dependencies.
+
+#### Added
+
+- **`test/integration/db-era-publish.test.ts`** — the first approve-level test of the shipped default (no `velpari` key → markdown OFF) plus the flag-ON hatch and both G8 revision directions.
+- **`test/integration/migrated-project.test.ts`** — migrated project end-to-end: DB-primary reads, slice + `## DB Input Slices` prompt block, DB-era approve commit set, export renderer, doctor classification, rebuild-from-YAML checksum verified.
+- **`test/e2e/migrate-store.e2e.test.ts`** — Tier-1: `/velpari-migrate-store` dry-run/execute + the `velpari(migrate)` commit driven through a real `pi`.
+- **`test/doctor/db-only-view-drift.test.ts`** — drift semantics for RTM / atomic-functions / development-order with markdown writes OFF and ON.
+
+#### Changed
+
+- **`ops/approve.ts`** — content gates validate the LLM working copy for DB-rendered kinds; the G8 mirror check and the `prd-file` requirement use a pre-publish snapshot.
+- **`ops/stage-payloads.ts`** — `loadStagePayload(..., { requirePrdFileHash })` (default: required, so the legacy contract is unchanged).
+- **`doctor/checks/{rtm-data,af-data,dev-order-data}.ts`** — the render-drift comparison runs only while markdown writes are maintained.
+- **`skills/velpari-prd.md`**, **`skills/velpari-{rtm,atomic-function,development-order}.md`** — the G8 hash rule and the "published markdown" wording now state the DB-only default.
+- **`pi-extension/test/e2e/README.md`** — dynamic command-count wording, the 9-suite table, and the shipped-default note.
+
+### DB-primary storage Phase 11 — one-time migration + markdown-write retirement (2026-09-24)
+
+RES-3 lands: `/velpari-migrate-store` (45th command) imports every legacy-published `Doc/` document into its project's store DB exactly once — `--dry-run` first (writes NOTHING), then a confirm-gated `--execute` that is idempotent on re-run (already-published kinds are no-op skips), re-exporting one `<Artifact>_<project>.yaml` beside each DB (the Phase 9 runbook rebuild source, including for kinds previously imported by `/velpari-backfill`, which never exported) and committing per project (`velpari(migrate): <project> (run migrated)`, explicit paths only — DB + YAML + registry + healed git files; legacy markdown is never committed). Q3 lands in the same phase: the markdown publish write is RETIRED and DEFAULT OFF — approve now writes DB rows + YAML + git commit and NOTHING to `Doc/`; the `.IDE_Plans/velpari/runs/<run-id>/<stage>/*.md` working copies are untouched (the mandated temp `.md` review surface) and existing `Doc/` markdown stays on disk as readable history (never rewritten, never deleted). Write-alongside is the explicit opt-IN rollback hatch via `files.json` `"velpari": {"markdownWrites": true}` (absent key = OFF). Three retirement-blast-radius fixes land with it: freshness inputs hash the exported YAML bytes for DB-era projects (so `input-changed` keeps firing when markdown never changes), handoff renders the design payload from the store (file read = legacy fallback), and `/velpari-reconfirm` appends its audit line to the store envelope's `changeLog` column when no published file exists. No new dependencies.
+
+#### Added
+
+- **`/velpari-migrate-store`** — the 45th command: usage / `--dry-run` (report only) / `--execute` (confirm gate → migrate → verify → per-project commit). G7 run-open hard-block (message names `/velpari-reset`) + the publish chain's git-identity precheck run BEFORE any write.
+- **`ops/migrate.ts`** — the migration engine: `migratePrecheck`, `discoverLegacyProjects` (grouped + legacy-flat `Doc/`), `migrateDryRun` (pure), `migrateExecute` (FK-ordered kinds under run id `migrated`, checksum verify, YAML re-export, checkpoint, registry sync, per-project commit), `renderMigrateReport`.
+- **`core/config.ts:markdownWritesEnabled`** — the single accessor for the retirement flag (DEFAULT OFF; `skipDbPublish` test escape hatch implies ON).
+- **`test/ops/migrate.test.ts`** + **`test/commands/migrate-command.test.ts`** — preconditions, dry-run writes nothing, idempotent re-run, zero-row skip, 9-YAML contract, commit-set assert, G1 WAL check, and the R7 gate item (input-changed fires after a DB-era republish).
+- **`commands/reset` note** — published store rows (including run `migrated`) survive a reset.
+
+#### Changed
+
+- **`ops/approve.ts`** — flag-OFF: the `Doc/` write block is retired (`publishedPaths` is empty); the freshness stamp runs in BOTH modes (`stampFreshnessEntry`).
+- **`core/freshness.ts`** — DB-era input resolution hashes the kind's exported YAML bytes instead of a frozen markdown file.
+- **`ops/handoff.ts`** — the design ADR payload comes from `readLatestPublishedRows` + `renderDesignMarkdown` with the file read as fallback.
+- **`ops/reconfirm.ts`** — existence-based target: no published file → append the audit line to the store envelope's `changeLog` column (sanctioned code store write) + checkpoint.
+- **`ops/backfill.ts`** — exports the 9 per-kind loaders + `LegacyLoad`, `payloadRowCount`, `KIND_STAGE`, `KIND_YAML_LABELS`, `FK_UPSTREAM` for reuse (zero behavior change).
+- **`doctor/checks/working-published.ts`** — DB-era aware: reports the store's published-kind count and marks the markdown totals as a retired view under flag OFF.
+- **`test/integration/command-registration.test.ts`** — command count 44 → 45.
+- **`test/db-store/publish.test.ts`** — flag-aware first-publish commit-set variants (DB-only by default; markdown joins the set only on opt-in).
+
+### DB-primary storage Phase 10 — portfolio registry + diagram assets (2026-09-24)
+
+The hub-and-spoke storage model (D6) gains its optional hub: a per-workspace metadata registry at `Doc/store/portfolio.db` (committed raw per D2/D7 — the Phase 9 auto-heal now marks BOTH SQLite files binary and ignores both WALs). The registry is METADATA-ONLY by design (user-locked): project name, db path, display name, last publish/run/stage — cross-project artifact rollups stay out (additive later). The publish chain syncs the registry PRE-commit (fail-open, outside the store transaction — never a rollback trigger; the Q6d failure path re-syncs best-effort), every registry write ends with `wal_checkpoint(TRUNCATE)` (registry G1 — the committed file must never trail its git-ignored WAL), and `/velpari-portfolio --repair` rebuilds the registry from the spokes at any time (no registry integrity_check — it is fully derivable, a conscious skip). D8 is realized: `mermaid_text` starting with `image:` renders as a markdown image (path relative to the owning DB dir; renderers never read the filesystem — byte-stable per G5; missing assets surface via the doctor's new portfolio check, and `..`-escaping paths are rejected without probing). `/velpari-portfolio` is the 44th command. No new dependencies.
+
+#### Added
+
+- **`Doc/store/portfolio.db`** — the portfolio registry (v001-p, STRICT `projects` table; own schema module + own version ceiling + own pin test — store pins untouched).
+- **`io/portfolio.ts`** — L0 registry API (`syncProject` / `listProjects` / `removeProject`).
+- **`ops/portfolio.ts`** — `syncPortfolioRegistry` / `repairPortfolioRegistry` (spoke-derived, idempotent, checkpoint-after-write, fail-open).
+- **`/velpari-portfolio`** — the 44th command (list + `--repair`).
+- **`doctor/checks/portfolio.ts`** — registry↔disk drift (stale / unregistered / orphan) + D8 asset sweep (missing / `..`-traversal-rejected).
+
+#### Changed
+
+- **`ops/db-publish.ts`** — pre-commit registry sync (7b) + rollback re-sync (step 8); portfolio.db joins the publish commit set.
+- **`ops/git-attributes.ts`** — the heal now also appends `Doc/store/portfolio.db binary` + its WAL ignores.
+- **`ops/export-doc.ts` + `ops/db-slices.ts`** — D8 `image:` → markdown-image rendering; inline diagram text unchanged.
+- **`test/integration/command-registration.test.ts`** — command count 43 → 44.
+
+### DB-primary storage Phase 9 — git integration + YAML rebuild (2026-09-24)
+
+The store DB is committed raw, so every user repo now carries git protection for it, and the merge/recovery story becomes executable. The publish chain auto-heals the user repo's `.gitattributes` (`Doc/store/**/index.db binary` — merge prevention via the built-in macro) and `.gitignore` (`index.db-wal` / `-shm`) before committing, and the healed files join the same publish commit (automatic but never silent — a notify reports the append; the doctor's new Git integration section makes drift visible anytime). OQ1 decided: `state.json` stays OUT of the publish commit set — backup = artifact world only (DB + YAML + docs); a restored checkout re-establishes the run position via `/velpari-backfill` + a fresh run. D9 is made real: `importArtifactYaml` (L0) imports a store-export YAML back into the DB (parse → validate → write → checksum-verify → publish; schema-invalid YAML is refused, content tampering is NOT detected — the export carries no fingerprint, git's reviewable YAML diffs are the tamper guard), exposed as `/velpari-backfill <kind> --from-export`. The G2 runbook ships at `skills/db-store-merge-runbook.md`. No new dependencies.
+
+#### Added
+
+- **`ops/git-attributes.ts`** — `ensureStoreGitIntegration(cwd)`: append-if-missing binary attr + WAL ignores into the USER repo; idempotent, append-only, exact-pattern detection; returns `{ changed, appended, changedPaths }`.
+- **`.gitattributes` (repo root)** — dogfood/CI protection for this repo's own store.
+- **`io/store.ts:importArtifactYaml`** — the D9 rebuild path; the YAML's own `runId` wins (run-scoped cross-kind FKs keep chained rebuilds intact).
+- **`/velpari-backfill <kind> --from-export`** — rebuilds one kind from the store YAML beside the DB (runbook's central recovery step; store-only contract unchanged).
+- **`skills/db-store-merge-runbook.md`** — G2 merge-conflict + recovery runbook (ships; `.npmignore` excludes `Doc/`).
+- **`doctor/checks/git-integration.ts`** — Git integration section (warnings + runbook pointers when the user repo lacks the patterns).
+- **Fix suggestions** — `git-attr-missing`, `git-ignore-missing`.
+
+#### Changed
+
+- **`ops/db-publish.ts` step 7** — heal call + one-line notify per appended file; healed `.gitattributes`/`.gitignore` join the publish commit's `addPaths`.
+
+### DB-primary storage Phase 8 — hooks/locks + reset draft cleanup (2026-09-24)
+
+`tool_call`'s write-lock now covers the stage DB scope (master outline row 8): a new always-on store-scope guard blocks edit/write tool calls into `Doc/store/**` (the SQLite store + its exported YAML views) — between stages included, closing the gap where the committed source of truth could be hand-edited. Sanctioned writers stay code-side (stage publish tool, `/velpari-backfill`, `/velpari-reconfirm`, `/velpari-export`); the bash bypass is an accepted limitation (checksums + the integrity/orphan audits backstop it). `/velpari-reset` now deletes the run's DRAFT store rows before clearing state (Q2's phase-8 duty — `deleteRunDrafts` per project DB, published rows survive; order locked: capture runId → delete drafts → clearRun → notify). State transitions and the `before_agent_start` status injection are unchanged (verified). No new dependencies.
+
+### DB-primary storage Phase 7 — doctor as SQL (2026-09-23)
+
+The doctor's data checks now read the store DB directly (sidecar fallback with a `/velpari-backfill` warning stays for pre-store projects), and three new SQL-backed audits cover the database itself: G4 integrity (`PRAGMA quick_check` + `integrity_check` per project DB), `links`-adjacency orphan detection, and a secrets sweep over DB text columns (newest published version per kind, OQ4a). Schema v003 adds the STRICT `store_meta(key, value)` bookkeeping table — stamped `integrity_checked_at` on standalone `/velpari-doctor` runs only; the embedded post-publish doctor run never writes (the DB file was just git-committed). Id-coverage consumes machine-written store link edges (`tc_trace` / `step_af`) with sidecar fallback; `fingerprint-untracked` remediation is read-only for DB-backed RTMs (`/velpari-reconfirm` is the sanctioned re-stamp path).
+
+#### Added
+
+- **`doctor/checks/integrity.ts`** — G4 store-DB integrity check (multi-design: one audit per effective projectName; info note for pre-store projects; error on any non-"ok" PRAGMA result; standalone-only `store_meta` stamp).
+- **`doctor/checks/db-link-orphans.ts`** — `links` adjacency audit: every link endpoint must resolve to a row in the same run (drafts count as resolved; final_section nodes keyed by `CAST(no AS TEXT)`; feasibility nodes keyed by run_id).
+- **`store_meta` (v003)** — `io/db.ts:storeMetaSet` / `storeMetaGet`; STRICT per §11/RES-2; invisible to export YAML and fingerprints (envelope/export column whitelists).
+- **Fix suggestions** — `store-db-missing`, `store-db-corrupt`, `store-db-orphan-link`.
+
+#### Changed
+
+- **8 doctor reporters read store rows first** (`rtm-data`, `af-data`, `test-cases-data`, `dev-order-data`, `trace-link-consistency`, `fingerprints`, `phase-consistency`, `remediate/fingerprint-untracked`) — identical verdict semantics; legacy sidecar path preserved as OQ3a fallback with a backfill warning in the sidecar-missing items.
+- **Secrets scan sweeps DB text columns** (G9) in addition to the 4 file locations.
+- **id-coverage reads store link edges first** (`extractTestCaseTracesFromStore`, `extractDevOrderAfRefsFromStore` — intended enhancement, plan v1.1 review item 5), sidecar fallback unchanged.
+- **`runDoctor(cwd, opts)`** gains the `embedded` flag; the post-publish audit (`ops/approve.ts`) passes `embedded: true` so the integrity check never stamps a just-committed DB.
+
+### DB-primary storage Phase 6 — strict reads + `/velpari-backfill` (2026-09-23)
+
+From PRD onward the per-project SQLite store (`Doc/store/<project>/index.db`) is the **single machine source of truth**: stages and scouts read pre-rendered `## DB Input Slices` blocks from the store only — Doc/ markdown, YAML sidecars, and HTML/JSON exports are human views. Brainstorm notes stay the one file-based input; the reviewer agent is the sole slice+view exception (drift = a finding). Schema v002 added 14 prose columns (Phase 1); Phase 2 retired the sidecar publish loop (5 DB-rendered artifacts re-render from rows, 5 hybrid docs stay LLM-authored + hash-bound).
+
+#### Added
+
+- **L1 slice builder** (`ops/db-slices.ts`) — `resolveStageSlice` per stage key with three LOUD refusal reasons (no store DB / kind unpublished / rows lack v002 prose), each naming `/velpari-backfill <kind>`; compact deterministic per-kind slice renderers (G5) + per-role `SCOUT_SLICE_LINES`.
+- **Prompt blocks** — `## DB Input Slices` (never open Doc/ files) + `## Scout Slices` (per-role row-set references) rendered by `core/prompt.ts` from pre-rendered L1 strings.
+- **43rd command `/velpari-backfill <kind>`** (`ops/backfill.ts` + `commands/backfill.ts`) — parses the legacy published markdown/sidecar for one kind (sidecar-first: RTM/AF engine readers; generic pipe-table parser for the rest), writes rows with v002 prose, checksum-verifies, publishes, checkpoints. Store-only (no Doc/ write, no stage advance, no git); idempotent no-op when the kind is already imported; refuses zero-row imports.
+
+#### Changed
+
+- **Stage inputs + pre-conditions are DB-first** (`stages/registry.ts`) — `resolveStageInputs` resolves doc inputs via the slice; `firstMissingArtifact` checks published store rows, not Doc/ file existence; refuse messages name the store path and `/velpari-backfill <kind>`. `core/stage-runner.ts` never reads a `db://` marker path.
+- **SHOW commands render from the store** (`view/show.ts`) via the Phase 5 renderers (newest published version); legacy file read remains as the view fallback for pre-store projects.
+- **10 skills rewritten** — 9 stage skills + reviewer instruct slice-only reads; reviewer keeps the slice+view exception.
+- **Command surface 42 → 43** (`commands/index.ts`, registration test, both AGENTS.md files — one pass so none drifts); AGENTS.md principle 10f rewritten (sidecar retired as source; legacy read fallback until Phase 11).
+
+### DB-primary storage Phase 5 — `/velpari-export` (on-demand document download, 2026-09-22)
+
+New **42nd command** (view/ops group): export a published artifact version straight from the per-project SQLite store (`Doc/store/<project>/index.db`) to a file the user picks — read-only (D4). No publish/approve/gate changes; drafts are never listed or exported (Q2); export is an additional view, never a publish product (Q3).
+
+#### Added
+
+- **L0 store queries** (`io/store.ts`) — `listExportableKinds` (published kinds in canonical `KIND_ORDER`) + `listPublishedVersions` (published (run, kind) rows, newest first) + `PublishedVersionRef` interface. Read-only.
+- **L1 renderer + runner** (`ops/export-doc.ts`) — deterministic envelope header (frontmatter + fingerprint + reviewer verdict + change log), 9 per-kind markdown renderers with explicit natural-key sorts (G5), in-house `mdToHtml` converter over the bounded markdown subset our renderers emit (zero new dependencies), and the `runExport` entry point: open DB (missing → refusal), verify published + picked version, delegate yaml to `exportArtifactYaml` (byte-identical to publish-time sidecar bytes, RES-1), write via `atomicWriteFile`. Never writes to the DB.
+- **L3 picker flow** (`commands/export.ts`) — project (multi-design picker; approve.ts precedence), kind, version (newest first), format (md/yaml/html), output path with deterministic default suggestion (`Doc/export/<project>/<Artifact>_<project>.<ext>`), overwrite confirm gate (declined → file untouched). Every cancel notifies and exits cleanly. **32 new tests across `test/ops/export-doc.test.ts` + `test/commands/export-command.test.ts`.**
+
+#### Changed
+
+- **Command surface 41 → 42** (`commands/index.ts`, registration test, both AGENTS.md files — one pass so none drifts).
 
 ### Cleanup — dead exports, lint warnings, superseded docs (2026-09-21)
 

@@ -50,19 +50,14 @@ describe("state machine integrity — Phase 8 re-verification", () => {
 
 	it("every transition command starts with /velpari-", () => {
 		for (const t of STAGE_TRANSITIONS) {
-			assert.ok(
-				t.command.startsWith("/velpari-"),
-				`transition command "${t.command}" does not start with /velpari-`,
-			);
+			assert.ok(t.command.startsWith("/velpari-"), `transition command "${t.command}" does not start with /velpari-`);
 		}
 	});
 
 	it("Phase 1 + 2 rename: final-design transition uses /velpari-final-design", () => {
 		// In the industry-standard order, final-design runs AFTER development-order
 		// (Stage 9 → Stage 10), not from planned-tests.
-		const finalDesign = STAGE_TRANSITIONS.find(
-			(t) => t.from === "ordered-development" && t.to === "finalizing-design",
-		);
+		const finalDesign = STAGE_TRANSITIONS.find((t) => t.from === "ordered-development" && t.to === "finalizing-design");
 		assert.ok(finalDesign, "final-design transition must exist");
 		assert.strictEqual(
 			finalDesign?.command,
@@ -74,9 +69,7 @@ describe("state machine integrity — Phase 8 re-verification", () => {
 	it("industry-standard order: atomic-functions comes BEFORE pseudocode", () => {
 		// Stage 6 (atomic-functions) must transition into pseudocode (Stage 7),
 		// not be triggered AFTER test-plan as in the legacy optional ordering.
-		const atomic = STAGE_TRANSITIONS.find(
-			(t) => t.from === "designed" && t.to === "analyzing-atomic-functions",
-		);
+		const atomic = STAGE_TRANSITIONS.find((t) => t.from === "designed" && t.to === "analyzing-atomic-functions");
 		assert.ok(atomic, "designed → analyzing-atomic-functions transition must exist");
 		assert.strictEqual(atomic?.command, "/velpari-atomic-function");
 
@@ -90,9 +83,7 @@ describe("state machine integrity — Phase 8 re-verification", () => {
 	it("industry-standard order: planning-tests → ordering-development (no skip to handoff)", () => {
 		// After test-plan is approved, the next required stage is development-order.
 		// The legacy `planned-tests → handoff-ready` skip is removed.
-		const skip = STAGE_TRANSITIONS.find(
-			(t) => t.from === "planned-tests" && t.to === "handoff-ready",
-		);
+		const skip = STAGE_TRANSITIONS.find((t) => t.from === "planned-tests" && t.to === "handoff-ready");
 		assert.strictEqual(skip, undefined, "planned-tests must not skip to handoff (Stages 9 + 10 are required)");
 	});
 

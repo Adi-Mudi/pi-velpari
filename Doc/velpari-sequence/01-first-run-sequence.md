@@ -27,7 +27,7 @@ Not a phase. Required once per project; safe on a completely empty project.
 
 | Command | What it captures | Empty-project behavior |
 |---|---|---|
-| `/velpari-configure-inputs` | Framework (free text — what you *intend* to use), `projectName`, code/test/document/excluded paths via a discovery-backed list editor | Discovery finds nothing → skip paths or enter conventional ones (`src/`, `tests/`). Empty path lists are valid. |
+| `/velpari-configure-inputs` | Framework (free text — what you *intend* to use), `projectName`, code/test/document/excluded paths via a discovery-backed list editor, plus the `projectType` config key set directly in `files.json` (`backend` = default when absent | `full-app` = wireframe pairing, N26) | Discovery finds nothing → skip paths or enter conventional ones (`src/`, `tests/`). Empty path lists are valid. |
 | `/velpari-configure-requirements` | Requirements profile (optional) | Skippable — the common PSRS core (`core-psrs-v1`) applies by default. |
 | `/velpari-configure-standards` | Standards overlay (optional) | Skippable — no overlay = common core. |
 | `/velpari-configure-agents` | Role → custom agent name mapping (optional) | Skippable — defaults apply. |

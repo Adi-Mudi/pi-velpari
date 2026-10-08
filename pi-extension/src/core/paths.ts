@@ -17,6 +17,14 @@
  * §7–§9. The grouped layout keeps Doc/ organized by document family so
  * brainstorms do not collide with requirements, and so each artifact can
  * have many siblings (e.g. brainstorm + multiple brainstorm re-runs).
+ *
+ * 3. **Store (DB-primary) paths** (G10/RES-4, LOCKED):
+ *    `buildStoreDbPath(projectName)` → `Doc/store/<project>/index.db`.
+ *    `buildStoreYamlPath(projectName, artifact)` → the YAML sidecar beside it.
+ *    Per-project silo (Q5): the directory IS the project key — no project_id
+ *    inside the DB. DB committed raw (D7); YAML sidecar = reviewable diff
+ *    (RES-1). Phase 2 defines the layout; Phase 3's Store API is the first
+ *    consumer.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -90,6 +98,9 @@ export const GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	RTM: "requirements",
 	"feasibility-study": "feasibility",
 	design: "design",
+	// ─── PHASE-D (N26) — wireframe rides the design envelope (testplan/test-cases precedent) ───
+	wireframe: "design",
+	// ─── PHASE-D END ───
 	pseudocode: "pseudocode",
 	"test-plan": "tests",
 	"test-cases": "tests",
@@ -133,6 +144,9 @@ export const WORKING_GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
 	RTM: "rtm",
 	"feasibility-study": "feasibility",
 	design: "design",
+	// ─── PHASE-D (N26) — wireframe rides the design envelope (testplan/test-cases precedent) ───
+	wireframe: "design",
+	// ─── PHASE-D END ───
 	pseudocode: "pseudocode",
 	"test-plan": "tests",
 	"test-cases": "tests",
@@ -149,12 +163,7 @@ export const WORKING_GROUPED_CATEGORIES: Readonly<Record<string, string>> = {
  * Example: buildWorkingGroupedPath(cwd, runId, "PRD", "TodoApp")
  *   === "<cwd>/.IDE_Plans/velpari/runs/<runId>/prd/PRD_TodoApp.md"
  */
-export function buildWorkingGroupedPath(
-	cwd: string,
-	runId: string,
-	artifact: string,
-	projectName: string,
-): string {
+export function buildWorkingGroupedPath(cwd: string, runId: string, artifact: string, projectName: string): string {
 	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
 	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
 	const safeRunId = runId.replace(/[^A-Za-z0-9_-]+/g, "-");
@@ -274,6 +283,80 @@ export function resolveBrainstormArtifact(
 	} catch {
 		return null;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Store (DB-primary) paths (G10/RES-4 — LOCKED layout, Phase 2).
+// ---------------------------------------------------------------------------
+
+/**
+ * The locked store folder under Doc/ (RES-4 Choice A). Every project's
+ * SQLite store lives at `Doc/store/<projectName>/index.db`.
+ */
+export const STORE_DB_DIR = "Doc/store";
+
+/**
+ * Build the store DB path for a project (G10/RES-4, LOCKED).
+ * Example: buildStoreDbPath("TodoApp", cwd)
+ *   === "<cwd>/Doc/store/TodoApp/index.db".
+ *
+ * Per-project silo (Q5): the directory IS the project key — the DB itself
+ * carries no project_id. The DB is committed raw (D7).
+ */
+export function buildStoreDbPath(projectName: string, cwd: string = process.cwd()): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	return join(cwd, STORE_DB_DIR, safeProject, "index.db");
+}
+
+/**
+ * N10 — dedicated top-level, LOCAL-ONLY backup root (never inside Doc/).
+ * `Backup/velpari/<projectName>/` is git-ignored via BACKUP_IGNORE_LINES
+ * (ops/git-attributes.ts) — never committed, never pushed.
+ */
+export const BACKUP_ROOT_DIR = "Backup/velpari";
+
+/**
+ * Backup folder for one project (N10): `<cwd>/Backup/velpari/<projectName>/`.
+ * Sanitisation identical to `buildStoreDbPath` so the folder name always
+ * matches the store it protects. Consumed by `core/backup.ts` and (Phase 6)
+ * the doctor's last-verified-backup report.
+ * Example: buildBackupDir("TodoApp", cwd) === "<cwd>/Backup/velpari/TodoApp".
+ */
+export function buildBackupDir(projectName: string, cwd: string = process.cwd()): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	return join(cwd, BACKUP_ROOT_DIR, safeProject);
+}
+
+/**
+ * Build the portfolio REGISTRY path (Phase 10 - D6 hub-and-spoke, user-locked
+ * home): Doc/store/portfolio.db under the cwd. Committed raw (D2/D7) - the
+ * git patterns live in ops/git-attributes.ts (PORTFOLIO_ATTR_LINE et al).
+ *
+ * Deliberately NOT inside a per-project subdir: the registry is the ONE hub
+ * beside the N spokes, and store tooling enumerates per-project index.db
+ * files (which portfolio.db never matches - plan R5), so the two file
+ * families never collide.
+ *
+ * @param {string} cwd - Project root.
+ * @returns {string} Absolute registry DB path.
+ */
+export function buildPortfolioDbPath(cwd: string = process.cwd()): string {
+	return join(cwd, STORE_DB_DIR, "portfolio.db");
+}
+
+/**
+ * Build the YAML sidecar path for a store artifact (RES-1).
+ * The sidecar lands beside the DB so each publish produces a
+ * reviewable, git-friendly diff next to the raw committed `index.db`
+ * (D7). Consumed from Phase 4 on; the locked layout is defined and
+ * tested here so the location never drifts.
+ * Example: buildStoreYamlPath("TodoApp", "PRD", cwd)
+ *   === "<cwd>/Doc/store/TodoApp/PRD_TodoApp.yaml".
+ */
+export function buildStoreYamlPath(projectName: string, artifact: string, cwd: string = process.cwd()): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	const safeArtifact = artifact.replace(/[^A-Za-z0-9_-]+/g, "");
+	return join(cwd, STORE_DB_DIR, safeProject, `${safeArtifact}_${safeProject}.yaml`);
 }
 
 /**

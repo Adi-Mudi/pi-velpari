@@ -14,10 +14,7 @@ import type { DiagnosticSection } from "../_types.js";
 
 const TESTPLAN_SPEC = REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "testplan")!;
 
-export function loadTestplanReviewerVerdict(
-	cwd: string,
-	profile: AtomicProfile,
-): DiagnosticSection {
+export function loadTestplanReviewerVerdict(cwd: string, profile: AtomicProfile): DiagnosticSection {
 	const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
 	return loadReviewerVerdictForStage(cwd, TESTPLAN_SPEC, tierContext, profile);
 }

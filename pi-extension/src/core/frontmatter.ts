@@ -67,9 +67,7 @@ export function parseFrontmatterBlock(content: string): ParsedFrontmatter | null
 export function renderFrontmatter(fields: Record<string, string>): string {
 	const keys = [
 		...ARTIFACT_FRONTMATTER_FIELDS.filter((k) => k in fields),
-		...Object.keys(fields).filter(
-			(k) => !(ARTIFACT_FRONTMATTER_FIELDS as readonly string[]).includes(k),
-		),
+		...Object.keys(fields).filter((k) => !(ARTIFACT_FRONTMATTER_FIELDS as readonly string[]).includes(k)),
 	];
 	const lines = keys.map((k) => `${k}: ${fields[k]}`);
 	return `---\n${lines.join("\n")}\n---\n\n`;
@@ -159,11 +157,20 @@ export function withArtifactFrontmatter(
 }
 
 /**
+ * Fields `withArtifactFrontmatter` emits ONLY when the input provides them
+ * (N24-14). Conditional, never required — demanding them from a freshly
+ * published artifact was unsatisfiable by the writer.
+ */
+export const CONDITIONAL_FRONTMATTER_FIELDS: readonly string[] = ["supersedes", "sunset", "deprecatedAt"];
+
+/**
  * List the canonical fields missing from the document's frontmatter.
  * Returns all fields when no block is present at all.
  */
 export function missingFrontmatterFields(content: string): string[] {
 	const parsed = parseFrontmatterBlock(content);
 	if (!parsed) return [...ARTIFACT_FRONTMATTER_FIELDS];
-	return ARTIFACT_FRONTMATTER_FIELDS.filter((k) => !(k in parsed.fields));
+	return ARTIFACT_FRONTMATTER_FIELDS.filter(
+		(k) => !(k in parsed.fields) && !CONDITIONAL_FRONTMATTER_FIELDS.includes(k),
+	);
 }

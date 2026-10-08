@@ -18,10 +18,7 @@
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import type {
-	RegenerationPreview,
-	WriteAgentsResult,
-} from "../core/agents-generator.js";
+import type { RegenerationPreview, WriteAgentsResult } from "../core/agents-generator.js";
 
 interface WriteSetPreviewOptions {
 	/** Maximum line width (terminal columns). Defaults to 80. */
@@ -97,12 +94,7 @@ export function renderWriteSetPreview(
 	if (b.willCreate.length > 0) {
 		lines.push(truncateToWidth(bucketHeader("Will create", b.willCreate.length), width));
 		for (const path of b.willCreate) {
-			lines.push(
-				truncateToWidth(
-					`${LINE_INDENT}${PREVIEW_GLYPH.plus} ${path}`,
-					width,
-				),
-			);
+			lines.push(truncateToWidth(`${LINE_INDENT}${PREVIEW_GLYPH.plus} ${path}`, width));
 		}
 		lines.push("");
 	}
@@ -110,12 +102,7 @@ export function renderWriteSetPreview(
 	if (b.willRegenerate.length > 0) {
 		lines.push(truncateToWidth(bucketHeader("Will regenerate", b.willRegenerate.length), width));
 		for (const path of b.willRegenerate) {
-			lines.push(
-				truncateToWidth(
-					`${LINE_INDENT}${PREVIEW_GLYPH.tilde} ${path}`,
-					width,
-				),
-			);
+			lines.push(truncateToWidth(`${LINE_INDENT}${PREVIEW_GLYPH.tilde} ${path}`, width));
 		}
 		lines.push("");
 	}
@@ -123,12 +110,7 @@ export function renderWriteSetPreview(
 	if (b.willKeep.length > 0) {
 		lines.push(truncateToWidth(bucketHeader("Will keep (user-edited)", b.willKeep.length), width));
 		for (const path of b.willKeep) {
-			lines.push(
-				truncateToWidth(
-					`${LINE_INDENT}${PREVIEW_GLYPH.star} ${path}`,
-					width,
-				),
-			);
+			lines.push(truncateToWidth(`${LINE_INDENT}${PREVIEW_GLYPH.star} ${path}`, width));
 		}
 		lines.push("");
 	}
@@ -136,12 +118,7 @@ export function renderWriteSetPreview(
 	if (b.willSkip.length > 0) {
 		lines.push(truncateToWidth(bucketHeader("Will skip (unknown origin)", b.willSkip.length), width));
 		for (const path of b.willSkip) {
-			lines.push(
-				truncateToWidth(
-					`${LINE_INDENT}${PREVIEW_GLYPH.minus} ${path}`,
-					width,
-				),
-			);
+			lines.push(truncateToWidth(`${LINE_INDENT}${PREVIEW_GLYPH.minus} ${path}`, width));
 		}
 		lines.push("");
 	}

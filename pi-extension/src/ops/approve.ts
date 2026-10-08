@@ -2,7 +2,7 @@
  * Publish handler for Stages 2–10 (v1.6.0).
  *
  * Per CHANGELOG v1.6.0:
- * - `/velpari-prd-approve-brainstorm` handles the brainstorm stage (separate
+ * - `/velpari-approve-brainstorm` handles the brainstorm stage (separate
  *   bespoke command).
  * - `/velpari-<stage>-approve` is the per-stage fall-back publish command
  *   for each of Stages 2–10 (prd, rtm, feasibility, design, atomic-
@@ -13,7 +13,7 @@
  *
  * Flow:
  * 1. Read current state; refuse if current stage is `brainstorming` /
- *    `brainstormed` (use `/velpari-rtm-approve-brainstorm` for those).
+ *    `brainstormed` (use `/velpari-approve-brainstorm` for those).
  * 2. Map current stage → working-copy dir name and published artifact
  *    name via `stageToArtifact`.
  * 3. Read working copy from the grouped working-copy path; if missing,
@@ -31,7 +31,23 @@ import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
-import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { loadFilesConfig, devLaneConfig, markdownWritesEnabled, validateFilesConfig } from "../core/config.js";
+// PHASE-D import (N26) — project-type contract accessor (reads B's key; never redefines it).
+import { projectTypeForCwd, wireframePairingMissingMessage, type ProjectType } from "../core/project-type.js";
+// PHASE-D import (N27) — declared-vs-actual document-semver validation.
+import { bumpGateMessages, validateBump } from "../core/semver.js";
+// PHASE-F import (N31) — Excalidraw canvas push launcher (offer-only-when-reachable).
+import { canvasUiFor, extractMermaidBlocks, offerCanvasPush } from "../core/excalidraw.js";
+import {
+	computeLanes,
+	type DevLanesGateData,
+	type LaneDepInput,
+	type LaneProblem,
+	type LaneProposal,
+	type LaneStepInput,
+	type LaneXdep,
+	verifyLaneProposal,
+} from "../core/dev-lanes.js";
 import { isSunsetPast } from "../core/shape.js";
 import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
@@ -45,23 +61,32 @@ import { comparePsrs, readSectionBody } from "../core/psrs.js";
 import { withArtifactFrontmatter, type ArtifactFrontmatterInput } from "../core/frontmatter.js";
 import type { RtmData } from "../core/rtm-data.js";
 import { writeFeasibilityRecord } from "../core/feasibility-record.js";
-import {
-	hashFileContent,
-	hashFileContentNormalized,
-} from "../core/fingerprints.js";
-import { SIDECAR_REGISTRY } from "./sidecar-registry.js";
-import {
-	computeInputHashes,
-	recordPublish,
-	resolveDeclaredInputs,
-} from "../core/freshness.js";
+import { hashFileContent, hashFileContentNormalized } from "../core/fingerprints.js";
+import { computeInputHashes, recordPublish, resolveDeclaredInputs } from "../core/freshness.js";
 import { runPublishGate } from "../doctor/gate.js";
+import { buildFeasibilityRowsFromSession, kindForWorkingDir, loadStagePayload } from "./stage-payloads.js";
+import { precheckGitForPublish, publishedPrdPath, runDbPublish } from "./db-publish.js";
+import { readLatestPublishedRows } from "../io/store.js";
+import { verifyRunWorktree, verifyUpstreamMoves } from "../stages/worktree-lock.js";
+import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
+import type {
+	ArtifactEnvelopeInput,
+	ArtifactPayload,
+	DevLaneRow,
+	DevLaneXdepRow,
+	DevStepRow,
+	StepDepRow,
+} from "../io/store.js";
+import {
+	renderAtomicFunctionsMarkdown,
+	renderDevelopmentOrderMarkdown,
+	renderPrdMarkdown,
+	renderRtmMarkdown,
+	renderTestCasesMarkdown,
+} from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
-import {
-	generationHintForPhase,
-	phaseBoundaryCrossed,
-} from "../core/agent-freshness.js";
+import { generationHintForPhase, phaseBoundaryCrossed } from "../core/agent-freshness.js";
 import { STAGE_REGISTRY, STAGE_LOCK_SPECS, type StageSpec } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
 
@@ -94,19 +119,58 @@ interface StageApproveSpec {
 const STAGE_APPROVE_MAP: readonly StageApproveSpec[] = [
 	{ command: "/velpari-prd-approve", workingDir: "prd", artifact: "PRD", stages: ["drafting-prd", "drafted-prd"] },
 	{ command: "/velpari-rtm-approve", workingDir: "rtm", artifact: "RTM", stages: ["building-rtm", "built-rtm"] },
-	{ command: "/velpari-feasibility-approve", workingDir: "feasibility", artifact: "feasibility-study", stages: ["analyzing-feasibility", "analyzed-feasibility"] },
-	{ command: "/velpari-architecture-generator-approve", workingDir: "design", artifact: "design", stages: ["designing", "designed"] },
+	{
+		command: "/velpari-feasibility-approve",
+		workingDir: "feasibility",
+		artifact: "feasibility-study",
+		stages: ["analyzing-feasibility", "analyzed-feasibility"],
+	},
+	{
+		command: "/velpari-architecture-generator-approve",
+		workingDir: "design",
+		artifact: "design",
+		// ─── PHASE-D (N26) — design may publish the paired wireframe (testplan/test-cases precedent) ───
+		extras: ["wireframe"],
+		// ─── PHASE-D END ───
+		stages: ["designing", "designed"],
+	},
 	// Stage 6 — atomic function working copy lives under
 	// <runDir>/atomic-functions/atomic-functions_<project>.md
 	// (per buildWorkingGroupedPath's GROUPED_CATEGORIES map).
 	// The publish gate (doctor/gate.ts:runPublishGate) routes
 	// atomic-functions artifacts through the reviewer verdict (the
 	// reviewer verdict is the source of truth for tier checks).
-	{ command: "/velpari-atomic-function-approve", workingDir: "atomic-functions", artifact: "atomic-functions", stages: ["analyzing-atomic-functions", "analyzed-atomic-functions"] },
-	{ command: "/velpari-pseudocode-approve", workingDir: "pseudocode", artifact: "pseudocode", stages: ["writing-pseudocode", "wrote-pseudocode"] },
-	{ command: "/velpari-testplan-approve", workingDir: "tests", artifact: "test-plan", extras: ["test-cases"], stages: ["planning-tests", "planned-tests"] },
-	{ command: "/velpari-development-order-approve", workingDir: "development-order", artifact: "development-order", stages: ["ordering-development", "ordered-development"] },
-	{ command: "/velpari-final-design-approve", workingDir: "final-design", artifact: "final-design", stages: ["finalizing-design", "finalized-design"] },
+	{
+		command: "/velpari-atomic-function-approve",
+		workingDir: "atomic-functions",
+		artifact: "atomic-functions",
+		stages: ["analyzing-atomic-functions", "analyzed-atomic-functions"],
+	},
+	{
+		command: "/velpari-pseudocode-approve",
+		workingDir: "pseudocode",
+		artifact: "pseudocode",
+		stages: ["writing-pseudocode", "wrote-pseudocode"],
+	},
+	{
+		command: "/velpari-testplan-approve",
+		workingDir: "tests",
+		artifact: "test-plan",
+		extras: ["test-cases"],
+		stages: ["planning-tests", "planned-tests"],
+	},
+	{
+		command: "/velpari-development-order-approve",
+		workingDir: "development-order",
+		artifact: "development-order",
+		stages: ["ordering-development", "ordered-development"],
+	},
+	{
+		command: "/velpari-final-design-approve",
+		workingDir: "final-design",
+		artifact: "final-design",
+		stages: ["finalizing-design", "finalized-design"],
+	},
 ];
 
 /**
@@ -130,18 +194,30 @@ export function stageToArtifact(stage: Stage): {
 }
 
 /**
- * Map the current in-progress stage to its v1.6.0 per-stage approve
- * command. Used as the actor string passed to `advanceStage` (and
- * therefore recorded in state.json:history). STAGE_TRANSITIONS rows
- * for each publishable stage use the exact string returned here.
- * Derived from STAGE_APPROVE_MAP (D4) — keyed on the in-progress stage
- * (`stages[0]`) only, so rest-state lookups keep the legacy default.
+ * Map ANY current stage (in-progress or rest state) to the approve
+ * command the user should re-run. Used by the gate-blocking messages so
+ * a stage is never told to re-run a DIFFERENT stage's command (the
+ * hard-coded literals used to do exactly that for 8 of 9 stages).
+ * Falls back to the bespoke brainstorm command — the real name
+ * (`COMMAND_NAMES` has `velpari-approve-brainstorm`, not
+ * `velpari-brainstorm-approve`) — for stages outside STAGE_APPROVE_MAP.
+ * Exported for the table-driven regression guard in
+ * test/ops/approve-command-names.test.ts.
+ */
+export function approveCommandForStage(stage: Stage): string {
+	return STAGE_APPROVE_MAP.find((r) => r.stages.includes(stage))?.command ?? "/velpari-approve-brainstorm";
+}
+
+/**
+ * Map the current stage (in-progress OR rest state) to its v1.6.0
+ * per-stage approve command. Used as the actor string passed to
+ * `advanceStage` (and therefore recorded in state.json:history).
+ * Matched on the full STAGE_APPROVE_MAP stage pair (stages.includes)
+ * so a rest-state re-approve records its OWN approve command, never
+ * the brainstorm fallback (verifier ruling 2026-10-08).
  */
 function perStageApproveCommand(stage: Stage): string {
-	return (
-		STAGE_APPROVE_MAP.find((r) => r.stages[0] === stage)?.command ??
-		"/velpari-brainstorm-approve"
-	);
+	return STAGE_APPROVE_MAP.find((r) => r.stages.includes(stage))?.command ?? "/velpari-approve-brainstorm";
 }
 
 /**
@@ -156,9 +232,7 @@ function specForStage(stage: Stage): StageSpec | null {
 	return (
 		Object.values(STAGE_REGISTRY).find((s) => {
 			if (s.stageEnum === stage) return true;
-			return STAGE_TRANSITIONS.some(
-				(t) => t.from === s.stageEnum && t.to === stage && t.command.endsWith("-approve"),
-			);
+			return STAGE_TRANSITIONS.some((t) => t.from === s.stageEnum && t.to === stage && t.command.endsWith("-approve"));
 		}) ?? null
 	);
 }
@@ -182,6 +256,55 @@ function hasNewChangeLogEntry(published: string, updated: string): boolean {
 	return updatedLines.some((l) => !publishedLines.has(l));
 }
 
+/**
+ * Stamp one target's freshness manifest entry (B4). Shared by BOTH publish
+ * modes (Phase 11 Q3): write-alongside passes the written sidecar /
+ * feasibility-record paths as extraPaths candidates; DB-only passes none
+ * (no Doc/ writes exist) — the entry's inputs still stamp, and the
+ * DB-era stale-set machinery resolves them against the exported YAML
+ * (core/freshness.ts, Design 10).
+ */
+function stampFreshnessEntry(
+	cwd: string,
+	target: { fileArtifact: string; groupedAbs: string },
+	projectName: string,
+	publishNow: string,
+	inputHashes: Record<string, string> | null,
+	sidecarAbs: string | null,
+	recordAbs: string | null,
+	notify: (message: string, severity?: "error" | "info" | "warning") => void,
+): void {
+	if (!inputHashes) return;
+	try {
+		// D3 — the manifest entry also records the sidecar hash (both files
+		// are the publish). D9 — the feasibility record joins the study's
+		// own extraPaths the same way.
+		const extraPaths: Record<string, string> = {};
+		if (sidecarAbs) {
+			const sidecarHash = hashFileContent(sidecarAbs);
+			if (sidecarHash) extraPaths[relative(cwd, sidecarAbs)] = sidecarHash;
+		}
+		if (recordAbs) {
+			const recordHash = hashFileContent(recordAbs);
+			if (recordHash) extraPaths[relative(cwd, recordAbs)] = recordHash;
+		}
+		recordPublish(cwd, {
+			artifact: target.fileArtifact.toLowerCase(),
+			projectName,
+			path: relative(cwd, target.groupedAbs),
+			...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
+			publishedAt: publishNow,
+			inputs: inputHashes,
+			hashv: 2,
+		});
+	} catch {
+		notify(
+			`Freshness manifest write failed for ${target.fileArtifact} — the publish is intact, only the stamp was skipped.`,
+			"warning",
+		);
+	}
+}
+
 export interface ApproveOpts {
 	/**
 	 * Skip the v1.2.1 post-publish full doctor audit. Production callers
@@ -191,9 +314,141 @@ export interface ApproveOpts {
 	 * covered by `approve-doctor-skip.test.ts`.
 	 */
 	skipAutoDoctor?: boolean;
+	/**
+	 * Skip the Phase-4 DB publish chain (stage payload pre-check + DB
+	 * write/YAML export/git commit). Production callers never set this;
+	 * pre-Phase-4 tests that build minimal cwds (no payload files, no git
+	 * repo) opt in here so the markdown publish path stays testable on its
+	 * own. Mirrors `skipAutoDoctor`. With this set, the publish behaves
+	 * exactly as before Phase 4 (markdown only).
+	 */
+	skipDbPublish?: boolean;
 }
 
 const AUTO_DOCTOR_SKIP_ENV = "VELPARI_SKIP_AUTO_DOCTOR";
+const DB_PUBLISH_SKIP_ENV = "VELPARI_SKIP_DB_PUBLISH";
+
+/** One lane problem as it reaches the payload hard-block / notify text. */
+function formatLaneProblem(problem: LaneProblem): string {
+	const detail = problem.detail?.length ? ` [${problem.detail.join(", ")}]` : "";
+	return `${problem.code}: ${problem.message}${detail}`;
+}
+
+/**
+ * Phase 7 / N16 — publish-time lane finalization (Stage 9).
+ *
+ * "Scouts propose, code verifies and finalizes." When the development-order
+ * payload carries `dev_step` rows this helper either adopts the scout's
+ * `devLane` proposal verbatim (after `verifyLaneProposal` proves it against
+ * the graph: coverage, topology, cap, name-match, recorded boundaries) or
+ * computes the canonical map with `computeLanes` and injects `devLane` +
+ * `devLaneXdep` into the payload. Recorded cross-lane edges are reconciled
+ * against the graph (missing edges injected; a wrong `boundaryLevel` is a
+ * `bad-boundary` problem). Any problem hard-blocks the publish via the
+ * existing payload-result check — nothing writes. Payloads without steps
+ * (legacy) skip entirely: no lane logic, no rows.
+ *
+ * @param payload - The validated payload rows (mutated when lanes are injected).
+ * @param cwd - Project root (reads `velpari.maxLanes` from files.json).
+ * @param projectName - Project name (lane worktree/branch prefix slug).
+ * @returns Lane problems (empty = finalized) + the publish gate's lane view.
+ */
+function finalizeDevLanes(
+	payload: Record<string, unknown>,
+	cwd: string,
+	projectName: string,
+): { problems: string[]; gate: DevLanesGateData | null } {
+	// Legacy tolerance: no devStep rows ⇒ nothing to lane.
+	if (!Array.isArray(payload.devStep) || payload.devStep.length === 0) {
+		return { problems: [], gate: null };
+	}
+	let maxLanes: number;
+	try {
+		maxLanes = devLaneConfig(cwd).maxLanes;
+	} catch (err) {
+		return { problems: [err instanceof Error ? err.message : String(err)], gate: null };
+	}
+	const steps: LaneStepInput[] = (payload.devStep as DevStepRow[]).map((step) => ({
+		stepId: step.id,
+		...(typeof step.module === "string" && step.module.length > 0 ? { module: step.module } : {}),
+	}));
+	const deps: LaneDepInput[] = (Array.isArray(payload.stepDep) ? (payload.stepDep as StepDepRow[]) : []).map((dep) => ({
+		stepId: dep.stepId,
+		dependsOnStepId: dep.dependsOnId,
+	}));
+	const proposal: LaneProposal[] = Array.isArray(payload.devLane) ? (payload.devLane as DevLaneRow[]) : [];
+	const originalXdepCount = Array.isArray(payload.devLaneXdep) ? payload.devLaneXdep.length : 0;
+	let xdeps: LaneXdep[] = (Array.isArray(payload.devLaneXdep) ? (payload.devLaneXdep as DevLaneXdepRow[]) : []).map(
+		(x) => ({ stepId: x.stepId, dependsOnStepId: x.dependsOnId, boundaryLevel: x.boundaryLevel }),
+	);
+
+	if (proposal.length > 0) {
+		// Scout proposal — verify it against the graph first (a bad graph can
+		// never be laundered by a proposal: analyze() runs inside).
+		const problems = verifyLaneProposal(proposal, steps, deps, { maxLanes, projectSlug: projectName, xdeps });
+		if (problems.length > 0) {
+			return { problems: problems.map(formatLaneProblem), gate: { steps, deps, proposal, xdeps } };
+		}
+		// Adopt verbatim; reconcile the recorded integration points.
+		const canonical = computeLanes(steps, deps, { maxLanes, projectSlug: projectName });
+		if (!canonical.ok) {
+			return { problems: canonical.problems.map(formatLaneProblem), gate: { steps, deps, proposal, xdeps } };
+		}
+		const laneOf = new Map(proposal.map((row) => [row.stepId, row.laneId]));
+		const recorded = new Set(xdeps.map((x) => `${x.stepId}<-${x.dependsOnStepId}`));
+		for (const dep of deps) {
+			const here = laneOf.get(dep.stepId);
+			const there = laneOf.get(dep.dependsOnStepId);
+			if (here === undefined || there === undefined || here === there) continue;
+			const key = `${dep.stepId}<-${dep.dependsOnStepId}`;
+			if (recorded.has(key)) continue;
+			xdeps = [
+				...xdeps,
+				{
+					stepId: dep.stepId,
+					dependsOnStepId: dep.dependsOnStepId,
+					boundaryLevel: canonical.plan.level[dep.stepId] ?? 0,
+				},
+			];
+			recorded.add(key);
+		}
+		if (xdeps.length !== originalXdepCount) {
+			payload.devLaneXdep = xdeps.map((x) => ({
+				stepId: x.stepId,
+				dependsOnId: x.dependsOnStepId,
+				boundaryLevel: x.boundaryLevel,
+			}));
+		}
+		return { problems: [], gate: { steps, deps, proposal, xdeps } };
+	}
+
+	// No proposal — compute the canonical map and inject it (status "active").
+	const canonical = computeLanes(steps, deps, { maxLanes, projectSlug: projectName });
+	if (!canonical.ok) {
+		return {
+			problems: canonical.problems.map(formatLaneProblem),
+			gate: { steps, deps, proposal: [], xdeps: [] },
+		};
+	}
+	const rows: LaneProposal[] = canonical.plan.lanes.flatMap((lane) =>
+		lane.steps.map((stepId, position) => ({
+			laneId: lane.laneId,
+			stepId,
+			position,
+			worktree: lane.worktree,
+			branch: lane.branch,
+			status: lane.status,
+		})),
+	);
+	xdeps = canonical.plan.xdeps;
+	payload.devLane = rows;
+	payload.devLaneXdep = xdeps.map((x) => ({
+		stepId: x.stepId,
+		dependsOnId: x.dependsOnStepId,
+		boundaryLevel: x.boundaryLevel,
+	}));
+	return { problems: [], gate: { steps, deps, proposal: rows, xdeps } };
+}
 
 export async function handleApprove(
 	ctx: ExtensionCommandContext,
@@ -213,8 +468,7 @@ export async function handleApprove(
 		const lock = computeLegalCommands(cwd, STAGE_LOCK_SPECS);
 		ctx.ui.notify(
 			lock.reasonFor("/velpari-prd") ??
-				`Use /velpari-approve-brainstorm for the brainstorm stage. ` +
-					`Current stage: "${state.currentStage}".`,
+				`Use /velpari-approve-brainstorm for the brainstorm stage. ` + `Current stage: "${state.currentStage}".`,
 			"error",
 		);
 		return;
@@ -271,10 +525,7 @@ export async function handleApprove(
 	// velpari_feasibility_session tool during the stage). A pending
 	// decision or missing language blocks the publish — nothing is
 	// written, the stage does not advance.
-	if (
-		state.currentStage === "analyzing-feasibility" ||
-		state.currentStage === "analyzed-feasibility"
-	) {
+	if (state.currentStage === "analyzing-feasibility" || state.currentStage === "analyzed-feasibility") {
 		const session = state.feasibilitySession;
 		const sessionProblems: string[] = [];
 		if (!session?.decision) {
@@ -291,8 +542,7 @@ export async function handleApprove(
 		}
 		if (sessionProblems.length > 0) {
 			ctx.ui.notify(
-				`Feasibility stage is not settled. Publish blocked:\n` +
-					sessionProblems.map((p) => `  - ${p}`).join("\n"),
+				`Feasibility stage is not settled. Publish blocked:\n` + sessionProblems.map((p) => `  - ${p}`).join("\n"),
 				"error",
 			);
 			return;
@@ -313,6 +563,15 @@ export async function handleApprove(
 		publishedPath: string | null;
 		/** Sidecar published next to the markdown (B3 registry artifacts). */
 		sidecar?: { name: string; content: string };
+		/**
+		 * Phase 12 Fix 1 — the LLM-authored working copy, kept aside when
+		 * `content` is replaced by the DB renderer below. Shape/traceability
+		 * gates must validate what the user reviewed: the rendered view is a
+		 * deliberately lossy human view (pipe tables only), so `validatePsrs`
+		 * over it can never pass (21 errors) and the DB-only default could not
+		 * publish a PRD at all.
+		 */
+		gateContent?: string;
 	}
 	const targets: PublishTarget[] = [];
 	for (const file of files) {
@@ -342,6 +601,22 @@ export async function handleApprove(
 		});
 	}
 
+	// ─── PHASE-D (N26) — full-app Stage 5 publishes only WITH its paired wireframe ───
+	if (mapping.artifact === "design") {
+		let projectType: ProjectType;
+		try {
+			projectType = projectTypeForCwd(cwd);
+		} catch (err) {
+			ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+			return;
+		}
+		if (projectType === "full-app" && !targets.some((t) => t.fileArtifact === "wireframe")) {
+			ctx.ui.notify(wireframePairingMissingMessage(join(workingDirPath, `wireframe_${projectName}.md`)), "error");
+			return;
+		}
+	}
+	// ─── PHASE-D END ───
+
 	// Revision gate (living documents): when a published copy already
 	// exists, the working copy is a REVISION and must prove it first.
 	//   PRD     → comparePsrs(published, working) must pass (append-only
@@ -355,90 +630,199 @@ export async function handleApprove(
 	// gate (the gate API takes rtmData specifically — RTM-only plumbing).
 	let rtmDataForGate: RtmData | null = null;
 
-	// Sidecar registry (B3/D3): one entry per sidecar-backed artifact.
-	// When the working copy carries the LLM-authored sidecar, the data is
-	// the source of truth: it is validated, the published markdown is
-	// RE-RENDERED from it (never the LLM's hand-written table), and
-	// revisions must satisfy the living-document rules against the
-	// previously published sidecar. D6: the publish REQUIRES the sidecar —
-	// a markdown-only working copy of a sidecar artifact is blocked.
-	const triggeredArtifacts = new Set<string>();
-	if (SIDECAR_REGISTRY[mapping.artifact]) triggeredArtifacts.add(mapping.artifact);
-	for (const t of targets) {
-		if (SIDECAR_REGISTRY[t.fileArtifact]) triggeredArtifacts.add(t.fileArtifact);
+	// ---- Phase 6 (DB-primary storage): payload + git pre-checks moved
+	// BEFORE the DB-rendered block so payloadResult + storeKind +
+	// skipDbPublish are in scope for the early writeArtifact.
+	// Run BEFORE anything is written: the LLM-written payload must be valid
+	// and git must be usable, or nothing publishes. `skipDbPublish` is the
+	// test-only escape hatch (pre-Phase-4 minimal cwds, mirror of
+	// `skipAutoDoctor`); production never sets it.
+	const skipDbPublish = opts.skipDbPublish === true || process.env[DB_PUBLISH_SKIP_ENV] === "1";
+	// Phase 11 (Q3/RES-3, Design 4): write-alongside markdown publishing is
+	// the opt-IN rollback hatch (files.json `velpari.markdownWrites`) —
+	// DEFAULT OFF, publish writes DB only (rows + YAML + commit; nothing
+	// to Doc/). The skipDbPublish test escape hatch implies ON: it is the
+	// documented markdown-only legacy mode (pre-Phase-4 behavior).
+	const markdownWrites = markdownWritesEnabled(cwd, { skipDbPublish });
+	const storeKind = kindForWorkingDir(mapping.workingDir);
+	if (!skipDbPublish && !storeKind) {
+		ctx.ui.notify(
+			`No store kind for working dir "${mapping.workingDir}" — publish blocked (Phase 4 payload convention).`,
+			"error",
+		);
+		return;
 	}
-	if (triggeredArtifacts.size > 0) {
-		const workingFiles = readdirSync(workingDirPath);
-		for (const artifactKey of triggeredArtifacts) {
-			const entry = SIDECAR_REGISTRY[artifactKey]!;
-			const sidecarFile = entry.detectWorkingSidecar(workingFiles);
-			if (!sidecarFile) {
-				ctx.ui.notify(
-					`${entry.label} publish requires a sidecar (${entry.sidecarName(projectName)}) in the working copy — ` +
-						`the data file is the source of truth and the published markdown is re-rendered from it. ` +
-						`Add it, then re-run the approve.`,
-					"error",
-				);
-				return;
-			}
-			const sidecarText = readFileSync(join(workingDirPath, sidecarFile), "utf8");
-			const parsed = entry.parseAndValidate(sidecarText);
-			if (!parsed.ok) {
-				ctx.ui.notify(
-					`${entry.label} sidecar is invalid. Fix these issues, then re-run the approve:\n` +
-						parsed.issues.map((i) => `  - ${i}`).join("\n"),
-					"error",
-				);
-				return;
-			}
-			let data = parsed.data;
-			if (entry.validateWithCtx) {
-				const ctxIssues = entry.validateWithCtx(data, { cwd, projectName });
-				if (ctxIssues.length > 0) {
-					ctx.ui.notify(
-						`${entry.label} sidecar failed tier/profile validation. Fix these issues, then re-run the approve:\n` +
-							ctxIssues.map((i) => `  - ${i}`).join("\n"),
-						"error",
-					);
-					return;
+	// Always load the payload — even with `skipDbPublish` true — so the
+	// publish gate can validate against the DB-shaped rows (Phase 6
+	// §14.3). The "publish blocked" gate on invalid payload still only
+	// fires when the payload is REQUIRED (`!skipDbPublish`); legacy
+	// minimal-cwd tests pass through (the gate validates target.content
+	// directly when no payload exists).
+	// Phase 12 Fix 2 + 2b: G8's `prd-file` names the ALREADY-PUBLISHED PRD
+	// markdown — the revision the payload mirrors. Snapshot it BEFORE any
+	// write: after the Doc write the file carries a fresh frontmatter stamp
+	// (`generatedAt`), so a hash taken post-write could never be supplied by a
+	// caller (a first publish in markdown mode was therefore always refused).
+	// First publish (no file yet) → requirement and mirror check both skipped;
+	// a revision → the payload must name the current published file's hash.
+	const publishedPrdBeforePublish = publishedPrdPath(projectName, cwd);
+	let payloadResult = loadStagePayload(workingDirPath, storeKind!, {
+		requirePrdFileHash: publishedPrdBeforePublish !== null,
+	});
+	// Phase 7 / N16 — publish-time lane finalization (Stage 9). Runs before
+	// the payload hard-block below so lane problems flow through the existing
+	// "Stage payload invalid" path, and before the DB-rendered render block
+	// so the published view, the YAML export and the doctor all see the
+	// finalized `devLane`/`devLaneXdep` rows. The finalized view is handed
+	// to the publish gate for a cheap re-assert (defense in depth).
+	let devLanesForGate: DevLanesGateData | null = null;
+	if (storeKind === "development-order" && payloadResult.ok && payloadResult.payload) {
+		const finalized = finalizeDevLanes(payloadResult.payload as Record<string, unknown>, cwd, projectName);
+		devLanesForGate = finalized.gate;
+		if (finalized.problems.length > 0) {
+			payloadResult = { ok: false, problems: finalized.problems };
+		}
+	}
+	if (!skipDbPublish && payloadResult && !payloadResult.ok) {
+		ctx.ui.notify(
+			`Stage payload invalid — publish blocked (Phase 4). Fix it and re-run the approve:\n` +
+				payloadResult.problems.map((p) => `  - ${p}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (!skipDbPublish) {
+		// Phase 5 (N6): the publishing command must run in the run's worktree +
+		// branch — checked before any store row, commit or backup write.
+		const wtVerdict = verifyRunWorktree(state, cwd);
+		if (!wtVerdict.ok) {
+			ctx.ui.notify(`${wtVerdict.reason}\nPublish blocked before any write.`, "error");
+			return;
+		}
+		// Phase 5 (N8-B): a foreign run published a newer upstream revision of an
+		// artifact this run consumed. STOP, notify with artifact/revision/run/
+		// commit, force a separate worktree. This closes the cross-run blind spot
+		// of the per-run CAS head (Phase-1 integration request #2).
+		const moved = verifyUpstreamMoves(state, cwd);
+		if (!moved.ok) {
+			const reportPath = writeChangeReport(cwd, buildChangeReport(cwd, state));
+			ctx.ui.notify(`${moved.reason}\nChange report: ${reportPath}`, "error");
+			return;
+		}
+		const gitPre = precheckGitForPublish(cwd, state);
+		if (!gitPre.ok) {
+			ctx.ui.notify(
+				`Git pre-check failed — publish blocked (Q6a):\n` + gitPre.problems.map((p) => `  - ${p}`).join("\n"),
+				"error",
+			);
+			return;
+		}
+	}
+
+	// Phase 6 amendment (decision §14.2): the publish source for the 5
+	// DB-rendered kinds (PRD / RTM / atomic-functions / test-cases /
+	// development-order) is the project store DB. Payload rows feed
+	// writeArtifact (draft); the rendered markdown (Phase 5 renderers
+	// + per-stage templates on top, decision 9) OVERWRITES the
+	// LLM-authored working copy so the published file is a DB-derived
+	// human view. Hybrid kinds (design / pseudocode / testplan-plan /
+	// feasibility-study / final-design) keep the LLM-authored working
+	// copy — decision 7. Sidecar files in the working copy are IGNORED
+	// (§14.3); the sidecar loop is RETIRED here.
+	const DB_RENDERED_KIND_TO_RENDERER: Readonly<Record<string, (rows: Record<string, unknown>) => string>> = {
+		PRD: renderPrdMarkdown,
+		RTM: renderRtmMarkdown,
+		"atomic-functions": renderAtomicFunctionsMarkdown,
+		"test-cases": renderTestCasesMarkdown,
+		"development-order": renderDevelopmentOrderMarkdown,
+	};
+	const DB_RENDERED_FILE_ARTIFACTS: ReadonlySet<string> = new Set(Object.keys(DB_RENDERED_KIND_TO_RENDERER));
+	const dbRenderedTargets = targets.filter((t) => DB_RENDERED_FILE_ARTIFACTS.has(t.fileArtifact));
+	if (
+		dbRenderedTargets.length > 0 &&
+		storeKind &&
+		payloadResult &&
+		payloadResult.ok &&
+		payloadResult.payload &&
+		payloadResult.envelope
+	) {
+		// For DB-rendered kinds, render markdown DIRECTLY from the
+		// payload rows (the DB is the source of truth but the payload
+		// is the validated view of it). We do NOT writeArtifact early:
+		// FK constraints would fire before the publish gate can
+		// validate. runDbPublish later writes the rows + flips to
+		// published + exports the YAML. Hybrid kinds are untouched
+		// here (their target.content stays as the LLM-authored copy).
+		// Feasibility adapter (4.3): decision + spike rows come from
+		// the settled session.
+		let renderRows: Record<string, unknown> = payloadResult.payload as Record<string, unknown>;
+		if (storeKind === "feasibility" && state.feasibilitySession) {
+			renderRows = {
+				...renderRows,
+				...buildFeasibilityRowsFromSession(state.feasibilitySession, payloadResult.envelope.generatedAt),
+			} as Record<string, unknown>;
+		}
+		for (const target of dbRenderedTargets) {
+			const renderer = DB_RENDERED_KIND_TO_RENDERER[target.fileArtifact];
+			if (!renderer) continue;
+			// Phase 12 Fix 1: remember the reviewed working copy BEFORE the
+			// DB view replaces it (the gates below validate gateContent).
+			target.gateContent = target.content;
+			target.content = renderer(renderRows);
+			// Sidecar files retire as sources — drop any sidecar
+			// assignment from the old loop (§14.3); the YAML is
+			// exported by runDbPublish from DB rows, not by
+			// serializing a hand-written sidecar.
+			target.sidecar = undefined;
+		}
+	}
+
+	// RTM publish-gate check (Subphase 2.1): the gate's RTM-specific
+	// checks (fingerprint binding + phase consistency) read
+	// `rtmData.rows[].id` and `phase`. Build a minimal RtmData from
+	// the DB rows so the gate can validate even when the test-only
+	// `skipDbPublish` escape hatch is in effect (the gate validates
+	// data; the publish chain is separate). For non-RTM kinds, leave
+	// null and the gate skips the RTM checks. The DB rows are the
+	// strict source; the sidecar shape fields
+	// (title/design/implementation/tests/status/coverage) are
+	// repointed in Subphase 2.4 when the engines flip to DB reads.
+	if (storeKind === "rtm" && payloadResult && payloadResult.ok && payloadResult.payload && payloadResult.envelope) {
+		// No store handle here: the rows come from the payload (the gate
+		// validates data; the publish chain is separate). The previous
+		// openStoreDb/closeStoreDb pair never queried the DB — it only
+		// created an empty index.db as a side-effect of this READ path.
+		// Build the RtmData from the payload rows directly — do
+		// NOT writeArtifact yet, so the gate can validate before
+		// the DB FK chain fires (the gate's "unknown id" message
+		// must surface, not a raw FOREIGN KEY constraint failure).
+		const rtmRowsIn =
+			(
+				payloadResult.payload as {
+					rtmRow?: Array<{ id: string; phase: number }>;
 				}
-			}
-			// Diff against the previously published sidecar.
-			const baseline = entry.loadPublishedBaseline(cwd, projectName);
-			if (baseline) {
-				if (baseline.data) {
-					for (const issue of entry.diff(baseline.data, data)) {
-						revisionIssues.push(`[${sidecarFile}] ${issue}`);
-					}
-				} else {
-					revisionIssues.push(`[${sidecarFile}] published ${entry.label} sidecar at ${baseline.path} is not readable — cannot verify revision rules.`);
-				}
-			}
-			if (entry.postValidate) {
-				data = entry.postValidate(data, { cwd, projectName });
-			}
-			const rendered = entry.render(data);
-			if (artifactKey === "RTM") rtmDataForGate = data as RtmData;
-			const sidecar = {
-				name: entry.sidecarName(projectName),
-				content: entry.serialize(data),
+			).rtmRow ?? [];
+		const rtmRows = rtmRowsIn;
+		if (rtmRows.length > 0) {
+			// Minimal RtmData — the gate only reads id + phase from
+			// each row. Other fields stay empty defaults (the
+			// gate's checkRowFingerprints treats missing
+			// fingerprint as "untracked", which the gate
+			// explicitly ignores per its policy comment).
+			rtmDataForGate = {
+				project: projectName,
+				version: payloadResult.envelope.version.toString(),
+				rows: rtmRows.map((r) => ({
+					id: r.id,
+					title: "",
+					phase: r.phase,
+					design: "",
+					implementation: "",
+					tests: [],
+					status: "proposed" as const,
+					coverage: "covered" as const,
+				})),
 			};
-			const mdTarget = targets.find((t) => t.fileArtifact === artifactKey);
-			if (mdTarget) {
-				mdTarget.content = rendered;
-				mdTarget.sidecar = sidecar;
-			} else {
-				// The LLM wrote only the sidecar — synthesize the markdown target.
-				const category = GROUPED_CATEGORIES[artifactKey] ?? "";
-				targets.push({
-					file: sidecarFile,
-					fileArtifact: artifactKey,
-					content: rendered,
-					groupedAbs: join(cwd, "Doc", category, `${artifactKey}_${projectName}.md`),
-					publishedPath: resolveDocArtifact(artifactKey, projectName, cwd)?.path ?? null,
-					sidecar,
-				});
-			}
 		}
 	}
 
@@ -446,13 +830,19 @@ export async function handleApprove(
 		if (!target.publishedPath) continue; // fresh publish — no gate
 		const publishedContent = readFileSync(target.publishedPath, "utf8");
 		if (target.fileArtifact === "PRD") {
-			const comparison = comparePsrs(publishedContent, target.content);
+			// Phase 12 Fix 1: compare the REVIEWED revision, not the DB
+			// render — validatePsrs over the render fails (21 errors), so
+			// every PRD revision used to be blocked in DB-era projects.
+			const comparison = comparePsrs(publishedContent, target.gateContent ?? target.content);
 			if (!comparison.ok) {
 				for (const issue of comparison.issues) {
 					revisionIssues.push(`[${target.file}] ${issue.code}: ${issue.message}`);
 				}
 			}
-		} else if (!hasNewChangeLogEntry(publishedContent, target.content)) {
+		} else if (
+			!DB_RENDERED_FILE_ARTIFACTS.has(target.fileArtifact) &&
+			!hasNewChangeLogEntry(publishedContent, target.content)
+		) {
 			revisionIssues.push(
 				`[${target.file}] revision-changelog-missing: the revision adds no new Change Log entry. ` +
 					`Record what changed and why before approving.`,
@@ -461,7 +851,7 @@ export async function handleApprove(
 	}
 	if (revisionIssues.length > 0) {
 		ctx.ui.notify(
-			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-pseudocode-approve:\n` +
+			`Revision gate blocked the publish. Fix these issues in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
 				revisionIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -477,8 +867,18 @@ export async function handleApprove(
 	for (const target of targets) {
 		const gate = runPublishGate({
 			artifact: target.fileArtifact,
-			workingContent: target.content,
+			// Phase 12 Fix 1: DB-rendered kinds gate on the LLM working copy
+			// (the reviewed artifact); the render is only written/exported.
+			workingContent: target.gateContent ?? target.content,
+			// RTM-specific publish-gate checks (fingerprint binding +
+			// phase consistency) read from a minimal RtmData built from
+			// the payload rows above (Phase 6 §14.3). For non-RTM kinds
+			// this is null and the gate skips RTM-specific checks.
 			rtmData: target.fileArtifact === "RTM" ? rtmDataForGate : null,
+			// Phase 7 / N16: finalized lane rows so the gate re-asserts the
+			// scout proposal (pure verifyLaneProposal — no store). Null for
+			// every other artifact and for legacy payloads without steps.
+			devLanes: target.fileArtifact === "development-order" ? devLanesForGate : null,
 			cwd,
 			projectName,
 		});
@@ -487,7 +887,7 @@ export async function handleApprove(
 	}
 	if (gateIssues.length > 0) {
 		ctx.ui.notify(
-			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run /velpari-testplan-approve:\n` +
+			`Publish gate blocked the publish. Fix these issues in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
 				gateIssues.map((i) => `  - ${i}`).join("\n"),
 			"error",
 		);
@@ -495,11 +895,80 @@ export async function handleApprove(
 	}
 	if (gateWarnings.length > 0) {
 		ctx.ui.notify(
-			`Publish gate warnings (publish allowed):\n` +
-				gateWarnings.map((w) => `  - ${w}`).join("\n"),
+			`Publish gate warnings (publish allowed):\n` + gateWarnings.map((w) => `  - ${w}`).join("\n"),
 			"warning",
 		);
 	}
+
+	// ─── PHASE-D (N27) — declared-vs-actual bump gate (revisions only) ───
+	// Every REVISION publish must declare `bump: major|minor|patch` in the
+	// working copy's frontmatter (exact lowercase), and the declared level
+	// must be at least the actual change class derived by core/semver.ts.
+	// Fresh publishes are exempt — there is no prior version to compare.
+	// Errors block (nothing written, stage does not advance); over-bump
+	// warnings are shown but allowed — the same notify policy as the publish
+	// gate above. This runs on the single handleApprove path, so the
+	// velpari_stage_publish tool AND all 9 fall-back commands enforce it
+	// identically (doctor/gate.ts deliberately untouched — C integration
+	// request consumes the same core/semver.ts exports).
+	const bumpErrors: string[] = [];
+	const bumpWarnings: string[] = [];
+	for (const target of targets) {
+		// D-F1 (Phase 4, Q6=a1): the DB-only default writes no Doc/ markdown,
+		// so `publishedPath` is always null and this gate was inert. The store
+		// now supplies the prior bytes, LIKE-FOR-LIKE:
+		//   declared bump — read from the LLM copy's raw frontmatter (a render
+		//     carries no frontmatter → would always read bump-missing);
+		//   classification — render(prior store rows) vs render(new payload
+		//     rows): both sides are the store's representation, so table
+		//     titles (`## Sections`, `## Traceability Rows`, …) match on both
+		//     sides while removed/added FR/NFR/AF/TC/DO ids still drive
+		//     MAJOR/MINOR. A render compared against the LLM prose would
+		//     false-block every revision (render headings ≠ doc headings).
+		// Hybrid kinds (design/pseudocode/testplan/final-design/feasibility)
+		// keep the skip: their rendered view is a table summary the authored
+		// doc never matches, and the store keeps no faithful prior full-text
+		// (artifact_revisions holds yaml_bytes, not the authored markdown).
+		let publishedContent: string | null = null;
+		let workingContent = target.gateContent ?? target.content;
+		if (target.publishedPath) {
+			publishedContent = readFileSync(target.publishedPath, "utf8");
+		} else if (
+			storeKind &&
+			target.gateContent !== undefined && // the DB render replaced target.content (dbRendered branch above)
+			DB_RENDERED_FILE_ARTIFACTS.has(target.fileArtifact)
+		) {
+			const renderer = DB_RENDERED_KIND_TO_RENDERER[target.fileArtifact];
+			const prior = renderer ? readLatestPublishedRows(cwd, projectName, storeKind) : null;
+			if (renderer && prior) {
+				// Declared bump rides on the LLM copy's raw frontmatter;
+				// classification runs on the like-for-like render body.
+				const fm = /^---\n[\s\S]*?\n---\n?/.exec(target.gateContent);
+				publishedContent = renderer(prior.rows);
+				workingContent = `${fm?.[0] ?? ""}${target.content}`;
+			}
+		}
+		if (publishedContent === null) continue; // fresh publish / hybrid — no prior version to compare
+		const verdict = validateBump(publishedContent, workingContent);
+		const { errors, warnings } = bumpGateMessages(verdict);
+		for (const e of errors) bumpErrors.push(`[${target.file}] ${e}`);
+		for (const w of warnings) bumpWarnings.push(`[${target.file}] ${w}`);
+	}
+	if (bumpErrors.length > 0) {
+		ctx.ui.notify(
+			`Bump gate blocked the publish (N27). Declare the change class in the working copy, then re-run ${approveCommandForStage(state.currentStage)}:\n` +
+				bumpErrors.map((e) => `  - ${e}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (bumpWarnings.length > 0) {
+		ctx.ui.notify(
+			`Bump gate warnings (publish allowed):\n` + bumpWarnings.map((w) => `  - ${w}`).join("\n"),
+			"warning",
+		);
+	}
+	// ─── PHASE-D END ───
 
 	// Freshness stamps (B4): hash the stage's declared inputs (registry
 	// is the single source of truth — D2) so every published artifact is
@@ -531,13 +1000,20 @@ export async function handleApprove(
 	}
 
 	for (const target of targets) {
+		// Phase 11 (Q3/RES-3): the Doc/ write block is RETIRED under the
+		// default (markdownWrites OFF) — publish writes DB only. The
+		// freshness manifest stamp below runs in BOTH modes: it lives in
+		// .pi/velpari/ (never a Doc/ write) and keeps input-changed alive
+		// via the DB-era YAML-hash resolution (core/freshness.ts).
+		if (!markdownWrites) {
+			stampFreshnessEntry(cwd, target, projectName, publishNow, inputHashes, null, null, ctx.ui.notify);
+			continue;
+		}
 		// Stamp the uniform artifact frontmatter at publish time (RTM
 		// traceability upgrade, Phase 1). Existing fields (e.g. the PSRS
 		// schema on the PRD) are preserved; `created` carries over from
 		// the previously published copy on revisions.
-		const publishedContent = target.publishedPath
-			? readFileSync(target.publishedPath, "utf8")
-			: null;
+		const publishedContent = target.publishedPath ? readFileSync(target.publishedPath, "utf8") : null;
 		// v1.3.0 sunset auto-archive: if the working-copy carries a
 		// past `sunset:` and the published status is still `published`
 		// (i.e., not already archived), bump the major version, set
@@ -546,9 +1022,7 @@ export async function handleApprove(
 		const sunsetInfo = readSunsetInfo(target.content);
 		const todayIso = new Date().toISOString().slice(0, 10);
 		const sunsetPast =
-			sunsetInfo !== null &&
-			sunsetInfo.sunset !== null &&
-			isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
+			sunsetInfo !== null && sunsetInfo.sunset !== null && isSunsetPast(sunsetInfo.sunset, new Date().toISOString());
 		const alreadyArchived = sunsetInfo?.status === "deprecated";
 		const input: ArtifactFrontmatterInput = {
 			artifact: target.fileArtifact,
@@ -596,40 +1070,76 @@ export async function handleApprove(
 			decisionRecordAbs = writeFeasibilityRecord(cwd, projectName, state.feasibilitySession, publishNow);
 		}
 		if (inputHashes) {
-			try {
-				// D3 — the manifest entry also records the sidecar hash
-				// (both files are the publish). D9 — the feasibility record
-				// joins the study's own extraPaths the same way.
-				const extraPaths: Record<string, string> = {};
-				if (target.sidecar) {
-					const sidecarAbs = join(dirname(target.groupedAbs), target.sidecar.name);
-					const sidecarHash = hashFileContent(sidecarAbs);
-					if (sidecarHash) extraPaths[relative(cwd, sidecarAbs)] = sidecarHash;
-				}
-				if (decisionRecordAbs) {
-					const recordHash = hashFileContent(decisionRecordAbs);
-					if (recordHash) extraPaths[relative(cwd, decisionRecordAbs)] = recordHash;
-				}
-				recordPublish(cwd, {
-					artifact: target.fileArtifact.toLowerCase(),
-					projectName,
-					path: relative(cwd, target.groupedAbs),
-					...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
-					publishedAt: publishNow,
-					inputs: inputHashes,
-					hashv: 2,
-				});
-			} catch {
-				ctx.ui.notify(
-					`Freshness manifest write failed for ${target.fileArtifact} — the publish is intact, only the stamp was skipped.`,
-					"warning",
-				);
-			}
+			stampFreshnessEntry(
+				cwd,
+				target,
+				projectName,
+				publishNow,
+				inputHashes,
+				target.sidecar ? join(dirname(target.groupedAbs), target.sidecar.name) : null,
+				decisionRecordAbs,
+				ctx.ui.notify,
+			);
 		}
 		ctx.ui.notify(
 			target.publishedPath
 				? `Published revision of ${target.fileArtifact} to ${target.groupedAbs}`
 				: `Published to ${target.groupedAbs}`,
+			"info",
+		);
+	}
+
+	// ---- Phase 4 (DB-primary storage): the DB publish chain (Q6) ----
+	// Phase 11 (Q3): flag-OFF (DEFAULT) — the DB chain IS the whole
+	// publish: DB write (draft) → checksum verify → Q2 flip → YAML export
+	// beside the DB → G8 → checkpoint → explicit-path git commit (DB +
+	// YAML only; publishedPaths is empty — nothing was written to Doc/).
+	// Flag-ON — markdown targets are also on disk (write-alongside) and
+	// join the commit set. Any failure reverts the DB rows to draft,
+	// deletes the YAML, and blocks the stage advance; on flag-ON the
+	// markdown stays (accepted risk R1).
+	if (!skipDbPublish && storeKind && payloadResult && payloadResult.envelope && payloadResult.payload) {
+		// Feasibility adapter (4.3): decision + spike rows come from the
+		// settled session (the gate above guaranteed decision + language).
+		// The payload JSON carries envelope + optional reuseScan rows only.
+		let envelope: ArtifactEnvelopeInput = payloadResult.envelope;
+		let rows: ArtifactPayload = payloadResult.payload;
+		if (storeKind === "feasibility" && state.feasibilitySession) {
+			rows = {
+				...rows,
+				...buildFeasibilityRowsFromSession(state.feasibilitySession, publishNow),
+			} as ArtifactPayload;
+		}
+		const dbOutcome = runDbPublish({
+			cwd,
+			projectName,
+			runId: state.runId!,
+			kind: storeKind,
+			yamlArtifact: mapping.artifact,
+			envelope,
+			payload: rows,
+			publishedPaths: markdownWrites ? targets.map((t) => t.groupedAbs) : [],
+			// Phase 12 Fix 2b: the pre-write snapshot (see above) — G8 must
+			// compare against the revision the payload mirrored, not the file
+			// this publish just re-stamped.
+			...(storeKind === "prd" ? { prdPublishedPath: publishedPrdBeforePublish ?? undefined } : {}),
+		});
+		for (const w of dbOutcome.warnings) ctx.ui.notify(w, "warning");
+		if (!dbOutcome.ok) {
+			ctx.ui.notify(
+				`DB publish chain failed — stage does NOT advance (Q6d). Fix and re-run the approve:\n` +
+					dbOutcome.problems.map((p) => `  - ${p}`).join("\n"),
+				"error",
+			);
+			return;
+		}
+		// N2 — revision identity surfaced at the shared approve surface (the
+		// publish tool AND the 9 per-stage fall-backs). Supersession details
+		// arrive via the dbOutcome.warnings loop above.
+		const rev = dbOutcome.revision;
+		ctx.ui.notify(
+			`Store: ${storeKind} published as revision ${rev ? rev.revisionNumber : "?"} ` +
+				`(v${envelope.version}) + YAML exported + committed.`,
 			"info",
 		);
 	}
@@ -650,13 +1160,16 @@ export async function handleApprove(
 	// Both are intended for the test suite. Production callers never
 	// opt out; the standalone `/velpari-doctor` command is the
 	// ad-hoc audit path.
-	const skipAutoDoctor =
-		opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
+	const skipAutoDoctor = opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
 	if (!skipAutoDoctor) {
-		const doctorReport = runDoctor(cwd);
+		const doctorReport = runDoctor(cwd, { embedded: true });
 		writeDoctorReport(doctorReport, cwd);
 		const doctorReportPath = join(cwd, PATHS.DOCTOR_REPORT);
-		if (doctorReport.summary.error > 0 || doctorReport.summary.warning > 0) {
+		// N24-15 (severity ruling, Phase 4): warnings are reported, errors block.
+		// Environment-hygiene warnings (multiplexer env, peer deps, unbootstrapped
+		// scouts) are unavoidable in a fresh checkout and made every advance
+		// impossible — N24-15 report-only policy.
+		if (doctorReport.summary.error > 0) {
 			// v1.2.3 UI tweak: group findings by section title instead of a
 			// flat list. Each section gets one line with its title + a count
 			// of error vs warning findings + a short list of status codes.
@@ -705,9 +1218,8 @@ export async function handleApprove(
 					? `\n…and ${groupedLines.length - 30} more section(s). See ${doctorReportPath} for the full report.`
 					: "";
 			ctx.ui.notify(
-				`Doctor stopped the advance. ${doctorReport.summary.error} error(s), ` +
-					`${doctorReport.summary.warning} warning(s) found across ${groupedLines.length} section(s). ` +
-					`Fix and re-run /velpari-development-order-approve.\n` +
+				`Doctor stopped the advance. ${doctorReport.summary.error} error(s) found across ${groupedLines.length} section(s). ${doctorReport.summary.warning} warning(s) reported (informational, do not block). ` +
+					`Fix and re-run ${approveCommandForStage(state.currentStage)}.\n` +
 					`\n${capped.join("\n")}${more}\n\n` +
 					`Full report: ${doctorReportPath}.`,
 				"error",
@@ -715,7 +1227,10 @@ export async function handleApprove(
 			return; // state does NOT advance; user must fix the file and re-approve
 		}
 		ctx.ui.notify(
-			`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.`,
+			`Doctor: clean — ${doctorReport.summary.ok} check(s) passed.` +
+				(doctorReport.summary.warning > 0
+					? ` (${doctorReport.summary.warning} warning(s) — see ${doctorReportPath}).`
+					: ""),
 			"info",
 		);
 	}
@@ -725,7 +1240,13 @@ export async function handleApprove(
 	// command for `currentStage`. The publish tool and the per-stage fall-
 	// back commands both call handleApprove, so the actor string is uniform
 	// regardless of which surface invoked the publish.
-	let next = advanceStage(state, perStageApproveCommand(state.currentStage), cwd, pi);
+	// Rest-state re-approve (currentStage === stages[1] of a map row, e.g.
+	// "designed"): publish + stamp only — NO advance. Leaving a rest state
+	// is the NEXT stage command's transition (constants STAGE_TRANSITIONS);
+	// no (rest, <stage>-approve) row exists, so advancing would throw.
+	const approveRow = STAGE_APPROVE_MAP.find((r) => r.stages.includes(state.currentStage));
+	const isRestReApprove = approveRow !== undefined && approveRow.stages[1] === state.currentStage;
+	let next = isRestReApprove ? state : advanceStage(state, perStageApproveCommand(state.currentStage), cwd, pi);
 	if (mapping.artifact === "feasibility-study") {
 		// Feasibility v2: the publish gate passed, so the session (decision,
 		// language, spikes) is settled — clear it so a later re-run starts clean.
@@ -735,7 +1256,12 @@ export async function handleApprove(
 	// v0.5.1 Phase J.2: reflect the new stage in the footer status bar
 	// via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
-	ctx.ui.notify(`Stage advanced to "${next.currentStage}".`, "info");
+	ctx.ui.notify(
+		isRestReApprove
+			? `Re-published at rest state "${next.currentStage}" — stage unchanged.`
+			: `Stage advanced to "${next.currentStage}".`,
+		"info",
+	);
 
 	// v1.6.2: surface a clear "Next: /velpari-<cmd>" suggestion for every
 	// stage so the user always knows which command to run by hand. The
@@ -743,8 +1269,7 @@ export async function handleApprove(
 	// boundary is a manual confirm-then-write step. Special case for
 	// post-RTM (`built-rtm`): the feasibility-skip shortcut is offered
 	// alongside the default `/velpari-feasibility` next command.
-	const feasibilitySkip =
-		next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
+	const feasibilitySkip = next.currentStage === "built-rtm" && hasPublishedFeasibility(cwd, projectName);
 	const nextCommands = nextCommandsFor(next.currentStage, { feasibilitySkip });
 	// Generator v2 (D5): an approve that crosses into a new phase prepends
 	// the generation step to the next-hint when the target phase lacks
@@ -757,14 +1282,24 @@ export async function handleApprove(
 		: `Next: ${nextCommands.join(" or ")}`;
 	if (next.currentStage === "built-rtm") {
 		ctx.ui.notify(
-			feasibilitySkip
-				? `${nextHint} — feasibility already published; you may skip ahead to architecture.`
-				: nextHint,
+			feasibilitySkip ? `${nextHint} — feasibility already published; you may skip ahead to architecture.` : nextHint,
 			"info",
 		);
 	} else {
 		ctx.ui.notify(nextHint, "info");
 	}
+	// ─── PHASE-F (N31) — design flow offers push-to-canvas (offer-only-when-reachable) ───
+	// Runs after stage advance + Next-hint: a successful design publish
+	// (fall-back approve AND the velpari_stage_publish tool share this
+	// path) offers the canvas push. Failures inside are info-only no-ops —
+	// publish outcome and notices are untouched.
+	if (mapping.artifact === "design") {
+		await offerCanvasPush(canvasUiFor(ctx), {
+			mermaidBlocks: extractMermaidBlocks(targets.map((t) => `${t.gateContent ?? ""}\n${t.content}`).join("\n")),
+			sourceLabel: "design",
+		});
+	}
+	// ─── PHASE-F END ───
 }
 /**
  * v1.3.0+ helpers for the sunset auto-archive flow. Pure string ops.
@@ -777,6 +1312,13 @@ interface SunsetInfo {
 	supersedes: string | undefined;
 }
 
+/**
+ * Read the v1.3.0 sunset fields (version, sunset, status, supersedes) from
+ * a working copy's frontmatter.
+ * @param {string} content - Working-copy markdown (frontmatter + body).
+ * @returns {SunsetInfo | null} Parsed sunset fields, or null when there is
+ *   no frontmatter block or no version field.
+ */
 function readSunsetInfo(content: string): SunsetInfo | null {
 	const parsed = parseFrontmatterBlock(content);
 	if (!parsed) return null;
@@ -790,10 +1332,24 @@ function readSunsetInfo(content: string): SunsetInfo | null {
 	};
 }
 
+/**
+ * Rewrite the `version:` line inside the artifact body (sunset archive
+ * bumps the major version and mirrors it into the stamped body).
+ * @param {string} content - Artifact markdown with a `version:` line.
+ * @param {string} newVersion - Version to write (e.g. "2.0.0").
+ * @returns {string} Content with the version line replaced.
+ */
 function updateVersionInBody(content: string, newVersion: string): string {
 	return content.replace(/^version:\s*.*$/m, `version: ${newVersion}`);
 }
 
+/**
+ * Rewrite the `status:` line inside the artifact body (sunset archive sets
+ * `deprecated` and mirrors it into the stamped body).
+ * @param {string} content - Artifact markdown with a `status:` line.
+ * @param {string} newStatus - Status to write (e.g. "deprecated").
+ * @returns {string} Content with the status line replaced.
+ */
 function updateStatusInBody(content: string, newStatus: string): string {
 	return content.replace(/^status:\s*.*$/m, `status: ${newStatus}`);
 }

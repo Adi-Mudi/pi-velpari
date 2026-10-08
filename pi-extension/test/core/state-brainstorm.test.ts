@@ -74,10 +74,7 @@ describe("core/state brainstorm helpers", () => {
 
 	it("setScansSelected rejects unknown scan types", () => {
 		const state = createRun("Test mission", tmpDir);
-		assert.throws(
-			() => setScansSelected(state, ["code", "web"] as never, tmpDir),
-			/Unknown scan type/,
-		);
+		assert.throws(() => setScansSelected(state, ["code", "web"] as never, tmpDir), /Unknown scan type/);
 		// State on disk unchanged by the rejected call.
 		assert.equal(loadState(tmpDir).scansSelected, undefined);
 	});
@@ -105,21 +102,11 @@ describe("core/state brainstorm helpers", () => {
 	it("upsertBrainstormQuestion requires reason for not-wanted and replaced", () => {
 		const state = createRun("Test mission", tmpDir);
 		assert.throws(
-			() =>
-				upsertBrainstormQuestion(
-					state,
-					{ id: "Q1", text: "x", state: "not-wanted" },
-					tmpDir,
-				),
+			() => upsertBrainstormQuestion(state, { id: "Q1", text: "x", state: "not-wanted" }, tmpDir),
 			/requires a reason/,
 		);
 		assert.throws(
-			() =>
-				upsertBrainstormQuestion(
-					state,
-					{ id: "Q1", text: "x", state: "replaced", reason: "  " },
-					tmpDir,
-				),
+			() => upsertBrainstormQuestion(state, { id: "Q1", text: "x", state: "replaced", reason: "  " }, tmpDir),
 			/requires a reason/,
 		);
 
@@ -134,12 +121,7 @@ describe("core/state brainstorm helpers", () => {
 	it("upsertBrainstormQuestion rejects invalid states and missing fields", () => {
 		const state = createRun("Test mission", tmpDir);
 		assert.throws(
-			() =>
-				upsertBrainstormQuestion(
-					state,
-					{ id: "Q1", text: "x", state: "bogus" } as never,
-					tmpDir,
-				),
+			() => upsertBrainstormQuestion(state, { id: "Q1", text: "x", state: "bogus" } as never, tmpDir),
 			/Unknown question state/,
 		);
 		assert.throws(
@@ -162,11 +144,7 @@ describe("core/state brainstorm helpers", () => {
 		let state = createRun("Test mission", tmpDir);
 		state = confirmUnderstanding(state, tmpDir);
 		state = setScansSelected(state, ["code"], tmpDir);
-		state = upsertBrainstormQuestion(
-			state,
-			{ id: "Q1", text: "Scope?", state: "agreed" },
-			tmpDir,
-		);
+		state = upsertBrainstormQuestion(state, { id: "Q1", text: "Scope?", state: "agreed" }, tmpDir);
 		state = incrementBrainstormDispatchCount(state, tmpDir);
 
 		const cleared = clearBrainstormSession(state, tmpDir);
@@ -204,9 +182,7 @@ describe("core/state brainstorm helpers", () => {
 			runId: "2026-09-12-01-15-legacy-run",
 			mission: "Legacy mission",
 			currentStage: "drafting-prd",
-			history: [
-				{ stage: "brainstorming", command: "/velpari-brainstorm", timestamp: "2026-09-12T01:15:00.000Z" },
-			],
+			history: [{ stage: "brainstorming", command: "/velpari-brainstorm", timestamp: "2026-09-12T01:15:00.000Z" }],
 			updatedAt: "2026-09-12T01:20:00.000Z",
 		};
 		const legacyPath = path.join(tmpDir, PATHS.LEGACY_STATE_FILE);
@@ -235,21 +211,14 @@ describe("core/state brainstorm helpers", () => {
 		assert.deepEqual(loadHistory(tmpDir, legacy.runId), legacy.history);
 
 		// One-time backup kept until the next successful saveState.
-		assert.ok(
-			fs.existsSync(`${newPath}.premigration.bak`),
-			"premigration backup must exist until the next save",
-		);
+		assert.ok(fs.existsSync(`${newPath}.premigration.bak`), "premigration backup must exist until the next save");
 	});
 
 	// ── v3 — activeSubagents (persistent sub-agent sessions) ────────────
 
 	it("setActiveSubagents persists both handles and auto-stamps spawnedAt", () => {
 		const state = createRun("Test mission", tmpDir);
-		const next = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			tmpDir,
-		);
+		const next = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, tmpDir);
 		assert.equal(next.activeSubagents?.web, "web");
 		assert.equal(next.activeSubagents?.docCode, "doc-code");
 		assert.ok(next.activeSubagents?.spawnedAt, "spawnedAt must be auto-stamped");
@@ -273,12 +242,7 @@ describe("core/state brainstorm helpers", () => {
 	it("setActiveSubagents rejects unknown keys", () => {
 		const state = createRun("Test mission", tmpDir);
 		assert.throws(
-			() =>
-				setActiveSubagents(
-					state,
-					{ web: "web", bogus: "x" } as never,
-					tmpDir,
-				),
+			() => setActiveSubagents(state, { web: "web", bogus: "x" } as never, tmpDir),
 			/Unknown activeSubagents key/,
 		);
 		// State on disk unchanged by the rejected call.
@@ -288,21 +252,13 @@ describe("core/state brainstorm helpers", () => {
 	it("setActiveSubagents honors an explicit spawnedAt timestamp (caller override)", () => {
 		const state = createRun("Test mission", tmpDir);
 		const explicit = "2026-09-19T08:00:00.000Z";
-		const next = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code", spawnedAt: explicit },
-			tmpDir,
-		);
+		const next = setActiveSubagents(state, { web: "web", docCode: "doc-code", spawnedAt: explicit }, tmpDir);
 		assert.equal(next.activeSubagents?.spawnedAt, explicit);
 	});
 
 	it("clearBrainstormSession also clears activeSubagents (v3 cleanup)", () => {
 		let state = createRun("Test mission", tmpDir);
-		state = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			tmpDir,
-		);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, tmpDir);
 		assert.ok(state.activeSubagents);
 
 		const cleared = clearBrainstormSession(state, tmpDir);
@@ -367,10 +323,7 @@ describe("brainstorm-anytime session primitives (A2 — D1/D2/D5/D7)", () => {
 	it("resume continue restores the paused stage and clears session fields", () => {
 		enterStage("planned-tests");
 		openBrainstormSession(tmpDir);
-		saveState(
-			{ ...loadState(tmpDir), understandingConfirmed: true, brainstormDispatchCount: 2 },
-			tmpDir,
-		);
+		saveState({ ...loadState(tmpDir), understandingConfirmed: true, brainstormDispatchCount: 2 }, tmpDir);
 
 		const resumed = resumeFromBrainstorm(tmpDir, "continue");
 		assert.equal(resumed.currentStage, "planned-tests");

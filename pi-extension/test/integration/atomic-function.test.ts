@@ -26,7 +26,9 @@ import { handleAtomicFunction } from "../../src/stages/atomic-function/index.js"
 import { loadState, type RunState } from "../../src/core/state.js";
 import { loadHistory } from "../../src/core/history.js";
 import { handleApprove } from "../../src/ops/approve.js";
-import { resolveDocArtifact, buildRunDir } from "../../src/core/paths.js";
+import { resolveDocArtifact, buildRunDir, buildStoreDbPath } from "../../src/core/paths.js";
+import { openStoreDb, closeStoreDb } from "../../src/io/db.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../src/io/store.js";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 let tmpDir: string;
@@ -39,6 +41,10 @@ interface MockPi {
 	getFlag?: (name: string) => string | undefined;
 }
 
+/**
+ * Build a minimal ExtensionCommandContext with a notice-capturing ui.
+ * @returns {ExtensionCommandContext} Fresh ctx; `notices` captures notify calls.
+ */
 function makeCtx(): ExtensionCommandContext {
 	notices = [];
 	return {
@@ -53,6 +59,10 @@ function makeCtx(): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
+/**
+ * Build a minimal ExtensionAPI that captures sendUserMessage calls.
+ * @returns {ExtensionAPI} Fresh pi stub; `sentMessages` records sends.
+ */
 function makePi(): ExtensionAPI {
 	sentMessages = [];
 	return {
@@ -65,6 +75,12 @@ function makePi(): ExtensionAPI {
 	} as unknown as ExtensionAPI;
 }
 
+/**
+ * Build a RunState at the given stage with the given mission.
+ * @param {RunState["currentStage"]} stage - Stage to place the run in.
+ * @param {string} mission - Mission topic greed (files.json projectName fallback).
+ * @returns {RunState} A minimal but valid run state.
+ */
 function makeState(stage: RunState["currentStage"], mission: string): RunState {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
@@ -80,6 +96,11 @@ function makeState(stage: RunState["currentStage"], mission: string): RunState {
 	return state;
 }
 
+/**
+ * Build a files.json config for the test cwd.
+ * @param {object} opts - Overrides ({ projectNames?, topicSlug? } etc. as needed).
+ * @returns {unknown} The config object to persist into `.pi/velpari/files.json`.
+ */
 function makeFilesConfig(opts: {
 	projectName: string;
 	atomicTier?: "entry" | "basic" | "intermediate" | "advanced";
@@ -106,6 +127,12 @@ function makeFilesConfig(opts: {
 	);
 }
 
+/**
+ * Materialize the published Doc/ inputs the atomic-function stage reads
+ * (PRD/RTM/feasibility/design) as minimal markdown files.
+ * @param {string} projectName - Project name suffix for the file paths.
+ * @returns {void}
+ */
 function makeDocInputs(projectName: string): void {
 	const docDir = path.join(tmpDir, "Doc");
 	fs.mkdirSync(docDir, { recursive: true });
@@ -115,22 +142,64 @@ function makeDocInputs(projectName: string): void {
 	}
 }
 
+/**
+ * Seed the project store with published prd / rtm / feasibility / design
+ * rows (Phase 6 read flip — the atomic-function stage resolves its inputs
+ * from the DB slices, and a Doc/-only project refuses loudly).
+ * @param {string} projectName - Project whose store to seed.
+ * @returns {void}
+ */
+function makeStoreInputs(projectName: string): void {
+	const dbPath = buildStoreDbPath(projectName, tmpDir);
+	const db = openStoreDb(dbPath);
+	try {
+		const env = (stage: string): ArtifactEnvelopeInput => ({
+			version: 1,
+			stage,
+			generatedAt: "2026-09-17T13:00:00.000Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		});
+		writeArtifact(db, "prd", "r1", env("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse input" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+		writeArtifact(db, "rtm", "r1", env("building-rtm"), {
+			rtmRow: [{ id: "R-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "a".repeat(64) }],
+		});
+		publishArtifact(db, "r1", "rtm");
+		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-17T13:00:00.000Z",
+				webSearchConsent: 0,
+			},
+		});
+		publishArtifact(db, "r1", "feasibility");
+		writeArtifact(db, "design", "r1", env("designing"), {
+			designModule: [{ id: "M-1", name: "core", description: "core logic" }],
+		});
+		publishArtifact(db, "r1", "design");
+	} finally {
+		closeStoreDb(db);
+	}
+}
+
+/**
+ * Pre-install the 4 atomic-function scout agent files into `.pi/agents/` so
+ * the stage runner's dispatch resolves them (no-op when already present).
+ * @returns {void}
+ */
 function preInstallScouts(): void {
 	const agentsDir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(agentsDir, { recursive: true });
-	const scouts = [
-		"af-source-rtm",
-		"af-source-design",
-		"af-source-prd",
-		"af-source-feas",
-		"reviewer",
-	];
+	const scouts = ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas", "reviewer"];
 	for (const s of scouts) {
-		fs.writeFileSync(
-			path.join(agentsDir, `${s}.md`),
-			`---\nname: ${s}\ndescription: stub\n---\n# stub\n`,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(agentsDir, `${s}.md`), `---\nname: ${s}\ndescription: stub\n---\n# stub\n`, "utf8");
 	}
 }
 
@@ -148,6 +217,7 @@ describe("atomic-function end-to-end flow", () => {
 		makeState("designed", "e2e-mission");
 		makeFilesConfig({ projectName, atomicTier: "basic" });
 		makeDocInputs(projectName);
+		makeStoreInputs(projectName);
 		preInstallScouts();
 
 		const ctx = makeCtx();
@@ -159,11 +229,7 @@ describe("atomic-function end-to-end flow", () => {
 		// Composer sent exactly one prompt to parent LLM.
 		assert.equal(sentMessages.length, 1, "composer should send one prompt");
 		const prompt = sentMessages[0]!;
-		assert.match(
-			prompt,
-			/<pi-velpari stage="analyzing-atomic-functions">/,
-			"prompt metadata block",
-		);
+		assert.match(prompt, /<pi-velpari stage="analyzing-atomic-functions">/, "prompt metadata block");
 		assert.match(prompt, /Mission: e2e-mission/);
 		assert.match(prompt, /Tier: Basic/);
 
@@ -179,10 +245,7 @@ describe("atomic-function end-to-end flow", () => {
 		const scoutsDir = path.join(runDir, "atomic-function", "scouts");
 		fs.mkdirSync(workingCopyDir, { recursive: true });
 		fs.mkdirSync(scoutsDir, { recursive: true });
-		const workingCopyPath = path.join(
-			workingCopyDir,
-			"atomic-functions_E2EApp.md",
-		);
+		const workingCopyPath = path.join(workingCopyDir, "atomic-functions_E2EApp.md");
 		const workingCopyContent = `---
 artifact: atomic-functions
 project: ${projectName}
@@ -249,11 +312,7 @@ updated: 2026-09-17T13:00:00.000Z
 			"changeLog: []",
 			"",
 		].join("\n");
-		fs.writeFileSync(
-			path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`),
-			sidecarContent,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(workingCopyDir, `atomic-functions_${projectName}.yaml`), sidecarContent, "utf8");
 
 		// Parent LLM (mocked) writes a reviewer verdict (approve).
 		const reviewerReport = {
@@ -262,17 +321,13 @@ updated: 2026-09-17T13:00:00.000Z
 			summary: "Reviewed 4 scout reports + working copy; 0 errors — verdict=approve.",
 			timestamp: new Date().toISOString(),
 		};
-		fs.writeFileSync(
-			path.join(scoutsDir, "reviewer-report.json"),
-			JSON.stringify(reviewerReport, null, 2),
-			"utf8",
-		);
+		fs.writeFileSync(path.join(scoutsDir, "reviewer-report.json"), JSON.stringify(reviewerReport, null, 2), "utf8");
 
 		// ====== Step 3: velpari_stage_publish tool (via handleApprove) ======
 		// The tool's execute() calls handleApprove. We call it directly here
 		// to assert the full publish flow end-to-end. skipAutoDoctor=true
 		// is the documented test affordance (see ops/approve.ts:ApproveOpts).
-		await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true });
+		await handleApprove(ctx, pi, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 
 		// ====== Step 4: Verify Doc/atomic-functions/<project>.md exists ======
 		const listDir = path.join(tmpDir, "Doc");
@@ -311,6 +366,7 @@ updated: 2026-09-17T13:00:00.000Z
 		// still exercised.
 		makeFilesConfig({ projectName, atomicTier: "entry" });
 		makeDocInputs(projectName);
+		makeStoreInputs(projectName);
 		preInstallScouts();
 
 		const ctx = makeCtx();
@@ -368,14 +424,10 @@ updated: 2026-09-17T13:00:00.000Z
 			summary: "1 error → block",
 			timestamp: new Date().toISOString(),
 		};
-		fs.writeFileSync(
-			path.join(scoutsDir, "reviewer-report.json"),
-			JSON.stringify(reviewerReport, null, 2),
-			"utf8",
-		);
+		fs.writeFileSync(path.join(scoutsDir, "reviewer-report.json"), JSON.stringify(reviewerReport, null, 2), "utf8");
 
 		// handleApprove should refuse to publish.
-		await handleApprove(ctx, pi, tmpDir);
+		await handleApprove(ctx, pi, tmpDir, { skipDbPublish: true });
 
 		// No Doc/artifact should exist.
 		const published = resolveDocArtifact("atomic-functions", projectName, tmpDir);

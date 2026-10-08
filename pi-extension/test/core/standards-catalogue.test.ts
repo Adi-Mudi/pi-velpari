@@ -15,12 +15,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-	loadCatalogue,
-	findOverlay,
-	listOverlayIds,
-	cataloguePath,
-} from "../../src/core/standards-catalogue.js";
+import { loadCatalogue, findOverlay, listOverlayIds, cataloguePath } from "../../src/core/standards-catalogue.js";
 
 let tmpDir: string;
 

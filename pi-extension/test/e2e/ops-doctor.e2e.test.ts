@@ -24,16 +24,11 @@
 
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
@@ -43,13 +38,33 @@ async function runModuleScript<T>(client: RpcClient, script: string): Promise<T>
 	const result = await client.request<any>("bash", {
 		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
 	});
-	assert.ok(
-		result.success === true,
-		`subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-	);
+	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
-	return JSON.parse(output) as T;
+	return parseFirstJson(output) as T;
+}
+
+/**
+ * Parse the FIRST JSON value from a captured output stream, tolerating
+ * trailing bytes. The pi bash channel can merge a later execution's capture
+ * with an earlier execution's stdout in the same session (observed 2026-09-27:
+ * the handoff script's JSON followed by the doctor test's `{"report": …}`
+ * payload), so a strict JSON.parse of the whole stream flakes. Every module
+ * script writes exactly one JSON document at the START of its output — parse
+ * that and ignore the rest.
+ * @param {string} text - Raw captured output (first value = a JSON doc).
+ * @returns {unknown} The first JSON value in the stream.
+ */
+function parseFirstJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch (err) {
+		const m = /position (\d+)/.exec(err instanceof Error ? err.message : "");
+		if (!m) throw err;
+		const cut = Number(m[1]);
+		if (!Number.isFinite(cut) || cut <= 0) throw err;
+		return JSON.parse(text.slice(0, cut).trimEnd());
+	}
 }
 
 const STATE_JS = JSON.stringify(distModuleUrl("core/state.js"));
@@ -99,34 +114,44 @@ describe("e2e/ops-doctor", () => {
 			"utf8",
 		);
 
+		// The report is transported via a FILE: pi's bash channel
+		// head-truncates stdout near DEFAULT_MAX_BYTES (50KB) and the
+		// Phase 6 doctor report's JSON exceeds that.
 		const out = await runModuleScript<any>(
 			client,
-			"import { saveAgentConfig } from " + AGENTS_JS + "; " +
-				"import { runDoctor, formatDiagnosticReport } from " + DOCTOR_JS + "; " +
+			"import { writeFileSync } from 'node:fs'; " +
+				"import { saveAgentConfig } from " +
+				AGENTS_JS +
+				"; " +
+				"import { runDoctor, formatDiagnosticReport } from " +
+				DOCTOR_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"saveAgentConfig(cwd, { version: 1, agents: { extractor: 'test-scout' } }); " +
 				"const report = formatDiagnosticReport(runDoctor(cwd)); " +
-				"process.stdout.write(JSON.stringify({ report }));",
+				"writeFileSync(cwd + '/e2e-agent-report.md', report); " +
+				"process.stdout.write(JSON.stringify({ file: 'e2e-agent-report.md' }));",
 		);
 
-		assert.ok(
-			out.report.includes("## Agent mapping (agents.json)"),
-			"doctor report is missing the agent-mapping section",
-		);
-		assert.ok(
-			out.report.includes("test-scout"),
-			"agent-mapping section should mention the mapped custom agent",
-		);
+		const report = readFileSync(join(home.cwd, out.file), "utf8");
+		assert.ok(report.includes("## Agent mapping (agents.json)"), "doctor report is missing the agent-mapping section");
+		assert.ok(report.includes("test-scout"), "agent-mapping section should mention the mapped custom agent");
 	});
 
-	it("status: no run notifies; with a run it appends a velpari-status entry and sets the footer", { timeout: 60_000 }, async (t) => {
+	it("status: no run notifies; with a run it appends a velpari-status entry and sets the footer", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { clearRun, createRun } from " + STATE_JS + "; " +
-				"import { handleStatus } from " + STATUS_JS + "; " +
+			"import { clearRun, createRun } from " +
+				STATE_JS +
+				"; " +
+				"import { handleStatus } from " +
+				STATUS_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				MOCKS +
@@ -139,7 +164,10 @@ describe("e2e/ops-doctor", () => {
 		);
 
 		assert.strictEqual(out.noRunNotes.length, 1, "no-run status should notify exactly once");
-		assert.ok(out.noRunNotes[0].m.includes("No active Velpari run"), `unexpected no-run message: ${out.noRunNotes[0].m}`);
+		assert.ok(
+			out.noRunNotes[0].m.includes("No active Velpari run"),
+			`unexpected no-run message: ${out.noRunNotes[0].m}`,
+		);
 
 		assert.strictEqual(out.entries.length, 1, "with-run status should append exactly one session entry");
 		assert.strictEqual(out.entries[0].t, "velpari-status", "status entry must use the velpari-status custom type");
@@ -159,8 +187,12 @@ describe("e2e/ops-doctor", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { createRun, loadState } from " + STATE_JS + "; " +
-				"import { handleReset } from " + RESET_JS + "; " +
+			"import { createRun, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { handleReset } from " +
+				RESET_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"createRun('E2E reset run', cwd); " +
 				MOCKS +
@@ -196,7 +228,9 @@ describe("e2e/ops-doctor", () => {
 
 		const out = await runModuleScript<any>(
 			client,
-			"import { showPrd } from " + SHOW_JS + "; " +
+			"import { showPrd } from " +
+				SHOW_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				MOCKS +
 				"await showPrd(ctx, cwd); " +
@@ -205,21 +239,24 @@ describe("e2e/ops-doctor", () => {
 
 		const flat = out.notes.map((n: { m: string }) => n.m).join("\n---\n");
 		assert.ok(flat.includes("# PRD (legacy flat)"), "show-prd did not print the legacy document content");
-		assert.ok(
-			flat.includes("legacy flat path"),
-			"show-prd should note that the legacy flat path was used",
-		);
+		assert.ok(flat.includes("legacy flat path"), "show-prd should note that the legacy flat path was used");
 	});
 
-	it("handoff: wrong stage hard-blocks; finalized-design writes a schema-valid architect-inputs.json", { timeout: 60_000 }, async (t) => {
+	it("handoff: wrong stage hard-blocks; finalized-design writes a schema-valid architect-inputs.json", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
 			'import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"; ' +
-				"import { clearRun, createRun, advanceStage, loadState } from " + STATE_JS + "; " +
-				"import { runHandoff, validateSenaiSchema } from " + HANDOFF_JS + "; " +
+				"import { clearRun, createRun, advanceStage, loadState } from " +
+				STATE_JS +
+				"; " +
+				"import { runHandoff, validateSenaiSchema } from " +
+				HANDOFF_JS +
+				"; " +
 				"const cwd = process.cwd(); " +
 				"clearRun(cwd); " +
 				"let s = createRun('E2E handoff run', cwd); " +
@@ -261,7 +298,11 @@ describe("e2e/ops-doctor", () => {
 		assert.ok(out.written, "architect-inputs.json was not written");
 		assert.ok(out.schemaOk, "architect-inputs.json failed validateSenaiSchema");
 		assert.strictEqual(out.projectName, "E2EFixture", "handoff lost the projectName");
-		assert.strictEqual(out.docCount, 10, "handoff should reference exactly the 10 required documents (incl. atomic-functions + dev-order + final-design)");
+		assert.strictEqual(
+			out.docCount,
+			10,
+			"handoff should reference exactly the 10 required documents (incl. atomic-functions + dev-order + final-design)",
+		);
 		assert.strictEqual(out.stage, "handoff-ready", "state must advance to handoff-ready after a confirmed handoff");
 	});
 });

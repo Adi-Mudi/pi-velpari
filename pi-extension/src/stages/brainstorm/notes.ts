@@ -138,20 +138,14 @@ export function renderDecisionsBlock(questions: BrainstormQuestion[]): string {
  *  file. Creates the block at the end when absent; replaces the existing
  *  block in place when present (idempotent). All other content is
  *  preserved. Atomic write. Returns the notes path. */
-export function syncDecisionsToNotes(
-	notesPath: string,
-	questions: BrainstormQuestion[],
-): string {
+export function syncDecisionsToNotes(notesPath: string, questions: BrainstormQuestion[]): string {
 	const block = renderDecisionsBlock(questions);
 	const current = existsSync(notesPath) ? readFileSync(notesPath, "utf8") : "";
 	const start = current.indexOf(DECISIONS_BLOCK_START);
 	const end = current.indexOf(DECISIONS_BLOCK_END);
 	let next: string;
 	if (start !== -1 && end !== -1 && end > start) {
-		next =
-			current.slice(0, start) +
-			block +
-			current.slice(end + DECISIONS_BLOCK_END.length);
+		next = current.slice(0, start) + block + current.slice(end + DECISIONS_BLOCK_END.length);
 	} else {
 		const base = current.trimEnd();
 		next = base ? `${base}\n\n${block}\n` : `${block}\n`;

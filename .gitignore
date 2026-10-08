@@ -10,3 +10,8 @@ skills/senai-*.md
 *.log
 .DS_Store
 pi-session-*.html
+Doc/store/**/index.db-wal
+Doc/store/**/index.db-shm
+.vscode/
+.pi/tasks/
+.tmp-test/

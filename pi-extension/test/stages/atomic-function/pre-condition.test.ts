@@ -26,6 +26,9 @@ import * as path from "node:path";
 import { runPreCondition } from "../../../src/stages/atomic-function/pre-condition.js";
 import { DEFAULT_ATOMIC_PROFILE, type AtomicProfile } from "../../../src/core/atomic-tier.js";
 import type { RunState } from "../../../src/core/state.js";
+import { openStoreDb, closeStoreDb } from "../../../src/io/db.js";
+import { writeArtifact, publishArtifact, type ArtifactEnvelopeInput } from "../../../src/io/store.js";
+import { buildStoreDbPath } from "../../../src/core/paths.js";
 
 let tmpDir: string;
 
@@ -38,11 +41,14 @@ afterEach(() => {
 });
 
 /** Write `.pi/velpari/state.json` directly with the given stage. */
-function makeState(stage: RunState["currentStage"], opts: {
-	runId?: string;
-	mission?: string;
-	standardsProfile?: { id: string; version: string };
-} = {}): void {
+function makeState(
+	stage: RunState["currentStage"],
+	opts: {
+		runId?: string;
+		mission?: string;
+		standardsProfile?: { id: string; version: string };
+	} = {},
+): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	const state: RunState & { standardsProfile?: unknown } = {
@@ -60,10 +66,7 @@ function makeState(stage: RunState["currentStage"], opts: {
 }
 
 /** Write `.pi/velpari/files.json` with the project name + atomic profile. */
-function makeFilesConfig(opts: {
-	projectName: string;
-	atomic?: Partial<AtomicProfile>;
-}): void {
+function makeFilesConfig(opts: { projectName: string; atomic?: Partial<AtomicProfile> }): void {
 	const cfg = {
 		version: 4,
 		framework: { language: "typescript" },
@@ -75,11 +78,7 @@ function makeFilesConfig(opts: {
 		atomic: opts.atomic ?? {},
 	};
 	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
-	fs.writeFileSync(
-		path.join(tmpDir, ".pi", "velpari", "files.json"),
-		JSON.stringify(cfg, null, 2),
-		"utf8",
-	);
+	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "files.json"), JSON.stringify(cfg, null, 2), "utf8");
 }
 
 /** Create `Doc/<artifact>_<project>.md` (grouped layout) for every input. */
@@ -89,6 +88,51 @@ function makeAllInputs(projectName: string): void {
 	const artifacts = ["PRD", "RTM", "feasibility-study", "design"];
 	for (const a of artifacts) {
 		fs.writeFileSync(path.join(docDir, `${a}_${projectName}.md`), `# ${a} fixture\n`, "utf8");
+	}
+	seedStore(projectName);
+}
+
+/**
+ * Phase 6: the atomic-function stage resolves its inputs from the project
+ * store (strict DB read, §14.1) — publish the four upstream kinds so the
+ * fixture's pre-condition/slice gate passes.
+ */
+function seedStore(projectName: string): void {
+	const db = openStoreDb(buildStoreDbPath(projectName, tmpDir));
+	try {
+		const env = (stage: string): ArtifactEnvelopeInput => ({
+			version: 1,
+			stage,
+			generatedAt: "2026-09-23T00:00:00.000Z",
+			inputs: "{}",
+			reviewerVerdict: null,
+			changeLog: "[]",
+		});
+		writeArtifact(db, "prd", "r1", env("drafting-prd"), {
+			fr: [{ id: "FR-1", phase: 1, textHash: "h1", text: "The system shall parse input" }],
+			nfr: [{ id: "NFR-1", phase: 1, textHash: "h2", text: "Fast" }],
+		});
+		publishArtifact(db, "r1", "prd");
+		writeArtifact(db, "rtm", "r1", env("building-rtm"), {
+			rtmRow: [{ id: "FR-1", frRef: "FR-1", afRef: null, tcRef: null, phase: 1, targetSha256: "a".repeat(64) }],
+		});
+		publishArtifact(db, "r1", "rtm");
+		writeArtifact(db, "feasibility", "r1", env("analyzing-feasibility"), {
+			feasibilityDecision: {
+				verdict: "go",
+				language: "typescript",
+				decidedBy: "user",
+				at: "2026-09-23T00:00:00.000Z",
+				webSearchConsent: 0,
+			},
+		});
+		publishArtifact(db, "r1", "feasibility");
+		writeArtifact(db, "design", "r1", env("designing"), {
+			designModule: [{ id: "M-1", name: "core", description: "core logic" }],
+		});
+		publishArtifact(db, "r1", "design");
+	} finally {
+		closeStoreDb(db);
 	}
 }
 

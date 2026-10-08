@@ -34,22 +34,12 @@ function writeRtm(testsByReq: Record<string, string[]>): void {
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM\n", "utf8");
 	const rows = Object.entries(testsByReq)
-		.map(
-			([id, tests]) =>
-				`  - id: ${id}\n    title: t\n    phase: 1\n    tests: [${tests.join(", ")}]`,
-		)
+		.map(([id, tests]) => `  - id: ${id}\n    title: t\n    phase: 1\n    tests: [${tests.join(", ")}]`)
 		.join("\n");
-	fs.writeFileSync(
-		path.join(dir, "RTM_TestApp.yaml"),
-		`project: TestApp\nversion: "1.0"\nrows:\n${rows}\n`,
-		"utf8",
-	);
+	fs.writeFileSync(path.join(dir, "RTM_TestApp.yaml"), `project: TestApp\nversion: "1.0"\nrows:\n${rows}\n`, "utf8");
 }
 
-function writeTestCases(
-	unit: Array<{ id: string; traces: string[] }>,
-	opts: { rawYaml?: string } = {},
-): void {
+function writeTestCases(unit: Array<{ id: string; traces: string[] }>, opts: { rawYaml?: string } = {}): void {
 	const dir = path.join(tmpDir, "Doc");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "test-cases_TestApp.md"), "# TC\n", "utf8");

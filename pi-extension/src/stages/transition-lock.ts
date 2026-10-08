@@ -29,6 +29,7 @@
 
 import { nextCommandsFor, PATHS, type Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
+import { classifyStaleItem, type StaleClassification } from "../core/change-report.js";
 import {
 	computeStaleSet,
 	manifestKey,
@@ -38,6 +39,7 @@ import {
 } from "../core/freshness.js";
 import { hasPublishedFeasibility, slugify } from "../core/paths.js";
 import { loadState, type RunState } from "../core/state.js";
+import { worktreeAddHint } from "../core/worktree.js";
 
 const BRAINSTORM_COMMAND = "/velpari-brainstorm";
 const APPROVE_BRAINSTORM_COMMAND = "/velpari-approve-brainstorm";
@@ -87,6 +89,11 @@ export interface LegalCommands {
 	 *  while a brainstorm is open, the earliest-stale remedy when stale,
 	 *  else the forward table. */
 	nextCommands: string[];
+	/** The stale set this computation was built from (Phase I10.3): what the
+	 *  wrapper computed and the core consumed — returned so callers (the
+	 *  per-turn status hook, doctor, re-confirm) never recompute it. Empty
+	 *  when there is no active run or everything is fresh. */
+	staleSet: StaleItem[];
 }
 
 /** Inputs for the pure core (tests + callers that already hold state). */
@@ -99,6 +106,35 @@ interface LegalCommandsFromInput {
 	cwd?: string;
 	projectName?: string;
 	feasibilitySkip?: boolean;
+	/**
+	 * N8 classification per stale item key (`stale.item.key`). Filled by
+	 * `computeLegalCommands` from the store; the pure core only uses it to
+	 * enrich the block message. It can never change legality.
+	 */
+	classifications?: Record<string, StaleClassification>;
+}
+
+/**
+ * Classify the stale items for their N8 verdict (own-run vs foreign-run).
+ * Best-effort + fail-open: no store project, no run, or a read failure →
+ * undefined, and every gate message stays exactly as before.
+ */
+function classifyStale(
+	cwd: string,
+	projectName: string,
+	runId: string,
+	staleSet: readonly StaleItem[],
+): Record<string, StaleClassification> | undefined {
+	if (projectName === "" || runId === "") return undefined;
+	const actionable = staleSet.filter((item) => item.reason !== "no-stamp");
+	if (actionable.length === 0) return undefined;
+	try {
+		const out: Record<string, StaleClassification> = {};
+		for (const item of actionable) out[item.key] = classifyStaleItem(cwd, projectName, runId, item);
+		return out;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -106,15 +142,11 @@ interface LegalCommandsFromInput {
  * `specs` must be in pipeline execution order (the registry's STAGE_KEYS
  * order is NOT execution order — build via STAGE_LOCK_SPECS).
  */
-export function computeLegalCommands(
-	cwd: string,
-	specs: readonly StageLockSpec[],
-): LegalCommands {
+export function computeLegalCommands(cwd: string, specs: readonly StageLockSpec[]): LegalCommands {
 	const state = loadState(cwd);
 	const config = loadFilesConfig(cwd);
 	const projectName = config.projectName ?? "";
-	const feasibilitySkip =
-		projectName !== "" && hasPublishedFeasibility(cwd, projectName);
+	const feasibilitySkip = projectName !== "" && hasPublishedFeasibility(cwd, projectName);
 	const staleSet = state.runId ? computeStaleSet(cwd) : [];
 	return computeLegalCommandsFrom({
 		state,
@@ -123,13 +155,12 @@ export function computeLegalCommands(
 		cwd,
 		projectName,
 		feasibilitySkip,
+		classifications: state.runId ? classifyStale(cwd, projectName, state.runId, staleSet) : undefined,
 	});
 }
 
 /** Pure core — no I/O beyond what the caller already performed. */
-export function computeLegalCommandsFrom(
-	input: LegalCommandsFromInput,
-): LegalCommands {
+export function computeLegalCommandsFrom(input: LegalCommandsFromInput): LegalCommands {
 	const { state, specs } = input;
 	const staleSet = input.staleSet ?? [];
 	const cwd = input.cwd;
@@ -148,11 +179,14 @@ export function computeLegalCommandsFrom(
 			staleStages.push({ stage: "brainstorm", command: BRAINSTORM_COMMAND, item });
 			continue;
 		}
-		const spec = specs.find(
-			(s) => s.workingCopyArtifact.toLowerCase() === item.artifact,
-		);
+		const spec = specs.find((s) => s.workingCopyArtifact.toLowerCase() === item.artifact);
 		if (spec) staleStages.push({ stage: spec.key, command: spec.command, item });
 	}
+	/**
+	 * Pipeline position of an earliest-stale candidate (sort key).
+	 * @param {EarliestStale} e - Candidate stale stage.
+	 * @returns {number} Its index in pipeline order; brainstorm sorts first (-1).
+	 */
 	const orderOf = (e: EarliestStale): number =>
 		e.stage === "brainstorm" ? -1 : specs.findIndex((s) => s.key === e.stage);
 	staleStages.sort((a, b) => orderOf(a) - orderOf(b));
@@ -163,22 +197,16 @@ export function computeLegalCommandsFrom(
 	/** Base gate + the conditional built-rtm → designing feasibility skip. */
 	const gateAllows = (spec: StageLockSpec): boolean => {
 		if ((spec.gate as readonly Stage[]).includes(state.currentStage)) return true;
-		return (
-			spec.key === "architecture-generator" &&
-			state.currentStage === "built-rtm" &&
-			feasibilitySkip
-		);
+		return spec.key === "architecture-generator" && state.currentStage === "built-rtm" && feasibilitySkip;
 	};
 
 	/** Update-mode self-loop: a stage whose own published artifact is stale
 	 *  may always re-run — that run IS the republish remedy. */
 	const ownOutputStale = (spec: StageLockSpec): boolean =>
-		projectName !== "" &&
-		staleByKey.has(manifestKey(spec.workingCopyArtifact, projectName));
+		projectName !== "" && staleByKey.has(manifestKey(spec.workingCopyArtifact, projectName));
 
 	/** The stage's in-progress value (its redraft self-loop stage). */
-	const inProgressStageOf = (spec: StageLockSpec): Stage =>
-		spec.gate[spec.gate.length - 1]!;
+	const inProgressStageOf = (spec: StageLockSpec): Stage => spec.gate[spec.gate.length - 1]!;
 
 	/** Declared inputs of `spec` that are stale (hard-block inputs only). */
 	const staleInputsFor = (spec: StageLockSpec): StaleItem[] => {
@@ -195,19 +223,26 @@ export function computeLegalCommandsFrom(
 		return out;
 	};
 
+	/**
+	 * Human remedy for one stale item — the republish pair, plus the
+	 * re-confirm alternative when the change may have no impact (A5/D4).
+	 * @param {StaleItem} item - The stale manifest entry to explain.
+	 * @returns {string} The command sequence that clears this stale item.
+	 */
 	const remedyFor = (item: StaleItem): string => {
 		// A5/D4: input-changed items may also be re-confirmed (reviewed — no
 		// impact); input-missing / no-stamp stay republish-only.
+		/**
+		 * The republish command pair for the item's owning artifact.
+		 * @returns {string} `/<stage>, then /<stage>-approve` (brainstorm-aware),
+		 *   or a generic `republish <key>` fallback for unknown artifacts.
+		 */
 		const republish = (() => {
 			if (item.artifact === "brainstorm") {
 				return `${BRAINSTORM_COMMAND}, then ${APPROVE_BRAINSTORM_COMMAND}`;
 			}
-			const spec = specs.find(
-				(s) => s.workingCopyArtifact.toLowerCase() === item.artifact,
-			);
-			return spec
-				? `${spec.command}, then ${spec.command}-approve`
-				: `republish ${item.key}`;
+			const spec = specs.find((s) => s.workingCopyArtifact.toLowerCase() === item.artifact);
+			return spec ? `${spec.command}, then ${spec.command}-approve` : `republish ${item.key}`;
 		})();
 		return item.reason === "input-changed"
 			? `${republish}, or /velpari-reconfirm if the change has no impact on this artifact`
@@ -231,11 +266,16 @@ export function computeLegalCommandsFrom(
 
 	// ── reasonFor ────────────────────────────────────────────────────────
 
+	/**
+	 * Why `cmd` is blocked right now — the single source of block wording
+	 * (A1): self-healing routing that always names the correct command.
+	 * @param {string} cmd - The slash command being asked about.
+	 * @returns {string | null} The block reason, or null when the command is
+	 *   legal or ungoverned.
+	 */
 	const reasonFor = (cmd: string): string | null => {
 		if (cmd === BRAINSTORM_COMMAND) {
-			return brainstormOpen
-				? "A brainstorm is already open — approve or discard it before starting a new one."
-				: null;
+			return brainstormOpen ? "A brainstorm is already open — approve or discard it before starting a new one." : null;
 		}
 		if (cmd === APPROVE_BRAINSTORM_COMMAND) {
 			return brainstormOpen ? null : "No open brainstorm session to approve.";
@@ -250,28 +290,34 @@ export function computeLegalCommandsFrom(
 
 		if (approveSpec) {
 			if (state.currentStage === inProgressStageOf(approveSpec)) return null;
-			return (
-				`Cannot run ${cmd} at stage "${state.currentStage}". ` +
-				`Run ${routingText()} first.`
-			);
+			return `Cannot run ${cmd} at stage "${state.currentStage}". ` + `Run ${routingText()} first.`;
 		}
 
 		if (stageSpec) {
 			if (!gateAllows(stageSpec) && !ownOutputStale(stageSpec)) {
-				return (
-					`Cannot run ${cmd} at stage "${state.currentStage}". ` +
-					`Run ${routingText()} first.`
-				);
+				return `Cannot run ${cmd} at stage "${state.currentStage}". ` + `Run ${routingText()} first.`;
 			}
 			const staleInputs = staleInputsFor(stageSpec);
 			if (staleInputs.length > 0) {
-				const lines = staleInputs.map(
-					(item) =>
+				const runId = state.runId;
+				const lines = staleInputs.map((item) => {
+					const base =
 						`  - ${item.key} is stale (${item.reason}: ${item.changedInputs.join(", ")}) — ` +
-						(item.reason === "input-changed"
-							? remedyFor(item) + "."
-							: `republish via ${remedyFor(item)}.`),
-				);
+						(item.reason === "input-changed" ? remedyFor(item) + "." : `republish via ${remedyFor(item)}.`);
+					// N8-B enrichment (Phase 5): name the foreign publisher, its
+					// revision and commit, and force a separate worktree. Purely
+					// additive — the base line (and its pinned substrings) stay.
+					const verdict = input.classifications?.[item.key];
+					if (verdict?.classification !== "foreign-run" || !verdict.move) return base;
+					const move = verdict.move;
+					return (
+						base +
+						`\n    FOREIGN RUN MOVE (N8-B): run ${move.publishedHead.runId} published ${move.kind} ` +
+						`rev ${move.publishedHead.revisionNumber} (commit ${move.storeLastCommit ?? "n/a"})` +
+						`${move.myRevisionNumber === null ? "" : `; your line is at rev ${move.myRevisionNumber}`}. ` +
+						`Stop and notify, then continue a parallel line in a separate worktree: ${worktreeAddHint(runId)}`
+					);
+				});
 				return (
 					`Cannot run ${cmd}: declared inputs are stale per ${PATHS.FRESHNESS_FILE}.\n` +
 					lines.join("\n") +
@@ -295,16 +341,11 @@ export function computeLegalCommandsFrom(
 	} else {
 		allowed.push(BRAINSTORM_COMMAND); // brainstorm-anytime: opens a paused session
 		for (const spec of specs) {
-			if (
-				(gateAllows(spec) || ownOutputStale(spec)) &&
-				staleInputsFor(spec).length === 0
-			) {
+			if ((gateAllows(spec) || ownOutputStale(spec)) && staleInputsFor(spec).length === 0) {
 				allowed.push(spec.command);
 			}
 		}
-		const inProgress = specs.find(
-			(s) => inProgressStageOf(s) === state.currentStage,
-		);
+		const inProgress = specs.find((s) => inProgressStageOf(s) === state.currentStage);
 		if (inProgress) allowed.push(`${inProgress.command}-approve`);
 	}
 
@@ -323,5 +364,6 @@ export function computeLegalCommandsFrom(
 		brainstormOpen,
 		pausedStage,
 		nextCommands,
+		staleSet,
 	};
 }

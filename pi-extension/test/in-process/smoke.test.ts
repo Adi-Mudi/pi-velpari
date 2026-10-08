@@ -23,10 +23,14 @@
  *     RPC e2e harness (test/e2e/).
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { existsSync } from "node:fs";
 import { text } from "pi-coding-agent-test";
-import { EXTENSION_ENTRY, makeTest } from "./harness.js";
+import { cleanupHarnessWorkspaces, EXTENSION_ENTRY, makeTest } from "./harness.js";
+
+after(() => {
+	cleanupHarnessWorkspaces();
+});
 
 const hasPi = existsSync(EXTENSION_ENTRY);
 const isEnabled = process.env.RUN_L3_E2E === "1";
@@ -42,9 +46,7 @@ describe("L3 in-process harness — compatibility smoke", () => {
 		// Compatibility probe. If this fails with ERR_MODULE_NOT_FOUND
 		// referencing pi-coding-agent internals, mark L3 as deferred.
 		const t = makeTest("smoke-load-extension", {
-			conversation: [
-				{ blocks: [text("Velpari extension loaded successfully.")] },
-			],
+			conversation: [{ blocks: [text("Velpari extension loaded successfully.")] }],
 		});
 
 		const result = await t.run("Confirm the extension is loaded");

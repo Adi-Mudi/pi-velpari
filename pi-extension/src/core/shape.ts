@@ -98,10 +98,7 @@ export function computeShapeVerdict(input: {
 	if (input.publishedVersion === undefined) {
 		path = "fresh";
 		reasonParts.push("No prior design published — fresh generation.");
-	} else if (
-		publishedMajor === currentMajor &&
-		input.sectionCountPublished >= REQUIRED_SECTION_COUNT
-	) {
+	} else if (publishedMajor === currentMajor && input.sectionCountPublished >= REQUIRED_SECTION_COUNT) {
 		path = "upgrade";
 		reasonParts.push(
 			`Published version ${input.publishedVersion} matches current shape (SemVer 2.0.0 MAJOR ${currentMajor}). ` +
@@ -111,9 +108,7 @@ export function computeShapeVerdict(input: {
 		path = "migration";
 		const reasons: string[] = [];
 		if (publishedMajor < currentMajor) {
-			reasons.push(
-				`SemVer MAJOR ${publishedMajor} < current ${currentMajor} — breaking shape change (SemVer 2.0.0).`,
-			);
+			reasons.push(`SemVer MAJOR ${publishedMajor} < current ${currentMajor} — breaking shape change (SemVer 2.0.0).`);
 		} else if (publishedMajor > currentMajor) {
 			reasons.push(
 				`SemVer MAJOR ${publishedMajor} > current ${currentMajor} — future shape, cannot downgrade (SemVer 2.0.0).`,
@@ -160,9 +155,7 @@ export function shapeStatusLine(
 	if (!projectName) return "Path: unknown (no project name).";
 	const resolved = resolveFn(cwd, projectName);
 	if (!resolved) return "Path: fresh (no prior design).";
-	const absPath = resolved.path.startsWith(cwd + "/")
-		? resolved.path
-		: joinFn(cwd, resolved.path);
+	const absPath = resolved.path.startsWith(cwd + "/") ? resolved.path : joinFn(cwd, resolved.path);
 	let markdown: string;
 	try {
 		markdown = fsRead(absPath);
@@ -217,8 +210,7 @@ export function computeShapeVerdictsAll(
 	const out: Array<ShapeVerdict & { projectName: string }> = [];
 	for (const { projectName, content } of resolved) {
 		const parsed = parseFrontmatterBlock(content);
-		const version =
-			typeof parsed?.fields.version === "string" ? parsed.fields.version : undefined;
+		const version = typeof parsed?.fields.version === "string" ? parsed.fields.version : undefined;
 		const sectionCount = countTopLevelSections(content);
 		const v = computeShapeVerdict({
 			publishedVersion: version,

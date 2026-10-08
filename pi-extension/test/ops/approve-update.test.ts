@@ -46,11 +46,14 @@ function allMessages(): string {
 
 // --- Valid 20-section PSRS fixture (mirrors test/core/psrs.test.ts) ---
 
-function frontmatter(version: string): string {
+function frontmatter(version: string, bump?: string): string {
+	// PHASE-D (N27) fixture: optional declared `bump:` — revision fixtures
+	// that pass the revision gate must declare one (fresh publishes exempt).
+	const bumpLine = bump ? `bump: ${bump}\n` : "";
 	return `---
 documentType: product-software-requirements
 version: ${version}
-status: draft
+${bumpLine}status: draft
 profile: core-psrs-v1
 profileVersion: 1.0.0
 mission: TestApp
@@ -61,10 +64,7 @@ projectName: TestApp
 `;
 }
 
-function sectionBodies(opts: {
-	frRows?: string;
-	changeLog?: string;
-}): Array<[string, string]> {
+function sectionBodies(opts: { frRows?: string; changeLog?: string }): Array<[string, string]> {
 	return [
 		["Objective", "One paragraph summary of the objective."],
 		["Problem", "What problem this solves."],
@@ -114,12 +114,8 @@ function sectionBodies(opts: {
 	];
 }
 
-function buildPsrs(opts: {
-	version: string;
-	frRows?: string;
-	changeLog?: string;
-}): string {
-	const parts: string[] = [frontmatter(opts.version)];
+function buildPsrs(opts: { version: string; frRows?: string; changeLog?: string; bump?: string }): string {
+	const parts: string[] = [frontmatter(opts.version, opts.bump)];
 	for (const [heading, body] of sectionBodies(opts)) {
 		parts.push(`## ${heading}\n${body}\n`);
 	}
@@ -195,7 +191,7 @@ afterEach(() => {
 describe("publish — revision gate", () => {
 	it("fresh publish still works when no published copy exists (regression)", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.ok(fs.existsSync(publishedPrdPath()), "published copy written");
 		assert.match(allMessages(), /Published to /);
@@ -204,19 +200,21 @@ describe("publish — revision gate", () => {
 
 	it("valid revision publishes and advances", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		assert.equal(loadState(tmpDir).currentStage, "drafted-prd");
 
 		// Re-run the PRD stage (update mode) with a clean revision.
 		reenterDraftingPrd(
 			buildPsrs({
 				version: "1.1.0",
+				// PHASE-D (N27) fixture: declared bump — the revision adds FR-02
+				// (backward-compatible addition → MINOR actual class).
+				bump: "minor",
 				frRows: FR_TABLE_TWO_ROWS,
-				changeLog:
-					"- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
+				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
 			}),
 		);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /Published revision of PRD/);
 		const published = fs.readFileSync(publishedPrdPath(), "utf8");
@@ -227,7 +225,7 @@ describe("publish — revision gate", () => {
 
 	it("blocks a revision that drops an FR row (deprecate, don't delete)", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		const before = fs.readFileSync(publishedPrdPath(), "utf8");
 
 		reenterDraftingPrd(
@@ -237,7 +235,7 @@ describe("publish — revision gate", () => {
 				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 replaced FR-01",
 			}),
 		);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /psrs-compare-id-removed/);
 		assert.match(allMessages(), /FR-01/);
@@ -247,18 +245,17 @@ describe("publish — revision gate", () => {
 
 	it("blocks a revision without a version bump", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		const before = fs.readFileSync(publishedPrdPath(), "utf8");
 
 		reenterDraftingPrd(
 			buildPsrs({
 				version: "1.0.0",
 				frRows: FR_TABLE_TWO_ROWS,
-				changeLog:
-					"- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
+				changeLog: "- 2026-09-12 velpari initial draft\n- 2026-09-13 added FR-02 edit expense",
 			}),
 		);
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /psrs-compare-version-not-bumped/);
 		assert.equal(fs.readFileSync(publishedPrdPath(), "utf8"), before);
@@ -267,11 +264,11 @@ describe("publish — revision gate", () => {
 
 	it("blocks a revision without a new Change Log entry", async () => {
 		enterDraftingPrd(buildPsrs({ version: "1.0.0" }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 		const before = fs.readFileSync(publishedPrdPath(), "utf8");
 
 		reenterDraftingPrd(buildPsrs({ version: "1.1.0", frRows: FR_TABLE_TWO_ROWS }));
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		assert.match(allMessages(), /psrs-compare-changelog-missing/);
 		assert.equal(fs.readFileSync(publishedPrdPath(), "utf8"), before);

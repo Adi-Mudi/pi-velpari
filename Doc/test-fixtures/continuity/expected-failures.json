@@ -1,0 +1,4 @@
+{
+	"$comment": "Known-defect ledger for the N25 continuity dry run (user ruling 2026-09-28). Driver behavior: a failure whose id is listed here is reported as KNOWN-FAIL (exit 0); an unlisted failure fails the run (exit 1); a listed id that does NOT reproduce fails the run with STALE LEDGER (exit 1) so the entry gets removed when the defect is fixed.",
+	"ledger": []
+}

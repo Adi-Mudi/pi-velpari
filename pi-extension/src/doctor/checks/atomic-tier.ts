@@ -14,8 +14,9 @@
  * verifier stage). This module is now a thin per-stage wrapper kept for
  * its callers (`stages/atomic-function/reviewer.ts`,
  * `test/doctor/check-atomic-tier.test.ts`). The atomic-function spec
- * carries `missingVerdict: "always-error"` — the legacy policy this
- * module has always had (basic tier + missing verdict → error).
+ * carries `missingVerdict: "tier-aware"` as of N24-17 — the shipped
+ * default is the basic tier, which skips the reviewer, so a missing
+ * verdict reports `info` rather than `error`.
  *
  * The doctor remains the publish gate; it just no longer re-derives the
  * rules. Single source of truth = reviewer verdict.
@@ -35,9 +36,7 @@ import type { DiagnosticSection } from "../_types.js";
 /** Re-exported so existing callers keep one import site for the contract. */
 export type { ReviewerIssue, ReviewerVerdict };
 
-const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find(
-	(s) => s.stageKey === "atomic-function",
-)!;
+const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find((s) => s.stageKey === "atomic-function")!;
 
 /**
  * Load the reviewer verdict JSON for the latest atomic-function run and
@@ -47,14 +46,12 @@ const ATOMIC_FUNCTION_SPEC = REVIEWER_STAGE_SPECS.find(
  * Errors (returned as `error` DiagnosticItems) block publish; warnings are
  * advisory (v1.2.1 policy).
  *
- * Returns a clear `error` when the verdict file is missing — the gate
- * must never silently pass through a stage that never ran the reviewer
- * (spec policy `missingVerdict: "always-error"`).
+ * Returns a clear `error` when the verdict file is missing AND the tier
+ * gate expected the reviewer to run; when the tier/overlay gate skipped
+ * the reviewer it reports `info` instead (spec policy
+ * `missingVerdict: "tier-aware"`).
  */
-export function loadReviewerVerdict(
-	cwd: string,
-	profile: AtomicProfile,
-): DiagnosticSection {
+export function loadReviewerVerdict(cwd: string, profile: AtomicProfile): DiagnosticSection {
 	const tierContext = `tier ${profile.tier} / class ${profile.safetyClass} / SIL ${profile.sil}`;
 	return loadReviewerVerdictForStage(cwd, ATOMIC_FUNCTION_SPEC, tierContext, profile);
 }

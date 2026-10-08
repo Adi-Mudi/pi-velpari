@@ -27,11 +27,15 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../io/atomic-write.js";
-import { loadFilesConfig } from "./config.js";
-import { PATHS } from "./constants.js";
+import { openStoreDb } from "../io/db.js";
+import { getHeadRevision, recordBaseline, type ArtifactKind } from "../io/store.js";
+import { loadFilesConfig, markdownWritesEnabled } from "./config.js";
+import { PATHS, type Stage } from "./constants.js";
 import { hashFileContent, hashFileContentNormalized } from "./fingerprints.js";
 import {
 	GROUPED_CATEGORIES,
+	buildStoreDbPath,
+	buildStoreYamlPath,
 	resolveBrainstormArtifact,
 	resolveDocArtifact,
 	resolveDocArtifactAll,
@@ -148,6 +152,64 @@ function artifactKeyForKind(kind: string): string {
 	return kind;
 }
 
+/**
+ * Declared-input artifact (any casing) → store kind. L0-local mirror of
+ * `core/upstream.ts:ARTIFACT_TO_KIND` — kept self-contained so freshness
+ * does not import upstream (which type-imports this module) or L1 `ops/`;
+ * `test/core/freshness.test.ts` pins the two tables together.
+ */
+const ARTIFACT_TO_STORE_KIND: Record<string, string> = {
+	prd: "prd",
+	rtm: "rtm",
+	"feasibility-study": "feasibility",
+	design: "design",
+	wireframe: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	"test-plan": "testplan",
+	"test-cases": "testplan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/**
+ * Store kind → the exported-YAML label `buildStoreYamlPath` writes as
+ * `<label>_<project>.yaml`. L0-local mirror of
+ * `ops/backfill.ts:KIND_YAML_LABELS` (layer 0 must not import layer 1);
+ * pinned against the real table by `test/core/freshness.test.ts`.
+ */
+const STORE_KIND_TO_YAML_LABEL: Record<string, string> = {
+	prd: "PRD",
+	rtm: "RTM",
+	feasibility: "feasibility-study",
+	design: "design",
+	"atomic-functions": "atomic-functions",
+	pseudocode: "pseudocode",
+	testplan: "test-plan",
+	"development-order": "development-order",
+	"final-design": "final-design",
+};
+
+/**
+ * Resolve the exported-YAML label for one declared input — artifact →
+ * kind → label (Amendment A2). Aliases sharing a kind share a label:
+ * `test-cases` and `test-plan` are both kind `testplan` → `test-plan`,
+ * so `test-cases_<project>.yaml` (a label no publish ever writes) is
+ * never asked for. BOTH `resolveDeclaredInputs` (gate + publish stamp)
+ * and `resolveInputPath` (stale check + `/velpari-reconfirm`) go through
+ * this ONE helper so they cannot drift apart on a path. `prd`/`rtm` keep
+ * their uppercase `PRD_`/`RTM_` casing; unknown artifacts fall back to
+ * `artifactKeyForKind` (legacy passthrough).
+ * @param artifact - Declared artifact key (`PRD`, `test-cases`) or the
+ * lowercase input-id kind (`prd`, `test-cases`).
+ * @returns The YAML sidecar label for `buildStoreYamlPath`.
+ */
+export function storeYamlLabel(artifact: string): string {
+	const kind = ARTIFACT_TO_STORE_KIND[artifact.toLowerCase()];
+	if (kind !== undefined) return STORE_KIND_TO_YAML_LABEL[kind] ?? artifact;
+	return artifactKeyForKind(artifact.toLowerCase());
+}
+
 /** Split `<kind>:<id>`; returns null when the shape is wrong. */
 function parseInputId(inputId: string): { kind: string; id: string } | null {
 	const idx = inputId.indexOf(":");
@@ -164,10 +226,7 @@ function parseInputId(inputId: string): { kind: string; id: string } | null {
  * entry exists (legacy publishes before the manifest, or a stamped
  * publish whose manifest write failed).
  */
-function resolveBrainstormInput(
-	cwd: string,
-	topicSlug: string,
-): { path: string; layout: "grouped" | "legacy" } | null {
+function resolveBrainstormInput(cwd: string, topicSlug: string): { path: string; layout: "grouped" | "legacy" } | null {
 	const entry = loadFreshnessManifest(cwd).artifacts[manifestKey("brainstorm", topicSlug)];
 	if (entry) {
 		const abs = join(cwd, entry.path);
@@ -244,9 +303,7 @@ export function resolveDeclaredInputs(
 	const out: ResolvedInput[] = [];
 	for (const input of inputs) {
 		if (input.kind === "brainstorm") {
-			const resolved = deps.topicSlug
-				? resolveBrainstormInput(cwd, deps.topicSlug)
-				: null;
+			const resolved = deps.topicSlug ? resolveBrainstormInput(cwd, deps.topicSlug) : null;
 			out.push({
 				id: manifestKey("brainstorm", deps.topicSlug),
 				label: input.label,
@@ -257,7 +314,23 @@ export function resolveDeclaredInputs(
 			continue;
 		}
 		if (input.kind === "doc" && input.artifact) {
-			const resolved = resolveDocArtifact(input.artifact, deps.projectName, cwd);
+			// N24-13 / Phase 11: DB-only publish (markdownWrites OFF, the
+			// shipped default) writes store rows + the exported YAML, not
+			// Doc/*.md. Resolve the SAME bytes resolveInputPath hashes —
+			// store YAML first while markdown writes are off, Doc markdown as
+			// the legacy / flag-ON fallback — so the gate, the publish-time
+			// stamp, and the stale check all agree on one source.
+			let markdownWrites = false;
+			try {
+				markdownWrites = markdownWritesEnabled(cwd);
+			} catch {
+				/* corrupt files.json → default OFF */
+			}
+			let resolved = resolveDocArtifact(input.artifact, deps.projectName, cwd);
+			if (!markdownWrites) {
+				const yamlPath = buildStoreYamlPath(deps.projectName, storeYamlLabel(input.artifact), cwd);
+				if (existsSync(yamlPath)) resolved = { path: yamlPath, layout: "grouped" };
+			}
 			out.push({
 				id: manifestKey(input.artifact, deps.projectName),
 				label: input.label,
@@ -271,9 +344,7 @@ export function resolveDeclaredInputs(
 }
 
 /** Result of hashing a stage's declared inputs. */
-type InputHashResult =
-	| { ok: true; hashes: Record<FreshnessInputId, string> }
-	| { ok: false; missing: string[] };
+type InputHashResult = { ok: true; hashes: Record<FreshnessInputId, string> } | { ok: false; missing: string[] };
 
 /**
  * Hash every found input. Optional inputs that are missing are skipped
@@ -315,7 +386,14 @@ export function computeBrainstormInputHashes(
 	cwd: string,
 	hashFn: (absolutePath: string) => string | null = hashFileContent,
 ): Record<FreshnessInputId, string> {
-	const config = loadFilesConfig(cwd);
+	// Phase C render hardening: corrupt files.json → no declared inputs
+	// (freshness reports `input-missing`/no-stamp as designed).
+	let config: Partial<ReturnType<typeof loadFilesConfig>>;
+	try {
+		config = loadFilesConfig(cwd);
+	} catch {
+		config = {};
+	}
 	const hashes: Record<FreshnessInputId, string> = {};
 	for (const doc of config.inputDocuments ?? []) {
 		const hash = hashFn(join(cwd, doc));
@@ -345,6 +423,28 @@ export function resolveInputPath(cwd: string, inputId: FreshnessInputId): string
 		// root-relative path.
 		const p = join(cwd, parsed.id);
 		return existsSync(p) ? p : null;
+	}
+	// Phase 11 (Design 10 — the freshness chain survives retirement):
+	// DB-era inputs hash the kind's EXPORTED YAML bytes — rewritten +
+	// fingerprinted at every publish — so `input-changed` keeps firing
+	// after the markdown writes retire (Q3, flag DEFAULT OFF). The input
+	// id's kind is lowercase (`prd`, `rtm`) while the exported YAML keeps
+	// the Doc artifact key's casing (`PRD_<proj>.yaml`/`RTM_<proj>.yaml`),
+	// so the path goes through `storeYamlLabel` (artifact → kind → label —
+	// Amendment A2: `test-cases` resolves to the `test-plan_<proj>.yaml`
+	// label the publish chain writes). File resolution remains for
+	// legacy / flag-ON projects and as the fallback when no store YAML
+	// exists.
+	// Phase C: corrupt files.json → markdown writes are OFF (the default).
+	let markdownWrites = false;
+	try {
+		markdownWrites = markdownWritesEnabled(cwd);
+	} catch {
+		/* Config section reports UNREADABLE */
+	}
+	if (!markdownWrites) {
+		const yamlPath = buildStoreYamlPath(parsed.id, storeYamlLabel(parsed.kind), cwd);
+		if (existsSync(yamlPath)) return yamlPath;
 	}
 	return resolveDocArtifact(artifactKeyForKind(parsed.kind), parsed.id, cwd)?.path ?? null;
 }
@@ -496,4 +596,80 @@ export function enumeratePublishedArtifacts(cwd: string): EnumeratedArtifact[] {
 		return ia < ib ? -1 : ia > ib ? 1 : 0;
 	});
 	return out;
+}
+
+// ---------------------------------------------------------------------------
+// Baselines on downstream adoption (F7, Phase 1 2026-09-27). A starting
+// stage adopts the current head revision of every upstream store kind —
+// first-class, queryable bookkeeping (the npm-lockfile / Terraform-pin
+// model). Best-effort: never blocks a stage start.
+// ---------------------------------------------------------------------------
+
+/**
+ * Upstream store kinds each downstream stage adopts at start (F7). A stage
+ * reads ALL prior approved artifacts, so the baseline covers every upstream
+ * kind published before it. Brainstorm has no store upstream (notes stay
+ * file-based) — no entry. Keys are the Stage enum values consumed by the
+ * stage-start funnel (stages/registry.ts:runStage).
+ */
+const UPSTREAM_KINDS_BY_STAGE: Record<string, readonly ArtifactKind[]> = {
+	"building-rtm": ["prd"],
+	"analyzing-feasibility": ["prd", "rtm"],
+	designing: ["prd", "rtm", "feasibility"],
+	"analyzing-atomic-functions": ["prd", "rtm", "feasibility", "design"],
+	"writing-pseudocode": ["prd", "rtm", "feasibility", "design", "atomic-functions"],
+	"planning-tests": ["prd", "rtm", "feasibility", "design", "atomic-functions", "pseudocode"],
+	"ordering-development": ["prd", "rtm", "feasibility", "design", "atomic-functions", "pseudocode", "testplan"],
+	"finalizing-design": [
+		"prd",
+		"rtm",
+		"feasibility",
+		"design",
+		"atomic-functions",
+		"pseudocode",
+		"testplan",
+		"development-order",
+	],
+};
+
+/**
+ * Stamp baselines for one stage start (F7): for every upstream kind with a
+ * published head in the project store, upsert (kind, consumerStage) to that
+ * head revision. Missing store/kind/upstream = silent no-op (getHeadRevision
+ * returns null); any other error is RETURNED as a message, never thrown —
+ * stage start must not block on bookkeeping.
+ *
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - files.json projectName (store DB selector).
+ * @param {string} runId - Owning run (head pointers live on the run's row).
+ * @param {Stage} consumerStage - The stage enum that is starting.
+ * @returns {string | null} Error message when stamping failed, null on success/no-op.
+ */
+export function recordStageBaselines(
+	cwd: string,
+	projectName: string,
+	runId: string,
+	consumerStage: Stage,
+): string | null {
+	const upstream = UPSTREAM_KINDS_BY_STAGE[consumerStage];
+	if (!upstream || upstream.length === 0) return null;
+	let db: ReturnType<typeof openStoreDb> | null = null;
+	try {
+		db = openStoreDb(buildStoreDbPath(projectName, cwd));
+		for (const kind of upstream) {
+			const head = getHeadRevision(db, runId, kind);
+			if (head) recordBaseline(db, kind, consumerStage, head.revisionId);
+		}
+		return null;
+	} catch (err) {
+		return err instanceof Error ? err.message : String(err);
+	} finally {
+		if (db) {
+			try {
+				db.close();
+			} catch {
+				// best-effort close
+			}
+		}
+	}
 }

@@ -57,7 +57,18 @@ const PSRS = [
 const RTM_JSON = JSON.stringify({
 	project: "TestApp",
 	version: "1.0.0",
-	rows: [{ id: "FR-01", title: "x", phase: 1, design: "", implementation: "", tests: [], status: "proposed", coverage: "covered" }],
+	rows: [
+		{
+			id: "FR-01",
+			title: "x",
+			phase: 1,
+			design: "",
+			implementation: "",
+			tests: [],
+			status: "proposed",
+			coverage: "covered",
+		},
+	],
 });
 
 /**
@@ -136,8 +147,8 @@ function designBody(version: string, sunset: string | null, status: string | nul
 		"### 14.1 System Context (C4 Level 1)",
 		"```mermaid",
 		"C4Context",
-		"  Person(user, \"End user\")",
-		"  System(system, \"alpha\")",
+		'  Person(user, "End user")',
+		'  System(system, "alpha")',
 		"```",
 		"### 14.2 Container view (C4 Level 2)",
 		"```mermaid",
@@ -187,9 +198,20 @@ function setupCwd(designContent: string, sunset: string | null): void {
 	fs.mkdirSync(path.join(tmpDir, ".pi", "velpari"), { recursive: true });
 	fs.writeFileSync(
 		path.join(tmpDir, ".pi", "velpari", "files.json"),
-		JSON.stringify({ version: 4, projectName: "TestApp", framework: { language: "typescript" }, codePaths: ["src"], testPaths: ["test"], docPaths: ["Doc"], excludedPaths: ["node_modules"] }),
+		JSON.stringify({
+			version: 4,
+			projectName: "TestApp",
+			framework: { language: "typescript" },
+			codePaths: ["src"],
+			testPaths: ["test"],
+			docPaths: ["Doc"],
+			excludedPaths: ["node_modules"],
+		}),
 	);
-	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "standards-profile.json"), JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }));
+	fs.writeFileSync(
+		path.join(tmpDir, ".pi", "velpari", "standards-profile.json"),
+		JSON.stringify({ id: "none", version: "1.0.0", selectedAt: "x", selectedBy: "x" }),
+	);
 	fs.writeFileSync(path.join(tmpDir, ".pi", "velpari", "agents.json"), JSON.stringify({ version: 1, agents: {} }));
 	fs.mkdirSync(path.join(tmpDir, "Doc", "requirements"), { recursive: true });
 	fs.writeFileSync(path.join(tmpDir, "Doc", "requirements", "PRD_TestApp.md"), PSRS);
@@ -238,7 +260,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 	it("auto-archives when sunset is in the past", async () => {
 		// Past date
 		setupCwd(designBody("1.2.3", "2024-01-01", "published"), "2024-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		assert.ok(fs.existsSync(published), "design was published");
@@ -259,7 +281,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 		// Already deprecated in the working copy; the archive action
 		// should not double-archive (idempotent).
 		setupCwd(designBody("2.0.0", "2024-01-01", "deprecated"), "2024-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		const body = fs.readFileSync(published, "utf8");
@@ -272,7 +294,7 @@ describe("v1.3.0+ sunset auto-archive", () => {
 	it("does not archive when sunset is in the future", async () => {
 		// Future date
 		setupCwd(designBody("1.2.3", "2099-01-01", "published"), "2099-01-01");
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const published = path.join(tmpDir, "Doc", "design", "design_TestApp.md");
 		const body = fs.readFileSync(published, "utf8");

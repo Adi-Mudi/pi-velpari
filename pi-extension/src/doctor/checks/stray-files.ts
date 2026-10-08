@@ -44,9 +44,7 @@ export function checkStrayFiles(cwd: string): DiagnosticSection {
 		items.push({
 			status: "warning",
 			message: `Stray tmp_* helper file: ${rel}`,
-			details: [
-				"Leftover from a sub-agent heredoc workaround. Review and delete.",
-			],
+			details: ["Leftover from a sub-agent heredoc workaround. Review and delete."],
 		});
 	}
 	items.push({
@@ -70,9 +68,7 @@ function walk(dir: string, rel: string, depth: number, out: string[]): void {
 		if (entry.isDirectory()) {
 			walk(join(dir, entry.name), entryRel, depth + 1, out);
 		} else if (STRAY_PATTERN.test(entry.name)) {
-			const full = rel
-				? join(".IDE_Plans", "velpari", "runs", entryRel).replace(/\\/g, "/")
-				: entry.name;
+			const full = rel ? join(".IDE_Plans", "velpari", "runs", entryRel).replace(/\\/g, "/") : entry.name;
 			out.push(full);
 		}
 	}

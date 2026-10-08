@@ -29,6 +29,34 @@ export interface FilesConfig {
 	/** Optional atomic-function tier profile (ISO/IEC 29110 + IEC 61508/IEC 62304).
 	 *  When absent, deriveAtomicProfile() returns the defaults (basic / A / none). */
 	atomic?: AtomicProfile;
+	/** Phase 11 (Q3/RES-3, §15.6): velpari extension block. Absent = defaults
+	 *  (the validator is shape-based, so unknown sibling keys still pass). */
+	velpari?: {
+		/** Write the published markdown alongside the store DB (the
+		 *  pre-Phase-11 write-alongside behavior). DEFAULT OFF — publish
+		 *  writes DB ONLY (rows + YAML + git commit; nothing to Doc/).
+		 *  Flip ON to restore write-alongside — the rollback hatch. */
+		markdownWrites?: boolean;
+		/** Retention (N7/N10, Foundation 2026-09-27). revisions: "all"
+		 *  (default, keep forever) or keep-last-N per kind. backups: FIFO
+		 *  count for Backup/velpari/<project>/, default 10. */
+		retention?: {
+			revisions?: number | "all";
+			backups?: number;
+		};
+		/** Phase 7 / N16 — DEPRECATED (N32 supersedes): lane cap for
+		 *  development-order execution lanes. Absent = 4. Read only as a
+		 *  fallback after `maxWorktrees`. Prefer `maxWorktrees`. */
+		maxLanes?: number;
+		/** N32 — parallel worktree cap. Absent = 3. */
+		maxWorktrees?: number;
+	};
+	/** N33 — where the full test suite runs. Absent = "remote". */
+	testing?: {
+		runner?: "remote" | "local";
+	};
+	/** N26 — project shape (wireframe pairing in Phase D). Absent = "backend". */
+	projectType?: "backend" | "full-app";
 }
 
 /** Senai-parity default exclusions for discovery and scans. */
@@ -62,12 +90,91 @@ function defaultConfig(): FilesConfig {
 	return {
 		...DEFAULT_CONFIG,
 		framework: {},
+		velpari: { markdownWrites: false },
 		codePaths: [],
 		inputDocuments: [],
 		testPaths: [],
 		outputPaths: {},
 		excludedPaths: [...DEFAULT_EXCLUDED_PATHS],
 	};
+}
+
+/**
+ * Phase 11 (Q3/RES-3): is write-alongside markdown publishing enabled?
+ * DEFAULT OFF — publish writes DB only. Opt IN via files.json
+ * `"velpari": {"markdownWrites": true}` (absent key = OFF); the
+ * approve-level `skipDbPublish` test escape hatch also implies ON (the
+ * documented markdown-only test mode). Single accessor so every consumer
+ * shares the default-OFF semantics.
+ */
+export function markdownWritesEnabled(cwd: string = process.cwd(), opts?: { skipDbPublish?: boolean }): boolean {
+	if (opts?.skipDbPublish === true) return true;
+	return loadFilesConfig(cwd).velpari?.markdownWrites === true;
+}
+
+/** Resolved retention settings (defaults + files.json overrides). */
+export interface RetentionConfig {
+	/** Keep-forever default ("all") or keep-last-N revisions per kind (N7). */
+	revisions: number | "all";
+	/** FIFO backup count under Backup/velpari/<project>/ (N10). Default 10. */
+	backups: number;
+}
+
+/**
+ * N7/N10 (Foundation 2026-09-27): read the retention block with defaults
+ * applied. Throws on a malformed block (a positive-integer or "all"
+ * revisions value and a positive-integer backups value are the only legal
+ * shapes) — a typo'd retention config must surface, not silently default.
+ */
+export function retentionConfig(cwd: string = process.cwd()): RetentionConfig {
+	const raw = loadFilesConfig(cwd).velpari?.retention;
+	if (raw === undefined) return { revisions: "all", backups: 10 };
+	const revisions = raw.revisions ?? "all";
+	const backups = raw.backups ?? 10;
+	const revisionsOk =
+		revisions === "all" || (typeof revisions === "number" && Number.isInteger(revisions) && revisions > 0);
+	const backupsOk = typeof backups === "number" && Number.isInteger(backups) && backups > 0;
+	if (!revisionsOk || !backupsOk) {
+		throw new Error(
+			`files.json velpari.retention is invalid: revisions must be "all" or a positive integer, ` +
+				`backups a positive integer (got revisions=${JSON.stringify(raw.revisions)}, backups=${JSON.stringify(raw.backups)}).`,
+		);
+	}
+	return { revisions, backups };
+}
+
+/** Resolved lane-cap setting for Stage 9 execution lanes (Phase 7 / N16). */
+export interface DevLaneConfig {
+	/** Maximum number of parallel worktree lanes. Resolved from `maxWorktrees` → legacy `maxLanes`. Default 4. */
+	maxLanes: number;
+}
+
+/**
+ * N32 fold-in (Phase 4): the lane cap resolves `velpari.maxWorktrees` first
+ * (the confirmed N32 wording — it supersedes Phase-7 `maxLanes`), then the
+ * legacy `velpari.maxLanes` so existing configs keep working, then 4. Same
+ * throw-on-invalid idiom as `retentionConfig` — a typo'd cap must surface,
+ * not silently default (0, negative, or non-integer values are rejected;
+ * absent keys = default 4).
+ *
+ * NOTE: `maxWorktreesConfig` keeps default 3 — that is the *worktree* cap
+ * from N32 ("maximum 3 parallel worktrees"). The *lane* cap default stays 4
+ * (handoff line 92: "default stays 4"). With neither key set the two
+ * defaults therefore differ (3 worktrees / 4 lanes); with either key set,
+ * both read the same value.
+ * @param {string} cwd - Project root holding files.json.
+ * @returns {DevLaneConfig} The resolved `{ maxLanes }`.
+ * @throws {Error} When the winning key is present but not a positive integer.
+ */
+export function devLaneConfig(cwd: string = process.cwd()): DevLaneConfig {
+	const vel = loadFilesConfig(cwd).velpari;
+	const raw = vel?.maxWorktrees ?? vel?.maxLanes;
+	const key = vel?.maxWorktrees !== undefined ? "maxWorktrees" : "maxLanes";
+	if (raw === undefined) return { maxLanes: 4 };
+	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+		throw new Error(`files.json velpari.${key} is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`);
+	}
+	return { maxLanes: raw };
 }
 
 /** Pre-v4 shape, kept for migration. */
@@ -78,6 +185,58 @@ interface FilesConfigV3 {
 	inputDocuments: string[];
 	outputPaths: Record<string, string>;
 	excludedPaths: string[];
+}
+
+/**
+ * N32: parallel-worktree cap (rollout-wide config key, G8). Positive integer
+ * or throw — a typo'd cap must surface, not silently default (devLaneConfig
+ * idiom).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {number} The resolved cap (absent key = 3).
+ * @throws {Error} When `velpari.maxWorktrees` is present but not a positive integer.
+ */
+export function maxWorktreesConfig(cwd: string = process.cwd()): number {
+	const raw = loadFilesConfig(cwd).velpari?.maxWorktrees;
+	if (raw === undefined) return 3;
+	if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+		throw new Error(
+			`files.json velpari.maxWorktrees is invalid: expected a positive integer (got ${JSON.stringify(raw)}).`,
+		);
+	}
+	return raw;
+}
+
+/**
+ * N33: where the full test suite runs (rollout-wide config key, G8).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {"remote" | "local"} The resolved runner (absent key = "remote").
+ * @throws {Error} When `testing.runner` is present but not "remote"/"local".
+ */
+export function testingRunnerConfig(cwd: string = process.cwd()): "remote" | "local" {
+	const raw = loadFilesConfig(cwd).testing?.runner;
+	if (raw === undefined) return "remote";
+	if (raw !== "remote" && raw !== "local") {
+		throw new Error(`files.json testing.runner is invalid: expected "remote" or "local" (got ${JSON.stringify(raw)}).`);
+	}
+	return raw;
+}
+
+/**
+ * N26: project shape (rollout-wide config key, G8; wireframe pairing in
+ * Phase D).
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {"backend" | "full-app"} The resolved shape (absent key = "backend").
+ * @throws {Error} When `projectType` is present but not "backend"/"full-app".
+ */
+export function projectTypeConfig(cwd: string = process.cwd()): "backend" | "full-app" {
+	const raw = loadFilesConfig(cwd).projectType;
+	if (raw === undefined) return "backend";
+	if (raw !== "backend" && raw !== "full-app") {
+		throw new Error(
+			`files.json projectType is invalid: expected "backend" or "full-app" (got ${JSON.stringify(raw)}).`,
+		);
+	}
+	return raw;
 }
 
 /**
@@ -94,31 +253,56 @@ function migrateV3(v3: FilesConfigV3): FilesConfig {
 		testPaths: [],
 		outputPaths: v3.outputPaths ?? {},
 		excludedPaths:
-			Array.isArray(v3.excludedPaths) && v3.excludedPaths.length > 0
-				? v3.excludedPaths
-				: [...DEFAULT_EXCLUDED_PATHS],
+			Array.isArray(v3.excludedPaths) && v3.excludedPaths.length > 0 ? v3.excludedPaths : [...DEFAULT_EXCLUDED_PATHS],
 	};
 }
 
 /**
+ * N35 marker line written into files.json on every save (senai convention:
+ * every config file carries a human-readable `_comment`). Documentation,
+ * not data — the loader strips it before parsing/validating.
+ */
+export const FILES_CONFIG_COMMENT =
+	"Velpari config: project paths, framework, outputs, and velpari settings. Managed by /velpari-configure-inputs.";
+
+/**
  * Load files.json from disk. Returns defaults if missing. Migrates v3
- * files to v4 on load.
+ * files to v4 on load. N35: strips the `_comment` marker; a malformed file
+ * throws `Invalid files.json at <path>: …`; `version > 4` throws the
+ * unsupported-version error naming the recreate command.
+ * @param {string} [cwd] - Project root holding files.json.
+ * @returns {FilesConfig} The parsed config with defaults merged in.
+ * @throws {Error} On malformed JSON or an unsupported (future) version.
  */
 export function loadFilesConfig(cwd: string = process.cwd()): FilesConfig {
 	const filePath = join(cwd, PATHS.CONFIG_DIR, "files.json");
 	if (!existsSync(filePath)) return defaultConfig();
 	const raw = readFileSync(filePath, "utf8");
-	const parsed = JSON.parse(raw) as Partial<FilesConfig> | FilesConfigV3;
+	let parsed: Partial<FilesConfig> | FilesConfigV3;
+	try {
+		parsed = JSON.parse(raw) as Partial<FilesConfig> | FilesConfigV3;
+	} catch (err) {
+		throw new Error(`Invalid files.json at ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+	}
+	delete (parsed as Record<string, unknown>)._comment; // N35: marker is documentation, not data
+	if (typeof parsed.version === "number" && parsed.version > 4) {
+		throw new Error(
+			`Unsupported files.json version: ${parsed.version}. Expected 4. ` + `Run /velpari-configure-inputs to recreate.`,
+		);
+	}
 	const migrated = parsed.version === 3 ? migrateV3(parsed as FilesConfigV3) : parsed;
 	return { ...defaultConfig(), ...migrated, version: 4 };
 }
 
 /**
- * Save files.json.
+ * Save files.json (N35: the `_comment` marker leads the object; the loader
+ * strips it, so round-trips never duplicate it).
+ * @param {FilesConfig} config - The config to persist.
+ * @param {string} [cwd] - Project root holding files.json.
  */
 export function saveFilesConfig(config: FilesConfig, cwd: string = process.cwd()): void {
 	const filePath = join(cwd, PATHS.CONFIG_DIR, "files.json");
-	atomicWriteJson(filePath, config);
+	atomicWriteJson(filePath, { _comment: FILES_CONFIG_COMMENT, ...config });
 }
 
 /**

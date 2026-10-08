@@ -97,12 +97,7 @@ export async function handleConfigureRequirements(
 	}
 	answers.novelty = novelty;
 	answers.platforms = await askPlatforms(ctx);
-	answers.sensitiveData = await askYesNo(
-		ctx,
-		"Sensitive data?",
-		"Does it handle sensitive or regulated data?",
-		false,
-	);
+	answers.sensitiveData = await askYesNo(ctx, "Sensitive data?", "Does it handle sensitive or regulated data?", false);
 	answers.externalSystems = await askYesNo(
 		ctx,
 		"External systems?",

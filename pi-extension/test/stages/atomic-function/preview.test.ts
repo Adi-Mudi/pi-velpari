@@ -12,10 +12,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 
-import {
-	formatPreviewQuestion,
-	PREVIEW_OPTIONS,
-} from "../../../src/stages/atomic-function/preview.js";
+import { formatPreviewQuestion, PREVIEW_OPTIONS } from "../../../src/stages/atomic-function/preview.js";
 
 const deps = {
 	cwd: "/tmp/proj",

@@ -155,9 +155,7 @@ describe("velpari_brainstorm_session tool", () => {
 			question: { id: "Q1", text: "Scope?", state: "draft", suggestedAnswer: "MVP only" },
 		});
 		assert.equal(draft.isError, undefined);
-		const questions = (draft.details as Record<string, unknown>).questions as Array<
-			Record<string, unknown>
-		>;
+		const questions = (draft.details as Record<string, unknown>).questions as Array<Record<string, unknown>>;
 		assert.equal(questions.length, 1);
 		assert.equal(questions[0]!.state, "draft");
 
@@ -412,11 +410,7 @@ describe("velpari_brainstorm_session — discard (brainstorm-anytime, D7)", () =
 		assert.equal(loaded.pausedStage, undefined);
 		assert.equal(loaded.understandingConfirmed, undefined);
 		assert.equal(loaded.brainstormQuestions, undefined);
-		assert.equal(
-			fs.existsSync(path.join(tmpDir, "Doc", "brainstorm")),
-			false,
-			"discard must not publish",
-		);
+		assert.equal(fs.existsSync(path.join(tmpDir, "Doc", "brainstorm")), false, "discard must not publish");
 	});
 
 	it("discard on a first run (no pausedStage): clears the session back to none", async () => {

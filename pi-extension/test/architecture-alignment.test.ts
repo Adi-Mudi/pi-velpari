@@ -62,11 +62,7 @@ function listJsFiles(dir: string): string[] {
 /** Extract relative import specifiers from a compiled JS file. */
 function importSpecifiers(source: string): string[] {
 	const out: string[] = [];
-	const patterns = [
-		/from\s+["']([^"']+)["']/g,
-		/import\s*\(\s*["']([^"']+)["']\s*\)/g,
-		/import\s+["']([^"']+)["']/g,
-	];
+	const patterns = [/from\s+["']([^"']+)["']/g, /import\s*\(\s*["']([^"']+)["']\s*\)/g, /import\s+["']([^"']+)["']/g];
 	for (const re of patterns) {
 		for (const match of source.matchAll(re)) {
 			const spec = match[1];
@@ -106,10 +102,6 @@ describe("architecture-alignment", () => {
 				}
 			}
 		}
-		assert.deepStrictEqual(
-			violations,
-			[],
-			`layer rule violations:\n${violations.join("\n")}`,
-		);
+		assert.deepStrictEqual(violations, [], `layer rule violations:\n${violations.join("\n")}`);
 	});
 });

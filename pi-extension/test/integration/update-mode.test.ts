@@ -8,12 +8,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	renderADRSection,
-	supersedeADR,
-	parseADRSection,
-	type ADR,
-} from "../../src/core/adr.js";
+import { renderADRSection, supersedeADR, parseADRSection, type ADR } from "../../src/core/adr.js";
 
 function makeADR(overrides: Partial<ADR> = {}): ADR {
 	return {
@@ -67,11 +62,7 @@ describe("update mode — Phase 8 cross-cutting verification", () => {
 	});
 
 	it("re-rendered ADR section survives parseADRSection round-trip", () => {
-		const v2 = supersedeADR(
-			[makeADR({ id: "ADR-001" })],
-			"ADR-001",
-			makeADR({ id: "ADR-002", supersedes: "ADR-001" }),
-		);
+		const v2 = supersedeADR([makeADR({ id: "ADR-001" })], "ADR-001", makeADR({ id: "ADR-002", supersedes: "ADR-001" }));
 		const section = renderADRSection(v2);
 		// parseADRSection needs an ## heading to anchor on.
 		const wrapped = `# Title\n\n${section}\n\n## Next Section`;

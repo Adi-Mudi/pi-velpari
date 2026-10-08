@@ -40,8 +40,7 @@ export function gateArchSubCycle(state: RunState | null): ArchSubCycleGateError[
 	if (!sub.contextLoaded) {
 		errors.push({
 			code: "arch-sub-cycle.context-not-loaded",
-			message:
-				"Architecture sub-life cycle did not load the project context. Re-run /velpari-architecture-generator.",
+			message: "Architecture sub-life cycle did not load the project context. Re-run /velpari-architecture-generator.",
 		});
 	}
 	if (!sub.developerConfirmed) {

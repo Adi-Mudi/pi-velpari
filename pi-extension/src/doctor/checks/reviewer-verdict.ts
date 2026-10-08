@@ -63,8 +63,11 @@ export interface ReviewerVerdict {
  *   - `missingVerdict` — behavior when no verdict file exists:
  *     "tier-aware" (info when the tier + overlay gate skipped the
  *     reviewer, error when it should have run) or "always-error"
- *     (legacy atomic-function behavior — pinned by
- *     test/doctor/check-atomic-tier.test.ts).
+ *     (always an error regardless of tier). Both remain available as
+ *     policy vocabulary; every spec — atomic-function included — uses
+ *     "tier-aware" as of N24-17, because the shipped default is the
+ *     basic tier, which skips the reviewer, so no verdict file can
+ *     exist to be found.
  *   - `publishedArtifactKind` — Doc/ artifact kind used by the anytime
  *     doctor section for verdict-freshness comparison. */
 interface ReviewerStageSpec {
@@ -84,7 +87,7 @@ export const REVIEWER_STAGE_SPECS: readonly ReviewerStageSpec[] = [
 		verdictSubpath: "atomic-function/scouts/reviewer-report.json",
 		titlePrefix: "Atomic tier",
 		gateArtifacts: ["atomic-functions"],
-		missingVerdict: "always-error",
+		missingVerdict: "tier-aware",
 		publishedArtifactKind: "atomic-functions",
 	},
 	{
@@ -144,9 +147,10 @@ export function loadReviewerVerdictForStage(
 
 	const verdictPath = resolveStageVerdictPath(cwd, spec);
 	if (!verdictPath) {
-		// Legacy atomic-function policy ("always-error"): the gate must never
-		// silently pass through a stage that never ran the reviewer. Pinned by
-		// test/doctor/check-atomic-tier.test.ts (basic tier + missing → error).
+		// Retained policy vocabulary ("always-error"): the gate must never
+		// silently pass through a stage that never ran the reviewer. No spec
+		// opts into it as of N24-17 (all four are "tier-aware"), but it stays
+		// available for a future spec that wants an unconditional error.
 		if (spec.missingVerdict === "always-error") {
 			return {
 				title,
@@ -166,7 +170,13 @@ export function loadReviewerVerdictForStage(
 		// tier + overlay gate would have skipped the reviewer. If yes, emit
 		// an info (no error) so basic-tier projects don't break. If no,
 		// emit an error (the reviewer should have run).
-		const config = loadFilesConfig(cwd);
+		let config: Partial<ReturnType<typeof loadFilesConfig>>;
+		try {
+			config = loadFilesConfig(cwd);
+		} catch {
+			// Phase C: corrupt files.json → no overlay configured (Config reports it).
+			config = {};
+		}
 		const overlayRequiresReviewer = config.atomic?.overlayId
 			? overlayRequiresReviewerFor(cwd, config.atomic.overlayId)
 			: false;
@@ -247,9 +257,7 @@ export function loadReviewerVerdictForStage(
 		else if (issue.severity === "warning") warnings++;
 		else infos++;
 		const loc = issue.location ? ` [${issue.location}]` : "";
-		const sugg = issue.suggestion
-			? `\n    Fix: ${issue.suggestion}`
-			: "";
+		const sugg = issue.suggestion ? `\n    Fix: ${issue.suggestion}` : "";
 		items.push({
 			status: issue.severity,
 			message: `${issue.rule}${loc}: ${issue.message}${sugg}`,
@@ -290,6 +298,11 @@ function resolveStageVerdictPath(cwd: string, spec: ReviewerStageSpec): string |
 	return null;
 }
 
+/**
+ * Read a directory's entry names, sorted lexicographically (stable scans).
+ * @param {string} dir - Directory to list.
+ * @returns {string[]} Sorted entry names (throws when the dir is unreadable).
+ */
 function readdirSyncSorted(dir: string): string[] {
 	return readdirSync(dir).sort();
 }
@@ -385,12 +398,7 @@ export function checkVerifierVerdictsSection(cwd: string): DiagnosticSection {
 		const warnings = verdict.issues.filter((i) => i.severity === "warning").length;
 		const infos = verdict.issues.length - errors - warnings;
 		items.push({
-			status:
-				verdict.verdict === "block"
-					? "error"
-					: verdict.verdict === "needs-fix"
-						? "warning"
-						: "ok",
+			status: verdict.verdict === "block" ? "error" : verdict.verdict === "needs-fix" ? "warning" : "ok",
 			message:
 				`${spec.stageKey}: verdict ${verdict.verdict} (${verdict.timestamp}); ` +
 				`${errors} error(s), ${warnings} warning(s), ${infos} info. ` +

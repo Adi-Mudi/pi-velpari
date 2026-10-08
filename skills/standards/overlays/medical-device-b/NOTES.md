@@ -27,7 +27,7 @@ Class C overhead.
 | §5.5 Software unit implementation | Yes | (standard implementation, no overlay section) |
 | §5.6 Software integration & integration testing | Yes | Testplan §Integration Test Coverage |
 | §5.7 Software system testing | Yes | Testplan §System Test Coverage |
-| §5.8 Software release | Yes | (covered by `the publish tool`) |
+| §5.8 Software release | Yes | (covered by the `velpari_stage_publish` tool) |
 
 ## Risk management (ISO 14971:2019)
 

@@ -34,6 +34,7 @@ Write a JSON file to `<scoutReportPath>`:
         "moduleId": "M-3",
         "name": "database-schema",
         "dependsOn": [],
+        "laneHint": true,
         "rationale": "No dependencies; foundation for all other modules"
       }
     },
@@ -45,6 +46,7 @@ Write a JSON file to `<scoutReportPath>`:
         "moduleId": "M-1",
         "name": "auth-service",
         "dependsOn": ["M-3"],
+        "laneHint": false,
         "rationale": "Depends on database schema for users table"
       }
     }
@@ -54,11 +56,20 @@ Write a JSON file to `<scoutReportPath>`:
 }
 ```
 
+`laneHint` (optional, Phase 7) marks a ranked item as a concurrency
+candidate for the parent's execution-lane map. Older reports without the
+field stay valid.
+
 ## Heuristics
 
 - Topological sort: a module appears after all its dependencies.
 - Cycles are forbidden — flag any cycles found.
 - Ties (multiple modules with no dependencies) can be in any order.
+- **Concurrency (lane hints) — you own dependencies:** if two ranked items
+  have no dependency between them, they can be concurrent — record
+  `laneHint: true` on both. Never mark items concurrent when any dependency
+  path connects them; the parent's lane map and the publish-time verifier
+  rely on your `dependsOn` edges being exact.
 
 ## Hard rules
 

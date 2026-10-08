@@ -14,10 +14,7 @@ import * as path from "node:path";
 
 import { BASE_CORE_FIELDS, requiredFieldsFor, tableHeader } from "../../../src/stages/atomic-function/merge.js";
 
-const fixturePath = path.resolve(
-	process.cwd(),
-	"Doc/test-fixtures/atomic-functions_TestApp.md",
-);
+const fixturePath = path.resolve(process.cwd(), "Doc/test-fixtures/atomic-functions_TestApp.md");
 
 describe("sample atomic-functions artifact (basic tier)", () => {
 	const content = fs.readFileSync(fixturePath, "utf8");
@@ -34,10 +31,11 @@ describe("sample atomic-functions artifact (basic tier)", () => {
 
 	it("table header has all 14 columns (8 base-core + File Path + 5 basic-tier)", () => {
 		// Find the table header line (contains "AF ID | Name | ...")
-		const headerLine = content
-			.split("\n")
-			.find((l) => l.startsWith("| AF ID |"))!;
-		const columns = headerLine.split("|").map((c) => c.trim()).filter(Boolean);
+		const headerLine = content.split("\n").find((l) => l.startsWith("| AF ID |"))!;
+		const columns = headerLine
+			.split("|")
+			.map((c) => c.trim())
+			.filter(Boolean);
 		assert.equal(columns.length, 14, `expected 14 columns, got ${columns.length}: ${columns.join(", ")}`);
 		// The 9 base-core columns (8 + File Path) come first.
 		for (const required of [
@@ -54,13 +52,7 @@ describe("sample atomic-functions artifact (basic tier)", () => {
 			assert.ok(columns.includes(required), `missing base-core column ${required}`);
 		}
 		// 5 basic-tier cross-ref columns are present.
-		for (const required of [
-			"Called by FRs",
-			"Design ref",
-			"Extracted from",
-			"Satisfies FR",
-			"Feasibility ref",
-		]) {
+		for (const required of ["Called by FRs", "Design ref", "Extracted from", "Satisfies FR", "Feasibility ref"]) {
 			assert.ok(columns.includes(required), `missing basic-tier column ${required}`);
 		}
 	});
@@ -81,12 +73,11 @@ describe("sample atomic-functions artifact (basic tier)", () => {
 
 		// Every AF row has all 14 non-empty cells.
 		for (const row of rows) {
-			const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
-			assert.equal(
-				cells.length,
-				14,
-				`AF row has ${cells.length} cells, expected 14: ${row.slice(0, 80)}`,
-			);
+			const cells = row
+				.split("|")
+				.map((c) => c.trim())
+				.filter(Boolean);
+			assert.equal(cells.length, 14, `AF row has ${cells.length} cells, expected 14: ${row.slice(0, 80)}`);
 		}
 	});
 
@@ -96,7 +87,10 @@ describe("sample atomic-functions artifact (basic tier)", () => {
 		// columns plus "File Path" as a 9th base-core column that the schema math
 		// does not yet include (the skill markdown template adds it).
 		const header = tableHeader("basic");
-		const columns = header.split("|").map((c) => c.trim()).filter(Boolean);
+		const columns = header
+			.split("|")
+			.map((c) => c.trim())
+			.filter(Boolean);
 		assert.equal(columns.length, 13);
 	});
 

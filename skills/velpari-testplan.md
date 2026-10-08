@@ -26,9 +26,10 @@ without surprises. `/velpari-testplan-approve` remains as the manual fallback.
 ## Sequence
 
 ```
-pseudocode + atomic functions (concatenated into prompt by handler):
-  - Doc/pseudocode_<projectName>.md
-  - Doc/atomic-functions_<projectName>.md
+pseudocode + atomic functions (pre-loaded into the prompt's `## DB Input
+Slices` block from the project store — NEVER open Doc/ files):
+  - pseudocode slice (blocks with content)
+  - atomic-functions slice (AF catalog with tier/criticality)
         │
         ▼
 spawn 4 source subagents + 1 reviewer (gated) in parallel via subagent() tool:
@@ -205,8 +206,13 @@ are required strings; `traces` is MANDATORY on every record — a
 non-empty list of `FR-N` / `NFR-N` / `AF-N` ids the test verifies
 (Layer-2 ID coverage). Every Phase-1 (MVP) FR must be reachable through
 at least one TC. Update mode: never delete a test — append new ids at
-the next free number, bump the version, add a `changeLog` entry. The
-publish gate validates this schema and BLOCKS the publish on errors.
+the next free number, bump the version, add a `changeLog` entry, and
+declare the bump (N27): add `bump: major|minor|patch` (exact lowercase)
+to the working copy's frontmatter — `major` = ids removed/sections
+reorganized (incl. any deprecation), `minor` = backward-compatible
+additions, `patch` = wording only; the publish gate blocks a missing or
+under-declared bump (a first publish needs no bump) and validates this
+schema and BLOCKS the publish on errors.
 
 ### File 3: `<additionalWorkingCopy>` = `test-cases_<projectName>.md` — rendered preview
 
@@ -280,7 +286,7 @@ Revision rules:
 3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
    when anything is deprecated.
 4. **Change Log entry required in BOTH files.** The
-   `velpari_stage_publish` tool (which same gate chain as `/velpari-testplan-approve`) blocks publishing without a new Change Log entry.
+   `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-testplan-approve`) blocks publishing without a new Change Log entry.
 
 The 4 scouts still run fresh — never reuse old scout reports.
 
@@ -296,15 +302,48 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-testplan
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `planning-tests` via `createRun()`. The next state transition
-  (`planned-tests`) happens in the `velpari_stage_publish` tool (which
-  same gate chain as `/velpari-testplan-approve`). You only write the working
-  copy artifacts.
+  `planning-tests` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`planned-tests`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-testplan-approve`). You only write the working copy artifacts.
 - **Write BOTH files.** `<primaryWorkingCopy>` (test-plan) AND
   `<additionalWorkingCopy>` (test-cases). Both must exist before the
   preview gate.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact paths. Never paste the test plan content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after BOTH working copies exist and BEFORE
+you present the preview gate or call `velpari_stage_publish`, write the
+stage payload at `<workingCopyDir>/payload/testplan-payload.json` (the
+directory that holds the test-plan working copy, plus `payload/`). The
+publish gate validates it and writes the DB rows; a missing or invalid
+payload BLOCKS the publish (the gate error names the exact path +
+problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "planning-tests",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "pseudocode": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "testCase": [{ "id": "TC-1", "tcKind": "TC", "strategyRef": null }],
+    "tcTrace":  [{ "tcId": "TC-1", "targetKind": "fr", "targetId": "FR-1" }]
+  }
+}
+```
+
+`tcKind` ∈ TC | IT. `targetKind` ∈ fr | nfr | af. One `testplan` payload
+covers BOTH published files (test-plan + test-cases share one store kind).
+Every row must trace to the working copies (zero hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

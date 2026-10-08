@@ -28,11 +28,7 @@ import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 import { COMMAND_NAMES } from "../../src/commands/index.js";
@@ -59,9 +55,7 @@ describe("e2e/registration", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		assert.ok(
 			names.includes("velpari-doctor"),
 			`/velpari-doctor missing from registered commands: ${names.join(", ")}`,
@@ -72,9 +66,7 @@ describe("e2e/registration", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		assert.ok(
 			names.includes("velpari-show-prd"),
 			`/velpari-show-prd missing from registered commands: ${names.join(", ")}`,
@@ -85,14 +77,8 @@ describe("e2e/registration", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		const missing = COMMAND_NAMES.filter((n) => !names.includes(n));
-		assert.deepStrictEqual(
-			missing,
-			[],
-			`commands missing from get_commands: ${missing.join(", ")}`,
-		);
+		assert.deepStrictEqual(missing, [], `commands missing from get_commands: ${missing.join(", ")}`);
 	});
 });

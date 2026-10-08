@@ -33,16 +33,7 @@ export const REQUIREMENTS_PROFILE_VERSION = "1.1.0" as const;
 // ---------------------------------------------------------------------------
 
 /** Supported application types. */
-export const APPLICATION_TYPES = [
-	"web",
-	"mobile",
-	"desktop",
-	"api",
-	"ai",
-	"iot",
-	"cloud-platform",
-	"other",
-] as const;
+export const APPLICATION_TYPES = ["web", "mobile", "desktop", "api", "ai", "iot", "cloud-platform", "other"] as const;
 export type ApplicationType = (typeof APPLICATION_TYPES)[number];
 
 /** Supported domain areas. */
@@ -60,13 +51,7 @@ export const DOMAINS = [
 export type Domain = (typeof DOMAINS)[number];
 
 /** Supported development methods. */
-export const DEVELOPMENT_METHODS = [
-	"agile",
-	"waterfall",
-	"hybrid",
-	"safety-critical",
-	"regulated",
-] as const;
+export const DEVELOPMENT_METHODS = ["agile", "waterfall", "hybrid", "safety-critical", "regulated"] as const;
 export type DevelopmentMethod = (typeof DEVELOPMENT_METHODS)[number];
 
 /** Required sections a profile can demand. */
@@ -191,13 +176,22 @@ export interface CompactProfileMetadata {
 /** Where the profile lives under the project config dir. */
 const REQUIREMENTS_PROFILE_FILE = "requirements-profile.json" as const;
 
-/** Load a persisted profile, or null when missing/invalid. */
+/**
+ * N35 marker line written into requirements-profile.json on every save
+ * (senai convention: every config file carries a human-readable `_comment`).
+ * Documentation, not data — the loader strips it before validating.
+ */
+export const REQUIREMENTS_PROFILE_COMMENT =
+	"Velpari requirements profile (PSRS/section selection). Managed by /velpari-configure-requirements.";
+
+/** Load a persisted profile, or null when missing/invalid (N35: `_comment` stripped). */
 export function loadRequirementsProfile(cwd: string = process.cwd()): RequirementsProfile | null {
 	const filePath = join(cwd, ".pi", "velpari", REQUIREMENTS_PROFILE_FILE);
 	if (!existsSync(filePath)) return null;
 	try {
 		const raw = readFileSync(filePath, "utf8");
 		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		delete parsed._comment; // N35: marker is documentation, not data
 		if (validateRequirementsProfile(parsed)) return parsed as RequirementsProfile;
 		const migrated = migrateLegacyProfile(parsed);
 		if (migrated) return migrated;
@@ -207,10 +201,10 @@ export function loadRequirementsProfile(cwd: string = process.cwd()): Requiremen
 	}
 }
 
-/** Persist the profile. */
+/** Persist the profile (N35: the `_comment` marker leads the object). */
 export function saveRequirementsProfile(profile: RequirementsProfile, cwd: string = process.cwd()): void {
 	const filePath = join(cwd, ".pi", "velpari", REQUIREMENTS_PROFILE_FILE);
-	atomicWriteJson(filePath, profile);
+	atomicWriteJson(filePath, { _comment: REQUIREMENTS_PROFILE_COMMENT, ...profile });
 }
 
 /** Strict validator. Returns true when the input is a valid profile. */

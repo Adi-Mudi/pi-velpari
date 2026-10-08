@@ -353,12 +353,18 @@ Revision rules:
 2. **Deprecate, don't delete.** A removed requirement stays in its table
    with status `deprecated` and the reason recorded. Never delete the
    row.
-3. **Version bump.** Minor (x.Y.0) when the revision only adds rows.
-   Major (X.0.0) when anything is deprecated or an acceptance criterion
-   changes.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) when the revision
+   only adds rows. Major (X.0.0) when anything is deprecated or an
+   acceptance criterion changes. Add `bump: major|minor|patch` (exact
+   lowercase) to the working copy's frontmatter: `major` = ids removed
+   or sections reorganized (incl. any deprecation), `minor` =
+   backward-compatible additions (new ids/rows, existing untouched),
+   `patch` = wording only. The publish gate compares the declared bump
+   against the actual change — a missing or under-declared bump blocks
+   the publish; a first publish needs no bump.
 4. **Change Log entry required.** Add a new entry under `## 20. Change
    Log` describing the revision. The `velpari_stage_publish` tool (which
-   same gate chain as `/velpari-prd-approve`) blocks publishing a revision
+   runs the same gate chain as `/velpari-prd-approve`) blocks publishing a revision
    with no new Change Log entry, dropped IDs, or a missing version bump.
 5. **New rows start `proposed`.** New rows in the User Stories, Success
    Metrics, Functional Requirements, and Non-Functional Requirements
@@ -372,7 +378,7 @@ into the revised working copy.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-prd-approve` runs the same gate chain from the terminal.
 
@@ -382,13 +388,52 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-prd-appr
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `drafting-prd` via `createRun()`. The next state transition
-  (`drafted-prd`) happens in the `velpari_stage_publish` tool (which
-  same gate chain as `/velpari-prd-approve`). You only write the working
-  copy artifact.
+  `drafting-prd` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`drafted-prd`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-prd-approve`). You only write the working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome (working copy written, preview approved) and the artifact path.
   Never paste the PRD content into the message.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/prd-payload.json` (the directory that
+holds the working copy, plus `payload/`). The publish gate validates it and
+writes the DB rows; a missing or invalid payload BLOCKS the publish (the
+gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "drafting-prd",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "brainstorm": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "fr":         [{ "id": "FR-1", "phase": 1, "textHash": "<sha256 of the FR text>" }],
+    "nfr":        [{ "id": "NFR-1", "phase": 1, "textHash": "<sha256 of the NFR text>" }],
+    "prdSection": [{ "no": 1, "title": "Purpose", "bodyRef": null }]
+  }
+}
+```
+
+PRD ONLY (G8 mirror check): when a PRD markdown is ALREADY published
+(`Doc/requirements/PRD_<project>.md` — a revision; write-alongside mode or a
+legacy project), `inputs` MUST include
+`"prd-file": "<sha256 hex of that already-published PRD markdown>"` — the
+gate recomputes that hash BEFORE the publish rewrites the file and aborts on
+mismatch. On a first publish (no such file yet) the key is optional and the
+mirror check is skipped.
+
+Every row must trace to the working copy content (zero hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

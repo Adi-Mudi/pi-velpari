@@ -13,12 +13,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	findFrRowsMissingKeywords,
-	readSectionBody,
-	referencedIds,
-	validatePsrs,
-} from "../../src/core/psrs.js";
+import { findFrRowsMissingKeywords, readSectionBody, referencedIds, splitTableRow, validatePsrs } from "../../src/core/psrs.js";
 
 const FRONTMATTER = `---
 documentType: product-software-requirements
@@ -110,9 +105,7 @@ describe("validatePsrs — strict 20-section structure", () => {
 			const result = validatePsrs(buildDoc({ skipSections: [heading] }));
 			assert.equal(result.ok, false, `missing ${heading} must fail`);
 			assert.ok(
-				result.issues.some(
-					(i) => i.code === "psrs-section-missing" && i.section === heading && i.severity === "error",
-				),
+				result.issues.some((i) => i.code === "psrs-section-missing" && i.section === heading && i.severity === "error"),
 			);
 		}
 	});
@@ -147,8 +140,7 @@ describe("validatePsrs — status lifecycle column", () => {
 		for (const status of ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"]) {
 			const doc = buildDoc({
 				extraRows: {
-					"Functional Requirements":
-						`| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n|---|---|---|---|---|---|---|\n| FR-01 | Add expense | must | 1 | expense saved | Integration test | ${status} |`,
+					"Functional Requirements": `| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n|---|---|---|---|---|---|---|\n| FR-01 | Add expense | must | 1 | expense saved | Integration test | ${status} |`,
 				},
 			});
 			const result = validatePsrs(doc);
@@ -170,6 +162,45 @@ describe("validatePsrs — status lifecycle column", () => {
 		assert.ok(result.issues.some((i) => i.code === "psrs-us-status-column-missing"));
 		assert.ok(result.issues.some((i) => i.code === "psrs-sm-status-column-missing"));
 		assert.ok(result.issues.some((i) => i.code === "psrs-nfr-status-column-missing"));
+	});
+});
+
+describe("splitTableRow — escaped pipes (GFM \\|)", () => {
+	it("splits on unescaped pipes only and unescapes cell text", () => {
+		assert.deepEqual(splitTableRow("| FR-01 | tag \\| filter | must | 1 | proposed |"), [
+			"FR-01",
+			"tag | filter",
+			"must",
+			"1",
+			"proposed",
+		]);
+	});
+
+	it("interior empty cells are kept; edge cells from leading/trailing pipes are dropped", () => {
+		assert.deepEqual(splitTableRow("| a || b |"), ["a", "", "b"]);
+	});
+
+	it("FR row with \\| in the requirement text keeps Status in its column", () => {
+		const doc = buildDoc({
+			extraRows: {
+				"Functional Requirements":
+					"| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n|---|---|---|---|---|---|---|\n| FR-01 | Persist todos with priority high \\| low | must | 1 | todo saved | Integration test | proposed |",
+			},
+		});
+		const result = validatePsrs(doc);
+		assert.equal(result.ok, true, JSON.stringify(result.issues));
+		assert.ok(!result.issues.some((i) => i.code === "psrs-fr-status-invalid"));
+	});
+
+	it("NFR row with \\| in the requirement text keeps Phase and Status in their columns", () => {
+		const doc = buildDoc({
+			extraRows: {
+				"Non-Functional Requirements":
+					"| ID | Category | Requirement | Phase | Verification | Status |\n|---|---|---|---|---|---|\n| NFR-01 | performance | p95 < 200ms for list \\| add | 1 | Performance test | proposed |",
+			},
+		});
+		const result = validatePsrs(doc);
+		assert.equal(result.ok, true, JSON.stringify(result.issues));
 	});
 });
 

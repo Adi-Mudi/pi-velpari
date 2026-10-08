@@ -21,15 +21,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPackageRoot } from "../../src/core/paths.js";
 import { loadCatalogue, findOverlay } from "../../src/core/standards-catalogue.js";
-import {
-	loadOverlay,
-	overlayDir,
-} from "../../src/core/standards-overlay.js";
+import { loadOverlay, overlayDir } from "../../src/core/standards-overlay.js";
 import { loadOverlayChecks } from "../../src/doctor/check-registry.js";
-import {
-	isOverlayRole,
-	resolveOverlayAgentName,
-} from "../../src/core/agents-config.js";
+import { isOverlayRole, resolveOverlayAgentName } from "../../src/core/agents-config.js";
 
 let pkgRoot: string;
 let cwd: string;
@@ -49,18 +43,9 @@ describe("medical-device-b overlay — bundled artefacts present", () => {
 		assert.ok(existsSync(join(overlayPath, "profile.json")), "profile.json exists");
 		assert.ok(existsSync(join(overlayPath, "sections", "prd-extra.md")), "prd-extra.md exists");
 		assert.ok(existsSync(join(overlayPath, "sections", "design-extra.md")), "design-extra.md exists");
-		assert.ok(
-			existsSync(join(overlayPath, "sections", "testplan-extra.md")),
-			"testplan-extra.md exists",
-		);
-		assert.ok(
-			existsSync(join(overlayPath, "scouts", "design-safety-analyzer.md")),
-			"design-safety-analyzer.md exists",
-		);
-		assert.ok(
-			existsSync(join(overlayPath, "doctor", "check-overlay.md")),
-			"check-overlay.md exists",
-		);
+		assert.ok(existsSync(join(overlayPath, "sections", "testplan-extra.md")), "testplan-extra.md exists");
+		assert.ok(existsSync(join(overlayPath, "scouts", "design-safety-analyzer.md")), "design-safety-analyzer.md exists");
+		assert.ok(existsSync(join(overlayPath, "doctor", "check-overlay.md")), "check-overlay.md exists");
 		assert.ok(existsSync(join(overlayPath, "NOTES.md")), "NOTES.md exists");
 	});
 });
@@ -72,11 +57,7 @@ describe("medical-device-b overlay — catalogue registration", () => {
 		const entry = findOverlay(catalogue!, "medical-device-b");
 		assert.ok(entry);
 		assert.strictEqual(entry!.id, "medical-device-b");
-		assert.deepEqual(entry!.standards, [
-			"IEC 62304:2006",
-			"ISO 14971:2019",
-			"ISO 13485:2016",
-		]);
+		assert.deepEqual(entry!.standards, ["IEC 62304:2006", "ISO 14971:2019", "ISO 13485:2016"]);
 	});
 });
 
@@ -107,10 +88,7 @@ describe("medical-device-b overlay — profile validation", () => {
 
 describe("medical-device-b overlay — required sections contain IEC 62304 anchors", () => {
 	it("prd-extra.md contains all 5 mandatory headings", () => {
-		const content = readFileSync(
-			join(overlayDir(cwd, "medical-device-b"), "sections", "prd-extra.md"),
-			"utf8",
-		);
+		const content = readFileSync(join(overlayDir(cwd, "medical-device-b"), "sections", "prd-extra.md"), "utf8");
 		assert.match(content, /## Software Development Plan/);
 		assert.match(content, /## Software Safety Classification/);
 		assert.match(content, /## Risk Management Summary/);
@@ -119,10 +97,7 @@ describe("medical-device-b overlay — required sections contain IEC 62304 ancho
 	});
 
 	it("design-extra.md contains all 4 mandatory headings", () => {
-		const content = readFileSync(
-			join(overlayDir(cwd, "medical-device-b"), "sections", "design-extra.md"),
-			"utf8",
-		);
+		const content = readFileSync(join(overlayDir(cwd, "medical-device-b"), "sections", "design-extra.md"), "utf8");
 		assert.match(content, /## Software Architectural Design \(IEC 62304 §5\.3\)/);
 		assert.match(content, /## Risk Control Measures/);
 		assert.match(content, /## Software Detailed Design/);
@@ -130,10 +105,7 @@ describe("medical-device-b overlay — required sections contain IEC 62304 ancho
 	});
 
 	it("testplan-extra.md contains all 6 mandatory headings", () => {
-		const content = readFileSync(
-			join(overlayDir(cwd, "medical-device-b"), "sections", "testplan-extra.md"),
-			"utf8",
-		);
+		const content = readFileSync(join(overlayDir(cwd, "medical-device-b"), "sections", "testplan-extra.md"), "utf8");
 		assert.match(content, /## Verification per IEC 62304 §5\.7/);
 		assert.match(content, /## Integration Test Coverage \(IEC 62304 §5\.6\)/);
 		assert.match(content, /## System Test Coverage \(IEC 62304 §5\.7\)/);

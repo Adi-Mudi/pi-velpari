@@ -16,7 +16,9 @@
  *      LLM. Tier 1 therefore needs no real API key.
  *   3. Drive `runDoctor(cwd)` directly via the RPC `bash` channel: the
  *      server runs `node --input-type=module -e "import { runDoctor }
- *      from '<built module>'; process.stdout.write(runDoctor(process.cwd()))"`.
+ *      from '<built module>'; ..."` — the rendered report is written to
+ *      a transport FILE (pi's bash channel head-truncates stdout near
+ *      50KB, which the full report exceeds) and read back here.
  *   4. Write the report to disk by importing `writeDoctorReport` from
  *      the same module, then assert on the `.IDE_Plans/velpari/doctor-report.md`
  *      file directly.
@@ -29,12 +31,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
@@ -60,99 +57,84 @@ describe("e2e/doctor", () => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 		const result = await client.getCommands();
-		const names = (result.commands ?? []).map((c: { name: string }) =>
-			String(c.name).replace(/^\//, ""),
-		);
+		const names = (result.commands ?? []).map((c: { name: string }) => String(c.name).replace(/^\//, ""));
 		assert.ok(
 			names.includes("velpari-doctor"),
 			`/velpari-doctor missing from registered commands: ${names.join(", ")}`,
 		);
 	});
 
-	it(
-		"runDoctor over RPC bash writes the expected sections and the on-disk report",
-		{ timeout: 60_000 },
-		async (t) => {
-			if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
-			assert.ok(client && home, "test setup missing");
+	it("runDoctor over RPC bash writes the expected sections and the on-disk report", { timeout: 60_000 }, async (t) => {
+		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
+		assert.ok(client && home, "test setup missing");
 
-			// Drive `runDoctor` directly through the RPC bash channel. The
-			// subprocess runs in `home.cwd`, so process.cwd() inside the
-			// script sees our temp project (and the .pi/velpari/files.json
-			// the fixture wrote). runDoctor returns a structured
-			// DiagnosticReport; formatDiagnosticReport renders the markdown.
-			// We JSON-encode the rendered string via JSON.stringify so
-			// quoting issues in the markdown cannot break the bash round trip.
-			const result = await client.request<any>("bash", {
-				command: [
-					"node --input-type=module -e",
-					JSON.stringify(
+		// Drive `runDoctor` directly through the RPC bash channel. The
+		// subprocess runs in `home.cwd`, so process.cwd() inside the
+		// script sees our temp project (and the .pi/velpari/files.json
+		// the fixture wrote). runDoctor returns a structured
+		// DiagnosticReport; formatDiagnosticReport renders the markdown.
+		// The report is transported via a FILE, not stdout: pi's bash
+		// tool head-truncates output near DEFAULT_MAX_BYTES (50KB), and
+		// the Phase 6 doctor report's JSON exceeds that on stdout.
+		const result = await client.request<any>("bash", {
+			command: [
+				"node --input-type=module -e",
+				JSON.stringify(
+					`import { writeFileSync } from "node:fs"; ` +
 						`import { runDoctor, formatDiagnosticReport } from ${JSON.stringify(distModuleUrl("doctor/index.js"))}; ` +
-							`process.stdout.write(JSON.stringify(formatDiagnosticReport(runDoctor(process.cwd()))));`,
-					),
-				].join(" "),
-			});
-			assert.ok(
-				result.success === true,
-				`runDoctor subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-			);
-			const output: string = result.data?.output ?? result.output ?? "";
-			assert.ok(output.length > 0, "runDoctor subprocess produced no output");
-			const report = JSON.parse(output) as string;
+						`const md = formatDiagnosticReport(runDoctor(process.cwd())); ` +
+						`writeFileSync(process.cwd() + "/e2e-doctor-report.md", md); ` +
+						`process.stdout.write("WROTE " + md.length);`,
+				),
+			].join(" "),
+		});
+		assert.ok(result.success === true, `runDoctor subprocess failed: ${JSON.stringify(result.error ?? result)}`);
+		const output: string = result.data?.output ?? result.output ?? "";
+		assert.ok(
+			output.startsWith("WROTE "),
+			`runDoctor subprocess produced unexpected output: ${JSON.stringify(output)}`,
+		);
+		const transportPath = `${home.cwd}/e2e-doctor-report.md`;
+		assert.ok(existsSync(transportPath), `e2e transport file was not written to ${transportPath}`);
+		const report = readFileSync(transportPath, "utf8");
 
-			// Top-level sections Doctor always emits (section titles in
-			// src/doctor/index.ts + src/doctor/checks/{profile,agents}.ts,
-			// rendered as `## <title>` by formatDiagnosticReport).
-			const expectedSections = [
-				"## Requirements profile",
-				"## Doc/ artifacts",
-				"## Multiplexer (required for /velpari-brainstorm v2.1)",
-				"## Scout agents (.pi/agents/)",
-				"## Stage skills",
-			];
-			for (const want of expectedSections) {
-				assert.ok(
-					report.includes(want),
-					`doctor report missing section heading: ${want}`,
-				);
-			}
+		// Top-level sections Doctor always emits (section titles in
+		// src/doctor/index.ts + src/doctor/checks/{profile,agents}.ts,
+		// rendered as `## <title>` by formatDiagnosticReport).
+		const expectedSections = [
+			"## Requirements profile",
+			"## Doc/ artifacts",
+			"## Multiplexer (required for /velpari-brainstorm v2.1)",
+			"## Scout agents (.pi/agents/)",
+			"## Stage skills",
+		];
+		for (const want of expectedSections) {
+			assert.ok(report.includes(want), `doctor report missing section heading: ${want}`);
+		}
 
-			// Persist to disk via writeDoctorReport (same module). Mirrors
-			// the real handler's flow: runDoctor → writeDoctorReport → notify.
-			const writeRes = await client.request<any>("bash", {
-				command: [
-					"node --input-type=module -e",
-					JSON.stringify(
-						`import { writeDoctorReport, runDoctor } from ${JSON.stringify(distModuleUrl("doctor/index.js"))}; ` +
-							`writeDoctorReport(runDoctor(process.cwd()), process.cwd());`,
-					),
-				].join(" "),
-			});
-			assert.ok(
-				writeRes.success === true,
-				`writeDoctorReport subprocess failed: ${JSON.stringify(writeRes.error ?? writeRes)}`,
-			);
+		// Persist to disk via writeDoctorReport (same module). Mirrors
+		// the real handler's flow: runDoctor → writeDoctorReport → notify.
+		const writeRes = await client.request<any>("bash", {
+			command: [
+				"node --input-type=module -e",
+				JSON.stringify(
+					`import { writeDoctorReport, runDoctor } from ${JSON.stringify(distModuleUrl("doctor/index.js"))}; ` +
+						`writeDoctorReport(runDoctor(process.cwd()), process.cwd());`,
+				),
+			].join(" "),
+		});
+		assert.ok(
+			writeRes.success === true,
+			`writeDoctorReport subprocess failed: ${JSON.stringify(writeRes.error ?? writeRes)}`,
+		);
 
-			const reportPath = `${home.cwd}/.IDE_Plans/velpari/doctor-report.md`;
-			assert.ok(
-				existsSync(reportPath),
-				`doctor-report.md was not written to ${reportPath}`,
-			);
-			const onDisk = readFileSync(reportPath, "utf8");
-			assert.ok(
-				onDisk.includes("## Multiplexer"),
-				"on-disk doctor-report.md missing Multiplexer section",
-			);
-			assert.ok(
-				onDisk.includes("## Scout agents"),
-				"on-disk doctor-report.md missing Scout agents section",
-			);
-			assert.ok(
-				onDisk.includes("## Stage skills"),
-				"on-disk doctor-report.md missing Stage skills section",
-			);
-		},
-	);
+		const reportPath = `${home.cwd}/.IDE_Plans/velpari/doctor-report.md`;
+		assert.ok(existsSync(reportPath), `doctor-report.md was not written to ${reportPath}`);
+		const onDisk = readFileSync(reportPath, "utf8");
+		assert.ok(onDisk.includes("## Multiplexer"), "on-disk doctor-report.md missing Multiplexer section");
+		assert.ok(onDisk.includes("## Scout agents"), "on-disk doctor-report.md missing Scout agents section");
+		assert.ok(onDisk.includes("## Stage skills"), "on-disk doctor-report.md missing Stage skills section");
+	});
 });
 
 test("E2E gate: this suite is skipped when Tier 1 prerequisites are missing", () => {

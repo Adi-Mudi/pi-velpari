@@ -94,10 +94,7 @@ describe("withArtifactFrontmatter", () => {
 	});
 
 	it("Phase 7: writes supersedes when input.supersedes is set", () => {
-		const out = withArtifactFrontmatter(
-			"# RTM v2\n",
-			{ ...INPUT, supersedes: "RTM_v1_2026-09-13" },
-		);
+		const out = withArtifactFrontmatter("# RTM v2\n", { ...INPUT, supersedes: "RTM_v1_2026-09-13" });
 		const parsed = parseFrontmatterBlock(out)!;
 		assert.equal(parsed.fields.supersedes, "RTM_v1_2026-09-13");
 	});
@@ -158,24 +155,23 @@ describe("missingFrontmatterFields", () => {
 			"run",
 			"created",
 			"updated",
-			"supersedes",
-			"sunset",
-			"deprecatedAt",
 		]);
 	});
 
 	it("returns empty when the block is complete", () => {
-		const out = withArtifactFrontmatter(
-			"# T\n",
-			{ ...INPUT, supersedes: "x", sunset: "2099-01-01", deprecatedAt: "2026-09-14" },
-		);
+		const out = withArtifactFrontmatter("# T\n", {
+			...INPUT,
+			supersedes: "x",
+			sunset: "2099-01-01",
+			deprecatedAt: "2026-09-14",
+		});
 		assert.deepEqual(missingFrontmatterFields(out), []);
 	});
 
-	it("reports supersedes missing for a fresh publish without one", () => {
+	it("does not demand the conditional trio for a fresh publish without one (N24-14)", () => {
 		const out = withArtifactFrontmatter("# T\n", INPUT);
 		const missing = missingFrontmatterFields(out);
-		assert.deepEqual(missing, ["supersedes", "sunset", "deprecatedAt"]);
+		assert.deepEqual(missing, []);
 	});
 
 	it("v1.2.2: writes sunset when input.sunset is set", () => {

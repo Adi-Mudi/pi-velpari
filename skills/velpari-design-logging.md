@@ -13,7 +13,7 @@ paths in the prompt. Your job is to spawn 3 subagents in parallel,
 read their reports, and write the working-copy logging plan.
 
 > **v1.4.0 self-publish discipline.** Unlike Stages 2–10, this command
-> does NOT have a separate `the publish tool` step. The command
+> does NOT have a separate `velpari_stage_publish` step. The command
 > publishes directly to `Doc/observability/logging-plan_<project>.md`
 > when `core/logging-plan.ts:validateLoggingPlan(plan)` AND the
 > doctor's `checkLoggingPlanSection` both pass. When either fails,

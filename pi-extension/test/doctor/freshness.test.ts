@@ -126,9 +126,7 @@ describe("checkFreshnessSection", () => {
 	it("logging-plan present → info note (D5), never an error", () => {
 		publish("observability/logging-plan_TestApp.md", "# logging plan\n");
 		const section = checkFreshnessSection(tmpDir);
-		assert.ok(
-			section.items.some((i) => i.status === "info" && /logging-plan/.test(i.message)),
-		);
+		assert.ok(section.items.some((i) => i.status === "info" && /logging-plan/.test(i.message)));
 		assert.ok(section.items.every((i) => i.status !== "error"));
 		// Excluded from tracking (D5) — no no-stamp warning for it either.
 		assert.ok(section.items.every((i) => !/logging-plan.*no freshness stamp/.test(i.message)));
@@ -146,9 +144,7 @@ describe("runPublishGate — freshness branch (A3)", () => {
 			projectName: "TestApp",
 		});
 		assert.ok(
-			result.errors.some(
-				(e) => e.includes("freshness-input-missing") && e.includes("prd:TestApp"),
-			),
+			result.errors.some((e) => e.includes("freshness-input-missing") && e.includes("prd:TestApp")),
 			`expected freshness-input-missing error, got: ${result.errors.join(" | ")}`,
 		);
 	});
@@ -185,9 +181,7 @@ describe("runPublishGate — freshness branch (A3)", () => {
 			projectName: "TestApp",
 		});
 		assert.ok(
-			result.warnings.some(
-				(w) => w.includes("freshness-downstream") && w.includes("rtm:TestApp"),
-			),
+			result.warnings.some((w) => w.includes("freshness-downstream") && w.includes("rtm:TestApp")),
 			`expected freshness-downstream warning, got: ${result.warnings.join(" | ")}`,
 		);
 	});

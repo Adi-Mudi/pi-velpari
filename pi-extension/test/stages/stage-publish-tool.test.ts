@@ -41,6 +41,10 @@ let tool: ToolDef;
 /** Notices captured from ctx.ui.notify (handleApprove reports gates via notify). */
 let notices: string[];
 
+/**
+ * Build a minimal ExtensionAPI that captures the registered tool def.
+ * @returns {ExtensionAPI} Stub pi; `tool` receives the registered definition.
+ */
 function makePi(): ExtensionAPI {
 	const pi = {
 		registerTool: (def: ToolDef) => {
@@ -53,6 +57,12 @@ function makePi(): ExtensionAPI {
 	return pi as unknown as ExtensionAPI;
 }
 
+/**
+ * Execute the captured tool's execute() with the given params.
+ * @param {Record<string, unknown>} params - Tool parameters (default {}).
+ * @returns {Promise<{isError: boolean; content: Array<{text: string}>}>}
+ *   The tool result; `notices` captures ui.notify calls during the run.
+ */
 function exec(params: Record<string, unknown> = {}) {
 	// Pi's ExtensionContext always carries ui (ExtensionUIContext) — the
 	// mock mirrors the approve-test ctx shape so handleApprove's notify
@@ -90,12 +100,14 @@ function enterDraftingPrd(): void {
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-stage-publish-"));
 	process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
+	process.env.VELPARI_SKIP_DB_PUBLISH = "1";
 	registerStagePublishTool(makePi());
 });
 
 afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 	delete process.env.VELPARI_SKIP_AUTO_DOCTOR;
+	delete process.env.VELPARI_SKIP_DB_PUBLISH;
 });
 
 describe("velpari_stage_publish tool", () => {
@@ -182,15 +194,7 @@ describe("velpari_stage_publish tool", () => {
 		fs.mkdirSync(brainstormDir, { recursive: true });
 		fs.writeFileSync(path.join(brainstormDir, "brainstorm-testapp.md"), "# brainstorm\n", "utf8");
 		const runId = loadState(tmpDir).runId;
-		const prdPath = path.join(
-			tmpDir,
-			".IDE_Plans",
-			"velpari",
-			"runs",
-			runId,
-			"prd",
-			"PRD_TestApp.md",
-		);
+		const prdPath = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", runId, "prd", "PRD_TestApp.md");
 		// Minimal PSRS that passes validatePsrs: frontmatter + all 20
 		// required sections. Section bodies may be minimal.
 		const psrs = [
@@ -299,10 +303,7 @@ describe("velpari_stage_publish tool", () => {
 
 		const res = await exec();
 		assert.equal(res.isError, undefined);
-		assert.ok(
-			notices.join("\n"),
-			`expected publish to proceed; notices: ${JSON.stringify(notices)}`,
-		);
+		assert.ok(notices.join("\n"), `expected publish to proceed; notices: ${JSON.stringify(notices)}`);
 		const snap = res.details as Record<string, unknown>;
 		assert.equal(snap.published, true);
 		// advanceStage performs ONE transition (drafting-prd → drafted-prd);

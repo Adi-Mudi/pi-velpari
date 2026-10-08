@@ -19,10 +19,12 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 import { STAGE_REGISTRY } from "../../stages/registry.js";
+import { findPackageRoot } from "../../core/paths.js";
 import {
 	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
@@ -38,23 +40,44 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const REQUIRED_AGENT_FIELDS = ["name", "description", "tools", "thinking", "session-mode", "auto-exit", "spawning"];
+export const REQUIRED_AGENT_FIELDS = [
+	"name",
+	"description",
+	"tools",
+	"thinking",
+	"session-mode",
+	"auto-exit",
+	"spawning",
+];
 
 /**
  * Known pi tool names. Mirrors Senai's `_types.ts`. Anything outside
  * this set in an agent's `tools:` is a typo that blocks scout startup.
  */
 export const KNOWN_TOOL_NAMES: Set<string> = new Set([
-	"read", "write", "edit", "bash", "grep", "find", "ls",
-	"askuserquestion", "intercom", "subagent",
-	"taskcreate", "taskexecute", "taskget", "tasklist", "taskoutput", "taskstop", "taskupdate",
-	"websearch", "fetchurl",
+	"read",
+	"write",
+	"edit",
+	"bash",
+	"grep",
+	"find",
+	"ls",
+	"askuserquestion",
+	"intercom",
+	"subagent",
+	"taskcreate",
+	"taskexecute",
+	"taskget",
+	"tasklist",
+	"taskoutput",
+	"taskstop",
+	"taskupdate",
+	"websearch",
+	"fetchurl",
 ]);
 
 /** Valid pi thinking levels. */
-export const VALID_THINKING_LEVELS: Set<string> = new Set([
-	"off", "minimal", "low", "medium", "high", "xhigh", "max",
-]);
+export const VALID_THINKING_LEVELS: Set<string> = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 /** Valid `session-mode:` values per pi's agent frontmatter spec. */
 export const VALID_SESSION_MODES: Set<string> = new Set(["standalone", "lineage-only"]);
@@ -74,9 +97,7 @@ export const VALID_SPAWNING: Set<string> = new Set(["true", "false"]);
  */
 export const ALL_STAGE_SCOUTS: Record<string, string[]> = {
 	brainstorm: [...BRAINSTORM_ROLES],
-	...Object.fromEntries(
-		Object.values(STAGE_REGISTRY).map((spec) => [spec.key, [...spec.scouts]]),
-	),
+	...Object.fromEntries(Object.values(STAGE_REGISTRY).map((spec) => [spec.key, [...spec.scouts]])),
 	// v1.4.0 — cross-cutting discipline command. The 3 logging scouts
 	// live in LOGGING_SCOUT_ROLES (agents-config.ts) and are bundled
 	// under skills/agents/. Listed here so the stage-skills doctor check
@@ -90,7 +111,12 @@ export const STAGES_WITH_SKILL_MARKDOWN = [
 	"rtm",
 	"feasibility",
 	"architecture-generator",
-	"design",
+	// Phase 6 execution finding: this entry was the stale pre-rename
+	// suffix "design" — skills/velpari-design.md was renamed to
+	// velpari-final-design.md on 2026-09-14, so every doctor run
+	// reported 2 phantom errors (section + action-items). Checked as
+	// "final-design" now; the skill passes the same contract below.
+	"final-design",
 	"pseudocode",
 	"testplan",
 	"atomic-function",
@@ -271,18 +297,43 @@ export function checkAgentMappingSection(cwd: string): DiagnosticSection {
  * Walk every stage in STAGES_WITH_SKILL_MARKDOWN, check that the skill
  * file exists, mentions every scout, and references the v2.0 machinery.
  * Returns a DiagnosticSection.
+ *
+ * The skill markdown ships with the extension package, so the directory
+ * is resolved from the velpari PACKAGE root (import.meta.url →
+ * findPackageRoot, same pattern as environment.ts:readEnginesNode) —
+ * a user project's cwd never has it. Falls back to `<cwd>/skills`
+ * when package-root resolution fails.
  */
+
+/**
+ * Resolve the directory holding the bundled stage skill markdown.
+ * @param {string} cwd - Project root (legacy fallback location).
+ * @returns {string} `<packageRoot>/skills`, or `<cwd>/skills` on failure.
+ */
+function resolveSkillsDir(cwd: string): string {
+	try {
+		const start = dirname(fileURLToPath(import.meta.url));
+		const root = findPackageRoot(start);
+		const dir = join(root, "skills");
+		if (existsSync(dir)) return dir;
+	} catch {
+		/* fall through to the cwd legacy path */
+	}
+	return join(cwd, "skills");
+}
+
 export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	let totalIssues = 0;
 
+	const skillsDir = resolveSkillsDir(cwd);
 	for (const stage of STAGES_WITH_SKILL_MARKDOWN) {
-		const skillPath = join(cwd, "skills", `velpari-${stage}.md`);
+		const skillPath = join(skillsDir, `velpari-${stage}.md`);
 		if (!existsSync(skillPath)) {
 			totalIssues++;
 			items.push({
 				status: "error",
-				message: `skills/velpari-${stage}.md MISSING`,
+				message: `skills/velpari-${stage}.md MISSING (looked in ${skillsDir})`,
 				suggestion: suggestionFor("skill-missing"),
 			});
 			continue;
@@ -396,9 +447,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				items.push({
 					status: "error",
 					message: `${filename}: unknown tool(s) in \`tools:\`: ${unknown.join(", ")}`,
-					details: [
-						`Known tools: ${Array.from(KNOWN_TOOL_NAMES).sort().join(", ")}`,
-					],
+					details: [`Known tools: ${Array.from(KNOWN_TOOL_NAMES).sort().join(", ")}`],
 					suggestion: "Fix the typo or remove the unknown tool.",
 				});
 			}
@@ -422,7 +471,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				status: "error",
 				message: `${filename}: invalid \`session-mode:\` value "${fm["session-mode"]}".`,
 				details: [`Valid values: ${Array.from(VALID_SESSION_MODES).join(", ")}`],
-				suggestion: `Set \`session-mode:\` to "${Array.from(VALID_SESSION_MODES).join("\" or \"")}".`,
+				suggestion: `Set \`session-mode:\` to "${Array.from(VALID_SESSION_MODES).join('" or "')}".`,
 			});
 		}
 
@@ -432,7 +481,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 			items.push({
 				status: "warning",
 				message: `${filename}: \`auto-exit:\` value "${fm["auto-exit"]}" is not a boolean.`,
-				suggestion: 'Set `auto-exit: true` or `auto-exit: false`.',
+				suggestion: "Set `auto-exit: true` or `auto-exit: false`.",
 			});
 		}
 
@@ -442,7 +491,7 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 			items.push({
 				status: "warning",
 				message: `${filename}: \`spawning:\` value "${fm.spawning}" is not a boolean.`,
-				suggestion: 'Set `spawning: true` or `spawning: false`.',
+				suggestion: "Set `spawning: true` or `spawning: false`.",
 			});
 		}
 

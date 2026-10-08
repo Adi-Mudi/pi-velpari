@@ -22,15 +22,8 @@
  * Layer 1 — imports core/ only.
  */
 
-import {
-	buildStagePrompt,
-	type BuildStagePromptInput,
-	type ScoutSlot,
-} from "../../core/prompt.js";
-import {
-	requiredFieldsFor,
-	type AtomicProfile,
-} from "../../core/atomic-tier.js";
+import { buildStagePrompt, type BuildStagePromptInput, type ScoutSlot } from "../../core/prompt.js";
+import { requiredFieldsFor, type AtomicProfile } from "../../core/atomic-tier.js";
 import type { Stage } from "../../core/constants.js";
 import type { CompactProfileMetadata } from "../../core/profile.js";
 
@@ -63,9 +56,7 @@ export function buildAtomicFunctionPrompt(input: AtomicPromptInput): string {
 
 /** Convert the atomic-function-specific input into the generic shape
  *  `buildStagePrompt` expects. Exported for tests. */
-export function toBuildStagePromptInput(
-	input: AtomicPromptInput,
-): BuildStagePromptInput {
+export function toBuildStagePromptInput(input: AtomicPromptInput): BuildStagePromptInput {
 	return {
 		stage: input.stage as Stage,
 		mission: input.mission,

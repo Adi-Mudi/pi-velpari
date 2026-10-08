@@ -23,15 +23,10 @@
 
 import { existsSync } from "node:fs";
 import { readYamlFile } from "./yaml-data.js";
+import { resolveDocArtifact } from "./paths.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
-const RTM_ROW_STATUSES = [
-	"proposed",
-	"approved",
-	"implemented",
-	"verified",
-	"deferred",
-	"deprecated",
-] as const;
+const RTM_ROW_STATUSES = ["proposed", "approved", "implemented", "verified", "deferred", "deprecated"] as const;
 type RtmRowStatus = (typeof RTM_ROW_STATUSES)[number];
 
 const RTM_COVERAGES = ["covered", "partial", "missing"] as const;
@@ -117,13 +112,50 @@ export function resolveRtmSidecar(mdPath: string): RtmSidecarRef | null {
  * Validation/diagnostics paths read the file + `parseYaml` themselves so
  * malformed input produces line-numbered errors for the user.
  */
-export function loadRtmSidecarData(
-	mdPath: string,
-): (RtmSidecarRef & { data: unknown }) | null {
+export function loadRtmSidecarData(mdPath: string): (RtmSidecarRef & { data: unknown }) | null {
 	const resolved = resolveRtmSidecar(mdPath);
 	if (!resolved) return null;
 	const data = readYamlFile(resolved.path);
 	return data === null ? null : { ...resolved, data };
+}
+
+/**
+ * Engine-side loader: DB-first with sidecar fallback (Phase 6 §14.3).
+ * Returns the legacy `RtmData` shape so downstream engines (MVP
+ * coverage, ID coverage, etc.) keep working unchanged. The DB rtm_row
+ * shape carries a subset of fields; missing legacy fields (title,
+ * design, implementation, coverage, fingerprint) are populated with
+ * safe defaults — DB-primary reads don't depend on these legacy
+ * decorations yet (Subphase 2.4 + 2.4 follow-ups fill them in).
+ * @param {string} cwd - Project root.
+ * @param {string} projectName - Project whose RTM to load.
+ * @returns {RtmData | null} The legacy RtmData shape, or null when neither DB nor sidecar has published rows.
+ */
+export function loadRtmDataForEngine(cwd: string, projectName: string): RtmData | null {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "rtm");
+	if (fromDb) {
+		const rtmRows = (fromDb.rows.rtmRow as Array<Record<string, unknown>> | undefined) ?? [];
+		return {
+			project: projectName,
+			version: String(fromDb.envelope.version),
+			rows: rtmRows.map((r) => ({
+				id: String(r.id),
+				title: "",
+				phase: Number(r.phase),
+				design: "",
+				implementation: "",
+				tests: r.tcRef ? [String(r.tcRef)] : [],
+				status: "proposed",
+				coverage: r.afRef ? "covered" : "missing",
+				fingerprint: undefined,
+			})),
+		};
+	}
+	const rtmMd = resolveDocArtifact("RTM", projectName, cwd);
+	if (!rtmMd) return null;
+	const sidecar = loadRtmSidecarData(rtmMd.path);
+	if (!sidecar) return null;
+	return sidecar.data as RtmData;
 }
 
 /** Validate the JSON shape and vocabularies. Pure — no I/O. */
@@ -186,7 +218,10 @@ export function validateRtmData(value: unknown): RtmValidation {
 			issues.push(`${at}.fingerprint: must be a string when present.`);
 		}
 	}
-	if (data.changeLog !== undefined && (!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))) {
+	if (
+		data.changeLog !== undefined &&
+		(!Array.isArray(data.changeLog) || data.changeLog.some((e) => typeof e !== "string"))
+	) {
 		issues.push("changeLog: must be an array of strings when present.");
 	}
 	return { ok: issues.length === 0, issues };
@@ -274,9 +309,7 @@ export function renderRtmMarkdown(data: RtmData): string {
 			const tests = r.tests.length > 0 ? r.tests.join(", ") : "(none)";
 			const impl = r.implementation || "(none)";
 			const design = r.design || "(none)";
-			const status = r.status === "deprecated" && r.reason
-				? `deprecated (${r.reason})`
-				: `${r.status} / ${r.coverage}`;
+			const status = r.status === "deprecated" && r.reason ? `deprecated (${r.reason})` : `${r.status} / ${r.coverage}`;
 			return `| ${r.id} | ${r.title} | ${r.phase} | ${design} | ${impl} | ${tests} | ${status} |`;
 		}),
 		"",

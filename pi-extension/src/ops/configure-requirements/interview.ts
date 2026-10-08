@@ -92,10 +92,7 @@ export async function askInput(
 		if (!required || trimmed.length > 0) return trimmed;
 		ctx.ui.notify("This field is required. Please provide a value.", "error");
 	}
-	ctx.ui.notify(
-		`Aborted after ${MAX_ATTEMPTS} empty attempts. Please run the command again.`,
-		"error",
-	);
+	ctx.ui.notify(`Aborted after ${MAX_ATTEMPTS} empty attempts. Please run the command again.`, "error");
 	return "";
 }
 
@@ -138,9 +135,7 @@ export async function askDomain(ctx: ExtensionCommandContext): Promise<Domain | 
 	return DOMAINS[idx];
 }
 
-export async function askDevelopmentMethod(
-	ctx: ExtensionCommandContext,
-): Promise<DevelopmentMethod | undefined> {
+export async function askDevelopmentMethod(ctx: ExtensionCommandContext): Promise<DevelopmentMethod | undefined> {
 	const labels: string[] = DEVELOPMENT_METHODS.map((m) => titleize(m));
 	const picked = await askSelect<string>(ctx, "Development method", labels);
 	if (picked === undefined) return undefined;
@@ -156,9 +151,7 @@ export async function askSecurityLevel(ctx: ExtensionCommandContext): Promise<Se
 	return SECURITY_OPTIONS[idx];
 }
 
-export async function askNovelty(
-	ctx: ExtensionCommandContext,
-): Promise<RequirementsAnswers["novelty"] | undefined> {
+export async function askNovelty(ctx: ExtensionCommandContext): Promise<RequirementsAnswers["novelty"] | undefined> {
 	const labels: string[] = NOVELTY_OPTIONS.map((o) => NOVELTY_LABELS[o]);
 	const picked = await askSelect<string>(ctx, "Novelty", labels);
 	if (picked === undefined) return undefined;
@@ -166,10 +159,7 @@ export async function askNovelty(
 	return NOVELTY_OPTIONS[idx];
 }
 
-export async function askRegulated(
-	ctx: ExtensionCommandContext,
-	securityLevel: SecurityLevel,
-): Promise<boolean> {
+export async function askRegulated(ctx: ExtensionCommandContext, securityLevel: SecurityLevel): Promise<boolean> {
 	return askYesNo(
 		ctx,
 		"Regulated?",

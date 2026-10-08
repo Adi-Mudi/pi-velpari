@@ -9,25 +9,60 @@
  *   - save → load round-trip
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	DEFAULT_EXCLUDED_PATHS,
+	devLaneConfig,
 	loadFilesConfig,
+	retentionConfig,
 	saveFilesConfig,
 	validateFilesConfig,
+	maxWorktreesConfig,
+	testingRunnerConfig,
+	projectTypeConfig,
+	markdownWritesEnabled,
+	FILES_CONFIG_COMMENT,
 	type FilesConfig,
 } from "../../src/core/config.js";
 import { getEffectiveProjectNames, isMultiProject } from "../../src/core/projectnames.js";
 import { buildFilesConfig } from "../../src/ops/configure-inputs.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-config-"));
 }
 
+/**
+ * Write a raw JSON value to files.json (bypassing saveFilesConfig).
+ * @param {string} cwd - Project root to write into.
+ * @param {unknown} value - JSON-serializable value to write.
+ * @returns {void}
+ */
 function writeRaw(cwd: string, value: unknown): void {
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	writeFileSync(join(cwd, ".pi", "velpari", "files.json"), JSON.stringify(value), "utf8");
@@ -144,39 +179,30 @@ describe("getEffectiveProjectNames (v1.3.0+)", () => {
 	});
 
 	it("returns projectNames when only projectNames is set", () => {
-		assert.deepEqual(
-			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] }),
-			["alpha", "beta"],
-		);
+		assert.deepEqual(getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["alpha", "beta"] }), [
+			"alpha",
+			"beta",
+		]);
 	});
 
 	it("de-duplicates projectNames while preserving order", () => {
-		assert.deepEqual(
-			getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["x", "x", "y", "x"] }),
-			["x", "y"],
-		);
+		assert.deepEqual(getEffectiveProjectNames({ ...VALID_V4, projectName: "", projectNames: ["x", "x", "y", "x"] }), [
+			"x",
+			"y",
+		]);
 	});
 
 	it("isMultiProject returns true for ≥ 2 names, false for 1", () => {
 		assert.equal(isMultiProject(VALID_V4), false);
-		assert.equal(
-			isMultiProject({ ...VALID_V4, projectName: "", projectNames: ["a", "b"] }),
-			true,
-		);
+		assert.equal(isMultiProject({ ...VALID_V4, projectName: "", projectNames: ["a", "b"] }), true);
 	});
 
 	it("throws when both fields are set", () => {
-		assert.throws(
-			() => getEffectiveProjectNames({ ...VALID_V4, projectNames: ["x"] }),
-			/sets both/,
-		);
+		assert.throws(() => getEffectiveProjectNames({ ...VALID_V4, projectNames: ["x"] }), /sets both/);
 	});
 
 	it("throws when neither is set", () => {
-		assert.throws(
-			() => getEffectiveProjectNames({ ...VALID_V4, projectName: "" }),
-			/must set either/,
-		);
+		assert.throws(() => getEffectiveProjectNames({ ...VALID_V4, projectName: "" }), /must set either/);
 	});
 });
 
@@ -184,7 +210,11 @@ describe("saveFilesConfig", () => {
 	it("round-trips through load", () => {
 		const cwd = tmp();
 		saveFilesConfig(VALID_V4, cwd);
-		assert.deepEqual(loadFilesConfig(cwd), VALID_V4);
+		// loadFilesConfig merges defaultConfig() over the file, so defaulted
+		// keys come back too. Phase 11 (§15.6) pins `velpari.markdownWrites`
+		// OFF — publish writes DB only; write-alongside is the explicit
+		// opt-IN rollback hatch.
+		assert.deepEqual(loadFilesConfig(cwd), { ...VALID_V4, velpari: { markdownWrites: false } });
 	});
 });
 
@@ -215,5 +245,218 @@ describe("buildFilesConfig", () => {
 		});
 		assert.equal(out.projectName, "");
 		assert.deepEqual(out.projectNames, ["alpha", "beta"]);
+	});
+});
+
+/**
+ * N7/N10 retention block (Foundation 2026-09-27): defaults when absent,
+ * "all" or positive-int revisions, positive-int backups; malformed values
+ * throw (a typo must surface, not silently default).
+ */
+describe("retentionConfig (N7/N10)", () => {
+	it("defaults when files.json is missing", () => {
+		assert.deepEqual(retentionConfig(tmp()), { revisions: "all", backups: 10 });
+	});
+
+	it("defaults when the velpari block has no retention key", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { markdownWrites: true } });
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 10 });
+	});
+
+	it("accepts 'all' and positive integers", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { retention: { revisions: "all", backups: 5 } } });
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 5 });
+		const cwd2 = tmp();
+		writeRaw(cwd2, { ...VALID_V4, velpari: { retention: { revisions: 10 } } });
+		assert.deepEqual(retentionConfig(cwd2), { revisions: 10, backups: 10 }, "backups defaults to 10 when omitted");
+	});
+
+	it("rejects 0 / negative / wrong types", () => {
+		for (const bad of [
+			{ revisions: 0 },
+			{ revisions: -3 },
+			{ revisions: "everything" },
+			{ backups: 0 },
+			{ backups: -1 },
+			{ backups: "ten" },
+		]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { retention: bad } });
+			assert.throws(() => retentionConfig(cwd), /retention is invalid/, JSON.stringify(bad));
+		}
+	});
+});
+
+/**
+ * Phase 7 / N16 — `velpari.maxLanes` lane cap. Same contract as retention:
+ * default when absent, round-trip an override, throw on a malformed value
+ * (a typo'd cap must surface, not silently default).
+ */
+describe("devLaneConfig (Phase 7 / N16)", () => {
+	it("defaults to 4 when files.json is missing", () => {
+		assert.deepEqual(devLaneConfig(tmp()), { maxLanes: 4 });
+	});
+
+	it("defaults to 4 when the velpari block has no maxLanes key", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { markdownWrites: true } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 4 });
+	});
+
+	it("round-trips a positive-integer override", () => {
+		for (const maxLanes of [1, 2, 8]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes } });
+			assert.deepEqual(devLaneConfig(cwd), { maxLanes }, JSON.stringify(maxLanes));
+		}
+	});
+
+	it("rejects 0 / negative / non-integer / wrong types", () => {
+		for (const bad of [0, -1, 2.5, "eight", null]) {
+			const cwd = tmp();
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: bad } });
+			assert.throws(() => devLaneConfig(cwd), /maxLanes is invalid/, JSON.stringify(bad));
+		}
+	});
+});
+
+describe("rollout config keys (G8): maxWorktrees / testing.runner / projectType", () => {
+	it("(a) absent keys → D15 defaults (3 / remote / backend)", () => {
+		const cwd = tmp();
+		assert.equal(maxWorktreesConfig(cwd), 3);
+		assert.equal(testingRunnerConfig(cwd), "remote");
+		assert.equal(projectTypeConfig(cwd), "backend");
+		assert.equal(devLaneConfig(cwd).maxLanes, 4, "lane-cap default stays 4 when neither key is set");
+	});
+
+	it("(b) set keys are honored (5 / local / full-app)", () => {
+		const cwd = tmp();
+		writeRaw(cwd, {
+			...VALID_V4,
+			velpari: { maxWorktrees: 5 },
+			testing: { runner: "local" },
+			projectType: "full-app",
+		});
+		assert.equal(maxWorktreesConfig(cwd), 5);
+		assert.equal(testingRunnerConfig(cwd), "local");
+		assert.equal(projectTypeConfig(cwd), "full-app");
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 5 }, "lane cap follows maxWorktrees (N32)");
+	});
+
+	it("(b') lane-cap three-way fallback: maxWorktrees → legacy maxLanes → 4", () => {
+		// both keys → maxWorktrees wins (N32 supersedes Phase 7).
+		let cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: 6, maxLanes: 2 } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 6 });
+		// only legacy maxLanes → honored (existing configs keep working).
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: 2 } });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 2 });
+		// neither → default 4.
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: {} });
+		assert.deepEqual(devLaneConfig(cwd), { maxLanes: 4 });
+		// invalid WINNER → throws naming the winning key (maxWorktrees).
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: 0, maxLanes: 2 } });
+		assert.throws(() => devLaneConfig(cwd), /velpari\.maxWorktrees is invalid/);
+		// invalid legacy winner (no maxWorktrees) → names maxLanes.
+		cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, velpari: { maxLanes: -1 } });
+		assert.throws(() => devLaneConfig(cwd), /velpari\.maxLanes is invalid/);
+	});
+
+	it("(c) invalid values throw with the exact message", () => {
+		const cwd = tmp();
+		for (const bad of [0, -1, 1.5]) {
+			writeRaw(cwd, { ...VALID_V4, velpari: { maxWorktrees: bad } });
+			assert.throws(
+				() => maxWorktreesConfig(cwd),
+				new RegExp(`maxWorktrees is invalid: expected a positive integer \\(got ${bad}\\)`),
+				JSON.stringify(bad),
+			);
+		}
+		writeRaw(cwd, { ...VALID_V4, testing: { runner: "ci" } });
+		assert.throws(
+			() => testingRunnerConfig(cwd),
+			/testing\.runner is invalid: expected "remote" or "local" \(got "ci"\)/,
+		);
+		writeRaw(cwd, { ...VALID_V4, projectType: "mobile" });
+		assert.throws(
+			() => projectTypeConfig(cwd),
+			/projectType is invalid: expected "backend" or "full-app" \(got "mobile"\)/,
+		);
+	});
+});
+
+describe("N35 adoption: _comment marker + load hardening", () => {
+	it("(d) save writes _comment, load strips it, second save stays single", () => {
+		const cwd = tmp();
+		saveFilesConfig(VALID_V4, cwd);
+		const filePath = join(cwd, ".pi", "velpari", "files.json");
+		/**
+		 * Count `_comment` marker occurrences in a files.json text.
+		 * @param {string} text - Raw file content.
+		 * @returns {number} Occurrence count.
+		 */
+		const countMarkers = (text: string): number => (text.match(/_comment/g) ?? []).length;
+		const firstRaw = readFileSync(filePath, "utf8");
+		const first = JSON.parse(firstRaw) as Record<string, unknown>;
+		assert.equal(first._comment, FILES_CONFIG_COMMENT, "marker written on save");
+		assert.equal(countMarkers(firstRaw), 1, "exactly one marker on first save");
+		const loaded = loadFilesConfig(cwd);
+		assert.equal("_comment" in loaded, false, "loader strips the marker");
+		saveFilesConfig(loaded, cwd);
+		const secondRaw = readFileSync(filePath, "utf8");
+		assert.equal(countMarkers(secondRaw), 1, "round-trip never duplicates the marker");
+		assert.equal((JSON.parse(secondRaw) as Record<string, unknown>)._comment, FILES_CONFIG_COMMENT);
+	});
+
+	it("(e) malformed JSON → Invalid files.json at <path>: …", () => {
+		const cwd = tmp();
+		const filePath = join(cwd, ".pi", "velpari", "files.json");
+		mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+		writeFileSync(filePath, "{ not json", "utf8");
+		assert.throws(
+			() => loadFilesConfig(cwd),
+			(err: unknown) =>
+				err instanceof Error && err.message.startsWith(`Invalid files.json at ${filePath}: `),
+			"path-qualified parse error",
+		);
+	});
+
+	it("(f) version 5 → unsupported-version error naming the recreate command", () => {
+		const cwd = tmp();
+		writeRaw(cwd, { ...VALID_V4, version: 5 });
+		assert.throws(
+			() => loadFilesConfig(cwd),
+			/Unsupported files\.json version: 5\. Expected 4\. Run \/velpari-configure-inputs to recreate\./,
+		);
+	});
+
+	it("(g) version 3 legacy migration still works", () => {
+		const cwd = tmp();
+		writeRaw(cwd, {
+			version: 3,
+			projectName: "OldApp",
+			inputDocuments: ["a.md"],
+			outputPaths: {},
+			excludedPaths: [],
+		});
+		const loaded = loadFilesConfig(cwd);
+		assert.equal(loaded.version, 4);
+		assert.equal(loaded.projectName, "OldApp");
+		assert.deepEqual(loaded.inputDocuments, ["a.md"]);
+		assert.deepEqual(loaded.excludedPaths, [...DEFAULT_EXCLUDED_PATHS], "empty v3 excludes backfill defaults");
+	});
+
+	it("(h) existing accessors untouched: markdownWrites / retention / devLane defaults", () => {
+		const cwd = tmp();
+		saveFilesConfig(VALID_V4, cwd);
+		assert.equal(markdownWritesEnabled(cwd), false, "Phase 11 default OFF");
+		assert.deepEqual(retentionConfig(cwd), { revisions: "all", backups: 10 });
+		assert.equal(devLaneConfig(cwd).maxLanes, 4);
 	});
 });

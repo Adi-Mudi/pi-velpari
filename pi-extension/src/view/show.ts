@@ -28,6 +28,21 @@ import {
 } from "../core/paths.js";
 import { loadPublishedLoggingPlanMarkdown } from "../core/logging-plan.js";
 import { loadFeasibilityRecord } from "../core/feasibility-record.js";
+// Phase 6 (§14.2 / Subphase 3.5): show commands render from the project
+// store's newest published rows via the Phase 5 renderers. The legacy
+// Doc/ file read stays as the fallback VIEW for pre-store projects
+// (show commands are human views — the strict DB-only rule binds stages
+// and scouts, not these printers).
+import {
+	renderPrdMarkdown,
+	renderRtmMarkdown,
+	renderFeasibilityMarkdown,
+	renderDesignMarkdown,
+	renderPseudocodeMarkdown,
+	renderTestplanMarkdown,
+	renderTestCasesMarkdown,
+} from "../ops/export-doc.js";
+import { readLatestPublishedRows, type ArtifactKind } from "../io/store.js";
 
 const MAX_NOTIFY_LENGTH = 8000;
 
@@ -50,6 +65,29 @@ function getProjectName(ctx: ExtensionCommandContext, cwd: string): string | nul
 	return config.projectName;
 }
 
+/**
+ * Phase 6 (Subphase 3.5): render one kind from the project store's newest
+ * published rows (Phase 5 renderers). Returns false when the store has no
+ * published rows — the caller falls back to the legacy Doc/ file read.
+ */
+function printFromStore(
+	ctx: ExtensionCommandContext,
+	projectName: string,
+	cwd: string,
+	kind: ArtifactKind,
+	label: string,
+	render: (rows: Record<string, unknown>) => string,
+): boolean {
+	const read = readLatestPublishedRows(cwd, projectName, kind);
+	if (!read) return false;
+	emit(ctx, render(read.rows));
+	ctx.ui.notify(
+		`${label} rendered from the project store (run ${read.envelope.runId} v${read.envelope.version}).`,
+		"info",
+	);
+	return true;
+}
+
 function readAndPrint(
 	ctx: ExtensionCommandContext,
 	resolved: { path: string; layout: "grouped" | "legacy" } | null,
@@ -67,10 +105,7 @@ function readAndPrint(
 	}
 }
 
-export async function showBrainstorm(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showBrainstorm(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const state = loadState(cwd);
 	if (!state.runId || state.currentStage === "none") {
 		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
@@ -83,32 +118,50 @@ export async function showBrainstorm(
 	readAndPrint(ctx, resolved, `Brainstorm (${topicSlug})`);
 }
 
-export async function showPrd(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showPrd(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+	if (printFromStore(ctx, projectName, cwd, "prd", `PRD (${projectName})`, renderPrdMarkdown)) {
+		return;
+	}
 	const resolved = resolveDocArtifact("PRD", projectName, cwd);
 	readAndPrint(ctx, resolved, `PRD (${projectName})`);
 }
 
-export async function showRtm(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showRtm(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+	if (printFromStore(ctx, projectName, cwd, "rtm", `RTM (${projectName})`, renderRtmMarkdown)) {
+		return;
+	}
 	const resolved = resolveDocArtifact("RTM", projectName, cwd);
 	readAndPrint(ctx, resolved, `RTM (${projectName})`);
 }
 
-export async function showFeasibility(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showFeasibility(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+	if (
+		printFromStore(
+			ctx,
+			projectName,
+			cwd,
+			"feasibility",
+			`Feasibility study (${projectName})`,
+			renderFeasibilityMarkdown,
+		)
+	) {
+		// B3/D9 — surface the code-generated decision record next to the study.
+		const record = loadFeasibilityRecord(cwd, projectName);
+		if (record) {
+			ctx.ui.notify(
+				`Decision record: Doc/feasibility/feasibility-decision_${projectName}.yaml ` +
+					`(verdict: ${record.verdict}, language: ${record.selectedLanguage})`,
+				"info",
+			);
+		}
+		return;
+	}
 	const resolved = resolveDocArtifact("feasibility-study", projectName, cwd);
 	readAndPrint(ctx, resolved, `Feasibility study (${projectName})`);
 	// B3/D9 — surface the code-generated decision record next to the study.
@@ -122,12 +175,12 @@ export async function showFeasibility(
 	}
 }
 
-export async function showDesign(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showDesign(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+	if (printFromStore(ctx, projectName, cwd, "design", `Design (${projectName})`, renderDesignMarkdown)) {
+		return;
+	}
 	const resolved = resolveDocArtifact("design", projectName, cwd);
 	readAndPrint(ctx, resolved, `Design (${projectName})`);
 }
@@ -136,10 +189,7 @@ export async function showDesign(
  * v1.4.0 — show the published logging plan. Reads the same grouped +
  * legacy fallback paths as the doctor check + handoff payload builder.
  */
-export async function showLoggingPlan(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showLoggingPlan(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
 	const resolved = loadPublishedLoggingPlanMarkdown(cwd, projectName);
@@ -150,29 +200,44 @@ export async function showLoggingPlan(
 	);
 }
 
-export async function showPseudocode(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showPseudocode(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+	if (printFromStore(ctx, projectName, cwd, "pseudocode", `Pseudocode (${projectName})`, renderPseudocodeMarkdown)) {
+		return;
+	}
 	const resolved = resolveDocArtifact("pseudocode", projectName, cwd);
 	readAndPrint(ctx, resolved, `Pseudocode (${projectName})`);
 }
 
-export async function showTestplan(
-	ctx: ExtensionCommandContext,
-	cwd: string = process.cwd(),
-): Promise<void> {
+export async function showTestplan(ctx: ExtensionCommandContext, cwd: string = process.cwd()): Promise<void> {
 	const projectName = getProjectName(ctx, cwd);
 	if (!projectName) return;
+
+	// Phase 6 (Subphase 3.5): both Doc/ views (test-plan + test-cases) render
+	// from the SAME `testplan` kind's published rows — different projections.
+	const read = readLatestPublishedRows(cwd, projectName, "testplan");
+	if (read) {
+		const combined = [
+			`# Test Plan`,
+			renderTestplanMarkdown(read.rows),
+			`# Test Cases`,
+			renderTestCasesMarkdown(read.rows),
+		].join("\n\n---\n\n");
+		emit(ctx, combined);
+		ctx.ui.notify(
+			`Test plan + test cases rendered from the project store (run ${read.envelope.runId} v${read.envelope.version}).`,
+			"info",
+		);
+		return;
+	}
+
 	const planPath = resolveDocArtifact("test-plan", projectName, cwd);
 	const casesPath = resolveDocArtifact("test-cases", projectName, cwd);
 
 	if (!planPath && !casesPath) {
 		ctx.ui.notify(
-			`Neither test-plan nor test-cases found for ${projectName}. ` +
-				`Run /velpari-testplan first.`,
+			`Neither test-plan nor test-cases found for ${projectName}. ` + `Run /velpari-testplan first.`,
 			"error",
 		);
 		return;

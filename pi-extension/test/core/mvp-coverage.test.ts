@@ -8,14 +8,32 @@
  *   - coverage counting (X/Y fully covered)
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkMvpCoverage } from "../../src/core/mvp-coverage.js";
 import { checkMvpCoverageSection } from "../../src/doctor/checks/mvp-coverage.js";
 import type { RtmData, RtmRow } from "../../src/core/rtm-data.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const PSRS = [
 	"# PSRS",
@@ -35,6 +53,12 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build an RtmRow fixture for MVP coverage tests.
+ * @param {string} id - Requirement id (e.g. "FR-1").
+ * @param {Partial<RtmRow>} overrides - Fields to override on the default row.
+ * @returns {RtmRow} The constructed row.
+ */
 function row(id: string, overrides: Partial<RtmRow> = {}): RtmRow {
 	return {
 		id,
@@ -49,6 +73,11 @@ function row(id: string, overrides: Partial<RtmRow> = {}): RtmRow {
 	};
 }
 
+/**
+ * Create a temp project dir with a PRD fixture and an RTM sidecar for rows.
+ * @param {RtmRow[]} rows - Rows to write into the RTM sidecar.
+ * @returns {string} Absolute path of the temp project root.
+ */
 function setup(rows: RtmRow[]): string {
 	const cwd = mkdtempSync(join(tmpdir(), "velpari-mvp-"));
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });
@@ -67,10 +96,7 @@ describe("checkMvpCoverage", () => {
 
 	it("returns null when no Phase-1 requirements exist", () => {
 		const cwd = setup([row("FR-01")]);
-		writeFileSync(
-			join(cwd, "Doc", "requirements", "PRD_TestApp.md"),
-			PSRS.replaceAll("| 1 |", "| 2 |"),
-		);
+		writeFileSync(join(cwd, "Doc", "requirements", "PRD_TestApp.md"), PSRS.replaceAll("| 1 |", "| 2 |"));
 		assert.equal(checkMvpCoverage(cwd, "TestApp"), null);
 	});
 
@@ -85,9 +111,7 @@ describe("checkMvpCoverage", () => {
 	it("no-row is an error", () => {
 		const report = checkMvpCoverage(setup([row("FR-01")]), "TestApp");
 		assert.ok(report);
-		assert.ok(
-			report.issues.some((i) => i.id === "NFR-01" && i.problem === "no-row" && i.severity === "error"),
-		);
+		assert.ok(report.issues.some((i) => i.id === "NFR-01" && i.problem === "no-row" && i.severity === "error"));
 	});
 
 	it("coverage missing is an error; partial and no-tests are warnings", () => {
@@ -111,10 +135,7 @@ describe("checkMvpCoverageSection", () => {
 	});
 
 	it("reports ok with the coverage ratio when fully covered", () => {
-		const section = checkMvpCoverageSection(
-			setup([row("FR-01"), row("FR-02"), row("NFR-01")]),
-			"TestApp",
-		);
+		const section = checkMvpCoverageSection(setup([row("FR-01"), row("FR-02"), row("NFR-01")]), "TestApp");
 		assert.equal(section.items[0]!.status, "ok");
 		assert.match(section.items[0]!.message, /MVP coverage: 2\/2/);
 	});

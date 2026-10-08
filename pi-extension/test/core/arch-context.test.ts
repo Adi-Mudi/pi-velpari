@@ -58,11 +58,7 @@ function writeRequirementsProfile(profileId: string): void {
 		researchConsent: false,
 		researchSources: [],
 	};
-	writeFileSync(
-		join(tmpDir, ".pi", "velpari", "requirements-profile.json"),
-		JSON.stringify(profile),
-		"utf8",
-	);
+	writeFileSync(join(tmpDir, ".pi", "velpari", "requirements-profile.json"), JSON.stringify(profile), "utf8");
 }
 
 function writePublishedDoc(category: string, name: string, body: string): void {
@@ -145,11 +141,7 @@ describe("loadArchContext — optional standards profile", () => {
 	});
 
 	it("returns null standardsProfile when the JSON is malformed", () => {
-		writeFileSync(
-			join(tmpDir, ".pi", "velpari", "standards-profile.json"),
-			"{not-json",
-			"utf8",
-		);
+		writeFileSync(join(tmpDir, ".pi", "velpari", "standards-profile.json"), "{not-json", "utf8");
 		writeFilesConfig("TodoApp");
 		const ctx = loadArchContext("r", "m", tmpDir);
 		assert.strictEqual(ctx.standardsProfile, null);

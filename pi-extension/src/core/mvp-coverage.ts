@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "./paths.js";
 import { extractRequirementPhases } from "./psrs.js";
-import { loadRtmSidecarData, type RtmData } from "./rtm-data.js";
+import { loadRtmDataForEngine, type RtmData } from "./rtm-data.js";
 
 type MvpCoverageProblem = "no-row" | "uncovered" | "partial" | "no-tests";
 
@@ -43,17 +43,15 @@ interface MvpCoverageReport {
  */
 export function checkMvpCoverage(cwd: string, projectName: string): MvpCoverageReport | null {
 	if (!projectName) return null;
+	// Phase 6 §14.3: DB-first reader (`loadRtmDataForEngine`) prefers the
+	// project store; falls back to the legacy YAML/JSON sidecar ONLY
+	// when no published rows exist for the (project, rtm) pair.
+	const data: RtmData | null = loadRtmDataForEngine(cwd, projectName);
+	if (!data) return null;
 	const psrs = resolveDocArtifact("PRD", projectName, cwd);
-	const rtm = resolveDocArtifact("RTM", projectName, cwd);
-	if (!psrs || !rtm) return null;
-	// B3/D4: dual-read — .yaml preferred, legacy .json fallback.
-	const sidecar = loadRtmSidecarData(rtm.path);
-	if (!sidecar) return null;
-
-	let data: RtmData;
+	if (!psrs) return null;
 	let phases: Map<string, number>;
 	try {
-		data = sidecar.data as RtmData;
 		if (!Array.isArray(data.rows)) return null;
 		phases = extractRequirementPhases(readFileSync(psrs.path, "utf8"));
 	} catch {

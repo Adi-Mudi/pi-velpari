@@ -25,13 +25,8 @@ export interface MultiplexerInfo {
 }
 
 /** Multiplexers velpari explicitly supports. Order = display order in
-  * error messages. */
-export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = [
-	"zellij",
-	"tmux",
-	"wezterm",
-	"cmux",
-];
+ * error messages. */
+export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = ["zellij", "tmux", "wezterm", "cmux"];
 
 /**
  * Detect the active multiplexer by sniffing env vars.
@@ -39,12 +34,7 @@ export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = [
  */
 export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerInfo {
 	const override = env.PI_SUBAGENT_MUX;
-	if (
-		override === "cmux" ||
-		override === "tmux" ||
-		override === "zellij" ||
-		override === "wezterm"
-	) {
+	if (override === "cmux" || override === "tmux" || override === "zellij" || override === "wezterm") {
 		return { mux: override, source: "PI_SUBAGENT_MUX" };
 	}
 	if (env.TMUX) return { mux: "tmux", source: "TMUX" };

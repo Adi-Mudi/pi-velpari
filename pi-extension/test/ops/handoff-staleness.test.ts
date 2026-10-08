@@ -150,8 +150,7 @@ function seed(overrides: Record<string, string> = {}): void {
 		"development-order",
 		"final-design",
 	]) {
-		const content =
-			overrides[artifact] ?? (artifact === "PRD" ? PSRS : `# ${artifact}\n`);
+		const content = overrides[artifact] ?? (artifact === "PRD" ? PSRS : `# ${artifact}\n`);
 		writeArtifact(artifact, content);
 	}
 	writeArtifact("RTM", "# RTM\n");
@@ -280,8 +279,7 @@ describe("/velpari-handoff — ID-coverage gate (A4)", () => {
 			design: DESIGN_FULL,
 			"atomic-functions": AF_DOC,
 			pseudocode: "# Pseudocode\n\n## saveExpense\n\nAF: AF-1\n",
-			"test-cases":
-				"# Test Cases\n\n| TC ID | Name | Traces |\n|---|---|---|\n| TC-1 | saves | FR-01, AF-1 |\n",
+			"test-cases": "# Test Cases\n\n| TC ID | Name | Traces |\n|---|---|---|\n| TC-1 | saves | FR-01, AF-1 |\n",
 			"development-order": "# Development Order\n\n## Step 1\n\nAFs: AF-1\n",
 		});
 		// Stamp the chain with CORRECT input hashes → stale set stays empty.

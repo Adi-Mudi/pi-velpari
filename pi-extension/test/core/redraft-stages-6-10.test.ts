@@ -20,13 +20,7 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	createRun,
-	advanceStage,
-	loadState,
-	saveState,
-	type RunState,
-} from "../../src/core/state.js";
+import { createRun, advanceStage, loadState, saveState, type RunState } from "../../src/core/state.js";
 import { loadHistory } from "../../src/core/history.js";
 import { STAGE_TRANSITIONS } from "../../src/core/constants.js";
 
@@ -82,17 +76,14 @@ describe("STAGE_TRANSITIONS — Stages 6–10 entries exist", () => {
 	// must be present in STAGE_TRANSITIONS or the chain breaks.
 
 	it("designed → analyzing-atomic-functions via /velpari-atomic-function", () => {
-		const t = STAGE_TRANSITIONS.find(
-			(tr) => tr.from === "designed" && tr.command === "/velpari-atomic-function",
-		);
+		const t = STAGE_TRANSITIONS.find((tr) => tr.from === "designed" && tr.command === "/velpari-atomic-function");
 		assert.ok(t, "transition must exist");
 		assert.equal(t!.to, "analyzing-atomic-functions");
 	});
 
 	it("analyzed-atomic-functions → writing-pseudocode via /velpari-pseudocode", () => {
 		const t = STAGE_TRANSITIONS.find(
-			(tr) =>
-				tr.from === "analyzed-atomic-functions" && tr.command === "/velpari-pseudocode",
+			(tr) => tr.from === "analyzed-atomic-functions" && tr.command === "/velpari-pseudocode",
 		);
 		assert.ok(t);
 		assert.equal(t!.to, "writing-pseudocode");
@@ -108,17 +99,14 @@ describe("STAGE_TRANSITIONS — Stages 6–10 entries exist", () => {
 
 	it("ordered-development → finalizing-design via /velpari-final-design", () => {
 		const t = STAGE_TRANSITIONS.find(
-			(tr) =>
-				tr.from === "ordered-development" && tr.command === "/velpari-final-design",
+			(tr) => tr.from === "ordered-development" && tr.command === "/velpari-final-design",
 		);
 		assert.ok(t);
 		assert.equal(t!.to, "finalizing-design");
 	});
 
 	it("finalized-design → handoff-ready via /velpari-handoff", () => {
-		const t = STAGE_TRANSITIONS.find(
-			(tr) => tr.from === "finalized-design" && tr.command === "/velpari-handoff",
-		);
+		const t = STAGE_TRANSITIONS.find((tr) => tr.from === "finalized-design" && tr.command === "/velpari-handoff");
 		assert.ok(t);
 		assert.equal(t!.to, "handoff-ready");
 	});
@@ -129,11 +117,7 @@ describe("history tracking — Stages 6–10", () => {
 		const finalState = walkToFinalizedDesign();
 		const history = loadHistory(tmpDir, finalState.runId);
 		// 20 = 1 createRun + 19 walk commands
-		assert.equal(
-			history.length,
-			20,
-			`expected 20 history entries, got ${history.length}`,
-		);
+		assert.equal(history.length, 20, `expected 20 history entries, got ${history.length}`);
 	});
 
 	it("the first history entry is the initial createRun (brainstorming + /velpari-brainstorm)", () => {

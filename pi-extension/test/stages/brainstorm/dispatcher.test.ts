@@ -2,15 +2,15 @@
  * Brainstorm scan dispatcher tests (Phase 3).
  *
  * Covers: scan-type → scout role mapping, per-type cap (2), total cap (3),
- * read-only tool stripping (code/doc → read,grep,glob; community keeps
+ * read-only tool stripping (code/doc → read,grep,find; community keeps
  * websearch+fetchurl), FR-52 enforcement (web-search-agent rejected for
  * non-community scans), unknown scout rejection, timeouts (30s/90s),
  * artifact path containment, and the prepared payload shape.
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { saveAgentConfig } from "../../../src/core/agents-config.js";
@@ -27,6 +27,24 @@ import {
 	SCAN_TYPE_DISPATCH_CAP,
 	SCAN_TYPE_ROLES,
 } from "../../../src/stages/brainstorm/dispatcher.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const RUN_DIR = path.resolve("/tmp/velpari-dispatcher-test/runs/run-1");
 
@@ -48,38 +66,36 @@ describe("SCAN_TYPE_ROLES + DEFAULT_SCANS", () => {
 
 describe("enforceReadOnlyTools", () => {
 	it("strips write/edit/bash for code and doc scans", () => {
-		assert.deepEqual(
-			enforceReadOnlyTools(["read", "write", "grep", "bash", "glob"], "code"),
-			["read", "grep", "glob"],
-		);
+		assert.deepEqual(enforceReadOnlyTools(["read", "write", "grep", "bash", "find"], "code"), ["read", "grep", "find"]);
 		assert.deepEqual(enforceReadOnlyTools(["write", "edit"], "doc"), []);
 	});
 
 	it("keeps websearch+fetchurl for community scans only", () => {
-		assert.deepEqual(
-			enforceReadOnlyTools(["read", "websearch", "fetchurl"], "community"),
-			["read", "websearch", "fetchurl"],
-		);
+		assert.deepEqual(enforceReadOnlyTools(["read", "websearch", "fetchurl"], "community"), [
+			"read",
+			"websearch",
+			"fetchurl",
+		]);
 		assert.deepEqual(enforceReadOnlyTools(["read", "websearch"], "code"), ["read"]);
 	});
 
 	it("rejects unknown tools", () => {
 		assert.deepEqual(enforceReadOnlyTools(["read", "mcp/foo"], "code"), ["read"]);
 	});
+
+	it("drops glob (not a pi tool) and keeps find", () => {
+		assert.deepEqual(enforceReadOnlyTools(["read", "find", "glob"], "code"), ["read", "find"]);
+	});
 });
 
 describe("prepareDispatch", () => {
 	it("prepares a code-scan dispatch (30s timeout, read-only tools)", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "Scan the codebase", scanType: "code" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "Scan the codebase", scanType: "code" }, RUN_DIR, 0);
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
 		assert.equal(res.prepared.agent, "extractor");
 		assert.equal(res.prepared.scanType, "code");
-		assert.deepEqual(res.prepared.tools, ["read", "grep", "glob"]);
+		assert.deepEqual(res.prepared.tools, ["read", "grep", "find"]);
 		assert.equal(res.prepared.subagentArgs.timeoutMs, BRAINSTORM_DISPATCH_TIMEOUT_MS);
 		assert.equal(BRAINSTORM_DISPATCH_TIMEOUT_MS, 30_000);
 	});
@@ -97,19 +113,10 @@ describe("prepareDispatch", () => {
 	});
 
 	it("returns the prepared payload shape (subagentArgs: agent/cwd/task/timeoutMs)", () => {
-		const res = prepareDispatch(
-			{ agent: "prd-checker", task: "Check PRD delta", scanType: "doc" },
-			RUN_DIR,
-			1,
-		);
+		const res = prepareDispatch({ agent: "prd-checker", task: "Check PRD delta", scanType: "doc" }, RUN_DIR, 1);
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
-		assert.deepEqual(Object.keys(res.prepared.subagentArgs).sort(), [
-			"agent",
-			"cwd",
-			"task",
-			"timeoutMs",
-		]);
+		assert.deepEqual(Object.keys(res.prepared.subagentArgs).sort(), ["agent", "cwd", "task", "timeoutMs"]);
 		assert.equal(res.prepared.subagentArgs.agent, "prd-checker");
 		assert.equal(res.prepared.subagentArgs.cwd, RUN_DIR);
 		assert.equal(res.prepared.subagentArgs.task, "Check PRD delta");
@@ -118,11 +125,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("rejects an unknown scout", () => {
-		const res = prepareDispatch(
-			{ agent: "secret-agent", task: "x", scanType: "code" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "secret-agent", task: "x", scanType: "code" }, RUN_DIR, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /not a velpari scout/);
@@ -130,11 +133,7 @@ describe("prepareDispatch", () => {
 
 	it("rejects web-search-agent for non-community scans (FR-52)", () => {
 		for (const scanType of ["code", "doc"] as const) {
-			const res = prepareDispatch(
-				{ agent: "web-search-agent", task: "x", scanType },
-				RUN_DIR,
-				0,
-			);
+			const res = prepareDispatch({ agent: "web-search-agent", task: "x", scanType }, RUN_DIR, 0);
 			assert.equal(res.ok, false);
 			if (res.ok) return;
 			assert.match(res.reason, /community/);
@@ -142,11 +141,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("rejects a scout that does not serve the scan type", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "doc" },
-			RUN_DIR,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "doc" }, RUN_DIR, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /does not serve/);
@@ -166,12 +161,7 @@ describe("prepareDispatch", () => {
 	});
 
 	it("enforces the total dispatch cap (3)", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "code" },
-			RUN_DIR,
-			3,
-			0,
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "code" }, RUN_DIR, 3, 0);
 		assert.equal(res.ok, false);
 		if (res.ok) return;
 		assert.match(res.reason, /cap reached \(3\)/);
@@ -222,6 +212,10 @@ describe("prepareDispatch", () => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("prepareDispatch v3 — persistent mode", () => {
+	/**
+	 * Create a fresh tracked temp dir for the persistent-mode tests.
+	 * @returns {string} Absolute path of the tracked temp dir.
+	 */
 	function tmpCwd(): string {
 		return mkdtempSync(path.join(tmpdir(), "velpari-dispatcher-persistent-"));
 	}
@@ -229,11 +223,7 @@ describe("prepareDispatch v3 — persistent mode", () => {
 	it("resolves session handle from state.activeSubagents when mode=persistent", () => {
 		const cwd = tmpCwd();
 		let state = createRun("Mission", cwd);
-		state = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			cwd,
-		);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
 
 		const res = prepareDispatch(
 			{
@@ -258,11 +248,7 @@ describe("prepareDispatch v3 — persistent mode", () => {
 	it("resolves the doc-code handle for sessionHandleKey=docCode", () => {
 		const cwd = tmpCwd();
 		let state = createRun("Mission", cwd);
-		state = setActiveSubagents(
-			state,
-			{ web: "web", docCode: "doc-code" },
-			cwd,
-		);
+		state = setActiveSubagents(state, { web: "web", docCode: "doc-code" }, cwd);
 
 		const res = prepareDispatch(
 			{
@@ -430,6 +416,10 @@ describe("formatScanPlanLines + formatPreparedDispatch", () => {
 });
 
 describe("role → agent-name resolution (agents.json)", () => {
+	/**
+	 * Create a fresh tracked temp dir for the agents.json resolution tests.
+	 * @returns {string} Absolute path of the tracked temp dir.
+	 */
 	function tmpCwd(): string {
 		return mkdtempSync(path.join(tmpdir(), "velpari-dispatcher-agents-"));
 	}
@@ -453,13 +443,7 @@ describe("role → agent-name resolution (agents.json)", () => {
 	});
 
 	it("defaults to the identity mapping when agents.json is absent", () => {
-		const res = prepareDispatch(
-			{ agent: "extractor", task: "x", scanType: "code" },
-			RUN_DIR,
-			0,
-			0,
-			tmpCwd(),
-		);
+		const res = prepareDispatch({ agent: "extractor", task: "x", scanType: "code" }, RUN_DIR, 0, 0, tmpCwd());
 		assert.equal(res.ok, true);
 		if (!res.ok) return;
 		assert.equal(res.prepared.subagentArgs.agent, "extractor");
@@ -469,13 +453,7 @@ describe("role → agent-name resolution (agents.json)", () => {
 		const cwd = tmpCwd();
 		saveAgentConfig(cwd, { version: 1, agents: { "web-search-agent": "my-web-scout" } });
 		for (const scanType of ["code", "doc"] as const) {
-			const res = prepareDispatch(
-				{ agent: "web-search-agent", task: "x", scanType },
-				RUN_DIR,
-				0,
-				0,
-				cwd,
-			);
+			const res = prepareDispatch({ agent: "web-search-agent", task: "x", scanType }, RUN_DIR, 0, 0, cwd);
 			assert.equal(res.ok, false);
 			if (res.ok) return;
 			assert.match(res.reason, /community/);

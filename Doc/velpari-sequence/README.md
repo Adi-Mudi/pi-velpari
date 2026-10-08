@@ -37,6 +37,14 @@ Feasibility stays inside Phase 2 (finalized). On first runs it is mandatory; on
 revision runs the staleness system decides whether it must be re-run — no separate
 phase, no bent rules.
 
+> **Phase 11 (Q3) reading note:** each `PUBLISH: Doc/…` line in the diagram
+> below names the store kind a stage publishes. The default publish is
+> DB-only — the store DB under `Doc/store/<project>/` (+ the YAML export
+> beside it) is the source and `Doc/` markdown is written only for legacy
+> projects or with `"velpari": {"markdownWrites": true}` in `files.json`.
+> Read `PUBLISH:` as "the artifact lands in the store; this is its view path"
+> (`/velpari-export` + the `show` commands render it on demand).
+
 ## Master end-to-end flow
 
 ```text
@@ -129,9 +137,12 @@ phase, no bent rules.
 2. **DRAFT** — working copy written to `.IDE_Plans/velpari/runs/<run-id>/<stage>/`.
    Writes outside the run folder are hard-blocked while a draft is open.
 3. **PREVIEW** — the draft is shown to the developer: yes / fix.
-4. **PUBLISH** — the publish tool (or per-stage `/velpari-<stage>-approve` fallback)
-   runs: publish gate (incl. content validation layers) → atomic write to `Doc/` →
-   full doctor audit. Errors OR warnings = nothing publishes, stage does not advance.
+4. **PUBLISH** — the `velpari_stage_publish` tool (or the per-stage
+   `/velpari-<stage>-approve` fall-back) runs: publish gate (incl. content
+   validation layers) → store publish (DB-only default: store rows + YAML
+   export + git commit; `Doc/` markdown only with the `velpari.markdownWrites`
+   opt-in) → full doctor audit. Errors = nothing publishes, stage does not
+   advance; warnings are reported but never block (N24-15).
 5. **NEXT** — the orchestrator surfaces the single correct next command. The
    developer types it by hand. No auto-chains, ever.
 

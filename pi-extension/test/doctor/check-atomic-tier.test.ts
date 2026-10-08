@@ -2,7 +2,8 @@
  * Atomic-tier verdict loader tests (Phase 4 of reviewer plan).
  *
  * Covers:
- *   - Missing verdict file → clear error with "Reviewer did not run" message
+ *   - Missing verdict file → info when the tier gate skipped the reviewer,
+ *     clear error when the tier/overlay gate required it
  *   - Invalid JSON → clear error
  *   - Invalid shape → clear error
  *   - Valid verdict with 1 error → error surfaces in section
@@ -12,18 +13,46 @@
  *   - Per-issue location + rule + suggestion appear in messages
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync as realMkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadReviewerVerdict } from "../../src/doctor/checks/atomic-tier.js";
 import { DEFAULT_ATOMIC_PROFILE } from "../../src/core/atomic-tier.js";
 
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * Create a fresh temp working directory for this test file.
+ * @returns {string} Absolute path of the tracked temp dir.
+ */
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-verdict-"));
 }
 
+/**
+ * Write a reviewer verdict JSON file at the atomic-function scout path.
+ * @param {string} cwd - Project root to write into.
+ * @param {object} verdict - Verdict object to serialize.
+ * @returns {string} Absolute path of the written verdict file.
+ */
 function writeVerdict(cwd: string, verdict: object): string {
 	const runId = "2026-09-16-1200-test";
 	const dir = join(cwd, ".IDE_Plans", "velpari", "runs", runId, "atomic-function", "scouts");
@@ -34,9 +63,24 @@ function writeVerdict(cwd: string, verdict: object): string {
 }
 
 describe("loadReviewerVerdict — missing file", () => {
-	it("returns a clear error when no runs directory exists", () => {
+	// N24-17: missingVerdict is "tier-aware" for every spec, and the shipped
+	// default profile is the basic tier, which the tier gate skips — so no
+	// verdict file can exist and the loader reports info, not error.
+	it("returns info when the tier gate skipped the reviewer", () => {
 		const cwd = tmp();
 		const section = loadReviewerVerdict(cwd, DEFAULT_ATOMIC_PROFILE);
+		assert.equal(section.items.length, 1);
+		assert.equal(section.items[0]!.status, "info");
+		assert.match(section.items[0]!.message, /Reviewer was skipped for atomic-function/);
+		assert.match(section.items[0]!.message, /reviewer-report\.json/);
+	});
+
+	// A tier inside REVIEWER_GATE_RULES (intermediate/advanced) still expects
+	// the reviewer, so a missing verdict stays an error there.
+	it("returns an error when the tier requires the reviewer but the verdict is missing", () => {
+		const cwd = tmp();
+		const profile = { ...DEFAULT_ATOMIC_PROFILE, tier: "intermediate" as const };
+		const section = loadReviewerVerdict(cwd, profile);
 		assert.equal(section.items.length, 1);
 		assert.equal(section.items[0]!.status, "error");
 		assert.match(section.items[0]!.message, /Reviewer verdict not found/);

@@ -8,11 +8,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	extractMvpRequirementIds,
-	extractRequirementPhases,
-	validatePsrs,
-} from "../../src/core/psrs.js";
+import { extractMvpRequirementIds, extractRequirementPhases, validatePsrs } from "../../src/core/psrs.js";
 
 const FR_TABLE =
 	"| ID | Requirement | Priority | Phase | Acceptance | Verification | Status |\n" +
@@ -31,8 +27,7 @@ function doc(opts: { frTable?: string; nfrTable?: string; mvp?: string }): strin
 		"",
 		"## MVP",
 		"",
-		opts.mvp ??
-			"### MVP Requirements\n- FR-01\n- NFR-01\n\n### Explicitly Not in MVP\n- FR-02 export",
+		opts.mvp ?? "### MVP Requirements\n- FR-01\n- NFR-01\n\n### Explicitly Not in MVP\n- FR-02 export",
 		"",
 		"## Functional Requirements",
 		"",
@@ -117,11 +112,7 @@ describe("extractRequirementPhases", () => {
 describe("MVP consistency", () => {
 	it("MVP-listed FR with phase 2 is an error", () => {
 		const result = validatePsrs(doc({ mvp: "### MVP Requirements\n- FR-02" }));
-		assert.ok(
-			result.issues.some(
-				(i) => i.code === "psrs-mvp-phase-mismatch" && i.message.includes("FR-02"),
-			),
-		);
+		assert.ok(result.issues.some((i) => i.code === "psrs-mvp-phase-mismatch" && i.message.includes("FR-02")));
 	});
 
 	it("ids under 'Explicitly Not in MVP' are ignored", () => {

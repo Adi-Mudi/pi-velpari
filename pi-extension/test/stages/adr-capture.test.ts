@@ -14,15 +14,8 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	gateADR,
-} from "../../src/doctor/checks/adr.js";
-import {
-	renderADRSection,
-	supersedeADR,
-	parseADRSection,
-	type ADR,
-} from "../../src/core/adr.js";
+import { gateADR } from "../../src/doctor/checks/adr.js";
+import { renderADRSection, supersedeADR, parseADRSection, type ADR } from "../../src/core/adr.js";
 
 function makeADR(overrides: Partial<ADR> = {}): ADR {
 	return {
@@ -88,7 +81,10 @@ describe("gateADR — happy path", () => {
 		});
 		const section = renderADRSection([adr]);
 		const errors = gateADR(designDocWithSection(section));
-		assert.ok(errors.some((e) => e.code === "adr.first-invalid"), JSON.stringify(errors));
+		assert.ok(
+			errors.some((e) => e.code === "adr.first-invalid"),
+			JSON.stringify(errors),
+		);
 	});
 
 	it("Phase 4: ADR-001 (style) + ADR-000 (no-conflicts) both pass", () => {

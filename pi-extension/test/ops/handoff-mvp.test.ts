@@ -27,6 +27,10 @@ interface Notice {
 let tmpDir: string;
 let notices: Notice[];
 
+/**
+ * Build a minimal mock command context whose ui.notify records messages.
+ * @returns {ExtensionCommandContext} Mock context with a capturing notify and a default-accept confirm.
+ */
 function makeCtx(): ExtensionCommandContext {
 	notices = [];
 	return {
@@ -40,6 +44,10 @@ function makeCtx(): ExtensionCommandContext {
 	} as unknown as ExtensionCommandContext;
 }
 
+/**
+ * Join every recorded notification message into one string.
+ * @returns {string} Newline-separated notify messages captured since makeCtx reset them.
+ */
 function allMessages(): string {
 	return notices.map((n) => n.message).join("\n");
 }
@@ -61,6 +69,12 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Build one RTM traceability row with test defaults.
+ * @param {string} id - Requirement id (e.g. "FR-01").
+ * @param {Partial<RtmRow>} [overrides] - Field overrides merged over the defaults.
+ * @returns {RtmRow} Approved phase-1 row wired to a single test case.
+ */
 function row(id: string, overrides: Partial<RtmRow> = {}): RtmRow {
 	return {
 		id,
@@ -108,12 +122,13 @@ function seed(rows: RtmRow[]): void {
 		fs.writeFileSync(p, artifact === "PRD" ? PSRS : `# ${artifact}\n`);
 	}
 	const rtmJson = path.join(tmpDir, buildGroupedPath("RTM", "TestApp")).replace(/\.md$/, ".json");
-	fs.writeFileSync(
-		rtmJson,
-		JSON.stringify({ project: "TestApp", version: "1.0.0", rows }),
-	);
+	fs.writeFileSync(rtmJson, JSON.stringify({ project: "TestApp", version: "1.0.0", rows }));
 }
 
+/**
+ * Create a run state at stage `finalized-design` — the only stage /velpari-handoff accepts.
+ * @returns {void}
+ */
 function enterFinalizedDesign(): void {
 	const run = createRun("TestApp", tmpDir);
 	// In the industry-standard order, /velpari-handoff is only allowed from
@@ -170,5 +185,15 @@ describe("/velpari-handoff — MVP coverage gate", () => {
 
 		assert.ok(fs.existsSync(path.join(tmpDir, ".pi", "senai", "architect-inputs.json")));
 		assert.equal(loadState(tmpDir).currentStage, "handoff-ready");
+	});
+
+	it("payload carries the suite-wide _comment marker (v1.2 B4)", async () => {
+		enterFinalizedDesign();
+		seed([row("FR-01"), row("NFR-01")]);
+		await runHandoff(loadState(tmpDir), makeCtx(), tmpDir);
+
+		const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, ".pi", "senai", "architect-inputs.json"), "utf8"));
+		assert.equal(typeof raw._comment, "string");
+		assert.match(raw._comment, /Velpari requirements/);
 	});
 });

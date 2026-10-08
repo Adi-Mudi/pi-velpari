@@ -22,11 +22,7 @@ import { dirname, join } from "node:path";
  * On any failure, the original file is preserved and the temp file is
  * left for the caller to clean up (the next write will overwrite it).
  */
-export function atomicWriteFile(
-	path: string,
-	data: string | Buffer,
-	encoding: BufferEncoding = "utf8",
-): void {
+export function atomicWriteFile(path: string, data: string | Buffer, encoding: BufferEncoding = "utf8"): void {
 	mkdirSync(dirname(path), { recursive: true });
 	const tempPath = join(
 		dirname(path),
@@ -61,11 +57,7 @@ export function atomicWriteJson(path: string, value: unknown): void {
  *
  *     body text...
  */
-export function atomicWriteJsonWithFrontmatter(
-	path: string,
-	frontmatter: Record<string, unknown>,
-	body: string,
-): void {
+export function atomicWriteJsonWithFrontmatter(path: string, frontmatter: Record<string, unknown>, body: string): void {
 	const lines: string[] = ["---"];
 	for (const [key, value] of Object.entries(frontmatter)) {
 		if (value === undefined || value === null) continue;

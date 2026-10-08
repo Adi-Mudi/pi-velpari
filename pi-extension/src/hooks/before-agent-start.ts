@@ -12,15 +12,56 @@
  *
  * No-op (returns the prompt unchanged) when there is no active run.
  * Fails open: any error returns the original system prompt untouched.
+ *
+ * Phase A (N18): a session gate verdict is resolved FIRST (cached per
+ * session, G2) — a mismatch/conflict injects a `<velpari_session_gate>`
+ * stop block (before any no-run early return, so plan-only declarations
+ * are enforced too); a match adds one `session-gate:` status line.
  */
 
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { STAGE_FOLDERS } from "../core/constants.js";
+import { loadFilesConfig } from "../core/config.js";
+import { classifyStaleItem } from "../core/change-report.js";
+import type { StaleItem } from "../core/freshness.js";
 import { buildRunDir } from "../core/paths.js";
+import { foreignLinesInWorktree } from "../core/run-binding.js";
+import { sessionGateVerdict } from "../core/plan-binding.js";
 import { loadState, type RunState } from "../core/state.js";
+import { detectWorktree, samePaths, worktreeAddHint } from "../core/worktree.js";
 import { STAGE_LOCK_SPECS } from "../stages/registry.js";
 import { computeLegalCommands } from "../stages/transition-lock.js";
+
+/**
+ * Cheap upstream-move summary for the per-turn status block (N8-B).
+ *
+ * Phase I10.3: takes the stale set PRECOMPUTED by the transition lock — the
+ * one staleness computation per turn (computeLegalCommands in the hook
+ * below already read freshness.json). Classifies only those stale entries
+ * and touches the store only for them; a clean run costs nothing and
+ * returns []. Never throws.
+ */
+function upstreamMoveLines(cwd: string, state: RunState, stale: readonly StaleItem[]): string[] {
+	try {
+		if (stale.length === 0) return [];
+		const projectName = loadFilesConfig(cwd).projectName ?? "";
+		if (projectName === "") return [];
+		const lines: string[] = [];
+		for (const item of stale) {
+			if (item.reason === "no-stamp") continue;
+			const verdict = classifyStaleItem(cwd, projectName, state.runId, item);
+			if (verdict.classification !== "foreign-run" || !verdict.move) continue;
+			lines.push(
+				`${verdict.move.kind} r${verdict.move.publishedHead.revisionNumber} by ${verdict.move.publishedHead.runId} ` +
+					`(commit ${verdict.move.storeLastCommit ?? "n/a"})`,
+			);
+		}
+		return lines;
+	} catch {
+		return [];
+	}
+}
 
 /** Per-stage hard rule injected alongside the status block. */
 function stageRule(state: RunState, cwd: string): string | null {
@@ -45,7 +86,7 @@ function stageRule(state: RunState, cwd: string): string | null {
 			`previous run folder; each scout task must name its -report.json path under ` +
 			`${allowed}/scouts/; write only inside ${allowed}/; when the working copy is ` +
 			`ready and the user confirms the preview, publish via the velpari_stage_publish ` +
-			`tool (or the publish tool as fallback).`
+			`tool (or the matching /velpari-<stage>-approve command as fallback).`
 		);
 	}
 	return null;
@@ -54,9 +95,22 @@ function stageRule(state: RunState, cwd: string): string | null {
 export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", (event, ctx) => {
 		try {
+			// Phase A / N18 — session-start worktree gate. Runs BEFORE the no-run
+			// early return so a plan-only declaration (no live run) still reports
+			// or stops. The verdict is cached per session (G2).
+			const gate = sessionGateVerdict(ctx.cwd);
+			if (gate.kind === "mismatch" || gate.kind === "conflict") {
+				return {
+					systemPrompt: `${event.systemPrompt}\n\n<velpari_session_gate>\n${gate.reason}\n</velpari_session_gate>`,
+				};
+			}
+			const gateLine = gate.why === "match" && gate.statusLine ? gate.statusLine : null;
+
 			const state = loadState(ctx.cwd);
 			if (!state.runId || state.currentStage === "none") {
-				return { systemPrompt: event.systemPrompt };
+				return gateLine
+					? { systemPrompt: `${event.systemPrompt}\n\n<velpari_status>\n${gateLine}\n</velpari_status>` }
+					: { systemPrompt: event.systemPrompt };
 			}
 			const lock = computeLegalCommands(ctx.cwd, STAGE_LOCK_SPECS);
 			const lines = [
@@ -71,6 +125,35 @@ export function registerBeforeAgentStartHook(pi: ExtensionAPI): void {
 			}
 			const rule = stageRule(state, ctx.cwd);
 			if (rule) lines.push(`rule: ${rule}`);
+			if (gateLine) lines.push(gateLine);
+
+			// Phase 5 — notification channel (§3.5, N14). Cheap by construction:
+			// one light git probe (3 rev-parse calls) + a foreign-line scan of
+			// small run files; the store is only read when the freshness manifest
+			// already reports stale entries. All fail-open.
+			const info = detectWorktree(ctx.cwd, { skipWorktrees: true, skipUpstream: true });
+			if (info.isGit && info.worktree !== "") {
+				const boundMismatch =
+					(state.runWorktree !== undefined && !samePaths(state.runWorktree, info.worktree)) ||
+					(state.runBranch !== undefined && state.runBranch !== info.branch);
+				lines.push(
+					`worktree: ${info.worktree} @ ${info.branch}` +
+						(boundMismatch
+							? `  ← MISMATCH: run is bound to ${state.runWorktree ?? "(unknown)"} @ ${state.runBranch ?? "(unknown)"}`
+							: ""),
+				);
+				const foreign = foreignLinesInWorktree(ctx.cwd, state.runId, { worktree: info.worktree });
+				if (foreign.length > 0) {
+					lines.push(
+						`BLOCKED: run line ${foreign[0]!.runId} is active in this folder — ${worktreeAddHint(foreign[0]!.runId)}`,
+					);
+				}
+				const moves = upstreamMoveLines(ctx.cwd, state, lock.staleSet);
+				if (moves.length > 0) {
+					lines.push(`upstream-moved: ${moves.join(", ")} — re-read / rebase / re-confirm (N8-B)`);
+				}
+			}
+
 			lines.push("</velpari_status>");
 			return { systemPrompt: `${event.systemPrompt}\n\n${lines.join("\n")}` };
 		} catch {

@@ -67,34 +67,22 @@ export function truncateMiddle(text: string, maxWidth: number): string {
 	return `…${text.slice(-(maxWidth - 1))}`;
 }
 
-export async function runListEditor(
-	ctx: ExtensionContext,
-	options: ListEditorOptions,
-): Promise<ListEditorAction> {
+export async function runListEditor(ctx: ExtensionContext, options: ListEditorOptions): Promise<ListEditorAction> {
 	if (!options.forceFallback && isTui(ctx)) {
 		return runCustomListEditor(ctx, options);
 	}
 	return runFallbackListEditor(ctx, options);
 }
 
-async function runFallbackListEditor(
-	ctx: ExtensionContext,
-	options: ListEditorOptions,
-): Promise<ListEditorAction> {
+async function runFallbackListEditor(ctx: ExtensionContext, options: ListEditorOptions): Promise<ListEditorAction> {
 	const pageSize = options.pageSize ?? 10;
-	let currentPaths = options.items
-		.filter((i) => i.kind === "selected")
-		.map((i) => i.value);
-	const allSuggestions = options.items
-		.filter((i) => i.kind === "suggestion")
-		.map((i) => i.value);
+	let currentPaths = options.items.filter((i) => i.kind === "selected").map((i) => i.value);
+	const allSuggestions = options.items.filter((i) => i.kind === "suggestion").map((i) => i.value);
 	let filterQuery = options.filterQuery ?? "";
 	let page = 0;
 
 	while (true) {
-		const available = allSuggestions.filter(
-			(s) => !currentPaths.includes(s) && matchesFilter(s, filterQuery),
-		);
+		const available = allSuggestions.filter((s) => !currentPaths.includes(s) && matchesFilter(s, filterQuery));
 		const pageCount = Math.max(1, Math.ceil(available.length / pageSize));
 		page = Math.max(0, Math.min(page, pageCount - 1));
 		const start = page * pageSize;
@@ -104,9 +92,7 @@ async function runFallbackListEditor(
 		const labelToId = new Map<string, string>();
 
 		if (options.enableFilter) {
-			const label = filterQuery
-				? `Filter: ${filterQuery} (clear)`
-				: "Filter suggestions...";
+			const label = filterQuery ? `Filter: ${filterQuery} (clear)` : "Filter suggestions...";
 			labels.push(label);
 			labelToId.set(label, FILTER_ID);
 		}
@@ -228,17 +214,10 @@ interface ContentRow {
 	path: string;
 }
 
-async function runCustomListEditor(
-	ctx: ExtensionContext,
-	options: ListEditorOptions,
-): Promise<ListEditorAction> {
+async function runCustomListEditor(ctx: ExtensionContext, options: ListEditorOptions): Promise<ListEditorAction> {
 	return ctx.ui.custom<ListEditorAction>((tui, theme, _keybindings, done) => {
-		let currentPaths = options.items
-			.filter((i) => i.kind === "selected")
-			.map((i) => i.value);
-		const allSuggestions = options.items
-			.filter((i) => i.kind === "suggestion")
-			.map((i) => i.value);
+		let currentPaths = options.items.filter((i) => i.kind === "selected").map((i) => i.value);
+		const allSuggestions = options.items.filter((i) => i.kind === "suggestion").map((i) => i.value);
 
 		const actionItems = buildActionItems(options);
 		let focusArea: "actions" | "content" = "actions";
@@ -290,9 +269,7 @@ async function runCustomListEditor(
 			const text = truncateMiddle(row.path, Math.max(1, width - 6));
 			const base = `${marker} ${text}`;
 			if (focused) return `${prefix}${theme.fg("accent", theme.bold(base))}`;
-			return row.kind === "selected"
-				? `${prefix}${theme.fg("success", base)}`
-				: `${prefix}${theme.fg("dim", base)}`;
+			return row.kind === "selected" ? `${prefix}${theme.fg("success", base)}` : `${prefix}${theme.fg("dim", base)}`;
 		}
 
 		function render(width: number): string[] {
@@ -301,19 +278,12 @@ async function runCustomListEditor(
 			const lines: string[] = [];
 			const border = "─".repeat(Math.max(2, width));
 			lines.push(theme.fg("accent", border));
-			lines.push(
-				theme.fg(
-					"accent",
-					theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width))),
-				),
-			);
+			lines.push(theme.fg("accent", theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width)))));
 
 			const actionLabels = actionItems.map((action, i) => {
 				const focused = focusArea === "actions" && i === actionIndex;
 				const prefix = focused ? "→ " : "  ";
-				const label = focused
-					? theme.fg("accent", theme.bold(action.label))
-					: theme.fg("text", action.label);
+				const label = focused ? theme.fg("accent", theme.bold(action.label)) : theme.fg("text", action.label);
 				return `${prefix}${label}`;
 			});
 			lines.push(truncateToWidth(actionLabels.join("   "), Math.max(2, width)));
@@ -330,7 +300,9 @@ async function runCustomListEditor(
 				if (!row) continue;
 				if (row.kind === "suggestion" && emittedSuggestions === 0) {
 					lines.push(theme.fg("dim", truncateToWidth("  ── enter adds/removes ──", Math.max(2, width))));
-					lines.push(theme.fg("warning", truncateToWidth(` 💡 Suggestions (${all.length - selCount})`, Math.max(2, width))));
+					lines.push(
+						theme.fg("warning", truncateToWidth(` 💡 Suggestions (${all.length - selCount})`, Math.max(2, width))),
+					);
 				}
 				lines.push(renderRow(row, focusArea === "content" && scrollOffset + i === contentIndex, width));
 				if (row.kind === "suggestion") emittedSuggestions++;
@@ -341,7 +313,15 @@ async function runCustomListEditor(
 				lines.push(theme.fg("dim", "  (none)"));
 			}
 			if (all.length > pageSize) {
-				lines.push(theme.fg("dim", truncateToWidth(`  (${scrollOffset + 1}-${Math.min(scrollOffset + pageSize, all.length)}/${all.length})`, Math.max(2, width))));
+				lines.push(
+					theme.fg(
+						"dim",
+						truncateToWidth(
+							`  (${scrollOffset + 1}-${Math.min(scrollOffset + pageSize, all.length)}/${all.length})`,
+							Math.max(2, width),
+						),
+					),
+				);
 			}
 
 			lines.push(...detailLines(width));

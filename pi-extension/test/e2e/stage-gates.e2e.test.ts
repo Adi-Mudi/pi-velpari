@@ -28,12 +28,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { RpcClient } from "./helpers/rpc-client.js";
-import {
-	makeTestHome,
-	distModuleUrl,
-	shouldRunE2E,
-	type TestHome,
-} from "./helpers/test-home.js";
+import { makeTestHome, distModuleUrl, shouldRunE2E, type TestHome } from "./helpers/test-home.js";
 import { makeMinimalProjectFiles, seedVelpariConfig } from "./helpers/fixtures.js";
 import { tier1Enabled, describeTier1Skip } from "./_setup.js";
 
@@ -44,12 +39,15 @@ const SKIP_MESSAGE = "Tier 1 E2E tests require pi binary on PATH, RUN_E2E=1, and
  *  script printed to stdout. */
 async function runModuleScript<T>(client: RpcClient, script: string): Promise<T> {
 	const result = await client.request<any>("bash", {
-		command: ["node --input-type=module -e", JSON.stringify(script)].join(" "),
+		command: [
+			// node:sqlite is experimental and prints an ExperimentalWarning to
+			// stderr on first load (D9) — the bash channel merges stdout+stderr
+			// and these scripts parse the union as JSON, so silence warnings.
+			"NODE_NO_WARNINGS=1 node --input-type=module -e",
+			JSON.stringify(script),
+		].join(" "),
 	});
-	assert.ok(
-		result.success === true,
-		`subprocess failed: ${JSON.stringify(result.error ?? result)}`,
-	);
+	assert.ok(result.success === true, `subprocess failed: ${JSON.stringify(result.error ?? result)}`);
 	const output: string = result.data?.output ?? result.output ?? "";
 	assert.ok(output.length > 0, "subprocess produced no output");
 	return JSON.parse(output) as T;
@@ -60,6 +58,9 @@ const CONSTANTS_JS = JSON.stringify(distModuleUrl("core/constants.js"));
 const HISTORY_JS = JSON.stringify(distModuleUrl("core/history.js"));
 const REGISTRY_JS = JSON.stringify(distModuleUrl("stages/registry.js"));
 const APPROVE_JS = JSON.stringify(distModuleUrl("ops/approve.js"));
+const DB_JS = JSON.stringify(distModuleUrl("io/db.js"));
+const STORE_JS = JSON.stringify(distModuleUrl("io/store.js"));
+const PATHS_JS = JSON.stringify(distModuleUrl("core/paths.js"));
 
 describe("e2e/stage-gates", () => {
 	let home: TestHome | undefined;
@@ -77,7 +78,9 @@ describe("e2e/stage-gates", () => {
 		if (home) home.cleanup();
 	});
 
-	it("happy path: walking STAGE_TRANSITIONS reaches handoff-ready with on-disk state in sync", { timeout: 60_000 }, async (t) => {
+	it("happy path: walking STAGE_TRANSITIONS reaches handoff-ready with on-disk state in sync", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -153,7 +156,9 @@ describe("e2e/stage-gates", () => {
 		}
 	});
 
-	it("hard gate: all 6 core stage commands are blocked at the wrong stage, nothing reaches the LLM", { timeout: 60_000 }, async (t) => {
+	it("hard gate: all 6 core stage commands are blocked at the wrong stage, nothing reaches the LLM", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -185,7 +190,9 @@ describe("e2e/stage-gates", () => {
 		}
 	});
 
-	it("brainstorm-anytime (A2): open from a mid-run stage pauses it, the lock names the pause, both doors land correctly", { timeout: 60_000 }, async (t) => {
+	it("brainstorm-anytime (A2): open from a mid-run stage pauses it, the lock names the pause, both doors land correctly", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -218,7 +225,9 @@ describe("e2e/stage-gates", () => {
 		assert.strictEqual(out.restartedPaused, null, "pause cleared after resume");
 	});
 
-	it("gate pass: runStage(prd) from brainstormed hands off no prompt (v1.6.2: no auto-chain)", { timeout: 60_000 }, async (t) => {
+	it("gate pass: runStage(prd) from brainstormed hands off no prompt (v1.6.2: no auto-chain)", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -259,13 +268,16 @@ describe("e2e/stage-gates", () => {
 		assert.deepStrictEqual(errors, [], `gate-pass run produced error notifies: ${JSON.stringify(errors)}`);
 	});
 
-	it("feasibility approve gate: unsettled session blocks, settled session publishes + clears (feasibility v2)", { timeout: 60_000 }, async (t) => {
+	it("feasibility approve gate: unsettled session blocks, settled session publishes + clears (feasibility v2)", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
 		const out = await runModuleScript<any>(
 			client,
 			`process.env.VELPARI_SKIP_AUTO_DOCTOR = "1"; ` +
+				`process.env.VELPARI_SKIP_DB_PUBLISH = "1"; ` +
 				`import { clearRun, createRun, advanceStage, loadState, setFeasibilitySession } from ${STATE_JS}; ` +
 				`import { handleApprove } from ${APPROVE_JS}; ` +
 				`import { mkdirSync, writeFileSync, existsSync } from "node:fs"; ` +
@@ -307,7 +319,9 @@ describe("e2e/stage-gates", () => {
 		assert.strictEqual(out.sessionCleared, true, "feasibility session was not cleared on approve");
 	});
 
-	it("feasibility skip: architecture-generator allowed from built-rtm only when a feasibility doc is published", { timeout: 60_000 }, async (t) => {
+	it("feasibility skip: architecture-generator allowed from built-rtm only when a feasibility doc is published", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -337,15 +351,29 @@ describe("e2e/stage-gates", () => {
 				`const dir = join(cwd, "Doc", "feasibility"); ` +
 				`mkdirSync(dir, { recursive: true }); ` +
 				`writeFileSync(join(dir, "feasibility-study_E2ESkipApp.md"), "# Feasibility\\n", "utf8"); ` +
+				// Phase 6: the design stage reads its input from the project
+				// store (strict DB slice) — publish the feasibility rows too.
+				`import { openStoreDb, closeStoreDb } from ${DB_JS}; ` +
+				`import { writeArtifact, publishArtifact } from ${STORE_JS}; ` +
+				`import { buildStoreDbPath } from ${PATHS_JS}; ` +
+				`const db = openStoreDb(buildStoreDbPath("E2ESkipApp", cwd)); ` +
+				`try { ` +
+				`  writeArtifact(db, "feasibility", "r1", { version: 1, stage: "analyzing-feasibility", generatedAt: "2026-09-23T00:00:00.000Z", inputs: "{}", reviewerVerdict: null, changeLog: "[]" }, { feasibilityDecision: { verdict: "go", language: "typescript", decidedBy: "user", at: "2026-09-23T00:00:00.000Z", webSearchConsent: 0 } }); ` +
+				`  publishArtifact(db, "r1", "feasibility"); ` +
+				`} finally { closeStoreDb(db); } ` +
 				`notes.length = 0; ` +
 				`await runStage("architecture-generator", ctx, pi, cwd); ` +
 				`const allowedErrors = notes.filter((n) => n.l === "error").map((n) => n.m); ` +
 				`const allowedSent = sent.length; ` +
-				`state = advanceStage(loadState(cwd), "/velpari-architecture-generator", cwd); ` +
+				`state = loadState(cwd); /* N24-01: runStage advances into designing on entry */ ` +
 				`process.stdout.write(JSON.stringify({ rejected, rejectedSent, allowedErrors, allowedSent, stage: state.currentStage }));`,
 		);
 
-		assert.strictEqual(out.rejectedSent, 0, "architecture-generator without a published feasibility doc must not reach the LLM");
+		assert.strictEqual(
+			out.rejectedSent,
+			0,
+			"architecture-generator without a published feasibility doc must not reach the LLM",
+		);
 		assert.match(out.rejected, /Cannot run \/velpari-architecture-generator at stage "built-rtm"/);
 		assert.match(out.rejected, /Run \/velpari-feasibility first\./, "rejection must name /velpari-feasibility");
 		assert.ok(
@@ -357,11 +385,17 @@ describe("e2e/stage-gates", () => {
 		// doc is allowed to hand off exactly one prompt to the parent LLM.
 		// (The no-auto-chain check belongs to /velpari-approve-brainstorm,
 		// not runStage.)
-		assert.strictEqual(out.allowedSent, 1, "architecture-generator with a published feasibility doc must hand off exactly one prompt");
+		assert.strictEqual(
+			out.allowedSent,
+			1,
+			"architecture-generator with a published feasibility doc must hand off exactly one prompt",
+		);
 		assert.strictEqual(out.stage, "designing", "skip advance did not land on designing");
 	});
 
-	it("final-design: rejected at brainstorming, accepted at planned-tests, advances to finalizing-design", { timeout: 60_000 }, async (t) => {
+	it("final-design: rejected at brainstorming, accepted at planned-tests, advances to finalizing-design", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -390,7 +424,9 @@ describe("e2e/stage-gates", () => {
 		assert.match(out.rejectError, /\/velpari-approve-brainstorm/);
 	});
 
-	it("final-design accept: at ordered-development advanceStage lands on finalizing-design", { timeout: 60_000 }, async (t) => {
+	it("final-design accept: at ordered-development advanceStage lands on finalizing-design", {
+		timeout: 60_000,
+	}, async (t) => {
 		if (!tier1Enabled()) return t.skip(`${SKIP_MESSAGE}: ${describeTier1Skip()}`);
 		assert.ok(client && home, "test setup missing");
 
@@ -416,6 +452,10 @@ describe("e2e/stage-gates", () => {
 		);
 
 		assert.strictEqual(out.preAdvance, "ordered-development", "walk did not land on ordered-development");
-		assert.strictEqual(out.finalStage, "finalizing-design", "advanceStage via /velpari-final-design did not land on finalizing-design");
+		assert.strictEqual(
+			out.finalStage,
+			"finalizing-design",
+			"advanceStage via /velpari-final-design did not land on finalizing-design",
+		);
 	});
 });

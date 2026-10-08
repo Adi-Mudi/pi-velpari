@@ -61,11 +61,7 @@ describe("generated-manifest (Phase 2)", () => {
 			try {
 				const dir = join(cwd, ".pi", "velpari");
 				mkdirSync(dir, { recursive: true });
-				writeFileSync(
-					getGeneratedManifestPath(cwd),
-					JSON.stringify({ version: 2, files: {} }),
-					"utf8",
-				);
+				writeFileSync(getGeneratedManifestPath(cwd), JSON.stringify({ version: 2, files: {} }), "utf8");
 				const m = loadGeneratedManifest(cwd);
 				assert.deepEqual(m, { version: 1, files: {} });
 			} finally {
@@ -78,11 +74,7 @@ describe("generated-manifest (Phase 2)", () => {
 			try {
 				const dir = join(cwd, ".pi", "velpari");
 				mkdirSync(dir, { recursive: true });
-				writeFileSync(
-					getGeneratedManifestPath(cwd),
-					JSON.stringify({ version: 1, files: "not an object" }),
-					"utf8",
-				);
+				writeFileSync(getGeneratedManifestPath(cwd), JSON.stringify({ version: 1, files: "not an object" }), "utf8");
 				const m = loadGeneratedManifest(cwd);
 				assert.deepEqual(m, { version: 1, files: {} });
 			} finally {

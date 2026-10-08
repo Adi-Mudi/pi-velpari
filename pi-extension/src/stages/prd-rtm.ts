@@ -18,8 +18,7 @@ export async function handlePrdRtm(
 	cwd: string = process.cwd(),
 ): Promise<void> {
 	ctx.ui.notify(
-		"Starting combined /velpari-prd → /velpari-rtm run. " +
-			"This wrapper does not auto-approve either stage.",
+		"Starting combined /velpari-prd → /velpari-rtm run. " + "This wrapper does not auto-approve either stage.",
 		"info",
 	);
 	await handlePrd(ctx, pi, cwd);

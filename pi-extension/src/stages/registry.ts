@@ -26,18 +26,20 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { Stage } from "../core/constants.js";
+import { STAGE_TRANSITIONS, type Stage } from "../core/constants.js";
 import { loadFilesConfig } from "../core/config.js";
 import {
 	computeStaleSet,
 	manifestKey,
+	recordStageBaselines,
 	resolveDeclaredInputs,
 	type StaleItem,
 } from "../core/freshness.js";
-import {
-	computeLegalCommands,
-	type StageLockSpec,
-} from "./transition-lock.js";
+import { computeLegalCommands, type StageLockSpec } from "./transition-lock.js";
+// Phase C (N22) — preflight entry (shared-file rule: marked block, integration request; Phase G owns final wiring)
+import { runStagePreflight } from "../doctor/preflight.js";
+import { verifyRunStartLine, verifyRunWorktree } from "./worktree-lock.js";
+import { buildChangeReport, writeChangeReport } from "../core/change-report.js";
 import { loadOverlay } from "../core/standards-overlay.js";
 import { bootstrapOverlayScouts } from "../io/agents-install.js";
 import {
@@ -49,25 +51,16 @@ import {
 	resolveDocArtifact,
 	slugify,
 } from "../core/paths.js";
-import { loadState } from "../core/state.js";
-import {
-	loadAgentConfig,
-	resolveAgentName,
-	type VelpariRole,
-} from "../core/agents-config.js";
+import { advanceStage, loadState } from "../core/state.js";
+import { loadAgentConfig, resolveAgentName, type VelpariRole } from "../core/agents-config.js";
 import type { ScoutSlot } from "../core/prompt.js";
 import { findPackageRoot } from "../core/paths.js";
-import {
-	deriveAtomicProfile,
-	shouldRunReviewer,
-	type AtomicProfile,
-} from "../core/atomic-tier.js";
-import {
-	compactProfileMetadata,
-	loadRequirementsProfile,
-} from "../core/profile.js";
+import { deriveAtomicProfile, shouldRunReviewer, type AtomicProfile } from "../core/atomic-tier.js";
+import { compactProfileMetadata, loadRequirementsProfile } from "../core/profile.js";
 import { runStageWithScouts, type StageRunConfig } from "../core/stage-runner.js";
 import { ensureStageAgents } from "../io/agents-install.js";
+import { docArtifactToKind, resolveStageSlice, SCOUT_SLICE_LINES } from "../ops/db-slices.js";
+import { readLatestPublishedRows } from "../io/store.js";
 
 /** Stages that route through the registry. (Brainstorm is bespoke.) */
 export type StageKey =
@@ -192,8 +185,14 @@ export interface StageSpec {
 // test gate stays green and the UX string the user sees is unchanged.
 // ---------------------------------------------------------------------------
 
-const grouped = (cwd: string, category: string, file: string) =>
-	join(cwd, "Doc", category, file);
+/**
+ * Build a grouped `Doc/` artifact path (`Doc/<category>/<file>`).
+ * @param {string} cwd - Project root.
+ * @param {string} category - Doc category folder (e.g. `requirements`).
+ * @param {string} file - File name (may include an extension).
+ * @returns {string} Absolute path under the grouped Doc layout.
+ */
+const grouped = (cwd: string, category: string, file: string) => join(cwd, "Doc", category, file);
 
 const prdMissingError: MissingInputMessageFormatter = ({ cwd, mission }) => {
 	// Preserve the pre-refactor wording: prd used to fall through to
@@ -232,35 +231,23 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		key: "rtm",
 		stageEnum: "building-rtm",
 		skillName: "rtm",
-		scouts: [
-			"rtm-requirement-tracer",
-			"rtm-test-case-linker",
-			"rtm-coverage-analyzer",
-			"rtm-consolidator",
-		],
+		scouts: ["rtm-requirement-tracer", "rtm-test-case-linker", "rtm-coverage-analyzer", "rtm-consolidator"],
 		workingCopyCategory: "rtm",
 		workingCopyArtifact: "RTM",
 		inputs: [{ kind: "doc", artifact: "PRD", label: "PRD" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("PSRS", "PRD", projectName, cwd, "/velpari-prd"),
+		formatMissingError: ({ cwd, projectName }) => docMissingError("PSRS", "PRD", projectName, cwd, "/velpari-prd"),
 	},
 
 	feasibility: {
 		key: "feasibility",
 		stageEnum: "analyzing-feasibility",
 		skillName: "feasibility",
-		scouts: [
-			"feasibility-tech",
-			"feasibility-schedule",
-			"feasibility-cost",
-			"feasibility-risk",
-		],
+		scouts: ["feasibility-tech", "feasibility-schedule", "feasibility-cost", "feasibility-risk"],
 		conditionalAgents: ["feasibility-reuse-scout", "feasibility-spike"],
 		workingCopyCategory: "feasibility",
 		workingCopyArtifact: "feasibility-study",
 		inputs: [{ kind: "doc", artifact: "RTM", label: "RTM" }],
-		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError("RTM", "RTM", projectName, cwd, "/velpari-rtm"),
+		formatMissingError: ({ cwd, projectName }) => docMissingError("RTM", "RTM", projectName, cwd, "/velpari-rtm"),
 	},
 
 	"architecture-generator": {
@@ -280,13 +267,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 		workingCopyArtifact: "design",
 		inputs: [{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" }],
 		formatMissingError: ({ cwd, projectName }) =>
-			docMissingError(
-				"feasibility-study",
-				"feasibility-study",
-				projectName,
-				cwd,
-				"/velpari-feasibility",
-			),
+			docMissingError("feasibility-study", "feasibility-study", projectName, cwd, "/velpari-feasibility"),
 	},
 
 	"atomic-function": {
@@ -315,8 +296,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "feasibility-study", label: "feasibility-study" },
 			{ kind: "doc", artifact: "design", label: "design" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			atomicMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => atomicMissingError(projectName, cwd),
 	},
 
 	pseudocode: {
@@ -389,21 +369,15 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "test-plan", label: "test-plan" },
 			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			devOrderMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => devOrderMissingError(projectName, cwd),
 	},
 
 	"final-design": {
 		key: "final-design",
 		// Stage 10 — runs after Development Order (Stage 9) is approved; or while own draft is open.
 		stageEnum: "finalizing-design",
-		skillName: "design",
-		scouts: [
-			"design-consistency-checker",
-			"design-coverage-checker",
-			"design-contract-checker",
-			"design-finalizer",
-		],
+		skillName: "final-design",
+		scouts: ["design-consistency-checker", "design-coverage-checker", "design-contract-checker", "design-finalizer"],
 		workingCopyCategory: "final-design",
 		workingCopyArtifact: "final-design",
 		inputs: [
@@ -414,8 +388,7 @@ export const STAGE_REGISTRY: Record<StageKey, StageSpec> = {
 			{ kind: "doc", artifact: "test-cases", label: "test-cases" },
 			{ kind: "doc", artifact: "development-order", label: "development-order" },
 		],
-		formatMissingError: ({ cwd, projectName }) =>
-			finalDesignMissingError(projectName, cwd),
+		formatMissingError: ({ cwd, projectName }) => finalDesignMissingError(projectName, cwd),
 	},
 };
 
@@ -454,12 +427,7 @@ export const STAGE_LOCK_SPECS: readonly StageLockSpec[] = (
 // whichever artifact came first.
 // ---------------------------------------------------------------------------
 
-const AF_REQUIRED_ORDER = [
-	"PRD",
-	"RTM",
-	"feasibility-study",
-	"design",
-] as const;
+const AF_REQUIRED_ORDER = ["PRD", "RTM", "feasibility-study", "design"] as const;
 
 const DO_REQUIRED_ORDER = [
 	"design",
@@ -481,40 +449,61 @@ const FINAL_DESIGN_REQUIRED_ORDER = [
 	"development-order",
 ] as const;
 
-function firstMissingArtifact(
-	projectName: string,
-	cwd: string,
-	order: readonly string[],
-): string {
-	// Mirror `resolveDocArtifact` semantics: an artifact is "missing" only when
-	// BOTH the grouped path AND the legacy flat path are absent. If either path
-	// exists, the artifact is considered present (matching pre-Phase-B behaviour).
+/**
+ * Find the first required artifact that is NOT yet published in the
+ * project store (Phase 6 DB-only read flip).
+ * @param {string} projectName - Configured project name (store DB path).
+ * @param {string} cwd - Project root.
+ * @param {readonly string[]} order - Required artifacts in dependency order.
+ * @returns {string} The first missing artifact name (falls back to `order[0]`).
+ */
+function firstMissingArtifact(projectName: string, cwd: string, order: readonly string[]): string {
+	// Phase 6 read flip (Subphase 3.6): pre-conditions check the PROJECT
+	// STORE DB, not Doc/ file existence. All stage inputs are DB-only
+	// (user directive 2026-09-23 — brainstorm is the sole file-based input).
+	// A kind is "present" when the store has at least one PUBLISHED version
+	// of it; a missing/unpublished kind refuses loudly and names
+	// /velpari-backfill (decision 3) — never a silent file fallback.
 	for (const artifact of order) {
-		const groupedFull = join(cwd, _buildGroupedPath(artifact, projectName));
-		const legacyFull = join(cwd, buildOutputPath(artifact, projectName));
-		if (existsSync(groupedFull)) continue;
-		if (existsSync(legacyFull)) continue;
+		const kind = docArtifactToKind(artifact);
+		if (!kind) continue; // unknown mapping — cannot check the store
+		if (readLatestPublishedRows(cwd, projectName, kind) !== null) continue;
 		return artifact;
 	}
 	return order[0]!;
 }
 
+/**
+ * Missing-input error text for the atomic-function stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function atomicMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, AF_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run atomic-function: missing ${artifact} at ${cwd}/${groupedPath}. All previous stages (prd, rtm, feasibility, design) must be published.`;
+	return `Cannot run atomic-function: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
+/**
+ * Missing-input error text for the development-order stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function devOrderMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, DO_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run development-order: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run development-order: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan) must be published. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
+/**
+ * Missing-input error text for the final-design stage pre-conditions.
+ * @param {string} projectName - Configured project name.
+ * @param {string} cwd - Project root.
+ * @returns {string} The user-facing refusal naming the first unpublished artifact.
+ */
 function finalDesignMissingError(projectName: string, cwd: string): string {
 	const artifact = firstMissingArtifact(projectName, cwd, FINAL_DESIGN_REQUIRED_ORDER);
-	const groupedPath = _buildGroupedPath(artifact, projectName);
-	return `Cannot run final-design: missing ${artifact}. All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. Path tried: ${cwd}/${groupedPath}.`;
+	return `Cannot run final-design: ${artifact} is not published in the project store (Doc/store/${projectName}/index.db). All previous stages (prd, rtm, feasibility, design, atomic-function, pseudocode, testplan, development-order) must be published before final-design runs. To import legacy Doc/ artifacts, run /velpari-backfill <kind>.`;
 }
 
 interface ResolveInputsDeps {
@@ -530,6 +519,13 @@ export type ResolveInputsResult =
 			inputArtifactPath: string;
 			/** Concatenated contents of all resolved inputs; undefined for single-input stages (caller reads from disk). */
 			inputArtifactContent?: string;
+			/**
+			 * Phase 6 (decision 9): pre-rendered `## DB Input Slices` block body
+			 * from `resolveStageSlice` — present when the stage has DB-backed
+			 * doc inputs. Rendered by prompt.ts as its own block; brainstorm
+			 * file sections (if any) stay in `inputArtifactContent`.
+			 */
+			dbInputSlice?: string;
 	  }
 	| { ok: false; error: string };
 
@@ -541,14 +537,29 @@ export type ResolveInputsResult =
  * Required inputs that are missing return `{ ok: false, error }`. Optional
  * inputs that are missing are skipped.
  */
-export function resolveStageInputs(
-	spec: StageSpec,
-	deps: ResolveInputsDeps,
-): ResolveInputsResult {
+export function resolveStageInputs(spec: StageSpec, deps: ResolveInputsDeps): ResolveInputsResult {
+	// Phase 6 read flip (decision record §14.1): every `doc` input resolves
+	// from the project store as a DB slice — stages and scouts NEVER read
+	// Doc/ markdown. Brainstorm notes stay the ONE file-based input
+	// (decision 1); a refused slice is a LOUD stop that names
+	// `/velpari-backfill <kind>` (decision 3) — never a silent file fallback.
+	const docInputs = spec.inputs.filter((input) => input.kind === "doc");
+	const fileInputs = spec.inputs.filter((input) => input.kind === "brainstorm");
+
+	let slicePath: string | undefined;
+	let sliceBlock: string | undefined;
+	if (docInputs.length > 0) {
+		const slice = resolveStageSlice(deps.cwd, deps.projectName, spec.key);
+		if (!slice.ok) {
+			return { ok: false, error: slice.message };
+		}
+		slicePath = `db://${deps.projectName}/${spec.key}`;
+		sliceBlock = slice.block;
+	}
+
 	const paths: string[] = [];
 	const labels: string[] = [];
-
-	for (const input of spec.inputs) {
+	for (const input of fileInputs) {
 		const resolved = resolveOne(input, deps);
 		if (!resolved) {
 			if (input.optional) continue;
@@ -567,32 +578,51 @@ export function resolveStageInputs(
 		labels.push(resolved.label);
 	}
 
-	if (paths.length === 0) {
-		return { ok: false, error: `No inputs resolved for /velpari-${spec.key}.` };
+	if (docInputs.length === 0) {
+		// File-only stage (prd): brainstorm notes are the sole input — the
+		// legacy single-input path is preserved byte-for-byte.
+		if (paths.length === 0) {
+			return { ok: false, error: `No inputs resolved for /velpari-${spec.key}.` };
+		}
+		if (paths.length === 1) {
+			return { ok: true, inputArtifactPath: paths[0]! };
+		}
+		const sections: string[] = [];
+		for (let i = 0; i < paths.length; i++) {
+			const content = readFileSync(paths[i]!, "utf8");
+			sections.push(`## ${labels[i]}\n\n${content}`);
+		}
+		return {
+			ok: true,
+			inputArtifactPath: paths[0]!,
+			inputArtifactContent: sections.join("\n\n---\n\n"),
+		};
 	}
 
-	if (paths.length === 1) {
-		return { ok: true, inputArtifactPath: paths[0]! };
-	}
-
-	// Multi-input stage: read each file and concatenate.
+	// DB-backed stage: the slice block rides in `dbInputSlice` (rendered as
+	// `## DB Input Slices`); brainstorm file inputs (atomic-function's
+	// optional notes) stay in `inputArtifactContent`.
 	const sections: string[] = [];
 	for (let i = 0; i < paths.length; i++) {
-		const p = paths[i]!;
-		const content = readFileSync(p, "utf8");
-		sections.push(`## ${labels[i]}\n\n${content}`);
+		const content = readFileSync(paths[i]!, "utf8");
+		sections.push(`## Brainstorm Notes (${labels[i]})\n\n${content}`);
 	}
 	return {
 		ok: true,
-		inputArtifactPath: paths[0]!,
-		inputArtifactContent: sections.join("\n\n---\n\n"),
+		inputArtifactPath: slicePath ?? paths[0]!,
+		inputArtifactContent: sections.length > 0 ? sections.join("\n\n---\n\n") : undefined,
+		dbInputSlice: sliceBlock,
 	};
 }
 
-function resolveOne(
-	input: StageInputDoc,
-	deps: ResolveInputsDeps,
-): { path: string; label: string } | null {
+/**
+ * Resolve one stage input document to an on-disk path (brainstorm file
+ * first for its kind, then the store-backed file view, then legacy paths).
+ * @param {StageInputDoc} input - The stage input spec (kind + label).
+ * @param {ResolveInputsDeps} deps - cwd/mission/project resolution context.
+ * @returns {{ path: string; label: string } | null} Resolved path+label, or null when absent.
+ */
+function resolveOne(input: StageInputDoc, deps: ResolveInputsDeps): { path: string; label: string } | null {
 	if (input.kind === "brainstorm") {
 		const topicSlug = slugify(deps.mission);
 		const grouped = join(deps.cwd, "Doc", "brainstorm", `brainstorm-${topicSlug}.md`);
@@ -616,11 +646,7 @@ function resolveOne(
  * and the role-keyed report path; `agentName` carries the resolved spawn
  * name from `.pi/velpari/agents.json` (identity when no mapping exists).
  */
-export function buildScoutSlots(
-	spec: StageSpec,
-	scoutsDir: string,
-	cwd: string,
-): ScoutSlot[] {
+export function buildScoutSlots(spec: StageSpec, scoutsDir: string, cwd: string): ScoutSlot[] {
 	const agentConfig = loadAgentConfig(cwd);
 	return spec.scouts.map((role) => ({
 		name: role,
@@ -692,17 +718,9 @@ export function filterReviewerSlot(
  * (avoids a layering dependency on the higher-level catalogue loader).
  * Returns false on any parse error or unknown overlay.
  */
-export function overlayRequiresReviewerFor(
-	_cwd: string,
-	overlayId: string,
-): boolean {
+export function overlayRequiresReviewerFor(_cwd: string, overlayId: string): boolean {
 	try {
-		const path = join(
-			findPackageRoot(fileURLToPath(import.meta.url)),
-			"skills",
-			"standards",
-			"catalogue.json",
-		);
+		const path = join(findPackageRoot(fileURLToPath(import.meta.url)), "skills", "standards", "catalogue.json");
 		const raw = readFileSync(path, "utf8");
 		const parsed = JSON.parse(raw) as {
 			overlays?: Array<{ id: string; requiresReviewer?: boolean }>;
@@ -728,8 +746,18 @@ export async function runStage(
 ): Promise<void> {
 	const spec = STAGE_REGISTRY[stageKey];
 
+	// ===== PHASE C PREFLIGHT BLOCK — N22 fast preflight (integration request; Phase G owns final wiring) =====
+	// Session gate respected (hard stop, no fix offered — C+A), then N17
+	// binding-match + config/state readability + bookkeeping drift. Any
+	// blocking finding opens the chat fix flow (Fix all / Show details /
+	// Abort); only a repaired or clean preflight continues into runStage.
+	// Read-only commands never reach this point (injection = stage starts).
+	const preflight = await runStagePreflight(stageKey, ctx, pi, cwd);
+	if (!preflight.continue) return;
+	// ===== END PHASE C PREFLIGHT BLOCK =====
+
 	// 1. Load state + config.
-	const state = loadState(cwd);
+	let state = loadState(cwd);
 	if (!state.runId) {
 		ctx.ui.notify("No active run. Run /velpari-brainstorm first.", "error");
 		return;
@@ -753,6 +781,68 @@ export async function runStage(
 		return;
 	}
 	const projectName = config.projectName;
+
+	// 1c. Worktree enforcement (N5/N6) — before any scout spawns or any write:
+	//     this folder must BE the run's worktree on the run's branch, and it must
+	//     not be claimed by a different live run line. Fail-open without a stamp.
+	const wtVerdict = verifyRunWorktree(state, cwd);
+	if (!wtVerdict.ok) {
+		ctx.ui.notify(wtVerdict.reason, "error");
+		return;
+	}
+	const lineVerdict = verifyRunStartLine(state, cwd);
+	if (!lineVerdict.ok) {
+		ctx.ui.notify(lineVerdict.reason, "error");
+		return;
+	}
+
+	// 1d. Change report + developer confirmation gate (F14). Type B (a foreign
+	//     run moved an upstream input) is a hard block (N8-B) that forces a
+	//     separate worktree; Type A (own-run staleness) shows what moved and
+	//     needs an explicit confirmation before update mode proceeds. The
+	//     report is written into the run folder and named in both messages.
+	const stageInputNames = spec.inputs
+		.map((input) => (input.artifact ?? "").toLowerCase())
+		.filter((artifact) => artifact !== "");
+	const report = buildChangeReport(cwd, state, { stage: spec.stageEnum, kinds: stageInputNames });
+	const foreignEntries = report.entries.filter((entry) => entry.classification === "foreign-run");
+	if (foreignEntries.length > 0) {
+		const reportPath = writeChangeReport(cwd, report);
+		ctx.ui.notify(
+			`Upstream moved by another run line — stage "${stageKey}" blocked (N8-B). Change report: ${reportPath}\n` +
+				foreignEntries.map((entry) => `  - ${entry.detail}`).join("\n"),
+			"error",
+		);
+		return;
+	}
+	if (report.entries.length > 0) {
+		const reportPath = writeChangeReport(cwd, report);
+		// The confirmation surface is part of the Pi UI contract; when a host
+		// (or a test mock) does not provide it, the gate must not wedge the
+		// stage — report loudly and continue (fail-open, like every guard).
+		const confirm = ctx.ui?.confirm;
+		if (typeof confirm !== "function") {
+			ctx.ui.notify(
+				`Upstream inputs changed (${report.entries.length} entry/entries) — see ${reportPath}. ` +
+					`Continuing without a confirmation prompt (no confirm surface on this host).`,
+				"warning",
+			);
+		} else {
+			const confirmed = await confirm(
+				"Upstream inputs changed",
+				`${report.entries.length} input(s) moved since this run read them — see ${reportPath}. ` +
+					`Proceed with update mode (it revises only the affected parts)?`,
+			);
+			if (!confirmed) {
+				ctx.ui.notify(
+					`Stage "${stageKey}" not started. Change report: ${reportPath} ` +
+						`(re-read the inputs, or /velpari-reconfirm if the change has no impact).`,
+					"info",
+				);
+				return;
+			}
+		}
+	}
 
 	// 2. Resolve inputs.
 	const inputs = resolveStageInputs(spec, { cwd, projectName, mission: state.mission });
@@ -802,12 +892,7 @@ export async function runStage(
 	const runDir = buildRunDir(state.runId, cwd);
 	const workingCopyDir = join(runDir, spec.workingCopyCategory);
 	const scoutsDir = join(workingCopyDir, "scouts");
-	const workingCopyPath = buildWorkingGroupedPath(
-		cwd,
-		state.runId,
-		spec.workingCopyArtifact,
-		projectName,
-	);
+	const workingCopyPath = buildWorkingGroupedPath(cwd, state.runId, spec.workingCopyArtifact, projectName);
 	const additionalWorkingCopies = spec.additionalWorkingCopies?.map((a) =>
 		buildWorkingGroupedPath(cwd, state.runId, a, projectName),
 	);
@@ -878,12 +963,7 @@ export async function runStage(
 	// scout slot list. For atomic-function only, remove the `reviewer` slot
 	// when shouldRunReviewer returns false. Other stages pass through.
 	const allScouts = buildScoutSlots(spec, scoutsDir, cwd);
-	const gatedScouts = filterReviewerSlot(
-		allScouts,
-		stageKey,
-		atomicProfile,
-		overlayRequiresReviewer,
-	);
+	const gatedScouts = filterReviewerSlot(allScouts, stageKey, atomicProfile, overlayRequiresReviewer);
 
 	// 5. Compose StageRunConfig and hand off.
 	const stageConfig: StageRunConfig = {
@@ -895,6 +975,10 @@ export async function runStage(
 		scouts: gatedScouts,
 		inputArtifactPath: inputs.inputArtifactPath,
 		inputArtifactContent: inputs.inputArtifactContent,
+		// Phase 6 decision 6 — per-scout role slice lines for the prompt's
+		// `## Scout Slices` block (empty for prd: brainstorm is file-based).
+		scoutSliceLines: SCOUT_SLICE_LINES[stageKey] ?? [],
+		dbInputSlice: inputs.dbInputSlice,
 		workingCopyDir,
 		workingCopyPath,
 		scoutsDir,
@@ -905,6 +989,24 @@ export async function runStage(
 		updateMode,
 		atomicProfile,
 	};
+
+	// F7 baseline stamp (Phase 1): the starting stage adopts the current head
+	// revision of every upstream artifact (queryable baselines table). One
+	// best-effort call at the single funnel point — never blocks the stage.
+	const baselineErr = recordStageBaselines(cwd, projectName, state.runId!, spec.stageEnum);
+	if (baselineErr) ctx.ui.notify(`Baseline stamp failed (stage continues): ${baselineErr}`, "warning");
+
+	// N24-01: advance into the in-progress stage so the publish tool and the
+	// tool_call folder lock see the correct currentStage. Guarded by the
+	// transition table (not by stage equality): STAGE_TRANSITIONS has no
+	// self-loops and no update-mode re-entry edges, so an unconditional call
+	// would throw on a redraft or an update-mode re-run. Where no transition
+	// exists the stage proceeds without advancing (the atomic-function
+	// precedent, and the known update-mode limitation recorded below).
+	const entryCommand = `/velpari-${stageKey}`;
+	if (STAGE_TRANSITIONS.some((t) => t.from === state.currentStage && t.command === entryCommand)) {
+		state = advanceStage(state, entryCommand, cwd, pi);
+	}
 
 	await runStageWithScouts(stageConfig, ctx, pi);
 }

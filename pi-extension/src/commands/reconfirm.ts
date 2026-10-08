@@ -51,9 +51,7 @@ export function registerReconfirmCommand(pi: ExtensionAPI): void {
 			}
 
 			const state = loadState(cwd);
-			const history = state.runId
-				? { runId: state.runId, stage: state.currentStage }
-				: undefined;
+			const history = state.runId ? { runId: state.runId, stage: state.currentStage } : undefined;
 
 			let remaining = actionable;
 			while (remaining.length > 0) {

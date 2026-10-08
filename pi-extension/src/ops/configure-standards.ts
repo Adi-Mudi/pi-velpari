@@ -21,11 +21,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-	loadCatalogue,
-	listOverlayIds,
-	findOverlay,
-} from "../core/standards-catalogue.js";
+import { loadCatalogue, listOverlayIds, findOverlay } from "../core/standards-catalogue.js";
 import { loadState, saveState, type RunState, type StandardsProfile } from "../core/state.js";
 
 interface ConfigureStandardsContext {
@@ -80,9 +76,7 @@ function saveStandardsProfileToDisk(profile: StandardsProfile, cwd: string): voi
 /**
  * Top-level entry point for /velpari-configure-standards.
  */
-export async function handleConfigureStandards(
-	ctx: ConfigureStandardsContext,
-): Promise<ConfigureStandardsResult> {
+export async function handleConfigureStandards(ctx: ConfigureStandardsContext): Promise<ConfigureStandardsResult> {
 	const catalogue = loadCatalogue(ctx.cwd);
 	if (!catalogue) {
 		ctx.ui.notify?.(
@@ -156,8 +150,7 @@ export async function handleConfigureStandards(
 	persistToState(ctx.cwd, profile);
 
 	ctx.ui.notify?.(
-		`Standards overlay set to ${profile.id}@${profile.version}.` +
-			(consent ? " Research consent recorded." : ""),
+		`Standards overlay set to ${profile.id}@${profile.version}.` + (consent ? " Research consent recorded." : ""),
 		"info",
 	);
 

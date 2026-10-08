@@ -28,10 +28,7 @@ import {
 
 describe("reviewer sub-agent — taxonomy", () => {
 	it("is in VELPARI_ROLES", () => {
-		assert.ok(
-			(VELPARI_ROLES as readonly string[]).includes("reviewer"),
-			"reviewer missing from VELPARI_ROLES",
-		);
+		assert.ok((VELPARI_ROLES as readonly string[]).includes("reviewer"), "reviewer missing from VELPARI_ROLES");
 	});
 
 	it("has a non-empty ROLE_LABELS entry", () => {
@@ -77,9 +74,7 @@ describe("reviewer sub-agent — bundled frontmatter", () => {
 				// continue
 			}
 		}
-		throw new Error(
-			`Could not locate skills/agents/reviewer.md from any of: ${CANDIDATE_PATHS.join(", ")}`,
-		);
+		throw new Error(`Could not locate skills/agents/reviewer.md from any of: ${CANDIDATE_PATHS.join(", ")}`);
 	}
 
 	it("exists at skills/agents/reviewer.md", () => {
@@ -92,15 +87,7 @@ describe("reviewer sub-agent — bundled frontmatter", () => {
 		const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
 		assert.ok(fmMatch, "missing --- frontmatter block ---");
 		const fm = fmMatch![1]!;
-		for (const field of [
-			"name:",
-			"description:",
-			"tools:",
-			"thinking:",
-			"session-mode:",
-			"auto-exit:",
-			"spawning:",
-		]) {
+		for (const field of ["name:", "description:", "tools:", "thinking:", "session-mode:", "auto-exit:", "spawning:"]) {
 			assert.ok(fm.includes(field), `frontmatter missing field "${field}"`);
 		}
 		assert.match(fm, /^name:\s*reviewer$/m);
@@ -127,12 +114,7 @@ describe("reviewer sub-agent — bundled frontmatter", () => {
 
 	it("declares the 4 semantic rules (NEW)", () => {
 		const content = readReviewerFile();
-		const rules = [
-			"cross-scout-contradiction",
-			"missing-merge",
-			"tier-mismatch",
-			"standards-mapping-missing",
-		];
+		const rules = ["cross-scout-contradiction", "missing-merge", "tier-mismatch", "standards-mapping-missing"];
 		for (const rule of rules) {
 			assert.ok(content.includes(rule), `missing semantic rule "${rule}"`);
 		}
@@ -170,9 +152,7 @@ describe("reviewer sub-agent — orchestration skill", () => {
 				// continue
 			}
 		}
-		throw new Error(
-			`Could not locate skills/velpari-reviewer.md from any of: ${CANDIDATE_PATHS.join(", ")}`,
-		);
+		throw new Error(`Could not locate skills/velpari-reviewer.md from any of: ${CANDIDATE_PATHS.join(", ")}`);
 	}
 
 	it("exists at skills/velpari-reviewer.md", () => {

@@ -101,9 +101,7 @@ describe("detectMultiplexer", () => {
 	});
 
 	it("PI_SUBAGENT_MUX override with unsupported value falls through to env sniff", () => {
-		const info = detectMultiplexer(
-			env({ PI_SUBAGENT_MUX: "bogus", TMUX: "/tmp/tmux-1000/default,12345,0" }),
-		);
+		const info = detectMultiplexer(env({ PI_SUBAGENT_MUX: "bogus", TMUX: "/tmp/tmux-1000/default,12345,0" }));
 		assert.equal(info.mux, "tmux");
 		assert.equal(info.source, "TMUX");
 	});

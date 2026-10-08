@@ -124,10 +124,7 @@ describe("guardArtifactPath", () => {
 	const runDir = path.join(CWD, ".IDE_Plans", "velpari", "runs", RUN_ID);
 
 	it("allows a path inside the run dir", () => {
-		assert.equal(
-			guardArtifactPath(path.join(runDir, "brainstorm", "brainstorm-notes.md"), runDir).ok,
-			true,
-		);
+		assert.equal(guardArtifactPath(path.join(runDir, "brainstorm", "brainstorm-notes.md"), runDir).ok, true);
 	});
 
 	it("blocks traversal escaping the run dir", () => {
@@ -168,10 +165,7 @@ describe("guardApproveReadiness", () => {
 	});
 
 	it("passes with confirmed understanding and no questions", () => {
-		assert.equal(
-			guardApproveReadiness(makeState({ understandingConfirmed: true })).ok,
-			true,
-		);
+		assert.equal(guardApproveReadiness(makeState({ understandingConfirmed: true })).ok, true);
 	});
 
 	it("blocks draft/discussing questions and names their ids", () => {
@@ -213,17 +207,10 @@ describe("guardApproveReadiness", () => {
 });
 
 describe("guardBrainstormMutation", () => {
-	const brainstormDir = path.join(
-		CWD, ".IDE_Plans", "velpari", "runs", RUN_ID, "brainstorm",
-	);
+	const brainstormDir = path.join(CWD, ".IDE_Plans", "velpari", "runs", RUN_ID, "brainstorm");
 
 	it("blocks edit/write outside the brainstorm folder while brainstorming", () => {
-		const res = guardBrainstormMutation(
-			"write",
-			{ path: "src/index.ts" },
-			makeState(),
-			CWD,
-		);
+		const res = guardBrainstormMutation("write", { path: "src/index.ts" }, makeState(), CWD);
 		assert.equal(res?.block, true);
 		assert.match(res?.reason ?? "", /read-only/);
 	});
@@ -264,14 +251,8 @@ describe("guardBrainstormMutation", () => {
 	});
 
 	it("passes non-edit/write tools through", () => {
-		assert.equal(
-			guardBrainstormMutation("bash", { command: "rm -rf /" }, makeState(), CWD),
-			undefined,
-		);
-		assert.equal(
-			guardBrainstormMutation("read", { path: "src/index.ts" }, makeState(), CWD),
-			undefined,
-		);
+		assert.equal(guardBrainstormMutation("bash", { command: "rm -rf /" }, makeState(), CWD), undefined);
+		assert.equal(guardBrainstormMutation("read", { path: "src/index.ts" }, makeState(), CWD), undefined);
 	});
 });
 

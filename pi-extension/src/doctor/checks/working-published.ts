@@ -10,12 +10,11 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { GROUPED_CATEGORIES } from "../../core/paths.js";
+import { markdownWritesEnabled } from "../../core/config.js";
+import { KIND_ORDER, readLatestPublishedRows } from "../../io/store.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-export function checkWorkingPublishedSeparationSection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkWorkingPublishedSeparationSection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	const docsDir = join(cwd, "Doc");
 	const workingRoot = join(cwd, ".IDE_Plans", "velpari", "runs");
@@ -42,6 +41,11 @@ export function checkWorkingPublishedSeparationSection(
 
 	let publishedCount = 0;
 	if (existsSync(docsDir)) {
+		/**
+		 * Recursively count `.md` files below one directory.
+		 * @param {string} dir - Directory to walk.
+		 * @returns {number} Total `.md` files under `dir` (subdirectories included).
+		 */
 		const recurse = (dir: string): number => {
 			let n = 0;
 			for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -53,11 +57,30 @@ export function checkWorkingPublishedSeparationSection(
 		publishedCount = recurse(docsDir);
 	}
 
+	// Phase 11 (Q3, Design 5): DB-era awareness. Published markdown is a
+	// DB-rendered VIEW now (write-alongside retired, DEFAULT OFF) — the
+	// store's published-kind count is the real publish total for DB-era
+	// projects, and the markdown totals stay informational. This check
+	// never errors (a count summary, not a gate).
+	let storeKinds = 0;
+	for (const kind of KIND_ORDER) {
+		if (readLatestPublishedRows(cwd, projectName, kind)) storeKinds += 1;
+	}
+	let markdownWrites = false;
+	try {
+		markdownWrites = markdownWritesEnabled(cwd);
+	} catch {
+		/* Phase C: corrupt files.json — the Config section reports UNREADABLE */
+	}
+
 	const groupedKeys = Object.keys(GROUPED_CATEGORIES);
 	const groupedCats = Object.values(new Set(Object.values(GROUPED_CATEGORIES))).join(", ");
 	items.push({
 		status: "ok",
-		message: `Working copies: ${workingCount} | Published docs: ${publishedCount}`,
+		message:
+			`Working copies: ${workingCount} | Published docs: ${publishedCount}` +
+			(storeKinds > 0 ? ` | Store-published kinds: ${storeKinds}` : "") +
+			(!markdownWrites ? " (markdown writes retired — views via /velpari-export)" : ""),
 		details: [
 			`Grouped categories (${groupedKeys.length}): ${groupedCats}`,
 			`Project under audit: ${projectName || "(none — projectName missing)"}`,

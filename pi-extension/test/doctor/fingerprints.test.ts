@@ -8,17 +8,32 @@
  *   - error on orphan PSRS requirements
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync as realMkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkFingerprintsSection } from "../../src/doctor/checks/fingerprints.js";
-import {
-	extractRequirementFingerprints,
-	stampFingerprints,
-} from "../../src/core/fingerprints.js";
+import { extractRequirementFingerprints, stampFingerprints } from "../../src/core/fingerprints.js";
 import type { RtmData } from "../../src/core/rtm-data.js";
+
+/** Temp dirs created in this file; removed at module teardown (I12.1 sweep). */
+const tempDirs: string[] = [];
+
+/**
+ * Tracked mkdtempSync: creates a temp dir and registers it for teardown removal.
+ * @param {string} prefix - Directory path/prefix passed to fs.mkdtempSync.
+ * @returns {string} The created directory path.
+ */
+const mkdtempSync = (prefix: string): string => {
+	const dir = realMkdtempSync(prefix);
+	tempDirs.push(dir);
+	return dir;
+};
+
+after(() => {
+	for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 const PSRS = [
 	"# PSRS",
@@ -31,6 +46,11 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Create a temp project dir with a PRD fixture and RTM sidecar for fingerprint checks.
+ * @param {{ fingerprint?: string }} options - Optional stamped fingerprint value.
+ * @returns {string} Absolute path of the temp project root.
+ */
 function setup(options: { fingerprint?: string } = {}): string {
 	const cwd = mkdtempSync(join(tmpdir(), "velpari-fp-"));
 	mkdirSync(join(cwd, "Doc", "requirements"), { recursive: true });
@@ -53,10 +73,7 @@ function setup(options: { fingerprint?: string } = {}): string {
 	);
 	if (options.fingerprint) rows[0]!.fingerprint = options.fingerprint;
 	const data: RtmData = { project: "TestApp", version: "1.0.0", rows };
-	writeFileSync(
-		join(cwd, "Doc", "requirements", "RTM_TestApp.json"),
-		JSON.stringify(data),
-	);
+	writeFileSync(join(cwd, "Doc", "requirements", "RTM_TestApp.json"), JSON.stringify(data));
 	writeFileSync(join(cwd, "Doc", "requirements", "RTM_TestApp.md"), "# RTM\n");
 	return cwd;
 }
@@ -89,8 +106,6 @@ describe("checkFingerprintsSection", () => {
 			),
 		);
 		const section = checkFingerprintsSection(cwd, "TestApp");
-		assert.ok(
-			section.items.some((i) => i.status === "error" && /FR-02.*no RTM row/.test(i.message)),
-		);
+		assert.ok(section.items.some((i) => i.status === "error" && /FR-02.*no RTM row/.test(i.message)));
 	});
 });

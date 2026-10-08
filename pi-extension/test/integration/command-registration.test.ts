@@ -1,24 +1,26 @@
 /**
- * Integration: Command registration (Phase 8 + v1.6.0 per-stage approve).
+ * Integration: Command registration — the single integration-time count pin.
  *
- * Verifies all 41 commands register without conflict:
- *  - Phase 1-3 additions (rename, new configure-standards command)
- *  - Phase 8 /velpari-generate-sub-agents addition
- *  - v1.4.0: +velpari-design-logging + velpari-show-logging
+ * Verifies all 52 commands register without conflict (Phase I reconciliation;
+ * the marked per-phase blocks are folded into the canonical registry):
  *  - v1.6.0: per-stage approve split (dropped the legacy generic
- *    add 9 per-stage /velpari-<stage>-approve commands)
+ *    command, added 9 per-stage /velpari-<stage>-approve commands)
+ *  - A5: +velpari-reconfirm; Phase 5: +velpari-export
+ *  - Phase 6 backfill + Phase 10 portfolio + Phase 11 migrate-store
+ *  - protection phase (46th–49th): +db-reset/freeze/tombstone/rollback
+ *  - export/retention phase (50th): +velpari-retention-prune
+ *  - Phase 6 doctor (51st): +velpari-merge-back
+ *  - v1.2 (52nd): +velpari-revision-status
+ * This file owns the ONLY hard-coded command count in the test tree.
  */
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	COMMAND_NAMES,
-	CommandName,
-} from "../../src/commands/index.js";
+import { COMMAND_NAMES, CommandName } from "../../src/commands/index.js";
 
 describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
-	it("exports 41 command names (A5: +velpari-reconfirm)", () => {
-		assert.strictEqual(COMMAND_NAMES.length, 41);
+	it("exports 52 command names (A5: +velpari-reconfirm; Phase 5: +velpari-export; Phase 6: +velpari-backfill; Phase 10: +velpari-portfolio; Phase 11: +velpari-migrate-store; protection phase: +db-reset/freeze/tombstone/rollback; export/retention phase: +velpari-retention-prune; Phase 6 doctor: +velpari-merge-back; v1.2: +velpari-revision-status)", () => {
+		assert.strictEqual(COMMAND_NAMES.length, 52);
 	});
 
 	it("contains all expected user-facing commands", () => {
@@ -69,12 +71,27 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-show-pseudocode",
 			"velpari-show-testplan",
 			"velpari-show-logging",
+			// View/ops — Phase 5 export + Phase 6 backfill (43rd command)
+			"velpari-export",
+			"velpari-backfill",
+			// Ops — Phase 10 portfolio registry (44th command)
+			"velpari-portfolio",
+			// Ops — Phase 11 one-time migration (45th command, §15.6)
+			"velpari-migrate-store",
+			// Ops — Phase 2 protection commands (46th–49th)
+			"velpari-db-reset",
+			"velpari-freeze",
+			"velpari-tombstone",
+			"velpari-rollback",
+			// Ops — Phase 4 export/retention (50th command, N7)
+			"velpari-retention-prune",
+			// Ops — Phase 6 guided merge-back (51st command, N12)
+			"velpari-merge-back",
+			// Ops — v1.2 revision status view + restore (52nd command, B6)
+			"velpari-revision-status",
 		];
 		for (const cmd of expected) {
-			assert.ok(
-				(COMMAND_NAMES as readonly string[]).includes(cmd),
-				`missing command: ${cmd}`,
-			);
+			assert.ok((COMMAND_NAMES as readonly string[]).includes(cmd), `missing command: ${cmd}`);
 		}
 	});
 
@@ -103,10 +120,7 @@ describe("command registration — Phase 8 + v1.6.0 re-verification", () => {
 			"velpari-final-design-approve",
 		];
 		for (const cmd of perStage) {
-			assert.ok(
-				(COMMAND_NAMES as readonly string[]).includes(cmd),
-				`missing per-stage approve command: ${cmd}`,
-			);
+			assert.ok((COMMAND_NAMES as readonly string[]).includes(cmd), `missing per-stage approve command: ${cmd}`);
 		}
 	});
 

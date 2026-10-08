@@ -102,10 +102,7 @@ export function createAuditSession(runId: string, seed: string): AuditSession {
 
 /** Append a decision to the session. Mutates the session in place.
  *  Returns the session for fluent chaining. */
-export function appendDecision(
-	session: AuditSession,
-	decision: DispatchDecision,
-): AuditSession {
+export function appendDecision(session: AuditSession, decision: DispatchDecision): AuditSession {
 	session.decisions.push(decision);
 	return session;
 }
@@ -215,9 +212,7 @@ export function renderAuditLog(session: AuditSession, summary: AuditSummary): st
 	lines.push(`- Skipped: ${summary.skipped}`);
 	lines.push(`- Side-channel: ${summary.sideChannel}`);
 	lines.push(`- Wall-clock total: ~${summary.wallClockMs}ms`);
-	lines.push(
-		`- Notes sections filled: ${summary.notesSectionsFilled} / ${summary.notesSectionsTotal}`,
-	);
+	lines.push(`- Notes sections filled: ${summary.notesSectionsFilled} / ${summary.notesSectionsTotal}`);
 	return lines.join("\n") + "\n";
 }
 
@@ -248,11 +243,7 @@ export function auditLogPath(runId: string, cwd: string): string {
 
 /** Write the audit log atomically to the run's brainstorm folder.
  *  Returns the absolute path of the file written. */
-export function writeAuditLog(
-	cwd: string,
-	session: AuditSession,
-	summary: AuditSummary,
-): string {
+export function writeAuditLog(cwd: string, session: AuditSession, summary: AuditSummary): string {
 	const filePath = auditLogPath(session.runId, cwd);
 	atomicWriteFile(filePath, renderAuditLog(session, summary), "utf8");
 	return filePath;
@@ -261,7 +252,10 @@ export function writeAuditLog(
 /** Read an existing audit log from disk. Returns null if the file does
  *  not exist. Parses the marker + metadata lines into an AuditSession-like
  *  shape (does not reconstruct decisions — just metadata). */
-export function readAuditLog(cwd: string, runId: string): {
+export function readAuditLog(
+	cwd: string,
+	runId: string,
+): {
 	runId: string;
 	startedAt: string;
 	seed: string;

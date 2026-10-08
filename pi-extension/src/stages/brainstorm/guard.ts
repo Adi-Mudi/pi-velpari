@@ -29,11 +29,7 @@
 import { resolve, relative, isAbsolute, sep } from "node:path";
 import { buildRunDir } from "../../core/paths.js";
 import type { RunState } from "../../core/state.js";
-import {
-	NOTES_CONTENT_PLACEHOLDER,
-	REQUIRED_NOTES_SECTIONS,
-	sectionBody,
-} from "./notes.js";
+import { NOTES_CONTENT_PLACEHOLDER, REQUIRED_NOTES_SECTIONS, sectionBody } from "./notes.js";
 
 /** Result type returned by every guard. `ok: true` means proceed;
  *  `ok: false` means block, with a human-readable reason. */
@@ -178,9 +174,7 @@ export function guardApproveReadiness(state: RunState): GuardResult {
 				`then can the notes be approved.`,
 		};
 	}
-	const open = (state.brainstormQuestions ?? []).filter(
-		(q) => q.state === "draft" || q.state === "discussing",
-	);
+	const open = (state.brainstormQuestions ?? []).filter((q) => q.state === "draft" || q.state === "discussing");
 	if (open.length > 0) {
 		return {
 			ok: false,
@@ -213,7 +207,7 @@ export function guardStageForBrainstorm(state: RunState): GuardResult {
 		ok: false,
 		reason:
 			"A brainstorm is already open — approve or discard it before starting a new one.\n" +
-			"Run /velpari-approve-brainstorm to publish it, or discard it via velpari_brainstorm_session({ action: \"discard\" }).",
+			'Run /velpari-approve-brainstorm to publish it, or discard it via velpari_brainstorm_session({ action: "discard" }).',
 		details: [state.currentStage],
 	};
 }

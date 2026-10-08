@@ -21,19 +21,13 @@ import {
 	dispatchFixChoice,
 	type ActionableItem,
 } from "../../src/doctor/fix-dispatch.js";
-import type {
-	DiagnosticItem,
-	DiagnosticReport,
-	DiagnosticSection,
-} from "../../src/doctor/_types.js";
+import type { DiagnosticItem, DiagnosticReport, DiagnosticSection } from "../../src/doctor/_types.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function item(
-	partial: Partial<DiagnosticItem> & Pick<DiagnosticItem, "status" | "message">,
-): DiagnosticItem {
+function item(partial: Partial<DiagnosticItem> & Pick<DiagnosticItem, "status" | "message">): DiagnosticItem {
 	return {
 		...partial,
 	} as DiagnosticItem;
@@ -120,9 +114,7 @@ describe("listActionableItems", () => {
 	it("preserves section order and assigns 0-based indexes in document order", () => {
 		const report = makeReport([
 			section("Run state", []),
-			section("Config", [
-				item({ status: "error", message: "config bad", suggestion: "fix config" }),
-			]),
+			section("Config", [item({ status: "error", message: "config bad", suggestion: "fix config" })]),
 			section("Doc/ artifacts", [
 				item({ status: "warning", message: "missing artifact", suggestion: "rerun stage" }),
 				item({ status: "error", message: "psrs invalid", suggestion: "fill rows" }),
@@ -138,9 +130,7 @@ describe("listActionableItems", () => {
 	});
 
 	it("every actionable item carries level=interactive in Phase 1", () => {
-		const report = makeReport([
-			section("X", [item({ status: "error", message: "m", suggestion: "s" })]),
-		]);
+		const report = makeReport([section("X", [item({ status: "error", message: "m", suggestion: "s" })])]);
 		const result = listActionableItems(report);
 		for (const it of result) {
 			assert.equal(it.level, "interactive");

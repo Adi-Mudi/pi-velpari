@@ -81,7 +81,11 @@ Dependencies argue for this order (each unlocks the next):
    downstream inputs — stays DEFERRED as designed: sidecars join their own
    artifact's `extraPaths`; downstream declared inputs keep hashing the
    rendered markdown. A future cleanup may flip the hash target once every
-   sidecar artifact is sidecar-backed in the wild.)
+   sidecar artifact is sidecar-backed in the wild. **Superseded in part by
+   Phase 11 (2026-09-24):** for DB-era projects (markdown writes retired, Q3
+   DEFAULT OFF) downstream inputs now hash the kind's exported YAML beside the
+   store DB — see decision record §15.6.9; legacy / flag-ON projects keep
+   hashing the rendered markdown.)
 7. **C1 → C2 → C3** — generator v2 per phase, doctor section, verifier wiring. ✅ **Done
    2026-09-21** — plan `.IDE_Plans/velpari-generator-v2_plan_20260921_1105_v1.0.md`.
    (C1: `GENERATION_PHASES` + `phaseForStage` in `core/agents-config.ts`;

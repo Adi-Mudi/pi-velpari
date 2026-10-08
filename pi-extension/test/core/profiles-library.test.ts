@@ -130,17 +130,10 @@ describe("core/profiles-library", () => {
 	});
 
 	it("composeProfile tags non-common-core as built-in", () => {
-		const profiles = getBuiltInProfiles().filter(
-			(p) => p.profileId !== COMMON_PSRS_CORE_PROFILE_ID,
-		);
+		const profiles = getBuiltInProfiles().filter((p) => p.profileId !== COMMON_PSRS_CORE_PROFILE_ID);
 		if (profiles.length === 0) return; // nothing to test
 		const builtIn = profiles[0]!;
-		const composed = composeProfile(
-			builtIn,
-			{} as RequirementsAnswers,
-			true,
-			["https://example.com/citation"],
-		);
+		const composed = composeProfile(builtIn, {} as RequirementsAnswers, true, ["https://example.com/citation"]);
 		assert.equal(composed.profileKind, "built-in");
 		assert.equal(composed.researchConsent, true);
 		assert.deepEqual(composed.researchSources, ["https://example.com/citation"]);
@@ -148,11 +141,7 @@ describe("core/profiles-library", () => {
 
 	it("composeProfile threads requiredSections + conditional questions", () => {
 		const builtIn = findBuiltInProfile(COMMON_PSRS_CORE_PROFILE_ID)!;
-		const composed = composeProfile(
-			builtIn,
-			{ domain: "banking" } as RequirementsAnswers,
-			false,
-		);
+		const composed = composeProfile(builtIn, { domain: "banking" } as RequirementsAnswers, false);
 		assert.ok(composed.requiredSections.length >= builtIn.requiredSections.length);
 		assert.ok(composed.conditionalQuestions.length > 0, "banking yields conditional questions");
 	});

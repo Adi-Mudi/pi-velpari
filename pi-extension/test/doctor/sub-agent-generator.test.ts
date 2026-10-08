@@ -17,21 +17,12 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkSubAgentGeneratorSection } from "../../src/doctor/checks/sub-agent-generator.js";
 import { GENERATOR_VERSION } from "../../src/core/agents-generator.js";
-import {
-	GENERATION_PHASES,
-	type GenerationPhase,
-} from "../../src/core/agents-config.js";
+import { GENERATION_PHASES, type GenerationPhase } from "../../src/core/agents-config.js";
 
 /** Unique generatable roles across all 4 phases (P1 4 + P2 14 + P3 17 + P4 12 = 47). */
 const TOTAL_GENERATABLE_ROLES = new Set(
@@ -70,10 +61,7 @@ function writeGeneratedAgent(
 	writeFileSync(join(agentsDir, `${agentName}.md`), content, "utf8");
 }
 
-function writeAgentsJson(
-	cwd: string,
-	agents: Record<string, string> | null,
-): void {
+function writeAgentsJson(cwd: string, agents: Record<string, string> | null): void {
 	const dir = join(cwd, ".pi", "velpari");
 	mkdirSync(dir, { recursive: true });
 	if (agents === null) return;
@@ -119,9 +107,7 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 				"web-search-agent": "my-ws",
 			});
 			const section = checkSubAgentGeneratorSection(cwd);
-			const customInfo = section.items.filter(
-				(i) => i.status === "info" && /custom mapping/.test(i.message),
-			);
+			const customInfo = section.items.filter((i) => i.status === "info" && /custom mapping/.test(i.message));
 			assert.equal(customInfo.length, 4);
 			// No errors (custom agents are user-owned; integrity is checked elsewhere)
 			assert.equal(section.items.filter((i) => i.status === "error").length, 0);
@@ -143,11 +129,7 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 				"web-search-agent": `${slug}-web-search-agent`,
 			});
 			// Mock getProjectSlug by writing a package.json with the slug
-			writeFileSync(
-				join(cwd, "package.json"),
-				JSON.stringify({ name: slug }),
-				"utf8",
-			);
+			writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: slug }), "utf8");
 			const section = checkSubAgentGeneratorSection(cwd);
 			const errItems = section.items.filter((i) => i.status === "error");
 			assert.equal(errItems.length, 4, "4 missing files → 4 errors");
@@ -177,9 +159,7 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 			// 4 per-role OK items. The summary item is also 'ok' when there
 			// are no errors / warnings — we filter for the per-role pattern
 			// ("generator v<N> OK") to exclude it.
-			const perRoleOK = section.items.filter(
-				(i) => i.status === "ok" && /generator v\d+ OK/.test(i.message),
-			);
+			const perRoleOK = section.items.filter((i) => i.status === "ok" && /generator v\d+ OK/.test(i.message));
 			assert.equal(perRoleOK.length, 4, "4 generated agents with current footer → 4 ok");
 			const errors = section.items.filter((i) => i.status === "error");
 			assert.equal(errors.length, 0);
@@ -221,7 +201,10 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 			const errors = section.items.filter((i) => i.status === "error");
 			assert.equal(errors.length, 0, "newer footer is not an error");
 			const infos = section.items.filter((i) => i.status === "info");
-			assert.ok(infos.some((i) => /NEWER/.test(i.message)), "info item notes the newer version");
+			assert.ok(
+				infos.some((i) => /NEWER/.test(i.message)),
+				"info item notes the newer version",
+			);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -258,15 +241,9 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 			mkdirSync(agentsDir, { recursive: true });
 			writeFileSync(
 				join(agentsDir, `${slug}-extractor.md`),
-				[
-					"---",
-					`name: ${slug}-extractor`,
-					"description: no footer",
-					"tools: read",
-					"---",
-					"",
-					"# no footer",
-				].join("\n"),
+				["---", `name: ${slug}-extractor`, "description: no footer", "tools: read", "---", "", "# no footer"].join(
+					"\n",
+				),
 				"utf8",
 			);
 			const section = checkSubAgentGeneratorSection(cwd);
@@ -371,9 +348,7 @@ describe("checkSubAgentGeneratorSection (Phase 7)", () => {
 			// loadAgentConfig throws → checkRoleAgent treats it as null
 			// → falls through to the "bundled default" branch (info).
 			const section = checkSubAgentGeneratorSection(cwd);
-			const roleInfo = section.items.filter(
-				(i) => i.status === "info" && /bundled default/.test(i.message),
-			);
+			const roleInfo = section.items.filter((i) => i.status === "info" && /bundled default/.test(i.message));
 			assert.equal(roleInfo.length, TOTAL_GENERATABLE_ROLES);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });

@@ -37,20 +37,10 @@ export const AGENTS_CONFIG_COMMENT =
 	"Velpari config: maps each Velpari scout role to an agent name. Managed by /velpari-configure-agents. Hand-edit only if you know the role names.";
 
 /** The 4 brainstorm scout roles (mirrors io/agents-install.ts:SCOUT_AGENT_IDS). */
-export const BRAINSTORM_ROLES = [
-	"extractor",
-	"prd-checker",
-	"rtm-checker",
-	"web-search-agent",
-] as const;
+export const BRAINSTORM_ROLES = ["extractor", "prd-checker", "rtm-checker", "web-search-agent"] as const;
 
 /** PRD stage scouts (registry order). */
-const PRD_SCOUT_ROLES = [
-	"fr-extractor",
-	"nfr-checker",
-	"helper-detector",
-	"consolidator",
-] as const;
+const PRD_SCOUT_ROLES = ["fr-extractor", "nfr-checker", "helper-detector", "consolidator"] as const;
 
 /** RTM stage scouts (registry order). */
 const RTM_SCOUT_ROLES = [
@@ -95,20 +85,10 @@ const TESTPLAN_SCOUT_ROLES = [
 
 /** Atomic-function stage scouts (Stage 6 — runs BEFORE pseudocode in
  *  industry-standard order), excluding the reviewer. */
-const ATOMIC_FUNCTION_SCOUT_ROLES = [
-	"af-source-rtm",
-	"af-source-design",
-	"af-source-prd",
-	"af-source-feas",
-] as const;
+const ATOMIC_FUNCTION_SCOUT_ROLES = ["af-source-rtm", "af-source-design", "af-source-prd", "af-source-feas"] as const;
 
 /** Development-order stage scouts. */
-const DEV_ORDER_SCOUT_ROLES = [
-	"do-topology",
-	"do-risk",
-	"do-test",
-	"do-value",
-] as const;
+const DEV_ORDER_SCOUT_ROLES = ["do-topology", "do-risk", "do-test", "do-value"] as const;
 
 /** Final-design stage scouts. */
 const FINAL_DESIGN_SCOUT_ROLES = [
@@ -178,10 +158,7 @@ export const LOGGING_SCOUT_ROLES = [
  * build-from-scratch path with no configured framework. Kept out of
  * STAGE_SCOUT_ROLES so the registry-order cross-check stays intact.
  */
-const FEASIBILITY_CONDITIONAL_ROLES = [
-	"feasibility-reuse-scout",
-	"feasibility-spike",
-] as const;
+const FEASIBILITY_CONDITIONAL_ROLES = ["feasibility-reuse-scout", "feasibility-spike"] as const;
 
 /**
  * Generator v2 — the per-phase role + input model (spec
@@ -213,21 +190,11 @@ interface GenerationPhaseSpec {
 export const GENERATION_PHASES: Readonly<Record<GenerationPhase, GenerationPhaseSpec>> = {
 	1: { roles: BRAINSTORM_ROLES, inputs: [] },
 	2: {
-		roles: [
-			...PRD_SCOUT_ROLES,
-			...RTM_SCOUT_ROLES,
-			...FEASIBILITY_SCOUT_ROLES,
-			...FEASIBILITY_CONDITIONAL_ROLES,
-		],
+		roles: [...PRD_SCOUT_ROLES, ...RTM_SCOUT_ROLES, ...FEASIBILITY_SCOUT_ROLES, ...FEASIBILITY_CONDITIONAL_ROLES],
 		inputs: ["brainstorm"],
 	},
 	3: {
-		roles: [
-			...DESIGN_SCOUT_ROLES,
-			...ATOMIC_FUNCTION_SCOUT_ROLES,
-			...PSEUDOCODE_SCOUT_ROLES,
-			...REVIEWER_ROLES,
-		],
+		roles: [...DESIGN_SCOUT_ROLES, ...ATOMIC_FUNCTION_SCOUT_ROLES, ...PSEUDOCODE_SCOUT_ROLES, ...REVIEWER_ROLES],
 		inputs: ["PRD", "RTM", "feasibility-study"],
 	},
 	4: {
@@ -582,9 +549,7 @@ function validateAgentConfig(config: AgentConfig): void {
 		}
 		if (!(VELPARI_ROLES as readonly string[]).includes(role)) {
 			throw new Error(
-				`Unknown role "${role}". Allowed roles: ${VELPARI_ROLES.map(
-					(r) => `${ROLE_LABELS[r]} (${r})`,
-				).join(", ")}`,
+				`Unknown role "${role}". Allowed roles: ${VELPARI_ROLES.map((r) => `${ROLE_LABELS[r]} (${r})`).join(", ")}`,
 			);
 		}
 	}
@@ -775,9 +740,7 @@ function loadAgentsFromDir(dir: string, source: "project" | "user"): DiscoveredA
 }
 
 /** Parse `name` + `description` from an agent file's frontmatter. */
-function parseAgentFile(
-	filePath: string,
-): { name: string; description: string; filePath: string } | undefined {
+function parseAgentFile(filePath: string): { name: string; description: string; filePath: string } | undefined {
 	try {
 		const content = readFileSync(filePath, "utf8");
 		const { frontmatter } = parseFrontmatter<Record<string, unknown>>(content);

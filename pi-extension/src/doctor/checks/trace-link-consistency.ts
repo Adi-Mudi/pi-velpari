@@ -23,10 +23,8 @@
 import { readFileSync } from "node:fs";
 import { resolveDocArtifact } from "../../core/paths.js";
 import { resolveRtmSidecar, type RtmData } from "../../core/rtm-data.js";
-import {
-	resolveTestCasesSidecar,
-	type TestCasesData,
-} from "../../core/test-cases-data.js";
+import { resolveTestCasesSidecar, type TestCasesData } from "../../core/test-cases-data.js";
+import { readLatestPublishedRows } from "../../io/store.js";
 import { parseYaml } from "../../core/yaml-data.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
@@ -57,6 +55,39 @@ function rtmLinks(data: RtmData): TraceLink[] {
 	return links;
 }
 
+/**
+ * Links declared by the store's tc_trace rows (DB authority side).
+ * Only FR/NFR targets map to RTM rows — AF traces are excluded, same
+ * as the sidecar path.
+ */
+function dbTcLinks(cwd: string, projectName: string): TraceLink[] {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "testplan");
+	const links: TraceLink[] = [];
+	const traces = (fromDb?.rows.tcTrace as Array<Record<string, unknown>> | undefined) ?? [];
+	for (const t of traces) {
+		const target = String(t.targetId ?? "");
+		if (REQUIREMENT_TRACE_RE.test(target)) links.push({ req: target, test: String(t.tcId) });
+	}
+	return links;
+}
+
+/** Whether the store has published RTM rows for the project. */
+function hasPublishedRtmRows(cwd: string, projectName: string): boolean {
+	return readLatestPublishedRows(cwd, projectName, "rtm") !== null;
+}
+
+/** The published RTM's tcRef-based authority links (one per row with a tcRef). */
+function dbRtmLinks(cwd: string, projectName: string): TraceLink[] {
+	const fromDb = readLatestPublishedRows(cwd, projectName, "rtm");
+	const links: TraceLink[] = [];
+	const rtmRows = (fromDb?.rows.rtmRow as Array<Record<string, unknown>> | undefined) ?? [];
+	for (const r of rtmRows) {
+		const tcRef = r.tcRef === null || r.tcRef === undefined ? null : String(r.tcRef);
+		if (tcRef) links.push({ req: String(r.id), test: tcRef });
+	}
+	return links;
+}
+
 /** Links declared by each test record's traces[]. */
 function testCaseLinks(data: TestCasesData): TraceLink[] {
 	const links: TraceLink[] = [];
@@ -69,10 +100,7 @@ function testCaseLinks(data: TestCasesData): TraceLink[] {
 }
 
 /** Doctor section "RTM↔test-cases link consistency". */
-export function checkTraceLinkConsistencySection(
-	cwd: string,
-	projectName: string,
-): DiagnosticSection {
+export function checkTraceLinkConsistencySection(cwd: string, projectName: string): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 
 	if (!projectName) {
@@ -84,6 +112,47 @@ export function checkTraceLinkConsistencySection(
 		return { title: "RTM↔test-cases link consistency", items };
 	}
 
+	// Phase 7 (OQ3a) — DB-first reconciliation: when BOTH sides are
+	// published in the store, compare rtmRow.tcRef (authority) against
+	// tc_trace (declared). Otherwise fall through to the legacy sidecar
+	// path unchanged (OQ3a).
+	if (hasPublishedRtmRows(cwd, projectName)) {
+		const authorityLinks = dbRtmLinks(cwd, projectName);
+		const declaredLinks = dbTcLinks(cwd, projectName);
+		const authority = new Set(authorityLinks.map(linkKey));
+		const declared = new Set(declaredLinks.map(linkKey));
+
+		let dbAsymmetric = 0;
+		for (const link of authorityLinks) {
+			if (declared.has(linkKey(link))) continue;
+			dbAsymmetric++;
+			items.push({
+				status: "warning",
+				message: `RTM-only link: RTM row ${link.req} tcRef lists ${link.test}, but the store's tc_trace does not record ${link.test} → ${link.req}.`,
+				suggestion: suggestionFor("trace-link-asymmetric"),
+			});
+		}
+		for (const link of declaredLinks) {
+			if (authority.has(linkKey(link))) continue;
+			dbAsymmetric++;
+			items.push({
+				status: "warning",
+				message: `TC-only link: tc_trace records ${link.test} → ${link.req}, but RTM row ${link.req} tcRef does not list ${link.test}.`,
+				suggestion: suggestionFor("trace-link-asymmetric"),
+			});
+		}
+
+		items.push({
+			status: dbAsymmetric === 0 ? "ok" : "info",
+			message:
+				dbAsymmetric === 0
+					? `Store RTM↔tc_trace links consistent — ${authority.size} link(s) checked, all symmetric.`
+					: `Store link summary: ${dbAsymmetric} asymmetric link(s) across ${authority.size} RTM + ${declared.size} tc_trace link(s).`,
+			details: [`Store: Doc/store/${projectName}/index.db`],
+		});
+		return { title: "RTM↔test-cases link consistency", items };
+	}
+
 	// Both sidecars must exist and parse; otherwise the per-artifact checks
 	// own the report and this check stays out of the way (info skip).
 	const rtmMd = resolveDocArtifact("RTM", projectName, cwd);
@@ -91,10 +160,7 @@ export function checkTraceLinkConsistencySection(
 	const tcMd = resolveDocArtifact("test-cases", projectName, cwd);
 	const tcSidecar = tcMd ? resolveTestCasesSidecar(tcMd.path) : null;
 	if (!rtmSidecar || !tcSidecar) {
-		const missing = [
-			!rtmSidecar ? "RTM" : null,
-			!tcSidecar ? "test-cases" : null,
-		].filter(Boolean);
+		const missing = [!rtmSidecar ? "RTM" : null, !tcSidecar ? "test-cases" : null].filter(Boolean);
 		items.push({
 			status: "info",
 			message: `RTM↔test-cases link check skipped — ${missing.join(" + ")} sidecar absent (legacy project); the cross-check needs both.`,

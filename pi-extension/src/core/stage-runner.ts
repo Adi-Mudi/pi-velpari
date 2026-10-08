@@ -69,6 +69,17 @@ export interface StageRunConfig {
 	 */
 	inputArtifactContent?: string;
 	/**
+	 * Phase 6 (decision 9): pre-rendered `## DB Input Slices` block body —
+	 * the strict DB-only read for stages with DB-backed doc inputs. Rendered
+	 * as its own prompt block; never a Doc/ file read.
+	 */
+	dbInputSlice?: string;
+	/**
+	 * Phase 6 (decision 6): per-scout role slice lines for the prompt's
+	 * `## Scout Slices` block. Empty/undefined = block omitted (prd).
+	 */
+	scoutSliceLines?: readonly string[];
+	/**
 	 * Optional: web-search consent flag (currently only brainstorm uses this).
 	 * Defaults to false.
 	 */
@@ -143,9 +154,20 @@ export async function runStageWithScouts(
 		ctx.ui.notify(msg, "info");
 	}
 
-	// 2. Read input artifact if not provided inline.
+	// 2. Read input artifact if not provided inline. Phase 6: DB-backed
+	//    stages carry a `db://` marker path + the pre-rendered slice block —
+	//    never a disk read (strict DB-only reads, §14.1).
 	let inputContent = config.inputArtifactContent;
-	if (inputContent === undefined) {
+	if (inputContent === undefined && config.inputArtifactPath.startsWith("db://")) {
+		if (config.dbInputSlice === undefined) {
+			ctx.ui.notify(
+				`Internal error: DB slice marker ${config.inputArtifactPath} without a dbInputSlice block.`,
+				"error",
+			);
+			return;
+		}
+		inputContent = undefined; // slice block renders via dbInputSlice below
+	} else if (inputContent === undefined) {
 		try {
 			inputContent = readFileSync(config.inputArtifactPath, "utf8");
 		} catch (err) {
@@ -166,9 +188,7 @@ export async function runStageWithScouts(
 	let prompt: string;
 	try {
 		const additionalLines = (config.additionalWorkingCopies ?? []).map((p) => `    additional: ${p}`).join("\n");
-		const workingCopyField = additionalLines
-			? `${config.workingCopyPath}\n${additionalLines}`
-			: config.workingCopyPath;
+		const workingCopyField = additionalLines ? `${config.workingCopyPath}\n${additionalLines}` : config.workingCopyPath;
 		prompt = buildStagePrompt({
 			stage: config.stage,
 			mission: config.mission,
@@ -185,15 +205,14 @@ export async function runStageWithScouts(
 				scouts: [...config.scouts],
 				inputArtifact: config.inputArtifactPath,
 				inputArtifactContent: config.inputArtifactContent,
+				dbInputSlice: config.dbInputSlice,
+				scoutSliceLines: [...(config.scoutSliceLines ?? [])],
 				workingCopy: workingCopyField,
 				scoutsDir: config.scoutsDir,
 			},
 		});
 	} catch (err) {
-		ctx.ui.notify(
-			`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`,
-			"error",
-		);
+		ctx.ui.notify(`Failed to build stage prompt: ${err instanceof Error ? err.message : String(err)}`, "error");
 		return;
 	}
 
@@ -202,9 +221,7 @@ export async function runStageWithScouts(
 
 	// 6. Notify user.
 	const scoutList = config.scouts.map((s) => s.name).join(", ");
-	const modeLine = config.updateMode
-		? `Mode: UPDATE (baseline: ${config.updateMode.baselinePath})\n`
-		: "";
+	const modeLine = config.updateMode ? `Mode: UPDATE (baseline: ${config.updateMode.baselinePath})\n` : "";
 	ctx.ui.notify(
 		`Stage "${config.stage}" started for: ${config.mission}\n` +
 			modeLine +

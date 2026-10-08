@@ -14,10 +14,7 @@ import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-co
 import { runFixPicker } from "../../src/ui/fix-picker.js";
 import type { ActionableItem } from "../../src/doctor/fix-dispatch.js";
 
-function makeCtx(
-	selects: (string | undefined)[],
-	capturedSelectOptions?: string[][],
-): ExtensionContext {
+function makeCtx(selects: (string | undefined)[], capturedSelectOptions?: string[][]): ExtensionContext {
 	let index = 0;
 	return {
 		cwd: "/tmp",

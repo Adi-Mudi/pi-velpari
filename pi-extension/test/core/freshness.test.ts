@@ -25,9 +25,13 @@ import {
 	manifestKey,
 	recordPublish,
 	resolveDeclaredInputs,
+	resolveInputPath,
 	saveFreshnessManifest,
+	storeYamlLabel,
 } from "../../src/core/freshness.js";
 import { PATHS } from "../../src/core/constants.js";
+import { ARTIFACT_TO_KIND } from "../../src/core/upstream.js";
+import { KIND_YAML_LABELS } from "../../src/ops/backfill.js";
 
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "velpari-fresh-"));
@@ -183,7 +187,7 @@ describe("computeStaleSet", () => {
 			inputs: {},
 		});
 		assert.deepEqual(computeStaleSet(cwd), []);
-		writeFileSync(sidecar, "{\"changed\":true}");
+		writeFileSync(sidecar, '{"changed":true}');
 		const stale = computeStaleSet(cwd);
 		assert.equal(stale.length, 1);
 		assert.equal(stale[0]!.reason, "input-changed");
@@ -213,20 +217,18 @@ describe("resolveDeclaredInputs + computeInputHashes", () => {
 	it("hashes found inputs and reports required missing ones", () => {
 		const cwd = tmp();
 		write(cwd, "Doc/requirements/PRD_TestApp.md", "# PRD\n");
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "doc", artifact: "PRD", label: "PRD" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		const hashes = computeInputHashes(cwd, inputs);
 		assert.ok(hashes.ok);
 		assert.match(hashes.hashes["prd:TestApp"]!, /^[0-9a-f]{64}$/);
 
-		const missingInputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "doc", artifact: "RTM", label: "RTM" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const missingInputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "RTM", label: "RTM" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.deepEqual(computeInputHashes(cwd, missingInputs), {
 			ok: false,
 			missing: ["rtm:TestApp"],
@@ -235,11 +237,10 @@ describe("resolveDeclaredInputs + computeInputHashes", () => {
 
 	it("skips missing optional inputs", () => {
 		const cwd = tmp();
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm", optional: true }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm", optional: true }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.deepEqual(computeInputHashes(cwd, inputs), { ok: true, hashes: {} });
 	});
 });
@@ -272,18 +273,9 @@ describe("enumeratePublishedArtifacts", () => {
 });
 
 describe("hashv schemes (A5/D3)", () => {
-	const UPSTREAM = [
-		"# PRD",
-		"",
-		"## Body",
-		"",
-		"substance",
-		"",
-		"## Change Log",
-		"",
-		"- v1.0.0 initial",
-		"",
-	].join("\n");
+	const UPSTREAM = ["# PRD", "", "## Body", "", "substance", "", "## Change Log", "", "- v1.0.0 initial", ""].join(
+		"\n",
+	);
 
 	function setupEntry(cwd: string, hashv?: 2): { upstreamPath: string } {
 		const upstreamPath = write(cwd, "Doc/requirements/PRD_TestApp.md", UPSTREAM);
@@ -382,11 +374,10 @@ describe("re-brainstorm staling (D8)", () => {
 		const cwd = tmp();
 		publishBrainstormV1(cwd);
 		const v2 = republishBrainstormV2(cwd);
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.equal(inputs[0]!.status, "found");
 		assert.equal(inputs[0]!.path, v2, "manifest path (suffixed latest file) must win");
 	});
@@ -394,11 +385,10 @@ describe("re-brainstorm staling (D8)", () => {
 	it("falls back to base-slug disk resolution when no manifest entry exists", () => {
 		const cwd = tmp();
 		const v1 = write(cwd, "Doc/brainstorm/brainstorm-cli-todo.md", "# brainstorm v1\n");
-		const inputs = resolveDeclaredInputs(
-			cwd,
-			[{ kind: "brainstorm", label: "brainstorm" }],
-			{ projectName: "TestApp", topicSlug: "cli-todo" },
-		);
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "brainstorm", label: "brainstorm" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
 		assert.equal(inputs[0]!.status, "found");
 		assert.equal(inputs[0]!.path, v1);
 	});
@@ -433,9 +423,7 @@ describe("re-brainstorm staling (D8)", () => {
 		publishBrainstormV1(cwd);
 		republishBrainstormV2(cwd);
 		// Both files on disk; one enumerated artifact under the base slug.
-		const found = enumeratePublishedArtifacts(cwd).filter(
-			(f) => f.artifactKind === "brainstorm",
-		);
+		const found = enumeratePublishedArtifacts(cwd).filter((f) => f.artifactKind === "brainstorm");
 		assert.equal(found.length, 1);
 		assert.equal(found[0]!.slug, "cli-todo");
 
@@ -445,5 +433,95 @@ describe("re-brainstorm staling (D8)", () => {
 			stale.every((s) => s.artifact !== "brainstorm"),
 			`suffixed re-run files must not report no-stamp: ${JSON.stringify(stale)}`,
 		);
+	});
+});
+
+describe("store-YAML input resolution (N24-13 / Phase 11)", () => {
+	/** files.json with NO `velpari.markdownWrites` key → markdown writes OFF. */
+	function writeDbOnlyFilesConfig(cwd: string, projectName: string): void {
+		write(cwd, join(PATHS.CONFIG_DIR, "files.json"), JSON.stringify({ version: 4, projectName }));
+	}
+
+	it("resolves a doc input to the store YAML when markdown writes are off and no markdown exists", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/PRD_TestApp.yaml", "fr: []\n");
+		// No Doc/**/PRD*.md anywhere.
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		assert.equal(inputs.length, 1);
+		assert.equal(inputs[0]!.id, "prd:TestApp");
+		assert.equal(inputs[0]!.status, "found");
+		assert.equal(inputs[0]!.path, yamlPath);
+	});
+
+	it("publish-stamp hashes and the stale check agree on the store YAML (no false stale)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/PRD_TestApp.yaml", "fr: []\n");
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "PRD", label: "PRD" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		const hashes = computeInputHashes(cwd, inputs);
+		assert.ok(hashes.ok);
+		assert.equal(hashes.hashes["prd:TestApp"], hashFileContent(yamlPath)!);
+		recordPublish(cwd, {
+			artifact: "design",
+			projectName: "TestApp",
+			path: "Doc/design/design_TestApp.md",
+			publishedAt: "2026-10-05T13:00:00.000Z",
+			inputs: hashes.hashes,
+		});
+		assert.deepEqual(computeStaleSet(cwd), [], "the stamped store-YAML input must not stale");
+	});
+
+	it("a stamped prd:X input is satisfied by PRD_X.yaml alone (pins the YAML-label casing fix)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "X");
+		const yamlPath = write(cwd, "Doc/store/X/PRD_X.yaml", "fr: []\n");
+		recordPublish(cwd, {
+			artifact: "design",
+			projectName: "X",
+			path: "Doc/design/design_X.md",
+			publishedAt: "2026-10-05T13:00:00.000Z",
+			inputs: { "prd:X": hashFileContent(yamlPath)! },
+		});
+		assert.deepEqual(computeStaleSet(cwd), [], "PRD_X.yaml on disk must satisfy the stamped prd:X input");
+	});
+
+	it("a declared test-cases input resolves to test-plan_<proj>.yaml at BOTH resolver sites (Amendment A2)", () => {
+		const cwd = tmp();
+		writeDbOnlyFilesConfig(cwd, "TestApp");
+		const yamlPath = write(cwd, "Doc/store/TestApp/test-plan_TestApp.yaml", "test_cases: []\n");
+		// Site 1 — resolveDeclaredInputs (publish gate + stage-start + stamp).
+		const inputs = resolveDeclaredInputs(cwd, [{ kind: "doc", artifact: "test-cases", label: "test-cases" }], {
+			projectName: "TestApp",
+			topicSlug: "cli-todo",
+		});
+		assert.equal(inputs[0]!.id, "test-cases:TestApp");
+		assert.equal(inputs[0]!.status, "found", "test-plan_TestApp.yaml is the label the publish chain writes");
+		assert.equal(inputs[0]!.path, yamlPath);
+		// Site 2 — resolveInputPath (stale check + /velpari-reconfirm).
+		assert.equal(
+			resolveInputPath(cwd, "test-cases:TestApp"),
+			yamlPath,
+			"both sites must resolve the SAME store path (gate and stale check cannot drift)",
+		);
+	});
+
+	it("storeYamlLabel mirrors ARTIFACT_TO_KIND → KIND_YAML_LABELS (Amendment A2 parity pin)", () => {
+		for (const [artifact, kind] of Object.entries(ARTIFACT_TO_KIND)) {
+			assert.equal(storeYamlLabel(artifact), KIND_YAML_LABELS[kind], `${artifact} → kind ${kind}`);
+		}
+		// Input ids are lowercase; the registry keeps the PRD/RTM keys.
+		assert.equal(storeYamlLabel("PRD"), "PRD");
+		assert.equal(storeYamlLabel("prd"), "PRD");
+		assert.equal(storeYamlLabel("RTM"), "RTM");
+		assert.equal(storeYamlLabel("rtm"), "RTM");
+		assert.equal(storeYamlLabel("test-cases"), "test-plan");
+		assert.equal(storeYamlLabel("test-plan"), "test-plan");
 	});
 });

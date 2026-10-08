@@ -94,14 +94,20 @@ describe("buildPathCategoryItems", () => {
 		const discovery = emptyDiscovery();
 		discovery.codeFiles.push("src/helper.ts");
 		const items = buildPathCategoryItems("codePaths", ["src/"], discovery);
-		assert.deepEqual(items.filter((i) => i.kind === "suggestion"), []);
+		assert.deepEqual(
+			items.filter((i) => i.kind === "suggestion"),
+			[],
+		);
 	});
 
 	it("excludes a folder suggestion that contains a currently selected file", () => {
 		const discovery = emptyDiscovery();
 		discovery.codeFolders.push({ path: "src/", reason: "common code folder" });
 		const items = buildPathCategoryItems("codePaths", ["src/helper.ts"], discovery);
-		assert.deepEqual(items.filter((i) => i.kind === "suggestion"), []);
+		assert.deepEqual(
+			items.filter((i) => i.kind === "suggestion"),
+			[],
+		);
 	});
 
 	it("excludes a suggestion already selected in another category", () => {

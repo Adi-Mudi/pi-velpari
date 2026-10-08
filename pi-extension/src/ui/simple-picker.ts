@@ -45,11 +45,7 @@ export async function runSimplePicker(
 
 /** Yes/no gate in the same visual language. Fallback delegates to
  *  ctx.ui.confirm so non-TUI behavior (and its tests) is unchanged. */
-export async function runSimpleConfirm(
-	ctx: ExtensionContext,
-	title: string,
-	message: string,
-): Promise<boolean> {
+export async function runSimpleConfirm(ctx: ExtensionContext, title: string, message: string): Promise<boolean> {
 	if (!isTui(ctx)) {
 		return ctx.ui.confirm(title, message);
 	}
@@ -64,18 +60,13 @@ export async function runSimpleConfirm(
 	return picked === "yes";
 }
 
-async function runCustomSimplePicker(
-	ctx: ExtensionContext,
-	options: SimplePickerOptions,
-): Promise<string | undefined> {
+async function runCustomSimplePicker(ctx: ExtensionContext, options: SimplePickerOptions): Promise<string | undefined> {
 	return ctx.ui.custom<string | undefined>((tui, theme, _keybindings, done) => {
 		const pageSize = options.pageSize ?? 15;
 		const items = options.items;
 		let selectedIndex = Math.max(
 			0,
-			options.initialSelectedId
-				? items.findIndex((i) => i.id === options.initialSelectedId)
-				: 0,
+			options.initialSelectedId ? items.findIndex((i) => i.id === options.initialSelectedId) : 0,
 		);
 		let scrollOffset = 0;
 
@@ -90,12 +81,7 @@ async function runCustomSimplePicker(
 			const lines: string[] = [];
 			const border = "─".repeat(Math.max(2, width));
 			lines.push(theme.fg("accent", border));
-			lines.push(
-				theme.fg(
-					"accent",
-					theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width))),
-				),
-			);
+			lines.push(theme.fg("accent", theme.bold(truncateToWidth(` ${options.title}`, Math.max(2, width)))));
 			if (options.subtitle) {
 				for (const part of options.subtitle.split("\n")) {
 					lines.push(theme.fg("dim", truncateToWidth(part, Math.max(2, width))));
@@ -111,35 +97,17 @@ async function runCustomSimplePicker(
 				const focused = scrollOffset + i === selectedIndex;
 				const prefix = focused ? "→ " : "  ";
 				const hintPart = item.hint ? ` ${theme.fg("dim", item.hint)}` : "";
-				const base = truncateToWidth(
-					`${item.label}${hintPart}`,
-					Math.max(1, width - 2),
-				);
-				lines.push(
-					focused
-						? `${prefix}${theme.fg("accent", theme.bold(base))}`
-						: `${prefix}${theme.fg("text", base)}`,
-				);
+				const base = truncateToWidth(`${item.label}${hintPart}`, Math.max(1, width - 2));
+				lines.push(focused ? `${prefix}${theme.fg("accent", theme.bold(base))}` : `${prefix}${theme.fg("text", base)}`);
 			}
 			if (items.length > pageSize) {
 				lines.push(
-					theme.fg(
-						"dim",
-						`  (${scrollOffset + 1}-${Math.min(scrollOffset + pageSize, items.length)}/${items.length})`,
-					),
+					theme.fg("dim", `  (${scrollOffset + 1}-${Math.min(scrollOffset + pageSize, items.length)}/${items.length})`),
 				);
 			}
 
 			lines.push(theme.fg("accent", border));
-			lines.push(
-				theme.fg(
-					"dim",
-					truncateToWidth(
-						"↑↓ navigate • enter select • esc cancel",
-						Math.max(2, width),
-					),
-				),
-			);
+			lines.push(theme.fg("dim", truncateToWidth("↑↓ navigate • enter select • esc cancel", Math.max(2, width))));
 			lines.push(theme.fg("accent", border));
 			return lines.map((l) => truncateToWidth(l, Math.max(2, width)));
 		}

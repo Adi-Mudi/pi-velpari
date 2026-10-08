@@ -26,6 +26,10 @@ interface Notice {
 let tmpDir: string;
 let notices: Notice[];
 
+/**
+ * Build a minimal ExtensionCommandContext with a notice-capturing ui.
+ * @returns {ExtensionCommandContext} Fresh ctx; `notices` captures notify calls.
+ */
 function makeCtx(): ExtensionCommandContext {
 	notices = [];
 	return {
@@ -49,6 +53,10 @@ const PSRS = [
 	"",
 ].join("\n");
 
+/**
+ * Serialize a minimal valid RTM JSON (identifiable/published rows).
+ * @returns {string} JSON string accepted by the RTM sidecar loader.
+ */
 function rtmJson(): string {
 	return JSON.stringify({
 		project: "TestApp",
@@ -68,20 +76,18 @@ function rtmJson(): string {
 	});
 }
 
+/**
+ * Place the fixture repo at building-rtm with a published PRD + RTM
+ * working-copy files so handleApprove can run the full publish path.
+ * @returns {void}
+ */
 function enterBuildingRtm(): void {
 	const run = createRun("TestApp", tmpDir);
 	saveState({ ...run, currentStage: "building-rtm" }, tmpDir);
 	const docDir = path.join(tmpDir, "Doc", "requirements");
 	fs.mkdirSync(docDir, { recursive: true });
 	fs.writeFileSync(path.join(docDir, "PRD_TestApp.md"), PSRS, "utf8");
-	const dir = path.join(
-		tmpDir,
-		".IDE_Plans",
-		"velpari",
-		"runs",
-		loadState(tmpDir).runId,
-		"rtm",
-	);
+	const dir = path.join(tmpDir, ".IDE_Plans", "velpari", "runs", loadState(tmpDir).runId, "rtm");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.md"), "# RTM preview\n", "utf8");
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.json"), rtmJson(), "utf8");
@@ -101,7 +107,7 @@ describe("publish — auto doctor opt-out (escape hatch)", () => {
 		process.env.VELPARI_SKIP_AUTO_DOCTOR = "1";
 		enterBuildingRtm();
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const state = loadState(tmpDir);
 		// The RTM was published (gate clears) AND the state advanced to
@@ -113,7 +119,7 @@ describe("publish — auto doctor opt-out (escape hatch)", () => {
 	it("opts out via opts.skipAutoDoctor=true (programmatic API)", async () => {
 		enterBuildingRtm();
 
-		await handleApprove(makeCtx(), undefined, tmpDir, { skipAutoDoctor: true });
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
 
 		const state = loadState(tmpDir);
 		assert.equal(state.currentStage, "built-rtm", "auto-doctor skipped via opts");
@@ -127,7 +133,7 @@ describe("publish — auto doctor opt-out (escape hatch)", () => {
 		// doctor path is active.
 		enterBuildingRtm();
 
-		await handleApprove(makeCtx(), undefined, tmpDir);
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipDbPublish: true });
 
 		const message = notices.map((n) => n.message).join("\n");
 		assert.ok(

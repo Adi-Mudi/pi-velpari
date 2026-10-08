@@ -76,10 +76,7 @@ export function writeFeasibilityRecord(
 }
 
 /** Loose reader for the doctor check and /velpari-show-feasibility. */
-export function loadFeasibilityRecord(
-	cwd: string,
-	projectName: string,
-): FeasibilityDecisionRecord | null {
+export function loadFeasibilityRecord(cwd: string, projectName: string): FeasibilityDecisionRecord | null {
 	const data = readYamlFile(feasibilityRecordPath(cwd, projectName));
 	if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
 	return data as FeasibilityDecisionRecord;

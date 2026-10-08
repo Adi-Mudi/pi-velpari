@@ -2,9 +2,10 @@ name: test
 
 on:
   push:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
   pull_request:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
+  workflow_dispatch:
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
@@ -34,8 +35,23 @@ jobs:
       - name: Biome lint
         run: npm run lint
 
+      # Phase 6 housekeeping (2026-09-23) — biome format check. The
+      # previous CI surface only ran biome lint, which allowed 138 format
+      # errors to accumulate silently across pi-extension/src/. This step
+      # mirrors a local `npx biome format pi-extension/src/` (without
+      # --write) so future drift fails the build. Format is auto-fixable
+      # via `biome format --write pi-extension/src/`.
+      - name: Biome format check
+        run: npx biome format pi-extension/src/
+
       - name: Build + unit tests
         run: npm test
+
+      # DB-primary storage (Phase 1) — cheap integrity insurance on the
+      # store databases produced by the unit tests. Full integrity_check
+      # becomes a doctor SQL check in the Phase 7 doctor rewrite.
+      - name: SQLite quick_check on store DBs
+        run: node scripts/sqlite-quick-check.mjs
 
       # Phase 7 — coverage gate. Statement coverage must stay ≥ 92% (we're at
       # 94.40% post-Phase-6). The 2-point buffer prevents false-fail on
@@ -50,8 +66,8 @@ jobs:
       - name: Install pi (for Tier 1 e2e)
         run: |
           if ! command -v pi >/dev/null 2>&1; then
-            echo "Installing @earendil-works/pi-coding-agent@0.84.3..."
-            npm install -g @earendil-works/pi-coding-agent@0.84.3 || echo "::warning::pi install failed; e2e will be skipped"
+            echo "Installing @earendil-works/pi-coding-agent@0.87.1..."
+            npm install -g @earendil-works/pi-coding-agent@0.87.1 || echo "::warning::pi install failed; e2e will be skipped"
           fi
 
       - name: E2E Tier 1
@@ -140,3 +156,38 @@ jobs:
           path: |
             .tmp/tier2/
             dist/pi-extension/test/e2e/*.test.js
+
+  tier3:
+    name: Tier 3 full-sequence RPC e2e (manual dispatch only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install pi + subagents plugin + tmux
+        run: |
+          npm install -g @earendil-works/pi-coding-agent@0.87.1
+          pi install git:github.com/HazAT/pi-interactive-subagents
+          sudo apt-get update && sudo apt-get install -y tmux
+      - name: Tier 3 full-sequence run
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          E2E_MODEL: kimi-coding/kimi-for-coding
+          PI_SUBAGENT_MUX: "tmux"
+        run: |
+          if [ -z "$KIMI_API_KEY" ]; then
+            echo "::warning::KIMI_API_KEY not set; Tier 3 skipped (add the secret and re-dispatch)"
+            exit 0
+          fi
+          npm run test:e2e:tier3
+      - name: Tier 3 result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier3-result
+          path: .tmp/tier3/

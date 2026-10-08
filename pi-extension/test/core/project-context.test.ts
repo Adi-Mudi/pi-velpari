@@ -13,11 +13,7 @@ import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-	emptyProjectContext,
-	loadProjectContext,
-	type MinimalRunState,
-} from "../../src/core/project-context.js";
+import { emptyProjectContext, loadProjectContext, type MinimalRunState } from "../../src/core/project-context.js";
 import { buildGroupedPath, slugify } from "../../src/core/paths.js";
 import { feasibilityRecordPath } from "../../src/core/feasibility-record.js";
 import { writeYamlFile } from "../../src/core/yaml-data.js";
@@ -106,11 +102,7 @@ describe("project-context (Phase 2)", () => {
 			// but dedupe keeps only the first match — should not duplicate.
 			const occurrences = ctx.techStack.filter((t) => t === "typescript" || t === "ts").length;
 			assert.ok(occurrences >= 1, "should extract at least typescript or ts");
-			assert.equal(
-				ctx.techStack.length,
-				new Set(ctx.techStack).size,
-				"no duplicate hints in techStack",
-			);
+			assert.equal(ctx.techStack.length, new Set(ctx.techStack).size, "no duplicate hints in techStack");
 		});
 
 		it("returns empty for mission text with no tech hints", () => {
@@ -133,11 +125,7 @@ describe("project-context (Phase 2)", () => {
 			try {
 				const stateDir = join(cwd, ".pi", "velpari");
 				mkdirSync(stateDir, { recursive: true });
-				writeFileSync(
-					join(stateDir, "state.json"),
-					JSON.stringify({ mission: "Rust CLI tool" }),
-					"utf8",
-				);
+				writeFileSync(join(stateDir, "state.json"), JSON.stringify({ mission: "Rust CLI tool" }), "utf8");
 				const ctx = loadProjectContext(cwd);
 				assert.ok(ctx.techStack.includes("rust"), `got: ${JSON.stringify(ctx.techStack)}`);
 			} finally {
@@ -173,11 +161,7 @@ describe("project-context (Phase 2)", () => {
 			try {
 				const stateDir = join(cwd, ".pi", "velpari");
 				mkdirSync(stateDir, { recursive: true });
-				writeFileSync(
-					join(stateDir, "state.json"),
-					JSON.stringify({ mission: "Rust CLI tool" }),
-					"utf8",
-				);
+				writeFileSync(join(stateDir, "state.json"), JSON.stringify({ mission: "Rust CLI tool" }), "utf8");
 				const explicit: MinimalRunState = { mission: "Python data pipeline" };
 				const ctx = loadProjectContext(cwd, explicit);
 				assert.ok(ctx.techStack.includes("python"), "explicit state should win");
@@ -264,8 +248,27 @@ describe("project-context (Phase 2)", () => {
 					project: "demo",
 					version: "1.0.0",
 					rows: [
-						{ id: "FR-1", title: "First requirement", phase: 1, design: "", implementation: "", tests: [], status: "approved", coverage: "covered" },
-						{ id: "NFR-1", title: "Dropped requirement", phase: 1, design: "", implementation: "", tests: [], status: "deprecated", coverage: "missing", reason: "dropped" },
+						{
+							id: "FR-1",
+							title: "First requirement",
+							phase: 1,
+							design: "",
+							implementation: "",
+							tests: [],
+							status: "approved",
+							coverage: "covered",
+						},
+						{
+							id: "NFR-1",
+							title: "Dropped requirement",
+							phase: 1,
+							design: "",
+							implementation: "",
+							tests: [],
+							status: "deprecated",
+							coverage: "missing",
+							reason: "dropped",
+						},
 					],
 				});
 				const ctx = loadProjectContext(cwd, { mission: "demo mission" }, 3);

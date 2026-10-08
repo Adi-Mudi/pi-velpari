@@ -10,7 +10,9 @@ remains a separate document from PSRS (see `Doc/velpari-requirements-
 orchestration-design.md` §6 — RTM maps requirements to design,
 implementation, helper functions, and test cases, while PSRS defines
 what the system must do). The handler has already validated the gate
-(PSRS must exist) and embedded its path in the prompt. Your job is to
+and pre-loaded the PRD slice (FR, NFR, PRD Sections rows with prose)
+into the prompt's `## DB Input Slices` block — NEVER open Doc/ files.
+Your job is to
 spawn 4 subagents in parallel, read their reports, and write the
 working-copy RTM.
 
@@ -25,7 +27,7 @@ surprises. `/velpari-rtm-approve` remains as the manual fallback.
 ## Sequence
 
 ```
-PSRS (already in prompt as inputArtifact)
+PRD slice (already in prompt as `## DB Input Slices` — from the project store)
         │
         ▼
 spawn 4 subagents in parallel via subagent() tool:
@@ -134,7 +136,10 @@ After all 4 scouts complete:
 4. Render the markdown table FROM the YAML and write it to `<workingCopy>`
    (`RTM_<projectName>.md`) the publish gate
    re-generates the published markdown from the YAML — the published table
-   is always derived from the data, never from hand-written markdown.
+   is always derived from the data, never from hand-written markdown. (The
+   DB-only publish default writes NOTHING to `Doc/` — the published view is
+   produced on demand by `/velpari-export`; the working-copy markdown + YAML
+   stay the review surface.)
 
 ## Output Format
 
@@ -244,11 +249,15 @@ Revision rules:
 2. **Deprecate, don't delete.** A requirement deprecated in the PRD keeps
    its RTM row with status `deprecated` and the reason recorded. Never
    delete the row.
-3. **Version bump.** Minor (x.Y.0) for additions only. Major (X.0.0)
-   when any row is deprecated.
+3. **Version bump + declare it (N27).** Minor (x.Y.0) for additions
+   only. Major (X.0.0) when any row is deprecated. Add
+   `bump: major|minor|patch` (exact lowercase) to the working copy's
+   frontmatter matching those rules — the publish gate compares the
+   declared bump against the actual change; a missing or under-declared
+   bump blocks the publish, and a first publish needs no bump.
 4. **Change Log entry required.** Add a `## Change Log` section if the
    baseline has none, then add a new entry describing the revision. The
-   `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`) blocks publishing without it.
+   `velpari_stage_publish` tool (which runs the same gate chain as `/velpari-rtm-approve`) blocks publishing without it.
 5. **New rows start `proposed`.** Full lifecycle: `proposed | approved |
    implemented | verified | deferred | deprecated`. Existing coverage
    values (`covered` / `partial` / `missing`) stay valid — update them
@@ -267,7 +276,7 @@ blocks on violations.
 
 ## Publish (auto on working-copy ready)
 
-When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), writes the published copy to `Doc/`, and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
+When the working copy is at `<workingCopy>` (verify with `test -s <workingCopy>`), call the `velpari_stage_publish` tool (no parameters). It runs the publish gate (revision + artifact + post-publish doctor audit), publishes to the project store (DB-only default: store rows + YAML export + git commit — `Doc/` markdown only with the `velpari.markdownWrites` opt-in), and advances the stage. If the tool reports gate/doctor errors, fix the working copy and call it again.
 
 Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-approve` runs the same gate chain from the terminal.
 
@@ -277,11 +286,43 @@ Manual fallback (when the LLM-driven publish is unavailable): `/velpari-rtm-appr
 - **Verify every artifact.** `test -s <path>` after each completion.
 - **Never write a scout's artifact yourself.** Fix the spawn and relaunch.
 - **Do NOT mutate `state.json.stage`.** The handler already advanced to
-  `building-rtm` via `createRun()`. The next state transition (`built-rtm`)
-  happens in the `velpari_stage_publish` tool (which same gate chain as `/velpari-rtm-approve`). You only write the working copy
-  artifact.
+  `building-rtm` at stage entry (`runStage` → `advanceStage`, N24-01).
+  The next state transition (`built-rtm`) happens in the
+  `velpari_stage_publish` tool (which runs the same gate chain as
+  `/velpari-rtm-approve`). You only write the working copy artifact.
 - **Final message ≤ 10 lines.** When done, your reply must include only the
   outcome and the artifact path. Never paste the RTM content.
+
+## Stage payload (DB rows) — MANDATORY before the preview gate
+
+Phase 4 (DB-primary storage): after the working copy exists and BEFORE you
+present the preview gate or call `velpari_stage_publish`, write the stage
+payload at `<workingCopyDir>/payload/rtm-payload.json` (the directory that
+holds the working copy, plus `payload/`). The publish gate validates it and
+writes the DB rows; a missing or invalid payload BLOCKS the publish (the
+gate error names the exact path + problem).
+
+Shape (unknown fields are rejected; enums must match exactly):
+
+```json
+{
+  "envelope": {
+    "version": 1,
+    "stage": "building-rtm",
+    "generatedAt": "2026-09-22T00:00:00Z",
+    "inputs": { "PRD": "<sha256 hex>" },
+    "reviewerVerdict": null,
+    "changeLog": []
+  },
+  "rows": {
+    "rtmRow": [{ "id": "RTM-1", "frRef": "FR-1", "afRef": null, "tcRef": null, "phase": 1, "targetSha256": "<sha256>" }]
+  }
+}
+```
+
+The YAML sidecar stays the RTM source of truth (B3) — the payload rows must
+mirror the sidecar exactly. Every row must trace to the sidecar (zero
+hallucination).
 
 ## Known issue: zellij `close-pane` bug
 

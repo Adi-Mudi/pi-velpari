@@ -73,10 +73,7 @@ describe("ensurePersistentAgents", () => {
 
 	it("copies a non-empty file (the bundled .md is real, not stub)", () => {
 		ensurePersistentAgents(tmpDir);
-		const content = fs.readFileSync(
-			path.join(tmpDir, ".pi", "agents", "web-research.md"),
-			"utf8",
-		);
+		const content = fs.readFileSync(path.join(tmpDir, ".pi", "agents", "web-research.md"), "utf8");
 		assert.ok(content.length > 200, "bundled web-research.md should have real content");
 		assert.match(content, /name: web-research/);
 	});

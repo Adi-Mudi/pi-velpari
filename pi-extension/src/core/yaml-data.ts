@@ -21,9 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseDocument, stringify } from "yaml";
 import { atomicWriteFile } from "../io/atomic-write.js";
 
-type YamlParseResult =
-	| { ok: true; data: unknown }
-	| { ok: false; error: string };
+type YamlParseResult = { ok: true; data: unknown } | { ok: false; error: string };
 
 /**
  * Strict YAML parse. Returns the parsed data, or a human-actionable
