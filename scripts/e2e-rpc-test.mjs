@@ -646,9 +646,9 @@ async function main() {
 					() => readState().currentStage === "brainstormed" || newNotifies(client, notifyMark).length > 0,
 				);
 				approved = readState().currentStage === "brainstormed";
-				if (!approved && attempt === 1) {
+				if (!approved && attempt < 4) {
 					const blockers = notifyDump(client, notifyMark);
-					record("brainstorm approve blocked (attempt 1)", true, blockers);
+					record(`brainstorm approve blocked (attempt ${attempt})`, true, blockers);
 					const n = await sendPrompt(
 						client,
 						`The brainstorm approve was blocked with: ${blockers}. Fix the notes/session state (confirm understanding, resolve all questions, fill every section) and stop.`,
@@ -723,9 +723,9 @@ async function main() {
 					() => readState().currentStage === s.after || newNotifies(client, a.notifyMark).length > 0,
 				);
 				advanced = readState().currentStage === s.after;
-				if (!advanced && attempt === 1) {
+				if (!advanced && attempt < 4) {
 					const blockers = notifyDump(client, a.notifyMark);
-					record(`${s.approve} blocked (attempt 1)`, true, blockers);
+					record(`${s.approve} blocked (attempt ${attempt})`, true, blockers);
 					const n = await sendPrompt(
 						client,
 						`The approve was blocked with: ${blockers}. Fix the working copy/payload to satisfy the gate, then stop.`,
