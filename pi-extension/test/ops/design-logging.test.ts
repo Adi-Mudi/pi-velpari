@@ -13,7 +13,9 @@
  *
  * Note: we don't mock the multiplexer module (node:test lacks
  * `mock.module`). Instead we use PI_SUBAGENT_MUX to drive the
- * multiplexer gate in both directions.
+ * multiplexer gate in both directions, and beforeEach clears the
+ * whole MUX_ENV_KEYS set (incl. HERDR_ENV/HERDR_PANE_ID, OP-7) so the
+ * machine's real multiplexer can never leak into a test.
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -34,8 +36,8 @@ let sentMessages: string[];
 let prevPiSubagentMux: string | undefined;
 
 /** Every env var detectMultiplexer (core/multiplexer.ts) sniffs. The
- *  multiplexer-gate test must control ALL of them — leaving TMUX or
- *  ZELLIJ_* to the real machine makes the suite fail inside a mux. */
+ * multiplexer-gate test must control ALL of them — leaving TMUX, HERDR_ENV
+ * or any other signal to the real machine makes the suite fail inside a mux. */
 const MUX_ENV_KEYS = [
 	"PI_SUBAGENT_MUX",
 	"TMUX",
@@ -45,6 +47,8 @@ const MUX_ENV_KEYS = [
 	"WEZTERM_EXECUTABLE",
 	"CMUX_PANE_ID",
 	"CMUX_SESSION_NAME",
+	"HERDR_ENV",
+	"HERDR_PANE_ID",
 ] as const;
 let savedMuxEnv: Record<string, string | undefined> = {};
 
@@ -113,7 +117,7 @@ beforeEach(() => {
 	cwd = mkdtempSync(join(tmpdir(), "vp-handler-"));
 	mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
 	// Snapshot + clear the WHOLE mux env set so the machine's real
-	// multiplexer (tmux/zellij/wezterm/cmux) can never leak into a test.
+	// multiplexer (tmux/zellij/wezterm/cmux/herdr) can never leak into a test.
 	savedMuxEnv = {};
 	for (const k of MUX_ENV_KEYS) {
 		savedMuxEnv[k] = process.env[k];
