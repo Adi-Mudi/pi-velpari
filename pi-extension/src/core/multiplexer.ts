@@ -34,7 +34,13 @@ export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = ["zellij", "tm
  */
 export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerInfo {
 	const override = env.PI_SUBAGENT_MUX;
-	if (override === "cmux" || override === "tmux" || override === "zellij" || override === "wezterm" || override === "herdr") {
+	if (
+		override === "cmux" ||
+		override === "tmux" ||
+		override === "zellij" ||
+		override === "wezterm" ||
+		override === "herdr"
+	) {
 		return { mux: override, source: "PI_SUBAGENT_MUX" };
 	}
 	if (env.TMUX) return { mux: "tmux", source: "TMUX" };

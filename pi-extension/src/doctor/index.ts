@@ -336,7 +336,8 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 	if (mux.mux === "unknown") {
 		items.push({
 			status: "info",
-			message: "Supported multiplexers: cmux, tmux, zellij, wezTerm, herdr. Start with e.g. `tmux new -A -s pi 'pi'` or run pi inside a herdr pane.",
+			message:
+				"Supported multiplexers: cmux, tmux, zellij, wezTerm, herdr. Start with e.g. `tmux new -A -s pi 'pi'` or run pi inside a herdr pane.",
 		});
 	}
 	if (mux.mux === "zellij") {
