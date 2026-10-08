@@ -7,6 +7,8 @@
  *     required message, and returns BEFORE creating any state.json or run
  *     directory (no orphan runs)
  *   - The TMUX env var alone is enough to pass the gate
+ *   - HERDR_ENV is a mux signal (OP-7 herdr support); herdr vars are
+ *     cleared by the same helpers as the other four muxes
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -32,6 +34,10 @@ interface Harness {
 	restoreEnv: () => void;
 }
 
+/**
+ * Build a mock command context, extension API, and env save/restore pair for one test.
+ * @returns {Harness} Harness with notices, userMessages, ctx, pi, and env restore
+ */
 function makeHarness(): Harness {
 	const notices: Notice[] = [];
 	const userMessages: string[] = [];
@@ -56,6 +62,7 @@ function makeHarness(): Harness {
 	} as unknown as ExtensionAPI;
 
 	const originalEnv = { ...process.env };
+	/** Restore process.env to its pre-test state (removes vars added during the test). */
 	const restoreEnv = () => {
 		for (const k of Object.keys(process.env)) {
 			if (!(k in originalEnv)) delete process.env[k];
@@ -69,8 +76,14 @@ function makeHarness(): Harness {
 	return { notices, userMessages, ctx, pi, originalEnv, restoreEnv };
 }
 
+/**
+ * Clear every mux signal, then set the one mux var under test.
+ * @param {string} envKey - Which mux env var to set
+ * @param {string} value - Value to assign
+ * @returns {void}
+ */
 function setMux(
-	envKey: "PI_SUBAGENT_MUX" | "TMUX" | "ZELLIJ_PANE_ID" | "WEZTERM_PANE" | "CMUX_PANE_ID",
+	envKey: "PI_SUBAGENT_MUX" | "TMUX" | "ZELLIJ_PANE_ID" | "WEZTERM_PANE" | "CMUX_PANE_ID" | "HERDR_ENV",
 	value: string,
 ) {
 	// Clear all mux signals first, then set the one we want.
@@ -82,9 +95,15 @@ function setMux(
 	delete process.env.WEZTERM_EXECUTABLE;
 	delete process.env.CMUX_PANE_ID;
 	delete process.env.CMUX_SESSION_NAME;
+	delete process.env.HERDR_ENV;
+	delete process.env.HERDR_PANE_ID;
 	process.env[envKey] = value;
 }
 
+/**
+ * Clear all mux env vars so the gate must fire (no detection possible).
+ * @returns {void}
+ */
 function clearAllMux() {
 	delete process.env.PI_SUBAGENT_MUX;
 	delete process.env.TMUX;
@@ -94,6 +113,8 @@ function clearAllMux() {
 	delete process.env.WEZTERM_EXECUTABLE;
 	delete process.env.CMUX_PANE_ID;
 	delete process.env.CMUX_SESSION_NAME;
+	delete process.env.HERDR_ENV;
+	delete process.env.HERDR_PANE_ID;
 }
 
 let tmpDir: string;
@@ -159,6 +180,16 @@ describe("/velpari-brainstorm multiplexer gate (v2.1)", () => {
 
 	it("proceeds past the gate when CMUX_PANE_ID is set", async () => {
 		setMux("CMUX_PANE_ID", "7");
+
+		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
+
+		const muxErrors = harness.notices.filter((n) => n.level === "error" && /multiplexer/i.test(n.message));
+		assert.equal(muxErrors.length, 0);
+		assert.equal(harness.userMessages.length, 1);
+	});
+
+	it("proceeds past the gate when HERDR_ENV is set", async () => {
+		setMux("HERDR_ENV", "1");
 
 		await handleBrainstorm("test-mission", harness.ctx, harness.pi, tmpDir);
 

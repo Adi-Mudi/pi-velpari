@@ -84,7 +84,7 @@ export const SUGGESTIONS = {
 		"Mark the RTM rows for deprecated requirements as `deprecated` (never delete them), or re-run `/velpari-rtm` in update mode.",
 
 	// Multiplexer / subagent provider
-	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, or cmux.",
+	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, cmux, or herdr.",
 	"subagent-ext-missing":
 		"Reinstall pi-velpari (`pi install npm:@adi-mudi/pi-velpari@1.0.2-bundled`); pi-interactive-subagents is now bundled and should appear under pi-velpari's node_modules/.",
 	"zellij-close-pane":
