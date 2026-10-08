@@ -41,6 +41,10 @@ npm run test:e2e   # RUN_E2E=1 + pi on PATH
 
 **Thermal protocol (2026-09-21):** the full unit + e2e gate runs in **GitHub Actions** (`.github/workflows/test.yml`, triggered on `bug-fix` too). Local runs during development are `npm run build` + targeted `node --test dist/pi-extension/test/<file>.test.js` only — the dev machine overheats under the full local suite. **Tier 3 (2026-10-07):** the full-sequence RPC run (`scripts/e2e-rpc-test.mjs`, real LLM, brainstorm → handoff) is **CI-only** — `workflow_dispatch` job `tier3`, needs the `KIMI_API_KEY` secret, results in the `tier3-result` artifact. See `Doc/testing-guide.md`.
 
+## Live-load freeze
+
+**LIVE-LOAD FREEZE — the main checkout on `development` is loaded live by every global pi session (settings.json path entry).** During live testing no edits in this checkout — all work happens in git worktrees. Self-check ("locking"): before ANY edit, run `git branch --show-current`; if it prints `development` on the main checkout path, STOP and switch to a worktree.
+
 ## Layered architecture
 
 `pi-extension/src/` follows the official 4-layer orchestrator layout. Each layer has a single concern and a strict dependency direction: a file in layer N may import from any layer < N, never upward.

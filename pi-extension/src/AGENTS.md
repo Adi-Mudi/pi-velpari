@@ -37,6 +37,10 @@ Two composition roots in this extension. Both are wiring only — no business lo
 4. **A new slash command** → add `commands/<name>.ts`, register it in `commands/index.ts`, add the name to `COMMAND_NAMES`.
 5. Update [`layers.ts`](./layers.ts) if you added a new folder.
 
+## Live-load freeze
+
+**LIVE-LOAD FREEZE** — same rule as the root `AGENTS.md`: the main checkout on `development` is loaded live by every global pi session (settings.json path entry). During live testing, no edits in this checkout — work in a git worktree. Before ANY edit, run `git branch --show-current`; if it prints `development` on the main checkout path, STOP and switch to a worktree.
+
 ## Brainstorm lifecycle v2.1 — new helpers (added 2026-09-14)
 
 When working on the brainstorm command, these helpers are part of the v2.1 upgrade:
