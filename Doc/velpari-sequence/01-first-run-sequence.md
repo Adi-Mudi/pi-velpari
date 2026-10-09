@@ -51,7 +51,7 @@ Details: `05-sub-agent-generation.md`.
 | | |
 |---|---|
 | **Command** | `/velpari-brainstorm <mission>` |
-| **Pre-req** | None (start of a run). A terminal multiplexer must be active (visible scout panes); override via `PI_SUBAGENT_MUX`. |
+| **Pre-req** | None (start of a run). A terminal multiplexer must be active (visible scout panes) — zellij/tmux/wezterm/cmux/herdr; override via `PI_SUBAGENT_MUX`. herdr also needs a herdr-capable subagents plugin (upstream supports cmux/tmux/zellij/WezTerm only). |
 | **Behavior** | UNDERSTAND loop (conversational) → understanding paragraph → developer confirms (hard lock) → SCAN gate (developer picks: all / code+doc / community / adjust / skip; community = web-search consent) → clarify loop (decision ledger: every question → agreed / not-wanted+reason / replaced) → notes draft. Read-only scouts only. |
 | **Working copy** | `.IDE_Plans/velpari/runs/<run-id>/brainstorm/brainstorm-notes.md` |
 | **Approve gate** | `/velpari-approve-brainstorm` — hard-blocks on unconfirmed understanding, open questions, missing/empty/`_TBD_` sections. |

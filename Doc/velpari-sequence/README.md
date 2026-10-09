@@ -146,6 +146,25 @@ phase, no bent rules.
 5. **NEXT** — the orchestrator surfaces the single correct next command. The
    developer types it by hand. No auto-chains, ever.
 
+## Terminal multiplexer (scout panes)
+
+Every stage's scouts run as **visible sub-agents in panes**, so a run requires an
+active terminal multiplexer: **zellij / tmux / wezterm / cmux / herdr**. Velpari
+only *detects* the multiplexer — the panes are opened by the runtime plugin
+`pi-interactive-subagents`. A stage command with no multiplexer present is
+hard-blocked at entry (brainstorm) or cannot spawn its scouts. `PI_SUBAGENT_MUX`
+overrides detection for wrappers and tests.
+
+- **herdr** is the 5th supported multiplexer, detected from the env vars herdr
+  injects into managed panes (`HERDR_ENV=1`, `HERDR_PANE_ID`). It needs herdr
+  **≥ 0.9.0** *and* a subagents plugin with a herdr backend — upstream supports
+  cmux/tmux/zellij/WezTerm only. Install path and limitations:
+  [Terminal multiplexers](../../README.md#terminal-multiplexers) in the root
+  README; path decision: `Doc/herdr-plugin-strategy.md`.
+- **Detection order.** herdr is checked **last**, so tmux inside a herdr pane
+  detects as `tmux` — the detected multiplexer is the provider the panes are
+  opened through, keeping nested setups consistent.
+
 ## Locked decisions → where they are defined
 
 | Locked decision | Defined in |
