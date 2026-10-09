@@ -15,6 +15,12 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 | **Tier 3 — Full-sequence RPC** | `scripts/e2e-rpc-test.mjs` | hours (real LLM) | Whole chain brainstorm → handoff against a live pi + real model | **CI-only** (`workflow_dispatch`, needs `KIMI_API_KEY`) |
 | **Perf** | `node --test` (timing) | variable | Doctor + handoff + walk latency budgets | `RUN_PERF=1` |
 
+> **Naming note (herdr initiative).** The herdr integration initiative numbers
+> its own layers L1 unit / L2 full suite / **L3 herdr-in-CI** / L4 full-sequence
+> / L5 release matrix (master plan §5). That "L3" is the `herdr-l3` CI job in
+> §10 — it is **not** the "L3 — In-process" harness in the table above. The two
+> vocabularies are unrelated; when a reference is ambiguous, name which one.
+
 ### Tier 3 — remote full-sequence run (2026-10-07)
 
 - What it is: `scripts/e2e-rpc-test.mjs` drives a real `pi --mode rpc` process through the complete chain — configure-inputs → brainstorm → all 9 stages (stage command → working copy + payload → fall-back approve) → `/velpari-handoff` — in a throwaway git workspace, asserting state advances, the store DB (`Doc/store/RPCTestApp/index.db`), exported YAML, and the handoff payload.
@@ -225,6 +231,7 @@ RUN_PERF=1 npm run test:coverage -- --test --test-reporter=spec \
                                    dist/pi-extension/test/performance/*.test.js
                                    # Perf tests (gated by RUN_PERF)
 RUN_L3_E2E=1 npm run test:l3      # L3 in-process (DEFERRED — see Phase 4)
+npm run test:herdr-mux            # multiplexer detection + brainstorm gate (2 files)
 ```
 
 ## 10. CI Pipeline
@@ -236,6 +243,15 @@ RUN_L3_E2E=1 npm run test:l3      # L3 in-process (DEFERRED — see Phase 4)
 | `unit-and-e2e` | always | hard fail if statements < 92% |
 | `perf` | always (after unit-and-e2e) | soft fail (continue-on-error) — leaves PR comment |
 | `tier2` | workflow_dispatch only | hard fail if `KIMI_API_KEY` is set |
+| `herdr-l3` | always (after unit-and-e2e); `herdr*` branches are the initiative's | hard fail — installs herdr on `ubuntu-latest` + `macos-latest`, starts the headless server, health-checks `herdr status server`, then runs the multiplexer + brainstorm-gate test files inside a real herdr pane |
+
+`herdr-l3` is **L3 — herdr-in-CI** (see the naming note in §1). It drives the
+real herdr CLI (`herdr pane run` / `herdr pane read`) so the run happens with
+herdr's own `HERDR_ENV` / `HERDR_PANE_ID` injected, and always uploads
+`.tmp/herdr-l3/` (server log, status, workspace JSON, pane output) as the
+`herdr-l3-<os>` artifact. Failures print the server log or the pane dump.
+**Windows is out of the matrix** — herdr's Windows support is preview-only;
+revisit at herdr Windows GA.
 
 Concurrency: stale runs on the same ref are cancelled when a new commit lands.
 
