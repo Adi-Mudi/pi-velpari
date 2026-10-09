@@ -695,7 +695,12 @@ async function main() {
 				STAGE_TIMEOUT_MS,
 				() => readState().currentStage === s.during || newNotifies(client, start.notifyMark).length > 0,
 			);
-			record(`${s.cmd} → ${s.during}`, readState().currentStage === s.during, `stage=${readState().currentStage}`);
+			// Accept s.after too: a fast model can run the stage command AND the
+			// fall-back approve inside one settle window, so the state may
+			// already be one step past `during` (2026-10-09 branch run
+			// 37971880718: final-design read as finalized-design, 65/66 pass).
+			const stageNow = readState().currentStage;
+			record(`${s.cmd} → ${s.during}`, stageNow === s.during || stageNow === s.after, `stage=${stageNow}`);
 
 			const g = await sendPrompt(client, stageGuidance(s.extra));
 			if (g.ok) await waitSettled(client, g.mark, STAGE_TIMEOUT_MS);
