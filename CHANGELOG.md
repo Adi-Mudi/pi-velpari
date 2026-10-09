@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 - **herdr is the 5th detected multiplexer** — `core/multiplexer.ts` recognizes herdr via its documented env vars (`HERDR_ENV=1` primary, `HERDR_PANE_ID` secondary; both officially injected into managed panes) and accepts `PI_SUBAGENT_MUX=herdr` like the other four. The herdr check runs last in the detection chain, so tmux-inside-herdr still detects as tmux (herdr does not inspect a nested tmux). Doctor, fix-suggestion, design-logging, and brainstorm-gate messages list herdr as supported.
 - **Detection-only scope:** with pi running inside a herdr pane, velpari's multiplexer gate now passes. Pane spawning for visible scouts still depends on the `pi-interactive-subagents` plugin, which upstream supports only cmux/tmux/zellij/WezTerm — a herdr-capable plugin backend is a separate work item (herdr integration initiative Phase 2+).
 
+### Docs
+
+- **Herdr plugin strategy decided** (`Doc/herdr-plugin-strategy.md`, 2026-10-09) — the pane-spawning path is a fork of `pi-interactive-subagents` with a thin herdr backend (upstream PR contributed in parallel); minimum herdr version floor **0.9.0**; herdr confirmed **Apache-2.0**; Phase 5 (state-aware supervision) is a no-go. Gates the plugin-backend and supervision work items.
+
 ## [2.0.0] — 2026-10-06 — DB-only publish + revision locking (Phases A–G)
 
 The post-rollout upgrade (Phases A–G) lands as one major release: publish is DB-only by default, downstream-consumed revisions are content-locked, every session is bound to its worktree/branch, and the doctor gains a command-start preflight with a self-healing fix flow. The per-phase rollout detail follows below.
