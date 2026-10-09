@@ -43,6 +43,9 @@ import { checkPhaseConsistencySection } from "./checks/phase-consistency.js";
 import { checkMvpCoverageSection } from "./checks/mvp-coverage.js";
 import { checkFeasibilityV2Section } from "./checks/feasibility-v2.js";
 import { detectMultiplexer, detectInteractiveSubagentsVersion } from "./checks/multiplexer.js";
+// Herdr integration initiative (Phase 3) — version floor, pi-integration
+// recommendation, and the subagents herdr-backend capability warning.
+import { checkHerdrSection } from "./checks/herdr.js";
 import {
 	checkScoutAgentsSection,
 	checkStageSkillsSection,
@@ -420,6 +423,7 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		checkRunLockSection(cwd),
 		checkWorktreeRemovalSection(cwd),
 		buildMultiplexerSection(cwd),
+		checkHerdrSection(cwd),
 		checkSubagentExtension(),
 		checkStrayFiles(cwd),
 		checkWebToolLock(cwd),

@@ -2,9 +2,9 @@ name: test
 
 on:
   push:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*", "herdr*"]
   pull_request:
-    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*"]
+    branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*", "herdr*"]
   workflow_dispatch:
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
@@ -74,6 +74,107 @@ jobs:
         env:
           RUN_E2E: "1"
         run: RUN_E2E=1 npm run test:e2e
+
+  # ---------------------------------------------------------------------
+  # L3 — herdr-in-CI (herdr integration initiative, Phase 3).
+  #
+  # Proves velpari's multiplexer detection + brainstorm gate work inside a
+  # REAL herdr pane, driven by the herdr CLI the same way the scout pattern
+  # will drive it in Phase 4+.
+  #
+  # NAMING: this is "L3" in the herdr initiative's layer table (master plan
+  # §5). It is NOT the "L3 — In-process" harness named in
+  # Doc/testing-guide.md §1; the two vocabularies are unrelated.
+  #
+  # Windows is intentionally OUT of the matrix: herdr's Windows support is
+  # preview-only (install.ps1 is an endpoint-protected preview endpoint) and
+  # this project does not test Windows. Revisit at herdr Windows GA.
+  herdr-l3:
+    name: L3 herdr-in-CI (${{ matrix.os }})
+    needs: unit-and-e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Install herdr
+        run: |
+          curl -fsSL https://herdr.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: herdr version
+        run: |
+          herdr --version | tee -a "$GITHUB_STEP_SUMMARY"
+      # Server start, health check, real pane, in-pane test run and stop all
+      # live in ONE step: the pane inherits this step's environment (node on
+      # PATH, repo cwd), and a failure never leaves a stray server behind.
+      - name: L3 — detection + gate tests inside a real herdr pane
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/herdr-l3
+          LOG=.tmp/herdr-l3/server.log
+          nohup herdr server >"$LOG" 2>&1 &
+          # 1. Health check — bounded poll, because the socket can exist
+          #    before the server finishes booting.
+          ready=0
+          for _ in $(seq 1 30); do
+            STATUS="$(herdr status server 2>&1 || true)"
+            printf '%s\n' "$STATUS"
+            if printf '%s' "$STATUS" | grep -qiE 'running|ready|up|ok'; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::herdr server did not report ready within 30s"
+            cat "$LOG" || true
+            exit 1
+          fi
+          herdr status server > .tmp/herdr-l3/status.txt 2>&1 || true
+          # 2. Real workspace + pane (no focus steal), cwd = repo root.
+          herdr workspace create --cwd "$PWD" --label velpari-l3 --no-focus > .tmp/herdr-l3/workspace.json
+          PANE=$(node -e 'const j=JSON.parse(require("fs").readFileSync(".tmp/herdr-l3/workspace.json","utf8"));process.stdout.write(j.result.root_pane.pane_id)')
+          echo "herdr pane: $PANE"
+          # 3. Run the mux + gate test files INSIDE the pane. herdr injects
+          #    HERDR_ENV / HERDR_PANE_ID into managed panes, so the run also
+          #    proves the OP-7 ambient-env class cannot regress.
+          herdr pane run "$PANE" "cd '$PWD' && RUN_HERDR_L3=1 node --test --test-force-exit dist/pi-extension/test/core/multiplexer.test.js dist/pi-extension/test/ops/brainstorm-multiplexer-gate.test.js dist/pi-extension/test/e2e/herdr-ambient.test.js; echo VELPARI_L3_EXIT=\$?"
+          # 4. Poll the pane output for the sentinel.
+          found=0
+          for _ in $(seq 1 90); do
+            OUT="$(herdr pane read "$PANE" --source recent --lines 400 --format text 2>/dev/null || true)"
+            if printf '%s' "$OUT" | grep -q 'VELPARI_L3_EXIT='; then found=1; break; fi
+            sleep 2
+          done
+          printf '%s\n' "${OUT:-}" > .tmp/herdr-l3/pane-output.txt
+          if [ "$found" -ne 1 ]; then
+            echo "::error::in-pane test run did not finish within 180s"
+            cat .tmp/herdr-l3/pane-output.txt
+            exit 1
+          fi
+          CODE=$(printf '%s' "$OUT" | grep -o 'VELPARI_L3_EXIT=[0-9]*' | tail -1 | cut -d= -f2)
+          echo "in-pane exit code: $CODE"
+          if [ "$CODE" != "0" ]; then
+            echo "::error::in-pane tests failed (exit $CODE)"
+            cat .tmp/herdr-l3/pane-output.txt
+            exit 1
+          fi
+      - name: Stop herdr server
+        if: always()
+        run: herdr server stop || true
+      - name: Upload herdr L3 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: herdr-l3-${{ matrix.os }}
+          path: .tmp/herdr-l3/
 
   perf:
     name: Performance budget (RUN_PERF=1)
