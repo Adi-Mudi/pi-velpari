@@ -276,6 +276,9 @@ describe("checkHerdrSection — version floor outcomes", () => {
 	it("env override changes the verdict (floor is runtime-configurable)", () => {
 		const section = checkHerdrSection(tmpRoot("herdr-b6-"), {
 			env: env({ HERDR_ENV: "1", [HERDR_MIN_VERSION_ENV]: "5.0.0" }),
+			// Injected so the verdict never depends on whether `herdr` happens
+			// to be installed on the machine running the suite (CI has none).
+			versionProbe: () => "herdr 0.9.3",
 			integrationProbe: () => null,
 			subagentsRoot: null,
 		});
@@ -433,7 +436,7 @@ describe("checkHerdrSection — robustness", () => {
 		const root = pluginFixture({ "package.json": '{"version":"1.0.0"}' });
 		const probes: HerdrCheckOptions[] = [
 			{ env: env({ PI_SUBAGENT_MUX: "tmux" }) },
-			{ env: HERDR_ENV_ACTIVE },
+			{ env: HERDR_ENV_ACTIVE, versionProbe: () => "herdr 0.9.3" },
 			{ env: HERDR_ENV_ACTIVE, versionProbe: () => null },
 			{ env: HERDR_ENV_ACTIVE, versionProbe: () => "herdr 0.1.0" },
 			{ env: HERDR_ENV_ACTIVE, versionProbe: () => "?", floor: "?" },
