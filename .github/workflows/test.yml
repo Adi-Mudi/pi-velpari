@@ -314,10 +314,13 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - name: Install pi + subagents plugin + tmux
+      - name: Install pi + subagents plugin + cline provider + tmux
         run: |
           npm install -g @earendil-works/pi-coding-agent@0.87.1
           pi install git:github.com/HazAT/pi-interactive-subagents
+          # cline provider extension — supplies the free cline-free/* models
+          # (not built into pi; local setups have it via pi packages).
+          pi install npm:@maxpaulus/pi-cline
           sudo apt-get update && sudo apt-get install -y tmux
       - name: Tier 3 full-sequence run
         env:
