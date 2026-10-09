@@ -21,6 +21,18 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 > §10 — it is **not** the "L3 — In-process" harness in the table above. The two
 > vocabularies are unrelated; when a reference is ambiguous, name which one.
 
+### Manual dispatch — selecting one job family (2026-10-09)
+
+`workflow_dispatch` now takes a `job` input so a manual run does not have to drag the whole pipeline with it:
+
+- `gh workflow run test.yml --ref <branch> -f job=tier2` — Tier 2 only (`unit-and-e2e`, `herdr-l3`, `perf` and `tier3` are skipped).
+- `gh workflow run test.yml --ref <branch> -f job=tier3` — Tier 3 only.
+- Omitted (or `-f job=all`) — everything, i.e. exactly what a bare dispatch did before this input existed.
+
+Push and PR runs are unaffected: the input is empty for them and every gated job falls through its `github.event_name != 'workflow_dispatch'` arm. Note that the `concurrency` group is per-ref with `cancel-in-progress: true`, so dispatching on a branch while its push run is still in flight cancels that run.
+
+Tier 2 also had two missing prerequisites, fixed alongside: the job never ran `npm run build` (the `test:e2e:tier2` script runs the **compiled** suite, so a fresh checkout matched no test files and the job passed having executed zero tests), and it never installed `pi` (so every Tier 1-gated e2e skipped). Both now mirror Tier 1: a `Build` step and the fail-soft `pi@0.87.1` install.
+
 ### Tier 3 — remote full-sequence run (2026-10-07)
 
 - What it is: `scripts/e2e-rpc-test.mjs` drives a real `pi --mode rpc` process through the complete chain — configure-inputs → brainstorm → all 9 stages (stage command → working copy + payload → fall-back approve) → `/velpari-handoff` — in a throwaway git workspace, asserting state advances, the store DB (`Doc/store/RPCTestApp/index.db`), exported YAML, and the handoff payload.

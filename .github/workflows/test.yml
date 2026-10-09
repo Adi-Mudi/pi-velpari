@@ -6,6 +6,18 @@ on:
   pull_request:
     branches: [test-merge, development, main, dev-upgrade, bug-fix, SQL-DB, "velpari/**", "pi-velpari-wt-*", "herdr*"]
   workflow_dispatch:
+    # Manual runs select ONE job family instead of always running everything.
+    # Push/PR runs are unaffected: the `job` input is empty for them, and each
+    # gated job keeps its existing behaviour through the
+    # `github.event_name != 'workflow_dispatch'` arm. The default `all`
+    # preserves what a bare `gh workflow run test.yml` did before this input
+    # existed (documented in Doc/testing-guide.md).
+    inputs:
+      job:
+        description: "Which manual job to run"
+        type: choice
+        default: all
+        options: [all, tier2, tier3]
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
@@ -18,6 +30,7 @@ jobs:
     name: Unit + e2e (Tier 1)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.job == 'all'
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +104,7 @@ jobs:
   # this project does not test Windows. Revisit at herdr Windows GA.
   herdr-l3:
     name: L3 herdr-in-CI (${{ matrix.os }})
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.job == 'all'
     needs: unit-and-e2e
     strategy:
       fail-fast: false
@@ -194,6 +208,7 @@ jobs:
     name: Performance budget (RUN_PERF=1)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.job == 'all'
     needs: unit-and-e2e
     # Phase 6 — perf runs on every PR and every push (was: test-merge only).
     # Budget failures are reported as a workflow_dispatch-style artifact
@@ -244,7 +259,7 @@ jobs:
     name: Tier 2 LLM e2e (manual dispatch only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'tier2' || github.event.inputs.job == 'all')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -252,7 +267,22 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - name: Build + Tier 2
+      # `test:e2e:tier2` runs the COMPILED suite directly (no build step inside
+      # the script), so this job must build itself. Without this the glob
+      # matches nothing on a fresh checkout and the job ends with 0 tests.
+      - name: Build
+        run: npm run build
+      # Same convention as Tier 1: the e2e harness needs `pi` on PATH, and the
+      # install is fail-soft so a registry outage degrades to skips, not a red
+      # job. Without it every Tier 1-gated test skips (observed locally:
+      # 58 tests, 4 pass, 54 skipped).
+      - name: Install pi (for the e2e harness)
+        run: |
+          if ! command -v pi >/dev/null 2>&1; then
+            echo "Installing @earendil-works/pi-coding-agent@0.87.1..."
+            npm install -g @earendil-works/pi-coding-agent@0.87.1 || echo "::warning::pi install failed; e2e will be skipped"
+          fi
+      - name: Tier 2 (RUN_LLM_E2E=1)
         env:
           RUN_E2E: "1"
           RUN_LLM_E2E: "1"
@@ -276,7 +306,7 @@ jobs:
     name: Tier 3 full-sequence RPC e2e (manual dispatch only)
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'tier3' || github.event.inputs.job == 'all')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
