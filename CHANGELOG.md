@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 2026-10-08 — herdr multiplexer detection (OP-7)
+## [2.1.0] — 2026-10-09 — herdr multiplexer integration (release)
 
 ### Added
 

@@ -56,7 +56,7 @@ herdr is detected as the 5th multiplexer from the env vars it injects into manag
    pi install github.com:Adi-Mudi/pi-interactive-subagents
    ```
 
-   > **PLACEHOLDER `<HERDR_PLUGIN_VERSION>`** — replace with the fork's published version/tag once that backend lands. Path decision: [`Doc/herdr-plugin-strategy.md`](Doc/herdr-plugin-strategy.md) §3.
+   > **Fork release `v3.8.0`** — the herdr backend landed on the fork's `main` and is tagged `v3.8.0` (new backend on top of upstream v3.7.2). Path decision: [`Doc/herdr-plugin-strategy.md`](Doc/herdr-plugin-strategy.md) §3.
 
 4. **Confirm readiness:** `/velpari-doctor` reports a `Herdr (integration readiness)` section covering the version floor, the pi integration, and a capability probe for the herdr backend. The section warns only — it never blocks. Per-project floor pin: `files.json` → `velpari.herdrMinVersion`; per-shell override: `PI_VELPARI_HERDR_MIN_VERSION`.
 
