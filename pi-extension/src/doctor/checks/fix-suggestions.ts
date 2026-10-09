@@ -84,11 +84,21 @@ export const SUGGESTIONS = {
 		"Mark the RTM rows for deprecated requirements as `deprecated` (never delete them), or re-run `/velpari-rtm` in update mode.",
 
 	// Multiplexer / subagent provider
-	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, or cmux.",
+	"unknown-multiplexer": "Start pi inside tmux, zellij, wezterm, cmux, or herdr.",
 	"subagent-ext-missing":
 		"Reinstall pi-velpari (`pi install npm:@adi-mudi/pi-velpari@1.0.2-bundled`); pi-interactive-subagents is now bundled and should appear under pi-velpari's node_modules/.",
 	"zellij-close-pane":
 		"During the brainstorm stage, do NOT manually focus a subagent pane. cmux/tmux/wezterm are not affected.",
+
+	// Herdr integration readiness (herdr integration initiative, Phase 3)
+	"herdr-version-below-floor":
+		"Upgrade herdr (`herdr update`) — or, if the floor itself is wrong for your setup, pin it via files.json `velpari.herdrMinVersion` or the PI_VELPARI_HERDR_MIN_VERSION env var.",
+	"herdr-cli-missing":
+		"Put the `herdr` binary on PATH (install: `curl -fsSL https://herdr.dev/install.sh | sh`) — velpari drives scout panes and agent waits through the herdr CLI.",
+	"herdr-backend-missing":
+		"Visible scouts cannot spawn inside herdr until a herdr-capable subagents plugin is installed (herdr integration initiative Phase 4). Until then, run pi inside tmux/wezterm/cmux/zellij, or set PI_SUBAGENT_MUX to that multiplexer.",
+	"herdr-integration-missing":
+		"Run `herdr integration install pi` — it lets herdr resume the pi session after a server restart and report pi's agent state (idempotent; undo with `herdr integration uninstall pi`).",
 
 	// Scout agents
 	"scout-agent-missing":

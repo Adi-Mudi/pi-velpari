@@ -33,7 +33,7 @@ parent LLM is the orchestrator, sub-agents are the persistent specialists.
   (`velpari_brainstorm_session({ action: "request-scan-gate" })`) is
   retained as a fallback for users who prefer the one-shot ephemeral
   scout path. The default v3 flow uses the 2 persistent sessions directly.
-- **Multiplexer is still required** (v2.1): zellij/tmux/wezterm/cmux.
+- **Multiplexer is still required** (v2.1): zellij/tmux/wezterm/cmux/herdr.
   Override via `PI_SUBAGENT_MUX` for wrappers/tests.
 - **No subagent before confirming the understanding** — even with
   persistent sessions live, never dispatch a routed message until
@@ -43,7 +43,7 @@ parent LLM is the orchestrator, sub-agents are the persistent specialists.
 
 ```
 /velpari-brainstorm "<seed>"
-       │  (handler: hard-gate on multiplexer present — zellij/tmux/wezterm/cmux)
+       │  (handler: hard-gate on multiplexer present — zellij/tmux/wezterm/cmux/herdr)
        ▼
 [1] AUTOMATIC SPAWN   handler opens 2 persistent sessions in right column:
                       - row 1: web-research      (session: "web")
@@ -599,8 +599,9 @@ scout-notes is enough) so the log can be reconstructed.
 - **Understand before scan.** No subagent before `understandingConfirmed`.
 - **Multiplexer is required (v2.1).** Velpari spawns visible scouts in
   multiplexer panes. If the developer started brainstorm without one,
-  the handler hard-fails at entry — tell them to run inside zellij/tmux
-  (or set `PI_SUBAGENT_MUX` for wrappers/tests).
+  the handler hard-fails at entry — tell them to run inside
+  zellij/tmux/wezterm/cmux/herdr (or set `PI_SUBAGENT_MUX` for
+  wrappers/tests).
 - **SCAN gate always asks (v2.1).** Call
   `velpari_brainstorm_session({ action: "request-scan-gate" })` —
   never assume a default. The picker persists the result.

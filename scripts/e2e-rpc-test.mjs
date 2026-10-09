@@ -23,6 +23,9 @@
 //   E2E_STAGE_TIMEOUT_MS per-stage agent-quiet timeout (default 1200000 = 20m)
 //   E2E_USE_GLOBAL       "1" force global packages load, "0" force --extension
 //                        (default: auto-detect the global path entry)
+//   E2E_KEEP_KEYS        "1" forward KIMI_API_KEY/MOONSHOT_API_KEY to the pi
+//                        spawn instead of stripping them (default: strip
+//                        locally, keep in CI — process.env.CI truthy)
 //
 // Fixed env on the pi spawn: PI_SUBAGENT_MUX=tmux (headless multiplexer-gate
 // override, core/multiplexer.ts:36-39), VELPARI_EXCALIDRAW=0 (kill-switch,
@@ -531,9 +534,14 @@ async function main() {
 	if (E2E_MODEL) args.push("--model", E2E_MODEL);
 	// Safety rule 1 (plan ruling 6): strip API keys so local pi authenticates
 	// via kimiCodingOAuth instead of a (possibly stale) key env var.
+	// CI runs have no OAuth login, so there the key must reach pi
+	// (2026-10-09 fix: strip is local-only; E2E_KEEP_KEYS=1 also keeps them).
 	const spawnEnv = { ...process.env, PI_SUBAGENT_MUX: "tmux", VELPARI_EXCALIDRAW: "0" };
-	delete spawnEnv.KIMI_API_KEY;
-	delete spawnEnv.MOONSHOT_API_KEY;
+	const keepKeys = (process.env.CI && process.env.CI !== "0") || process.env.E2E_KEEP_KEYS === "1";
+	if (!keepKeys) {
+		delete spawnEnv.KIMI_API_KEY;
+		delete spawnEnv.MOONSHOT_API_KEY;
+	}
 	const pi = spawn("pi", args, {
 		cwd: WORKSPACE,
 		stdio: ["pipe", "pipe", "pipe"],

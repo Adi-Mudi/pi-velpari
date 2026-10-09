@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] — 2026-10-09 — herdr multiplexer integration (release)
+
+### Added
+
+- **herdr is the 5th detected multiplexer** — `core/multiplexer.ts` recognizes herdr via its documented env vars (`HERDR_ENV=1` primary, `HERDR_PANE_ID` secondary; both officially injected into managed panes) and accepts `PI_SUBAGENT_MUX=herdr` like the other four. The herdr check runs last in the detection chain, so tmux-inside-herdr still detects as tmux (herdr does not inspect a nested tmux). Doctor, fix-suggestion, design-logging, and brainstorm-gate messages list herdr as supported.
+- **Detection-only scope:** with pi running inside a herdr pane, velpari's multiplexer gate now passes. Pane spawning for visible scouts still depends on the `pi-interactive-subagents` plugin, which upstream supports only cmux/tmux/zellij/WezTerm — a herdr-capable plugin backend is a separate work item (herdr integration initiative Phase 2+).
+- **Doctor herdr-awareness (herdr integration initiative Phase 3)** — a new `Herdr (integration readiness)` doctor section with three findings: a herdr **version-floor** check (`HERDR_MIN_VERSION_PLACEHOLDER`, overridable at runtime via `PI_VELPARI_HERDR_MIN_VERSION` or `files.json` → `velpari.herdrMinVersion`), an **info** recommendation to run `herdr integration install pi`, and a **warning** when the multiplexer is herdr but the active subagents plugin has no herdr backend ("gate passes, scouts can't spawn yet"). The backend finding is a filesystem capability probe, not a version guess, so it flips to `ok` on its own once the Phase 4 backend ships. Warnings only — the section never emits an error, so the doctor verdict is unaffected.
+- **herdr-in-CI (L3) GitHub Actions job** — installs herdr on `ubuntu-latest` + `macos-latest`, starts the headless server, health-checks `herdr status server`, then runs the multiplexer + brainstorm-gate test files **inside a real herdr pane** (driven through `herdr pane run` / `herdr pane read`) and always uploads the logs as the `herdr-l3-<os>` artifact. The workflow now also triggers on `herdr*` branches, so every phase branch runs CI without a manual dispatch. **Windows is out of the matrix** — herdr's Windows support is preview-only. Naming: this job is "L3" in the herdr initiative's layer table and is unrelated to the "L3 — In-process" harness in `Doc/testing-guide.md` (the guide now says so).
+
+### Docs
+
+- **Herdr plugin strategy decided** (`Doc/herdr-plugin-strategy.md`, 2026-10-09) — the pane-spawning path is a fork of `pi-interactive-subagents` with a thin herdr backend (upstream PR contributed in parallel); minimum herdr version floor **0.9.0**; herdr confirmed **Apache-2.0**; Phase 5 (state-aware supervision) is a no-go. Gates the plugin-backend and supervision work items.
+- **herdr documentation (herdr integration initiative Phase 6)** — `README.md` gains a **Terminal multiplexers** section with the herdr path (prerequisite **herdr ≥ 0.9.0**, `herdr integration install pi`, the herdr-capable subagents-plugin fork, `PI_SUBAGENT_MUX=herdr`, the doctor's `Herdr (integration readiness)` section) and the three known limitations (pre-1.0 churn, nested-tmux detection order, Windows preview-only → no Windows CI). The sequence doc set names the five-mux list and where scout panes come from (`Doc/velpari-sequence/README.md` + `01-first-run-sequence.md` Pre-req). The brainstorm skill's hard-rule mux list is corrected to all five kinds, and `AGENTS.md`'s runtime-plugin bullet points contributors at the plugin decision doc.
+
 ## [2.0.0] — 2026-10-06 — DB-only publish + revision locking (Phases A–G)
 
 The post-rollout upgrade (Phases A–G) lands as one major release: publish is DB-only by default, downstream-consumed revisions are content-locked, every session is bound to its worktree/branch, and the doctor gains a command-start preflight with a self-healing fix flow. The per-phase rollout detail follows below.

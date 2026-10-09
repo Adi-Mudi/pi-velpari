@@ -47,7 +47,7 @@ When working on the brainstorm command, these helpers are part of the v2.1 upgra
 
 | Helper | Layer | Purpose |
 |---|---|---|
-| `core/multiplexer.ts` | L0 | Env-var multiplexer detection (zellij/tmux/wezterm/cmux). Promoted from `doctor/checks/multiplexer.ts` so the brainstorm handler can gate on it. |
+| `core/multiplexer.ts` | L0 | Env-var multiplexer detection (zellij/tmux/wezterm/cmux/herdr). Promoted from `doctor/checks/multiplexer.ts` so the brainstorm handler can gate on it. |
 | `core/scan-options.ts` | L0 | Config-driven available-scan detection. Reads files.json v4 (`codePaths`, `inputDocuments`) + probes filesystem. |
 | `stages/brainstorm/scan-gate.ts` | L1 | The mandatory SCAN-gate picker (`ctx.ui.select` + `ctx.ui.confirm`). Lives at L1 (not L2) because the brainstorm state tool needs to invoke it and L1 cannot import from L2. |
 | `stages/brainstorm-state-tool.ts` (new action: `request-scan-gate`) | L1 | The parent-LLM-callable bridge. Calls `runScanGatePicker` via `ctx.ui` and persists the result via `setScansSelected`. |

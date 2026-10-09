@@ -17,7 +17,7 @@
  *   (used by wrappers / tests).
  */
 
-export type MultiplexerKind = "cmux" | "tmux" | "zellij" | "wezterm" | "unknown";
+export type MultiplexerKind = "cmux" | "tmux" | "zellij" | "wezterm" | "herdr" | "unknown";
 
 export interface MultiplexerInfo {
 	mux: MultiplexerKind;
@@ -26,7 +26,7 @@ export interface MultiplexerInfo {
 
 /** Multiplexers velpari explicitly supports. Order = display order in
  * error messages. */
-export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = ["zellij", "tmux", "wezterm", "cmux"];
+export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = ["zellij", "tmux", "wezterm", "cmux", "herdr"];
 
 /**
  * Detect the active multiplexer by sniffing env vars.
@@ -34,7 +34,13 @@ export const SUPPORTED_MULTIPLEXERS: readonly MultiplexerKind[] = ["zellij", "tm
  */
 export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): MultiplexerInfo {
 	const override = env.PI_SUBAGENT_MUX;
-	if (override === "cmux" || override === "tmux" || override === "zellij" || override === "wezterm") {
+	if (
+		override === "cmux" ||
+		override === "tmux" ||
+		override === "zellij" ||
+		override === "wezterm" ||
+		override === "herdr"
+	) {
 		return { mux: override, source: "PI_SUBAGENT_MUX" };
 	}
 	if (env.TMUX) return { mux: "tmux", source: "TMUX" };
@@ -54,6 +60,12 @@ export function detectMultiplexer(env: NodeJS.ProcessEnv = process.env): Multipl
 		return {
 			mux: "cmux",
 			source: env.CMUX_PANE_ID ? "CMUX_PANE_ID" : "CMUX_SESSION_NAME",
+		};
+	}
+	if (env.HERDR_ENV === "1" || env.HERDR_PANE_ID) {
+		return {
+			mux: "herdr",
+			source: env.HERDR_PANE_ID ? "HERDR_PANE_ID" : "HERDR_ENV",
 		};
 	}
 	return { mux: "unknown", source: "(none — no multiplexer env vars detected)" };

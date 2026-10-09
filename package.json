@@ -1,6 +1,6 @@
 {
   "name": "@adi-mudi/pi-velpari",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Stage-gated pre-production orchestration for Pi — Brainstorm → PRD → RTM → Feasibility → Design → Pseudocode → Test Plan, with 4-scout visible subagents per stage and structured doctor audit.",
   "type": "module",
   "main": "./pi-extension/src/index.ts",
@@ -28,6 +28,7 @@
     "test:e2e:tier2": "RUN_E2E=1 RUN_LLM_E2E=1 node --test --test-force-exit --test-timeout=300000 dist/pi-extension/test/e2e/*.test.js",
     "test:e2e:tier3": "npm run build && node scripts/e2e-rpc-test.mjs",
     "test:l3": "RUN_L3_E2E=1 node --test --test-force-exit --test-timeout=60000 dist/pi-extension/test/in-process/*.test.js",
+    "test:herdr-mux": "npm run build && node --test --test-force-exit dist/pi-extension/test/core/multiplexer.test.js dist/pi-extension/test/ops/brainstorm-multiplexer-gate.test.js",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint pi-extension/src/",
     "format": "biome format --write pi-extension/src/",
