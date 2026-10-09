@@ -26,7 +26,7 @@ It mirrors Pi-Senai's discipline model (state-gated runs, working/published copy
 - **Package manager:** npm
 - **Build:** `tsc` (see `tsconfig.json`); ESM under `dist/`
 - **Peer dependencies:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`, `typebox` (Pi core — never bundled).
-- **Runtime plugin (not bundled):** `pi-interactive-subagents` (≥3.7.2). End users install once via `pi install github.com:HazAT/pi-interactive-subagents`. Velpari never `import`s it — every reference is text in a comment or scout description.
+- **Runtime plugin (not bundled):** `pi-interactive-subagents` (≥3.7.2). End users install once via `pi install github.com:HazAT/pi-interactive-subagents`. Velpari never `import`s it — every reference is text in a comment or scout description. **A herdr pane additionally needs a herdr-capable plugin** — upstream supports cmux/tmux/zellij/WezTerm only, so the herdr backend fork is required (path decided in `Doc/herdr-plugin-strategy.md`).
 - **One runtime dependency (B3/D1):** `yaml` (^2), imported only by L0 data modules (`core/yaml-data.ts` and the `*-data.ts` sidecar modules). No test framework, no linter.
 
 ## Build and test
