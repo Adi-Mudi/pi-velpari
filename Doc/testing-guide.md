@@ -12,7 +12,7 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 | **L1 — Unit** | `node --test` | <1s/test | Pure logic, registry entries, helpers, atomic functions | nothing (default) |
 | **L2 — RPC e2e** | spawn `pi --mode rpc` | ~3-5s/test | Real extension loads, real commands, real doctor, real state machine | `RUN_E2E=1` (CI sets this) |
 | **L3 — In-process** | `pi-coding-agent-test@0.1.1` | ~1-3s/test | Real Pi + scripted LLM responses (deterministic) | **`RUN_L3_E2E=1`** (currently broken — Phase 4) |
-| **Tier 3 — Full-sequence RPC** | `scripts/e2e-rpc-test.mjs` | hours (real LLM) | Whole chain brainstorm → handoff against a live pi + real model | **CI-only** (`workflow_dispatch`, needs `KIMI_API_KEY`) |
+| **Tier 3 — Full-sequence RPC** | `scripts/e2e-rpc-test.mjs` | hours (real LLM) | Whole chain brainstorm → handoff against a live pi + real model | **CI-only** (`workflow_dispatch`, free cline model — no key needed) |
 | **Perf** | `node --test` (timing) | variable | Doctor + handoff + walk latency budgets | `RUN_PERF=1` |
 
 > **Naming note (herdr initiative).** The herdr integration initiative numbers
@@ -37,7 +37,7 @@ Tier 2 also had two missing prerequisites, fixed alongside: the job never ran `n
 
 - What it is: `scripts/e2e-rpc-test.mjs` drives a real `pi --mode rpc` process through the complete chain — configure-inputs → brainstorm → all 9 stages (stage command → working copy + payload → fall-back approve) → `/velpari-handoff` — in a throwaway git workspace, asserting state advances, the store DB (`Doc/store/RPCTestApp/index.db`), exported YAML, and the handoff payload.
 - How to run: GitHub Actions only — `gh workflow run test.yml --ref SQL-DB`, job `tier3` (manual dispatch, `timeout-minutes: 360`). Installs pi 0.87.1 + `pi-interactive-subagents` + tmux on the runner. Never runs on push (LLM cost/flakiness).
-- Key/env knobs: needs the `KIMI_API_KEY` repo secret — the job graceful-skips with a warning when unset. Harness env: `E2E_UNTIL_STAGE` (stop early), `E2E_MODEL` (pi `--model` passthrough), `E2E_STAGE_TIMEOUT_MS` (default 20 min/stage). Spawn fixes `PI_SUBAGENT_MUX=tmux` and `VELPARI_EXCALIDRAW=0`.
+- Key/env knobs (2026-10-09): the default model is `cline-free/mimo-v2.6-flash` — a free route needing NO key (verified auth-free on the dev machine 2026-10-09), so Tier 3 runs unconditionally on dispatch. Kimi is the documented fallback: restore the `KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}` env line + `E2E_MODEL: kimi-coding/kimi-for-coding` in the tier3 job (the secret itself stays in the repo). Harness env: `E2E_UNTIL_STAGE` (stop early), `E2E_MODEL` (pi `--model` passthrough), `E2E_STAGE_TIMEOUT_MS` (default 20 min/stage). Spawn fixes `PI_SUBAGENT_MUX=tmux` and `VELPARI_EXCALIDRAW=0`.
 - Results: `tier3-result` artifact = `.tmp/tier3/run-<ts>/` (report.md + results.json + pi-stderr.log).
 
 ## 2. Layer Selection — When to Use Which

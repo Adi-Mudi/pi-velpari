@@ -321,14 +321,12 @@ jobs:
           sudo apt-get update && sudo apt-get install -y tmux
       - name: Tier 3 full-sequence run
         env:
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          E2E_MODEL: kimi-coding/kimi-for-coding
+          # 2026-10-09: default = free cline route (no key needed, Kimi quota
+          # exhausted). To run on Kimi instead: restore KIMI_API_KEY env +
+          # E2E_MODEL=kimi-coding/kimi-for-coding (see Doc/testing-guide.md).
+          E2E_MODEL: cline-free/mimo-v2.6-flash
           PI_SUBAGENT_MUX: "tmux"
         run: |
-          if [ -z "$KIMI_API_KEY" ]; then
-            echo "::warning::KIMI_API_KEY not set; Tier 3 skipped (add the secret and re-dispatch)"
-            exit 0
-          fi
           npm run test:e2e:tier3
       - name: Tier 3 result artifact
         if: always()
