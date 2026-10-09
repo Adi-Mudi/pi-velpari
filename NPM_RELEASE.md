@@ -4,6 +4,15 @@ Step-by-step guide for publishing `@adi-mudi/pi-velpari` to npm. Designed for on
 
 ---
 
+## Release 2.1.0 — herdr integration (2026-10-09)
+
+- **Version:** `2.1.0` (MINOR — additive). herdr becomes the 5th detected multiplexer, the doctor gains a `Herdr (integration readiness)` section, and CI gains the herdr-in-CI (L3) job. No API/id/structure break.
+- **Dist-tag:** publish with `--tag dev` (§3).
+- **Herdr note:** visible pane spawning needs the herdr-capable subagents-plugin fork — `pi install github.com:Adi-Mudi/pi-interactive-subagents`, tag `v3.8.0`.
+- **Pre-flight expectations (refreshed for 2.1.0):** §1's version check should read `2.1.0` after the bump; `dist-tags` should show the previous stable under `latest` and `2.1.0` under `dev` after publish.
+
+---
+
 ## 1. Pre-flight (5 checks, ~30 seconds)
 
 Run these BEFORE bumping the version:
