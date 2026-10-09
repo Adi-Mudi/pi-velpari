@@ -318,16 +318,24 @@ jobs:
         run: |
           npm install -g @earendil-works/pi-coding-agent@0.87.1
           pi install git:github.com/HazAT/pi-interactive-subagents
-          # cline provider extension — supplies the free cline-free/* models
+          # cline provider extension — supplies the cline/cline-pass models
           # (not built into pi; local setups have it via pi packages).
           pi install npm:@maxpaulus/pi-cline
           sudo apt-get update && sudo apt-get install -y tmux
+      - name: Seed cline-pass auth (OAuth credential from repo secret)
+        env:
+          CLINE_PASS_AUTH_JSON: ${{ secrets.CLINE_PASS_AUTH_JSON }}
+        run: |
+          mkdir -p "$HOME/.pi/agent"
+          node -e "const fs=require('fs');const c=JSON.parse(process.env.CLINE_PASS_AUTH_JSON);fs.writeFileSync(process.env.HOME+'/.pi/agent/auth.json',JSON.stringify({'cline-pass':c},null,2));"
       - name: Tier 3 full-sequence run
         env:
-          # 2026-10-09: default = free cline route (no key needed, Kimi quota
-          # exhausted). To run on Kimi instead: restore KIMI_API_KEY env +
+          # 2026-10-09: cline-pass DeepSeek (paid ClinePass plan — small free
+          # models proved too weak for the stage lifecycle, run 37965973660).
+          # Free fallback: E2E_MODEL=cline-free/mimo-v2.6-flash + drop the
+          # auth-seed step. Kimi fallback: KIMI_API_KEY env +
           # E2E_MODEL=kimi-coding/kimi-for-coding (see Doc/testing-guide.md).
-          E2E_MODEL: cline-free/mimo-v2.6-flash
+          E2E_MODEL: cline-pass/deepseek-v4.1-flash
           PI_SUBAGENT_MUX: "tmux"
         run: |
           npm run test:e2e:tier3
