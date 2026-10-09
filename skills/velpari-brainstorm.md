@@ -599,8 +599,9 @@ scout-notes is enough) so the log can be reconstructed.
 - **Understand before scan.** No subagent before `understandingConfirmed`.
 - **Multiplexer is required (v2.1).** Velpari spawns visible scouts in
   multiplexer panes. If the developer started brainstorm without one,
-  the handler hard-fails at entry — tell them to run inside zellij/tmux
-  (or set `PI_SUBAGENT_MUX` for wrappers/tests).
+  the handler hard-fails at entry — tell them to run inside
+  zellij/tmux/wezterm/cmux/herdr (or set `PI_SUBAGENT_MUX` for
+  wrappers/tests).
 - **SCAN gate always asks (v2.1).** Call
   `velpari_brainstorm_session({ action: "request-scan-gate" })` —
   never assume a default. The picker persists the result.

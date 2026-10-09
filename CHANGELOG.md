@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Docs
 
 - **Herdr plugin strategy decided** (`Doc/herdr-plugin-strategy.md`, 2026-10-09) — the pane-spawning path is a fork of `pi-interactive-subagents` with a thin herdr backend (upstream PR contributed in parallel); minimum herdr version floor **0.9.0**; herdr confirmed **Apache-2.0**; Phase 5 (state-aware supervision) is a no-go. Gates the plugin-backend and supervision work items.
+- **herdr documentation (herdr integration initiative Phase 6)** — `README.md` gains a **Terminal multiplexers** section with the herdr path (prerequisite **herdr ≥ 0.9.0**, `herdr integration install pi`, the herdr-capable subagents-plugin fork, `PI_SUBAGENT_MUX=herdr`, the doctor's `Herdr (integration readiness)` section) and the three known limitations (pre-1.0 churn, nested-tmux detection order, Windows preview-only → no Windows CI). The sequence doc set names the five-mux list and where scout panes come from (`Doc/velpari-sequence/README.md` + `01-first-run-sequence.md` Pre-req). The brainstorm skill's hard-rule mux list is corrected to all five kinds, and `AGENTS.md`'s runtime-plugin bullet points contributors at the plugin decision doc.
 
 ## [2.0.0] — 2026-10-06 — DB-only publish + revision locking (Phases A–G)
 

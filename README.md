@@ -40,6 +40,32 @@ npm run test:l3            # L3 in-process (currently deferred — Phase 4)
 
 See [`Doc/testing-guide.md`](Doc/testing-guide.md) for the test pyramid (L1/L2/L3/perf), how-to-add recipes, and the CI matrix.
 
+## Terminal multiplexers
+
+Velpari's scouts run as **visible sub-agents in panes**, so a run requires an active terminal multiplexer. Supported: **zellij / tmux / wezterm / cmux / herdr**. Velpari only *detects* the multiplexer and hard-fails a stage command when none is present; the panes themselves are opened by the runtime plugin `pi-interactive-subagents` (installed once — see the tech stack in [`AGENTS.md`](AGENTS.md)). Override detection for wrappers and tests with `PI_SUBAGENT_MUX`.
+
+### herdr
+
+herdr is detected as the 5th multiplexer from the env vars it injects into managed panes (`HERDR_ENV=1`, `HERDR_PANE_ID`).
+
+1. **Prerequisite: herdr ≥ 0.9.0** (validated against stable 0.9.3). Below 0.9.0 `herdr agent prompt --wait` can complete on an unrelated state transition — the property the scout wait depends on. Install or upgrade from [herdr.dev](https://herdr.dev); check with `herdr --version`.
+2. **Install the pi integration:** `herdr integration install pi`. herdr then restores the pi session after a server restart and reports pi's agent state.
+3. **Install a herdr-capable subagents plugin.** Upstream `pi-interactive-subagents` supports cmux/tmux/zellij/WezTerm only, so the multiplexer gate would pass while scouts still cannot spawn. Use the fork that carries the herdr backend:
+
+   ```sh
+   pi install github.com:Adi-Mudi/pi-interactive-subagents
+   ```
+
+   > **PLACEHOLDER `<HERDR_PLUGIN_VERSION>`** — replace with the fork's published version/tag once that backend lands. Path decision: [`Doc/herdr-plugin-strategy.md`](Doc/herdr-plugin-strategy.md) §3.
+
+4. **Confirm readiness:** `/velpari-doctor` reports a `Herdr (integration readiness)` section covering the version floor, the pi integration, and a capability probe for the herdr backend. The section warns only — it never blocks. Per-project floor pin: `files.json` → `velpari.herdrMinVersion`; per-shell override: `PI_VELPARI_HERDR_MIN_VERSION`.
+
+### Known limitations
+
+1. **herdr is pre-1.0.** CLI and flag churn is expected. The version floor is a single constant, and it is overridable at runtime (step 4 above) without rebuilding velpari.
+2. **Nested tmux is detected as tmux.** herdr is checked **last** in the detection chain and does not inspect a tmux running inside one of its panes, so tmux-inside-herdr reports `tmux` and scouts spawn through tmux. This is deliberate: the detected multiplexer is the provider the panes are opened through.
+3. **Windows has no CI coverage.** herdr's Windows support is preview-only, so the herdr CI job runs on `ubuntu-latest` + `macos-latest` only. Windows is untested, not blocked.
+
 ## Architecture sub-life cycle
 
 `/velpari-architecture-generator` runs a discipline prelude before any scout spawns: it loads the project context (PRD, RTM, feasibility, profiles, configs), shows the developer a one-paragraph summary, and asks Proceed / Adjust scope / Pick a different profile. The doctor gate refuses to publish when the developer doesn't confirm.
