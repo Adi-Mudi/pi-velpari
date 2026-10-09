@@ -146,11 +146,14 @@ jobs:
           #    HERDR_ENV / HERDR_PANE_ID into managed panes, so the run also
           #    proves the OP-7 ambient-env class cannot regress.
           herdr pane run "$PANE" "cd '$PWD' && RUN_HERDR_L3=1 node --test --test-force-exit dist/pi-extension/test/core/multiplexer.test.js dist/pi-extension/test/ops/brainstorm-multiplexer-gate.test.js dist/pi-extension/test/e2e/herdr-ambient.test.js; echo VELPARI_L3_EXIT=\$?"
-          # 4. Poll the pane output for the sentinel.
+          # 4. Poll the pane output for the sentinel. The typed command line
+          #    itself contains `VELPARI_L3_EXIT=$?`, so only a value with at
+          #    least one digit counts as the real result (otherwise the poll
+          #    matches the echoed command and reads an empty exit code).
           found=0
           for _ in $(seq 1 90); do
             OUT="$(herdr pane read "$PANE" --source recent --lines 400 --format text 2>/dev/null || true)"
-            if printf '%s' "$OUT" | grep -q 'VELPARI_L3_EXIT='; then found=1; break; fi
+            if printf '%s' "$OUT" | grep -qE 'VELPARI_L3_EXIT=[0-9]+'; then found=1; break; fi
             sleep 2
           done
           printf '%s\n' "${OUT:-}" > .tmp/herdr-l3/pane-output.txt
@@ -159,13 +162,15 @@ jobs:
             cat .tmp/herdr-l3/pane-output.txt
             exit 1
           fi
-          CODE=$(printf '%s' "$OUT" | grep -o 'VELPARI_L3_EXIT=[0-9]*' | tail -1 | cut -d= -f2)
+          CODE=$(printf '%s' "$OUT" | grep -oE 'VELPARI_L3_EXIT=[0-9]+' | tail -1 | cut -d= -f2)
           echo "in-pane exit code: $CODE"
-          if [ "$CODE" != "0" ]; then
+          if [ -z "$CODE" ] || [ "$CODE" != "0" ]; then
             echo "::error::in-pane tests failed (exit $CODE)"
             cat .tmp/herdr-l3/pane-output.txt
             exit 1
           fi
+          echo "--- in-pane output (last 30 lines) ---"
+          tail -30 .tmp/herdr-l3/pane-output.txt
       - name: Stop herdr server
         if: always()
         run: herdr server stop || true
