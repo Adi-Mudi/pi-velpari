@@ -124,16 +124,25 @@ jobs:
           LOG=.tmp/herdr-l3/server.log
           nohup herdr server >"$LOG" 2>&1 &
           # 1. Health check — bounded poll, because the socket can exist
-          #    before the server finishes booting.
+          #    before the server finishes booting. NOTE: the not-yet-up
+          #    status reads `status: not running`, so a bare
+          #    `grep -i running` matches it and declares ready while the
+          #    daemon is still booting (observed: the ubuntu leg raced
+          #    ahead of the server and hit server_not_running). Exclude
+          #    the negative string before accepting the positive one.
           ready=0
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 60); do
             STATUS="$(herdr status server 2>&1 || true)"
             printf '%s\n' "$STATUS"
-            if printf '%s' "$STATUS" | grep -qiE 'running|ready|up|ok'; then ready=1; break; fi
+            if ! printf '%s' "$STATUS" | grep -qi 'not running' \
+              && printf '%s' "$STATUS" | grep -qiE 'running|ready|up|ok'; then
+              ready=1
+              break
+            fi
             sleep 1
           done
           if [ "$ready" -ne 1 ]; then
-            echo "::error::herdr server did not report ready within 30s"
+            echo "::error::herdr server did not report ready within 60s"
             cat "$LOG" || true
             exit 1
           fi
