@@ -14,6 +14,7 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 | **L3 — In-process** | `pi-coding-agent-test@0.1.1` | ~1-3s/test | Real Pi + scripted LLM responses (deterministic) | **`RUN_L3_E2E=1`** (currently broken — Phase 4) |
 | **Tier 3 — Full-sequence RPC** | `scripts/e2e-rpc-test.mjs` | hours (real LLM) | Whole chain brainstorm → handoff against a live pi + real model | **CI-only** (`workflow_dispatch`, cline-pass DeepSeek via `CLINE_PASS_AUTH_JSON`) |
 | **Tier 4 — Full sequence with real herdr scout panes** | `scripts/e2e-rpc-test.mjs` inside a herdr pane | hours (real LLM, 4 visible panes per scout stage) | Tier 3 chain **plus** real multi-pane scout dispatch (2–10 stages) through the herdr mux backend | **CI-only, explicit only** (`workflow_dispatch -f job=tier4`; never in `job=all`) |
+| **Tier 5 — Golden-mission quality evals** | `scripts/eval-run.mjs` + `scripts/eval-baseline.mjs` | hours (real LLM, 2 full lifecycle runs) | Two fixed golden missions (cli-todo, notes-api) driven through the full velpari chain; per-stage scores captured and compared to committed baselines with tolerance bands | **CI-only** (`workflow_dispatch -f job=tier5-evals`; paid — one dispatch per acceptance gate) |
 | **Perf** | `node --test` (timing) | variable | Doctor + handoff + walk latency budgets | `RUN_PERF=1` |
 
 > **Naming note (herdr initiative).** The herdr integration initiative numbers
@@ -29,6 +30,7 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 - `gh workflow run test.yml --ref <branch> -f job=tier2` — Tier 2 only (`unit-and-e2e`, `herdr-l3`, `perf` and `tier3` are skipped).
 - `gh workflow run test.yml --ref <branch> -f job=tier3` — Tier 3 only.
 - `gh workflow run test.yml --ref <branch> -f job=tier4` — Tier 4 only (full sequence with real herdr scout panes; paid multi-hour acceptance run — dispatch **once**, re-dispatch needs a user decision).
+- `gh workflow run test.yml --ref <branch> -f job=tier5-evals [-f model=cline-pass/deepseek-v4.1-flash]` — Tier 5 golden-mission quality evals: runs both committed golden missions (`cli-todo`, `notes-api`) end-to-end and compares each report to the committed baselines (fail-open until a baseline exists). Paid real-model runs — dispatch **once** per acceptance gate.
 - Omitted (or `-f job=all`) — everything, i.e. exactly what a bare dispatch did before this input existed.
 
 Push and PR runs are unaffected: the input is empty for them and every gated job falls through its `github.event_name != 'workflow_dispatch'` arm. Note that the `concurrency` group is per-ref with `cancel-in-progress: true`, so dispatching on a branch while its push run is still in flight cancels that run.
@@ -50,6 +52,15 @@ Tier 2 also had two missing prerequisites, fixed alongside: the job never ran `n
 - Cost rule: one dispatch per acceptance gate. `CLINE_PASS_AUTH_JSON` is per-token billed; a re-dispatch is a user decision, never an automatic retry.
 - Results: `tier4-result` artifact = `.tmp/tier4/run-<ts>/` (report.md + results.json + events.jsonl + pi-stderr.log) **plus** `.tmp/herdr-tier4/` (herdr server log, `herdr status server`, workspace JSON, full pane output).
 - Fallback note (limitation slot): if headless herdr inside the CI runner proves impossible (e.g. install endpoint or server needs a real terminal), this subsection is where the limitation gets documented — a Tier 4 limitation is recorded here for the user to decide, never silently downgraded to a Tier 3 pass.
+
+### Tier 5 — golden-mission quality evals (2026-10-11)
+
+- What it is: the quality gate for the velpari eval initiative. Two **fixed** golden missions committed under `Doc/test-fixtures/eval-missions/` (`cli-todo`, `notes-api`) are driven through the full velpari lifecycle by `scripts/eval-run.mjs` (the lane-C1 runner, reusing the Tier 3 RPC pattern). Each run emits the locked `reportVersion: 1` report; `scripts/eval-baseline.mjs check` then compares each report's per-stage `totalScore` against the committed baseline with a **tolerance band** (floor = baseline − 0.15, `--band`/`EVAL_BASELINE_BAND`). Never exact-match on LLM output (G3): benign run-to-run variance passes, a real regression trips the gate.
+- How to run: GitHub Actions only, manual dispatch — `gh workflow run test.yml --ref evals -f job=tier5-evals` (optional `-f model=<id>`, default `cline-pass/deepseek-v4.1-flash`). The job is **dispatch-only** (never on push/PR); it installs pi 0.87.1 + `npm:@maxpaulus/pi-cline` + tmux, seeds the cline-pass auth secret (same path as Tier 3), builds, runs both missions (`npm run test:e2e:evals -- --mission <slug> --until handoff --model "$E2E_MODEL" --out .tmp/tier5-evals/<slug>-report.json`), runs the baseline comparison, and always uploads `.tmp/tier5-evals/` as the `tier5-evals-result` artifact. Budget: `timeout-minutes: 360`; the runner's per-stage settles bound each run.
+- Baseline procedure (baseline FIRST, gates SECOND): the **first** dispatch only captures reference reports — `check` is **fail-open**, exiting 0 with a “no baseline yet” note while no baseline file exists. Record each green report with `node scripts/eval-baseline.mjs record --report .tmp/tier5-evals/<mission>-report.json` (writes `Doc/test-fixtures/eval-baselines/<model-slug>/<mission>.baseline.json`, committed — a human step, CI never auto-writes a baseline). Subsequent dispatches gate against the bands; the comparison is per-model (the baseline path is keyed by the model slug), so a judge/model identity change routes to a fresh, absent baseline instead of mixing scores (G2).
+- Failure semantics: a mission that does not finish still produces a report (status `partial`/`failed`) and does not kill the job mid-run; a genuinely missing report is an error. A stage below its floor, or a stage present in the baseline but missing from the fresh report, fails the comparison step (exit 1) with the diff in the log. A corrupt report/baseline exits 2 (fail-open is about absence, never malformed data).
+- Cost rule: `CLINE_PASS_AUTH_JSON` is per-token billed. One paid dispatch per acceptance gate; a re-dispatch is a user decision, never an automatic retry.
+- Local (LLM-free) gate: `node --test scripts/eval-baseline.test.mjs scripts/eval-run.test.mjs` — covers the band math, path safety, fail-open, and record→check round trip without spending tokens.
 
 ## 2. Layer Selection — When to Use Which
 
@@ -255,6 +266,9 @@ RUN_PERF=1 npm run test:coverage -- --test --test-reporter=spec \
                                    # Perf tests (gated by RUN_PERF)
 RUN_L3_E2E=1 npm run test:l3      # L3 in-process (DEFERRED — see Phase 4)
 npm run test:herdr-mux            # multiplexer detection + brainstorm gate (2 files)
+node --test scripts/eval-baseline.test.mjs scripts/eval-run.test.mjs  # Phase C eval gate (LLM-free)
+node scripts/eval-run.mjs --report-only <workspace>   # build an eval report from an existing DB (no LLM)
+node scripts/eval-baseline.mjs check --report <report.json>  # compare a report to committed baseline bands
 ```
 
 ## 10. CI Pipeline
@@ -268,6 +282,7 @@ npm run test:herdr-mux            # multiplexer detection + brainstorm gate (2 f
 | `tier2` | workflow_dispatch only | hard fail if `KIMI_API_KEY` is set |
 | `tier3` | workflow_dispatch only (`-f job=tier3`, or `job=all`) | hard fail |
 | `tier4` | workflow_dispatch only (`-f job=tier4`) — **never** in `job=all` | hard fail — installs herdr, starts the headless server, and runs the full sequence inside a real pane with real 4-scout dispatch at every scout stage |
+| `tier5-evals` | workflow_dispatch only (`-f job=tier5-evals`, or `job=all`) | hard fail — runs the two golden missions through the full lifecycle, then compares each report against `Doc/test-fixtures/eval-baselines/<model-slug>/<mission>.baseline.json` (tolerance bands, fail-open until a baseline exists) |
 | `herdr-l3` | always (after unit-and-e2e); `herdr*` branches are the initiative's | hard fail — installs herdr on `ubuntu-latest` + `macos-latest`, starts the headless server, health-checks `herdr status server`, then runs the multiplexer + brainstorm-gate test files inside a real herdr pane |
 
 `herdr-l3` is **L3 — herdr-in-CI** (see the naming note in §1). It drives the

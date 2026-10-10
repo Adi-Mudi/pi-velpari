@@ -17,9 +17,18 @@ on:
         description: "Which manual job to run"
         type: choice
         default: all
-        options: [all, tier2, tier3, tier4]
+        options: [all, tier2, tier3, tier4, tier5-evals]
         # `tier4` is deliberately NOT part of `all`: it is an explicit paid
         # multi-hour acceptance run (real herdr scout panes), never accidental.
+        # `tier5-evals` is also paid (two real golden-mission runs) and, like
+        # `tier4`, is deliberately NOT part of `all`: dispatch it explicitly via
+        # `-f job=tier5-evals`. A re-dispatch is a user decision, never an
+        # automatic retry.
+      model:
+        description: "Model id for the tier5-evals golden runs"
+        type: string
+        required: false
+        default: "cline-pass/deepseek-v4.1-flash"
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
@@ -483,3 +492,79 @@ jobs:
           path: |
             .tmp/tier4/
             .tmp/herdr-tier4/
+
+  # Tier 5 — golden-mission quality-evals gate (manual dispatch only; PAID).
+  #
+  # Runs the two committed golden missions (cli-todo, notes-api) through the
+  # real velpari lifecycle with a real model, then compares each report against
+  # the committed baseline bands (`scripts/eval-baseline.mjs`). Never runs on
+  # push or PR. Fail-open until a baseline file exists, so the FIRST dispatch
+  # only captures reference reports; the PM records them (a human step) and
+  # later dispatches gate against tolerance bands (never exact-match, G3).
+  tier5-evals:
+    name: Tier 5 golden-mission quality evals (manual dispatch only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'tier5-evals'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Install pi + cline provider + tmux
+        run: |
+          npm install -g @earendil-works/pi-coding-agent@0.87.1
+          # cline provider extension — supplies the cline/cline-pass models
+          # (not built into pi; local setups have it via pi packages).
+          pi install npm:@maxpaulus/pi-cline
+          # tmux: the golden runner forces PI_SUBAGENT_MUX=tmux and the
+          # brainstorm stage hard-requires a detected multiplexer.
+          sudo apt-get update && sudo apt-get install -y tmux
+      - name: Seed cline-pass auth (OAuth credential from repo secret)
+        env:
+          CLINE_PASS_AUTH_JSON: ${{ secrets.CLINE_PASS_AUTH_JSON }}
+        run: |
+          mkdir -p "$HOME/.pi/agent"
+          node -e "const fs=require('fs');const c=JSON.parse(process.env.CLINE_PASS_AUTH_JSON);fs.writeFileSync(process.env.HOME+'/.pi/agent/auth.json',JSON.stringify({'cline-pass':c},null,2));"
+      - name: Golden eval runs (cli-todo, notes-api)
+        env:
+          E2E_MODEL: ${{ github.event.inputs.model || 'cline-pass/deepseek-v4.1-flash' }}
+          PI_SUBAGENT_MUX: "tmux"
+        run: |
+          mkdir -p .tmp/tier5-evals
+          status=0
+          for m in cli-todo notes-api; do
+            echo "=== golden run: $m ==="
+            # A mission failure is recorded in the report whenever the workspace
+            # eval DB exists; only a missing report is a hard harness failure.
+            if ! npm run test:e2e:evals -- --mission "$m" --until handoff --model "$E2E_MODEL" --out ".tmp/tier5-evals/$m-report.json"; then
+              echo "::warning::$m golden run exited non-zero"
+            fi
+            if [ ! -f ".tmp/tier5-evals/$m-report.json" ]; then
+              echo "::error::$m produced no report"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Baseline comparison (tolerance bands; fail-open until a baseline exists)
+        run: |
+          status=0
+          for m in cli-todo notes-api; do
+            f=".tmp/tier5-evals/$m-report.json"
+            if [ ! -f "$f" ]; then
+              echo "::warning::$m report missing — comparison skipped"
+              continue
+            fi
+            node scripts/eval-baseline.mjs check --report "$f" || status=$?
+          done
+          exit $status
+      - name: Tier 5 eval result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier5-evals-result
+          path: .tmp/tier5-evals/
