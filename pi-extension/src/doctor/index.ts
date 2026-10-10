@@ -90,6 +90,8 @@ import { checkBindingMatchSection } from "./checks/binding-match.js";
 import { checkStoreLocksSection } from "./checks/store-locks.js";
 import { checkDigestGitSection } from "./checks/digest-git.js";
 import { checkSemverBumpSection } from "./checks/semver-bump.js";
+// evals Phase A — local quality scores (informational only; never blocks).
+import { checkEvalQualitySection } from "./checks/eval-quality.js";
 
 /** Re-exports for callers (commands/index.ts, doctor.test.ts).
  * Each is sourced from its own check submodule so callers can import
@@ -454,6 +456,9 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		checkStoreLocksSection(cwd, projectName),
 		checkDigestGitSection(cwd, projectName),
 		checkSemverBumpSection(cwd, projectName),
+		// evals Phase A — local quality-eval scores. Informational telemetry
+		// only: missing/deleted Eval/ degrades to an info row, never an error.
+		checkEvalQualitySection(cwd, projectName),
 	];
 
 	// Phase 5: prepend an "Action items" callout so errors and warnings

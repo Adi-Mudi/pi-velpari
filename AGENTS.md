@@ -5,6 +5,7 @@ Agent-focused guidance for the `pi-velpari` Pi extension. Parallels `Pi-Orchestr
 - `.pi/velpari/` — local config: `files.json` v4 (framework + paths), `agents.json` (role→agent map), `requirements-profile.json`; run state (`state.json`) + run lock (`.lock/`).
 - `.IDE_Plans/velpari/` — working copies, per-run history (`runs/<run-id>/history.jsonl`), doctor reports.
 - `Doc/` — published artifacts (artifacts of record).
+- `Eval/` — local quality-eval SQLite (`Eval/<project>/eval.db`): scores+metadata only, gitignored, deletable, fail-open.
 - `.pi/senai/architect-inputs.json` — handoff target consumed by Senai.
 - See `Doc/velpari-sequence/` (README as entry) for the full sequence doc set; `README.md` for install; `CHANGELOG.md` for history.
 
@@ -115,6 +116,7 @@ Full tree: `tree -L 2` or read individual folders for detail.
 19. **Hash-chain (N15).** `audit_ledger` and `tx_log` rows are hash-chained; the doctor verifies the chain end-to-end and reports any break. See the [sequence doc set](Doc/velpari-sequence/README.md).
 20. **Execution lanes (N16).** Dev-order work is ranked into DAG-derived execution lanes; the working copy, store kinds and the handoff payload carry the lane map with an integration plan and lock rules. See the [sequence doc set](Doc/velpari-sequence/README.md).
 21. **Upgrade config + canvas (N31–N33).** Excalidraw canvas push (N31) is offer-only-when-reachable: launcher pinned `mcp-excalidraw-server@2.0.0` (never `@latest`), Mermaid stays the source of truth, graceful fallback when npx/Node/server unavailable (`core/excalidraw.ts`). `velpari.maxWorktrees` (N32) supersedes `velpari.maxLanes` — the lane cap resolves `maxWorktrees` → legacy `maxLanes` → default 4; the worktree cap default stays 3. `testing.runner` (N33) selects local vs CI test runs (`scripts/run-tests.js`, `npm run test:scope`); the full gate stays CI-only (thermal protocol).
+22. **Local quality evals (evals Phase A).** At publish, velpari records deterministic scores + run metadata — never artifact text — to a local, gitignored SQLite DB at `Eval/<projectName>/eval.db` beside `Doc/`. Each row carries the per-check score list, a `det_config_hash` (hash of the scoring weight table, so a scoring-config change is distinguishable from a real quality change), and an `attempts` count. The doctor's `Quality (local evals)` section renders per-stage latest / delta / mean-of-last-10, a per-model breakdown, and a scoring-config-change marker; it is informational only and never blocks. Missing or deleted `Eval/` never breaks a command (fail-open reads + writes). Deterministic scoring is Phase A; judge (rubric sub-agent) scoring is Phase B; the golden-mission CI gate is Phase C. Modules: L0 `core/eval.ts` + the eval section of `io/db.ts`, L1 `doctor/checks/eval-quality.ts`.
 
 ## State and artifacts
 
