@@ -52,6 +52,7 @@ import { isSunsetPast } from "../core/shape.js";
 import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
 	buildRunDir,
+	evalDbPath,
 	GROUPED_CATEGORIES,
 	hasPublishedFeasibility,
 	resolveDocArtifact,
@@ -85,6 +86,10 @@ import {
 	renderTestCasesMarkdown,
 } from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
+import { openEvalDb, insertEvalRow, closeStoreDb } from "../io/db.js";
+import { detConfigHash, computeTotalScore, detScoresFromGateAndDoctor, type DetScore } from "../core/eval.js";
+import { loadHistory } from "../core/history.js";
+import { ensureEvalGitIntegration } from "./git-attributes.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
 import { generationHintForPhase, phaseBoundaryCrossed } from "../core/agent-freshness.js";
 import { STAGE_REGISTRY, STAGE_LOCK_SPECS, type StageSpec } from "../stages/registry.js";
@@ -1161,8 +1166,12 @@ export async function handleApprove(
 	// opt out; the standalone `/velpari-doctor` command is the
 	// ad-hoc audit path.
 	const skipAutoDoctor = opts.skipAutoDoctor === true || process.env[AUTO_DOCTOR_SKIP_ENV] === "1";
+	// Hoisted so the eval recorder (below) can map the doctor sections into
+	// DetScores even though the report is only created inside this block.
+	let postPublishDoctor: ReturnType<typeof runDoctor> | null = null;
 	if (!skipAutoDoctor) {
 		const doctorReport = runDoctor(cwd, { embedded: true });
+		postPublishDoctor = doctorReport;
 		writeDoctorReport(doctorReport, cwd);
 		const doctorReportPath = join(cwd, PATHS.DOCTOR_REPORT);
 		// N24-15 (severity ruling, Phase 4): warnings are reported, errors block.
@@ -1253,6 +1262,24 @@ export async function handleApprove(
 		next = clearFeasibilitySession(next, cwd);
 	}
 	if (pi) appendStageEntry(pi, next, cwd);
+	// velpari-evals Phase A (Lane A1.6): record the deterministic quality
+	// score for this publish. Fail-open — a missing/deleted Eval/ (or any
+	// write error) must NEVER block the advance; the helper notifies + swallows.
+	recordPublishEval({
+		cwd,
+		projectName,
+		runId: state.runId,
+		// The stage that RAN (in-progress enum), so a rest-state re-approve
+		// trends with the original stage rather than its rest enum.
+		stage: approveRow?.stages[0] ?? state.currentStage,
+		artifactKind: mapping.artifact,
+		version: payloadResult?.envelope ? String(payloadResult.envelope.version) : null,
+		model: ctx.model?.id ?? "unknown",
+		durationMs: stageDurationMs(cwd, state.runId, perStageApproveCommand(state.currentStage)),
+		attempts: publishAttemptsFor(cwd, state.runId, perStageApproveCommand(state.currentStage)),
+		detScores: detScoresFromGateAndDoctor({ errors: gateIssues, warnings: gateWarnings }, postPublishDoctor),
+		notify: (message, severity) => ctx.ui.notify(message, severity),
+	});
 	// v0.5.1 Phase J.2: reflect the new stage in the footer status bar
 	// via the documented ctx.ui.setStatus(key, text) API.
 	ctx.ui.setStatus("velpari", `stage: ${next.currentStage} | run: ${next.runId}`);
@@ -1352,4 +1379,109 @@ function updateVersionInBody(content: string, newVersion: string): string {
  */
 function updateStatusInBody(content: string, newStatus: string): string {
 	return content.replace(/^status:\s*.*$/m, `status: ${newStatus}`);
+}
+
+// ============================================================================
+// velpari-evals Phase A (Lane A1.6) — publish-time deterministic eval recording
+// ============================================================================
+
+/** Input for one eval-row recording. */
+interface PublishEvalInput {
+	cwd: string;
+	projectName: string;
+	runId: string;
+	stage: string;
+	artifactKind: string;
+	version: string | null;
+	model: string;
+	durationMs: number | null;
+	attempts: number | null;
+	detScores: DetScore[];
+	notify: (message: string, severity?: "error" | "info" | "warning") => void;
+}
+
+/**
+ * G4 — best-effort publish-attempt count for a stage in this run. Reads the
+ * run's history.jsonl and counts entries whose command is the stage's approve
+ * command (this publish's own entry included). Failed gate attempts do not
+ * write history, so this is a proxy for SUCCESSFUL publishes; missing history
+ * → null. Never throws.
+ */
+function publishAttemptsFor(cwd: string, runId: string, approveCommand: string): number | null {
+	try {
+		const count = loadHistory(cwd, runId).filter((entry) => entry.command === approveCommand).length;
+		return count > 0 ? count : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Best-effort stage duration: ms between the previous history entry's stamp
+ * and this publish's history entry. Missing/parse-failing stamps → null.
+ * Never throws.
+ */
+function stageDurationMs(cwd: string, runId: string, approveCommand: string): number | null {
+	try {
+		const entries = loadHistory(cwd, runId);
+		let lastIndex = -1;
+		for (let i = entries.length - 1; i >= 0; i--) {
+			if (entries[i]!.command === approveCommand) {
+				lastIndex = i;
+				break;
+			}
+		}
+		if (lastIndex <= 0) return null;
+		const start = Date.parse(entries[lastIndex - 1]!.timestamp);
+		const end = Date.parse(entries[lastIndex]!.timestamp);
+		if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+		return end - start;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Record one deterministic eval row for a successful publish
+ * (velpari-evals Phase A). Fully fail-open: any error is swallowed and
+ * reported as an informational notice — the publish/advance is never
+ * blocked. On first create it announces the rule-4 line and heals `.gitignore`
+ * with the local-only `Eval/` rule (A1.5).
+ * @param {PublishEvalInput} input - Publish context + computed DetScores.
+ * @returns {void}
+ */
+function recordPublishEval(input: PublishEvalInput): void {
+	try {
+		const dbPath = evalDbPath(input.cwd, input.projectName);
+		const firstCreate = !existsSync(dbPath);
+		const db = openEvalDb(dbPath);
+		try {
+			insertEvalRow(db, {
+				project: input.projectName,
+				runId: input.runId,
+				stage: input.stage,
+				artifactKind: input.artifactKind,
+				version: input.version,
+				model: input.model,
+				durationMs: input.durationMs,
+				detScores: input.detScores,
+				judgeScores: null, // Phase A: judge flow is Phase B
+				totalScore: computeTotalScore(input.detScores),
+				detConfigHash: detConfigHash(),
+				attempts: input.attempts,
+				createdAt: new Date().toISOString(),
+			});
+		} finally {
+			closeStoreDb(db); // checkpoint WAL + close (local telemetry, never committed)
+		}
+		if (firstCreate) {
+			input.notify("Quality tracking on — data in Eval/, never committed, delete anytime.", "info");
+		}
+		const heal = ensureEvalGitIntegration(input.cwd);
+		if (heal.changed) {
+			input.notify(`Healed .gitignore for local eval data: ${heal.appended.join("; ")}`, "info");
+		}
+	} catch (err) {
+		input.notify(`eval recording skipped: ${err instanceof Error ? err.message : String(err)}`, "info");
+	}
 }
