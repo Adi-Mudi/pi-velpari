@@ -13,7 +13,8 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { handleApprove } from "../src/ops/approve.js";
 import { createRun, loadState, saveState } from "../src/core/state.js";
-import { evalDbPath } from "../src/core/paths.js";
+import { buildRunDir, evalDbPath } from "../src/core/paths.js";
+import { blendTotal, computeTotalScore } from "../src/core/eval.js";
 import { closeStoreDb, listEvalRows, openEvalDb } from "../src/io/db.js";
 
 interface Notice {
@@ -81,6 +82,81 @@ function enterBuildingRtm(): void {
 	fs.writeFileSync(path.join(dir, "RTM_TestApp.json"), rtmJson(), "utf8");
 }
 
+/** Pseudocode rubric criterion ids (mirrors skills/eval-rubrics/pseudocode.yaml). */
+const PSEUDOCODE_RUBRIC_IDS = [
+	"per-atomic-function-coverage",
+	"algorithmic-completeness",
+	"complexity-within-tier-limit",
+	"edge-case-and-error-handling",
+	"dependency-acyclic",
+	"cross-scout-consistency",
+	"standards-traceability",
+];
+
+/**
+ * Place the fixture repo at `writing-pseudocode` with a working copy AND a
+ * reviewer report whose payload carries a valid `scores` block (advanced tier
+ * so the reviewer verdict is required).
+ */
+function enterWritingPseudocode(): void {
+	const run = createRun("TestApp", tmpDir);
+	saveState({ ...run, currentStage: "writing-pseudocode" }, tmpDir);
+	const runId = loadState(tmpDir).runId;
+
+	const metaDir = path.join(tmpDir, ".pi", "velpari");
+	fs.mkdirSync(metaDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(metaDir, "files.json"),
+		JSON.stringify({
+			version: 4,
+			framework: { language: "typescript" },
+			projectName: "TestApp",
+			codePaths: ["src/**/*.ts"],
+			testPaths: ["test/**/*.test.ts"],
+			documentPaths: ["Doc/**/*.md"],
+			excludedPaths: ["node_modules/**"],
+			atomic: { tier: "advanced" },
+		}),
+		"utf8",
+	);
+
+	// Both the declared upstream inputs (B4 freshness) and the publish gate
+	// resolve these legacy flat paths.
+	const docDir = path.join(tmpDir, "Doc");
+	fs.mkdirSync(docDir, { recursive: true });
+	for (const a of ["PRD", "RTM", "feasibility-study", "design", "atomic-functions"]) {
+		fs.writeFileSync(path.join(docDir, `${a}_TestApp.md`), `# ${a}\n`, "utf8");
+	}
+
+	const workingDir = path.join(buildRunDir(runId, tmpDir), "pseudocode");
+	fs.mkdirSync(workingDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(workingDir, "pseudocode_TestApp.md"),
+		"---\nartifact: pseudocode\nversion: 1.0.0\n---\n# fixture\n",
+		"utf8",
+	);
+
+	const scoutsDir = path.join(workingDir, "scouts");
+	fs.mkdirSync(scoutsDir, { recursive: true });
+	const scores = {
+		rubricId: "pseudocode",
+		rubricVersion: 1,
+		rubricHash: "0123456789abcdef",
+		judgeModel: "test/judge-model",
+		criteria: PSEUDOCODE_RUBRIC_IDS.map((id) => ({ id, score: 1 })),
+		overall: 1,
+	};
+	fs.writeFileSync(
+		path.join(scoutsDir, "pseudocode-reviewer-report.json"),
+		JSON.stringify(
+			{ verdict: "approve", issues: [], summary: "fixture", timestamp: new Date().toISOString(), scores },
+			null,
+			2,
+		),
+		"utf8",
+	);
+}
+
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "velpari-eval-hook-"));
 });
@@ -110,7 +186,7 @@ describe("publish → eval recording (Phase A)", () => {
 			assert.equal(row.stage, "building-rtm", "the stage that RAN (in-progress enum)");
 			assert.equal(row.artifactKind, "RTM");
 			assert.equal(row.model, "unknown", "no ctx.model in the test harness");
-			assert.equal(row.judgeScores, null, "judge scores are Phase B");
+			assert.equal(row.judgeScores, null, "RTM is not a reviewer stage → deterministic-only row");
 			assert.match(row.detConfigHash, /^[0-9a-f]{16}$/);
 			assert.equal(typeof row.totalScore, "number");
 			assert.ok(row.attempts === null || row.attempts >= 1);
@@ -172,5 +248,63 @@ describe("publish → eval recording (Phase A)", () => {
 			notices.some((n) => /eval recording skipped/.test(n.message)),
 			"a notice reports the swallowed eval error",
 		);
+	});
+});
+
+describe("publish → judge scores (Phase B)", () => {
+	it("reviewer-stage publish stores the report's scores block + blends the total", async () => {
+		enterWritingPseudocode();
+
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
+
+		assert.equal(loadState(tmpDir).currentStage, "wrote-pseudocode", "pseudocode publish advanced");
+
+		const db = openEvalDb(evalDbPath(tmpDir, "TestApp"));
+		try {
+			const rows = listEvalRows(db, "TestApp");
+			assert.equal(rows.length, 1);
+			const row = rows[0]!;
+			assert.ok(row.judgeScores, "reviewer-stage publish must store judge scores");
+			assert.equal(row.judgeScores?.rubricId, "pseudocode");
+			assert.equal(row.judgeScores?.judgeModel, "test/judge-model");
+			assert.equal(row.judgeScores?.overall, 1);
+			assert.equal(row.judgeScores?.criteria.length, PSEUDOCODE_RUBRIC_IDS.length);
+			assert.equal(row.judgeScores?.note, undefined, "matching recompute → no mismatch note");
+			const detTotal = computeTotalScore(row.detScores);
+			assert.ok(
+				Math.abs(row.totalScore - blendTotal(detTotal, 1)) < 1e-9,
+				"total must be the 50/50 blend of det total and judge overall",
+			);
+		} finally {
+			closeStoreDb(db);
+		}
+	});
+
+	it("fails open (judge_scores NULL) when the reviewer report carries no scores block", async () => {
+		enterWritingPseudocode();
+		// Keep a valid approve verdict (so the advanced-tier gate passes) but
+		// drop the scores block — the row must degrade to deterministic-only.
+		fs.writeFileSync(
+			path.join(
+				buildRunDir(loadState(tmpDir).runId, tmpDir),
+				"pseudocode",
+				"scouts",
+				"pseudocode-reviewer-report.json",
+			),
+			JSON.stringify({ verdict: "approve", issues: [], summary: "fixture", timestamp: new Date().toISOString() }),
+			"utf8",
+		);
+
+		await handleApprove(makeCtx(), undefined, tmpDir, { skipAutoDoctor: true, skipDbPublish: true });
+
+		assert.equal(loadState(tmpDir).currentStage, "wrote-pseudocode");
+		const db = openEvalDb(evalDbPath(tmpDir, "TestApp"));
+		try {
+			const row = listEvalRows(db, "TestApp")[0]!;
+			assert.equal(row.judgeScores, null, "no report → deterministic-only row");
+			assert.equal(row.totalScore, computeTotalScore(row.detScores));
+		} finally {
+			closeStoreDb(db);
+		}
 	});
 });

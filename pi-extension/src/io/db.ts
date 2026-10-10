@@ -879,7 +879,8 @@ interface EvalRunDbRow {
 }
 
 /**
- * Insert one eval row. Phase A always writes `judge_scores = NULL`.
+ * Insert one eval row. `judgeScores` (Phase B) is serialized to JSON text;
+ * null stays null (deterministic-only row).
  * @param {DatabaseSync} db - Open eval DB connection.
  * @param {EvalRow} row - The row to persist.
  * @returns {number} The new eval_runs.id.
@@ -900,7 +901,7 @@ export function insertEvalRow(db: DatabaseSync, row: EvalRow): number {
 			row.model,
 			row.durationMs,
 			JSON.stringify(row.detScores),
-			row.judgeScores,
+			row.judgeScores === null ? null : JSON.stringify(row.judgeScores),
 			row.totalScore,
 			row.detConfigHash,
 			row.attempts,
@@ -937,6 +938,16 @@ export function listEvalRows(db: DatabaseSync, project: string, stage?: string, 
 		} catch {
 			detScores = [];
 		}
+		// Fail-open: malformed judge JSON is treated as a deterministic-only row
+		// — eval data must never throw.
+		let judgeScores: EvalRow["judgeScores"] = null;
+		if (row.judge_scores !== null) {
+			try {
+				judgeScores = JSON.parse(row.judge_scores) as EvalRow["judgeScores"];
+			} catch {
+				judgeScores = null;
+			}
+		}
 		return {
 			project: row.project,
 			runId: row.run_id,
@@ -946,7 +957,7 @@ export function listEvalRows(db: DatabaseSync, project: string, stage?: string, 
 			model: row.model ?? "unknown",
 			durationMs: row.duration_ms,
 			detScores,
-			judgeScores: null, // Phase A: judge flow is Phase B
+			judgeScores,
 			totalScore: row.total_score,
 			detConfigHash: row.det_config_hash,
 			attempts: row.attempts,

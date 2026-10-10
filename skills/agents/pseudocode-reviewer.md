@@ -48,6 +48,40 @@ Write **one** JSON file at `<reviewerReportPath>` with the same shape as the ato
 }
 ```
 
+## Scores block (rubric — evals Phase B)
+
+The verdict is the source of truth for the gate. In ADDITION, attach a
+top-level `scores` object scoring every criterion of the pseudocode rubric
+at `skills/eval-rubrics/pseudocode.yaml`. This is additive — it never
+changes the `verdict` contract above.
+
+```json
+{
+  "scores": {
+    "rubricId": "pseudocode",
+    "rubricVersion": 1,
+    "rubricHash": "0123456789abcdef",
+    "judgeModel": "<the model id you are running as>",
+    "criteria": [
+      { "id": "per-atomic-function-coverage", "score": 1.0, "note": "every AF has pseudocode" },
+      { "id": "algorithmic-completeness", "score": 0.5, "note": "one body has no Big-O" },
+      { "id": "complexity-within-tier-limit", "score": 1.0 },
+      { "id": "edge-case-and-error-handling", "score": 0.5 },
+      { "id": "dependency-acyclic", "score": 1.0 },
+      { "id": "cross-scout-consistency", "score": 1.0 },
+      { "id": "standards-traceability", "score": 1.0 }
+    ],
+    "overall": 0.857
+  }
+}
+```
+
+Locked rules:
+- Every rubric criterion `id` appears exactly once; no unknown ids.
+- `score` and `overall` are in `[0, 1]`; `overall` is the rubric-weighted mean.
+- `rubricHash` = first 16 hex chars of `sha256` over the rubric file bytes.
+- Rubric file missing → OMIT the `scores` block entirely (never invent one).
+
 ## Checks (deterministic)
 
 | # | Rule | Severity | When |

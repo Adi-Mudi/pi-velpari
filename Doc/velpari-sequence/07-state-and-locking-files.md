@@ -31,10 +31,23 @@ and the per-check score list. It never stores artifact text.
   of the committed artifact store, its backups, or its hash chain.
 - **Deletable / fail-open.** Missing, deleted, or unreadable eval data never
   blocks a command; reads and writes degrade to an informational note.
-- **Schema v1** carries `det_scores`, `det_config_hash` (weight-table hash,
-  so a scoring change is distinguishable from a real quality change),
-  `attempts`, and a nullable `judge_scores` column reserved for
-  rubric-based scoring.
+- **Schema v1** carries `det_scores`, `det_config_hash` (weight-table + judge
+  blend-weight hash, so a scoring change is distinguishable from a real quality
+  change), `attempts`, and a nullable `judge_scores` column.
+- **Phase B — `judge_scores` is live.** A reviewer-stage publish (atomic-function
+  / pseudocode / testplan / design) stores the reviewer's locked `scores` block
+  here as JSON: `rubricId`, `rubricVersion`, `rubricHash`, `judgeModel`,
+  `criteria[]` (`id` / `score` / optional `note`), `overall`, plus an optional
+  publish-chain `note`. The block is validated against the stage rubric at
+  `skills/eval-rubrics/<stage>.yaml` (package-root read, never the project cwd),
+  the rubric-weighted `overall` is recomputed, and `total_score` becomes the
+  50/50 mean of the deterministic total and the judge `overall`.
+- **Identity pinning (G2).** `judgeModel` + `rubricHash` are recorded per row so
+  a judge or rubric change shows up as a `Quality (local evals)` discontinuity
+  marker — judge scores across that boundary are never silently mixed. A
+  reported/recomputed `overall` mismatch is a doctor warning; a missing or
+  invalid block degrades to a deterministic-only row (JSON `NULL`), and judge
+  wiring never blocks a publish.
 
 ## The config-sized rule
 
