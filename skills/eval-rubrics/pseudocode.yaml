@@ -1,0 +1,41 @@
+# Eval rubric — pseudocode reviewer stage (Phase B, decision 1/2).
+# One criterion per scored dimension of the reviewer mandate.
+# `# source:` names the reviewer-template rule the criterion is grounded in.
+rubric: pseudocode
+version: 1
+criteria:
+  - id: per-atomic-function-coverage
+    weight: 3
+    description: Every AF in the atomic-functions artifact has pseudocode.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (deterministic)" #1 per-af-missing
+  - id: algorithmic-completeness
+    weight: 3
+    description: Each body is non-placeholder and declares inputs, outputs/handling and Big-O.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (deterministic)" #2 pseudocode-empty, #3 complexity-stated, #4 inputs-declared, #5 outputs-declared
+  - id: complexity-within-tier-limit
+    weight: 2
+    description: Claimed complexity is inside the tier's ceiling and never worse than O(n²) for non-algorithmic AFs.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (deterministic)" #6 complexity-exceeded, #10 atomic-tier-mismatch
+  - id: edge-case-and-error-handling
+    weight: 2
+    description: Pseudocode branches for boundary inputs and honors the AF's declared errors.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (deterministic)" #7 edge-cases-missing, #8 error-handling-missing
+  - id: dependency-acyclic
+    weight: 2
+    description: No two AFs reference each other in a cycle.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (deterministic)" #9 dependency-cyclic
+  - id: cross-scout-consistency
+    weight: 2
+    description: Claimed complexity and AF identifiers agree across the four scout reports.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (semantic)" #11 cross-scout-contradiction, #12 algorithm-rename-mismatch
+  - id: standards-traceability
+    weight: 1
+    description: Cited complexity standards or techniques are named in context.
+    # source: skills/agents/pseudocode-reviewer.md — "Checks (semantic)" #14 standards-mapping-missing
+calibration:
+  - input_summary: Pseudocode for every AF with inputs, outputs, Big-O and edge-case branches
+    expected_score: 0.9
+    tolerance: 0.1
+  - input_summary: One AF missing pseudocode and a claimed O(n) hiding nested loops
+    expected_score: 0.35
+    tolerance: 0.15

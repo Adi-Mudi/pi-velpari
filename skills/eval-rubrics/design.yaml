@@ -1,0 +1,41 @@
+# Eval rubric — design reviewer stage (Phase B, decision 1/2).
+# One criterion per scored dimension of the reviewer mandate.
+# `# source:` names the reviewer-template rule the criterion is grounded in.
+rubric: design
+version: 1
+criteria:
+  - id: required-sections-present
+    weight: 3
+    description: The mandatory arc42 sections (0, 0.4, 9, 11, 13) are present.
+    # source: skills/agents/design-reviewer.md — "Checks (deterministic)" #1 section-0-missing, #2 section-04-missing, #4 section-9-missing, #6 section-11-missing, #8 section-13-missing
+  - id: c4-diagrams-complete
+    weight: 3
+    description: System Context, Container and Component C4 diagrams are all present.
+    # source: skills/agents/design-reviewer.md — "Checks (deterministic)" #9 section-14-missing, #12 c4-diagrams-complete
+  - id: quality-attribute-scenarios
+    weight: 2
+    description: §5 states at least three SEI six-part quality attribute scenarios.
+    # source: skills/agents/design-reviewer.md — "Checks (deterministic)" #3 section-5-missing, #11 qa-scenarios-stated
+  - id: adr-001-style-decision
+    weight: 2
+    description: ADR-001 records the architectural style, accepted, with at least two options.
+    # source: skills/agents/design-reviewer.md — "Checks (deterministic)" #10 adr-001-present
+  - id: deployment-and-crosscutting-coverage
+    weight: 2
+    description: Deployment, crosscutting and risk/tech-debt sections cover the tier's requirements.
+    # source: skills/agents/design-reviewer.md — "Checks (deterministic)" #5 section-10-missing, #6 section-11-missing, #7 section-12-missing
+  - id: cross-scout-consistency
+    weight: 2
+    description: Style, module decomposition and ADR agree across the scout reports and §0.
+    # source: skills/agents/design-reviewer.md — "Checks (semantic)" #13 cross-scout-contradiction, #14 adr-inconsistent
+  - id: standards-traceability
+    weight: 1
+    description: Cited arc42 / C4 / SEI ATAM references are named in context.
+    # source: skills/agents/design-reviewer.md — "Checks (semantic)" #16 standards-mapping-missing
+calibration:
+  - input_summary: Design with all mandatory sections, complete C4 set, ADR-001 and three QA scenarios
+    expected_score: 0.9
+    tolerance: 0.1
+  - input_summary: Design missing the Component diagram and whose ADR-001 contradicts §0
+    expected_score: 0.4
+    tolerance: 0.15
