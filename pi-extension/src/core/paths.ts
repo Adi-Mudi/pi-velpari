@@ -327,6 +327,42 @@ export function buildBackupDir(projectName: string, cwd: string = process.cwd())
 	return join(cwd, BACKUP_ROOT_DIR, safeProject);
 }
 
+// ---------------------------------------------------------------------------
+// Eval (local quality telemetry, velpari-evals Phase A).
+// ---------------------------------------------------------------------------
+
+/**
+ * The visible top-level eval folder (rule 4). Deliberately OUTSIDE Doc/ and
+ * `.pi/`: eval data is developer telemetry, never project truth. The folder is
+ * gitignored by design (ops/git-attributes.ts:ensureEvalGitIntegration) and is
+ * never under Doc/store, so it stays outside the store's commit/backup/hash-
+ * chain discipline.
+ */
+export const EVAL_DIR = "Eval";
+
+/**
+ * Build the eval folder for one project: `<cwd>/Eval/<project>/`. Mirrors the
+ * `Doc/store/<project>/` silo grouping (multi-project `projectNames` ready).
+ * Sanitisation is identical to `buildStoreDbPath`, so the two folder families
+ * always agree on the project key. Signature follows the plan contract
+ * `(cwd, projectName)` (note: the reverse of `buildStoreDbPath`).
+ * Example: evalDirPath("/repo", "TodoApp") === "/repo/Eval/TodoApp".
+ */
+export function evalDirPath(cwd: string, projectName: string): string {
+	const safeProject = projectName.replace(/[^A-Za-z0-9_-]+/g, "-");
+	return join(cwd, EVAL_DIR, safeProject);
+}
+
+/**
+ * Build the per-project eval DB path: `<cwd>/Eval/<project>/eval.db`.
+ * Local-only, gitignored, user-deletable (fail-open) — the plan contract
+ * signature is `(cwd, projectName)`.
+ * Example: evalDbPath("/repo", "TodoApp") === "/repo/Eval/TodoApp/eval.db".
+ */
+export function evalDbPath(cwd: string, projectName: string): string {
+	return join(evalDirPath(cwd, projectName), "eval.db");
+}
+
 /**
  * Build the portfolio REGISTRY path (Phase 10 - D6 hub-and-spoke, user-locked
  * home): Doc/store/portfolio.db under the cwd. Committed raw (D2/D7) - the
