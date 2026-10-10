@@ -137,6 +137,17 @@ See [`Doc/velpari-sequence/06-artifact-formats.md`](Doc/velpari-sequence/06-arti
 
 `/velpari-generate-sub-agents` generates project-specific sub-agents for the current pipeline phase (auto-detected from run state; `--phase N` overrides with 1–4). See [`Doc/velpari-sequence/05-sub-agent-generation.md`](Doc/velpari-sequence/05-sub-agent-generation.md) for the full design.
 
+## Quality evals (local)
+
+At publish time Velpari records a deterministic **quality score** (plus run metadata such as stage, model, duration and attempt count) into a local SQLite database at `Eval/<projectName>/eval.db`, beside `Doc/`.
+
+- **Scores + metadata only** — never artifact text.
+- **Never committed** — the folder is auto-gitignored on the first write.
+- **Deletable anytime** — missing or deleted `Eval/` never breaks a command; `/velpari-doctor` still runs, its `Quality (local evals)` section just reports "no eval data yet".
+- **Opt out** — delete the `Eval/` folder.
+
+The doctor's `Quality (local evals)` section shows, per stage, the latest score, the delta vs the previous publish, the mean of the last 10 publishes, a per-model breakdown, and a note when the deterministic scoring configuration changed. Judge (rubric-based) scoring arrives in a later phase.
+
 ## Brainstorm v1.x — dynamic community / official / industrial / standard-practice scan
 
 v1.x adds two new state-tool actions to the `velpari_brainstorm_session` tool so the parent LLM can dynamically add scans and dispatch `web-search-agent` during the DISCUSS loop when the developer mentions any external source:

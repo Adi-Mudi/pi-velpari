@@ -17,6 +17,25 @@ config in `.pi/velpari/`. Temporary run material stays in `.IDE_Plans/`.
 | Doctor report | `.IDE_Plans/velpari/doctor-report.md` | temporary (unchanged) |
 | Run history / audit trail | `.IDE_Plans/velpari/runs/<run-id>/history.jsonl` (per-run) | temporary — **moved out of `state.json`** |
 
+## Local eval data: `Eval/` — not control data
+
+Deterministic quality scores live in a separate, **local-only** SQLite
+database at `Eval/<projectName>/eval.db` (beside `Doc/`, never under
+`.pi/velpari/`). It holds scores plus run metadata only — stage, version,
+model, duration, attempt count, a scoring-config hash (`det_config_hash`),
+and the per-check score list. It never stores artifact text.
+
+- **Not control data.** `Eval/` is developer telemetry, not configuration —
+  it is intentionally outside the config-sized rule below.
+- **Not project truth.** It is gitignored on first write and is never part
+  of the committed artifact store, its backups, or its hash chain.
+- **Deletable / fail-open.** Missing, deleted, or unreadable eval data never
+  blocks a command; reads and writes degrade to an informational note.
+- **Schema v1** carries `det_scores`, `det_config_hash` (weight-table hash,
+  so a scoring change is distinguishable from a real quality change),
+  `attempts`, and a nullable `judge_scores` column reserved for
+  rubric-based scoring.
+
 ## The config-sized rule
 
 > **Control files hold current values, never history. Reading one always

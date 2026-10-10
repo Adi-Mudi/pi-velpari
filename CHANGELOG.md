@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **evals Phase A — local quality scoring at publish.** Every publish records deterministic scores + run metadata to `Eval/<projectName>/eval.db` (a gitignored, user-deletable SQLite DB beside `Doc/`), and the doctor gains a **Quality (local evals)** section (latest / delta / mean of last 10, per-model breakdown, scoring-config-change marker). Informational only — missing or deleted `Eval/` never blocks a command.
+
 ## [2.1.0] — 2026-10-09 — herdr multiplexer integration (release)
 
 ### Added
