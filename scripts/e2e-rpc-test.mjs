@@ -26,13 +26,21 @@
 //   E2E_KEEP_KEYS        "1" forward KIMI_API_KEY/MOONSHOT_API_KEY to the pi
 //                        spawn instead of stripping them (default: strip
 //                        locally, keep in CI — process.env.CI truthy)
+//   E2E_SPAWN_SCOUTS     "" (default) = stages write everything themselves;
+//                        "first" = spawn real scouts for STAGES[0] (prd) only;
+//                        "all" = spawn real scouts for every stage. Any spawn
+//                        mode also drops --no-session (the subagents plugin
+//                        needs the parent session file — plugin index.ts:949).
+//   E2E_REPORT_ROOT      report dir root (default ".tmp/tier3";
+//                        CI tier4 uses ".tmp/tier4")
 //
-// Fixed env on the pi spawn: PI_SUBAGENT_MUX=tmux (headless multiplexer-gate
-// override, core/multiplexer.ts:36-39), VELPARI_EXCALIDRAW=0 (kill-switch,
-// core/excalidraw.ts:164-168). VELPARI_SKIP_DB_PUBLISH is deliberately NOT
-// set — stages 3+ read upstream artifacts only from the store.
+// Fixed env on the pi spawn: PI_SUBAGENT_MUX passthrough (default "tmux";
+// export "=herdr=" for real herdr panes — gate core/multiplexer.ts:36-39),
+// VELPARI_EXCALIDRAW=0 (kill-switch, core/excalidraw.ts:164-168).
+// VELPARI_SKIP_DB_PUBLISH is deliberately NOT set — stages 3+ read upstream
+// artifacts only from the store.
 //
-// Outputs (under .tmp/tier3/run-<ts>/): report.md, results.json, events.jsonl, pi-stderr.log
+// Outputs (under <E2E_REPORT_ROOT>/run-<ts>/): report.md, results.json, events.jsonl, pi-stderr.log
 // Exit codes: 0 = all assertions pass, 1 = assertion failure, 2 = harness error.
 
 import { spawn, spawnSync } from "node:child_process";
@@ -53,7 +61,8 @@ const PROJECT_ROOT = resolve(".");
 const EXTENSION_PATH = join(PROJECT_ROOT, "dist", "pi-extension", "src", "index.js");
 const WORKSPACE = mkdtempSync(join(tmpdir(), "velpari-tier3-ws-"));
 const TS = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const REPORT_DIR = join(PROJECT_ROOT, ".tmp", "tier3", `run-${TS}`);
+const REPORT_ROOT = process.env.E2E_REPORT_ROOT ?? ".tmp/tier3";
+const REPORT_DIR = join(PROJECT_ROOT, REPORT_ROOT, `run-${TS}`);
 const STDERR_LOG = join(REPORT_DIR, "pi-stderr.log");
 const PROJECT_NAME = "RPCTestApp";
 const MISSION = process.env.E2E_MISSION ?? "Build a CLI todo list manager";
@@ -62,6 +71,7 @@ const STAGE_TIMEOUT_MS = Number(process.env.E2E_STAGE_TIMEOUT_MS ?? 20 * 60 * 10
 const QUIET_MS = 20000;
 const UNTIL_STAGE = process.env.E2E_UNTIL_STAGE ?? "handoff-ready";
 const E2E_MODEL = process.env.E2E_MODEL ?? "";
+const E2E_SPAWN_SCOUTS = process.env.E2E_SPAWN_SCOUTS ?? ""; // "" | "first" | "all"
 const E2E_USE_GLOBAL = process.env.E2E_USE_GLOBAL ?? ""; // "1" force global packages load, "0" force --extension
 
 /** True when the user's global settings.json packages[] path-loads this repo (then --extension would double-load). */
@@ -429,6 +439,25 @@ function stageGuidance(extra) {
 	].join(" ");
 }
 
+// Spawn-mode guidance: the stage skill's scout pattern — spawn the 4 real
+// scouts in parallel first (the plugin turns each into a terminal pane), wait
+// for their JSON reports, then consolidate the working copy from them.
+function spawnStageGuidance(s, runId) {
+	const scoutsDir = join(WORKSPACE, ".IDE_Plans", "velpari", "runs", runId, s.dir, "scouts");
+	const model = E2E_MODEL ? ` (model: ${E2E_MODEL})` : "";
+	return [
+		"Work autonomously — do NOT ask me questions.",
+		"FIRST follow this stage's instructions on spawning: call the subagent() tool NOW for all 4 scout roles",
+		`in parallel (all 4 calls in one message)${model},`,
+		`then wait until every scout has written its JSON report into ${scoutsDir}.`,
+		"If a scout fails or its report is missing, retry once, then continue without it.",
+		"THEN read the scout reports and write the working copy markdown file(s) AND the payload JSON",
+		"exactly as the stage instructions require.",
+		s.extra || "Honor any extra requirements listed with this stage.",
+		"Stop when all files are written.",
+	].join(" ");
+}
+
 // Stage table pinned from live source 2026-10-07:
 //   stage order/transitions: core/constants.ts:52-81
 //   fall-back approve names: commands/index.ts:92-100
@@ -513,6 +542,7 @@ async function main() {
 	console.log(`Workspace: ${WORKSPACE}`);
 	console.log(`Report:    ${REPORT_DIR}`);
 	console.log(`Until:     ${UNTIL_STAGE}`);
+	console.log(`Spawn:     ${E2E_SPAWN_SCOUTS || "off"}`);
 	console.log("");
 
 	if (!USE_GLOBAL && !existsSync(EXTENSION_PATH)) {
@@ -529,14 +559,40 @@ async function main() {
 	git("commit", "--allow-empty", "-m", "tier3 workspace init");
 	record("workspace git init + identity", true, WORKSPACE);
 
-	const args = ["--mode", "rpc", "--no-session"];
-	if (!USE_GLOBAL) args.push("--extension", EXTENSION_PATH);
+	// --no-session implies SessionManager.inMemory → getSessionFile() undefined →
+	// the subagents plugin throws "No session file" before every spawn
+	// (plugin index.ts:948-949). Spawn mode therefore keeps a session file.
+	const args = ["--mode", "rpc"];
+	if (!E2E_SPAWN_SCOUTS) args.push("--no-session");
+	if (!USE_GLOBAL) {
+		// Worktree runs: the global settings path-load (main checkout) plus this
+		// --extension would double-load velpari → tool conflicts → RPC get_commands
+		// times out (2026-10-10, run-2026-10-10T07-09-02/pi-stderr.log). -ne
+		// disables extension discovery; explicit -e paths still load (pi --help),
+		// so pin the fork subagents plugin (herdr backend) and the cline provider
+		// (cline-pass model registry — probe-verified 2026-10-10) explicitly.
+		const FORK_SUBAGENTS_INDEX = join(
+			homedir(),
+			".pi",
+			"agent",
+			"git",
+			"github.com",
+			"Adi-Mudi",
+			"pi-interactive-subagents",
+			"pi-extension",
+			"subagents",
+			"index.ts",
+		);
+		const PI_CLINE_INDEX = join(homedir(), ".pi", "agent", "npm", "node_modules", "@maxpaulus", "pi-cline", "index.ts");
+		args.push("-ne", "--extension", EXTENSION_PATH, "--extension", FORK_SUBAGENTS_INDEX);
+		if (existsSync(PI_CLINE_INDEX)) args.push("--extension", PI_CLINE_INDEX);
+	}
 	if (E2E_MODEL) args.push("--model", E2E_MODEL);
 	// Safety rule 1 (plan ruling 6): strip API keys so local pi authenticates
 	// via kimiCodingOAuth instead of a (possibly stale) key env var.
 	// CI runs have no OAuth login, so there the key must reach pi
 	// (2026-10-09 fix: strip is local-only; E2E_KEEP_KEYS=1 also keeps them).
-	const spawnEnv = { ...process.env, PI_SUBAGENT_MUX: "tmux", VELPARI_EXCALIDRAW: "0" };
+	const spawnEnv = { ...process.env, PI_SUBAGENT_MUX: process.env.PI_SUBAGENT_MUX || "tmux", VELPARI_EXCALIDRAW: "0" };
 	const keepKeys = (process.env.CI && process.env.CI !== "0") || process.env.E2E_KEEP_KEYS === "1";
 	if (!keepKeys) {
 		delete spawnEnv.KIMI_API_KEY;
@@ -702,7 +758,8 @@ async function main() {
 			const stageNow = readState().currentStage;
 			record(`${s.cmd} → ${s.during}`, stageNow === s.during || stageNow === s.after, `stage=${stageNow}`);
 
-			const g = await sendPrompt(client, stageGuidance(s.extra));
+			const spawnApplies = E2E_SPAWN_SCOUTS === "all" || (E2E_SPAWN_SCOUTS === "first" && s === STAGES[0]);
+			const g = await sendPrompt(client, spawnApplies ? spawnStageGuidance(s, runId) : stageGuidance(s.extra));
 			if (g.ok) await waitSettled(client, g.mark, STAGE_TIMEOUT_MS);
 
 			const runDir = join(WORKSPACE, ".IDE_Plans", "velpari", "runs", runId);
@@ -720,6 +777,12 @@ async function main() {
 			}
 			record(`${s.dir} working copy`, !!mdFile, mdFile ?? `no .md in ${workDir}`);
 			record(`${s.dir} payload`, !!payloadFile, payloadFile ?? "missing payload/*.json");
+			if (spawnApplies) {
+				const scoutsDir = join(workDir, "scouts");
+				const reports = existsSync(scoutsDir) ? readdirSync(scoutsDir).filter((f) => f.endsWith("-report.json")) : [];
+				if (s === STAGES[0]) record("prd scout reports", reports.length >= 4, `${reports.length}/4 in ${scoutsDir}`);
+				else record(`${s.dir} scout reports`, true, `${reports.length}/4 reports — informational`);
+			}
 			if (!mdFile || !payloadFile) {
 				chainAborted = true;
 				continue;

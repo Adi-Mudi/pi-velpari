@@ -17,7 +17,9 @@ on:
         description: "Which manual job to run"
         type: choice
         default: all
-        options: [all, tier2, tier3]
+        options: [all, tier2, tier3, tier4]
+        # `tier4` is deliberately NOT part of `all`: it is an explicit paid
+        # multi-hour acceptance run (real herdr scout panes), never accidental.
 
 # Phase 7 — concurrency control: cancel in-progress runs on the same
 # ref when a new commit lands. Avoids wasting CI minutes on stale commits.
@@ -345,3 +347,139 @@ jobs:
         with:
           name: tier3-result
           path: .tmp/tier3/
+
+  # Tier 4 — full sequence with REAL herdr scout panes (manual dispatch ONLY).
+  # Deliberately NOT part of `all`: a paid multi-hour acceptance run (cost gate —
+  # one dispatch; a re-dispatch needs the user's word). This is the CI twin of the
+  # local smoke (`.IDE_Plans/smoke/run-6/run-smoke.sh`, 2026-10-10): the harness
+  # runs INSIDE a managed herdr pane, so the fork plugin splits real visible panes
+  # for the 4 scouts at every scout stage (`E2E_SPAWN_SCOUTS=all`; first scout
+  # stage strict, later stages recorded as informational).
+  tier4:
+    name: Tier 4 full-sequence herdr e2e (manual dispatch only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'tier4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install pi + herdr-capable subagents fork + cline provider + herdr
+        run: |
+          npm install -g @earendil-works/pi-coding-agent@0.87.1
+          # Fork (Adi-Mudi) = upstream + the herdr mux backend; v3.8.2 carries the
+          # stacked scout layout (one right column, parent pinned ~50%). Upstream
+          # (HazAT) has no herdr backend.
+          pi install git:github.com/Adi-Mudi/pi-interactive-subagents
+          # cline provider extension — supplies the cline/cline-pass models
+          # (not built into pi; local setups have it via pi packages).
+          pi install npm:@maxpaulus/pi-cline
+          curl -fsSL https://herdr.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          herdr --version
+      - name: Seed cline-pass auth (OAuth credential from repo secret)
+        env:
+          CLINE_PASS_AUTH_JSON: ${{ secrets.CLINE_PASS_AUTH_JSON }}
+        run: |
+          mkdir -p "$HOME/.pi/agent"
+          node -e "const fs=require('fs');const c=JSON.parse(process.env.CLINE_PASS_AUTH_JSON);fs.writeFileSync(process.env.HOME+'/.pi/agent/auth.json',JSON.stringify({'cline-pass':c},null,2));"
+      - name: Seed default model in settings.json (tolerant merge)
+        env:
+          E2E_MODEL_DEFAULT: cline-pass/deepseek-v4.1-flash
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const os = require("os");
+          const dir = os.homedir() + "/.pi/agent";
+          const file = dir + "/settings.json";
+          fs.mkdirSync(dir, { recursive: true });
+          let settings = {};
+          try {
+            const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed;
+          } catch { settings = {}; }
+          const model = process.env.E2E_MODEL_DEFAULT;
+          settings.defaultProvider = model.split("/")[0];
+          settings.defaultModel = model;
+          const enabled = Array.isArray(settings.enabledModels) ? settings.enabledModels : [];
+          if (!enabled.includes(model)) enabled.push(model);
+          settings.enabledModels = enabled;
+          fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+          console.log("settings.json model keys seeded:", model);
+          NODE
+      - name: Model smoke pre-flight (fail fast on auth/model trouble)
+        run: |
+          pi --model cline-pass/deepseek-v4.1-flash -p "Reply with exactly: ok"
+      - name: Tier 4 full-sequence run inside a herdr pane
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp/herdr-tier4
+          LOG=.tmp/herdr-tier4/herdr-server.log
+          nohup herdr server >"$LOG" 2>&1 &
+          # Bounded health poll — same not-yet-up exclusion as herdr-l3 (a bare
+          # `grep running` also matches the negative "status: not running").
+          ready=0
+          for _ in $(seq 1 60); do
+            STATUS="$(herdr status server 2>&1 || true)"
+            printf '%s\n' "$STATUS"
+            if ! printf '%s' "$STATUS" | grep -qi 'not running' \
+              && printf '%s' "$STATUS" | grep -qiE 'running|ready|up|ok'; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::herdr server did not report ready within 60s"
+            cat "$LOG" || true
+            exit 1
+          fi
+          herdr status server > .tmp/herdr-tier4/status.txt 2>&1 || true
+          # Real workspace + pane (no focus steal), cwd = repo root.
+          herdr workspace create --cwd "$PWD" --label velpari-tier4 --no-focus > .tmp/herdr-tier4/workspace.json
+          PANE=$(node -e 'const j=JSON.parse(require("fs").readFileSync(".tmp/herdr-tier4/workspace.json","utf8"));process.stdout.write(j.result.root_pane.pane_id)')
+          echo "herdr pane: $PANE"
+          # The whole sequence runs INSIDE the pane so the fork plugin can split
+          # real herdr panes for the 4 scouts of every scout stage.
+          herdr pane run "$PANE" "cd '$PWD' && PI_SUBAGENT_MUX=herdr E2E_MODEL=cline-pass/deepseek-v4.1-flash E2E_SPAWN_SCOUTS=all E2E_REPORT_ROOT=.tmp/tier4 npm run test:e2e:tier3; echo VELPARI_TIER4_EXIT=\$?"
+          # Poll for the sentinel: 10 s cadence, ~4.9 h cap (harness stage
+          # timeouts bound the real duration). The typed command line also
+          # contains `VELPARI_TIER4_EXIT=$?`, so only a value with at least one
+          # digit counts as the real result.
+          found=0
+          OUT=""
+          for _ in $(seq 1 1700); do
+            OUT="$(herdr pane read "$PANE" --source recent --lines 400 --format text 2>/dev/null || true)"
+            if printf '%s' "$OUT" | grep -qE 'VELPARI_TIER4_EXIT=[0-9]+'; then found=1; break; fi
+            sleep 10
+          done
+          printf '%s\n' "${OUT:-}" > .tmp/herdr-tier4/pane-output.txt
+          if [ "$found" -ne 1 ]; then
+            echo "::error::tier4 run did not finish within the cap"
+            tail -60 .tmp/herdr-tier4/pane-output.txt
+            exit 1
+          fi
+          CODE=$(printf '%s' "$OUT" | grep -oE 'VELPARI_TIER4_EXIT=[0-9]+' | tail -1 | cut -d= -f2)
+          echo "tier4 harness exit code: $CODE"
+          if [ -z "$CODE" ] || [ "$CODE" != "0" ]; then
+            echo "::error::tier4 harness failed (exit $CODE)"
+            tail -60 .tmp/herdr-tier4/pane-output.txt
+            exit 1
+          fi
+          echo "--- in-pane output (last 30 lines) ---"
+          tail -30 .tmp/herdr-tier4/pane-output.txt
+      - name: Stop herdr server
+        if: always()
+        run: herdr server stop || true
+      - name: Tier 4 result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier4-result
+          path: |
+            .tmp/tier4/
+            .tmp/herdr-tier4/

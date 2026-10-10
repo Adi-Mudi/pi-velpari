@@ -13,6 +13,7 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 | **L2 — RPC e2e** | spawn `pi --mode rpc` | ~3-5s/test | Real extension loads, real commands, real doctor, real state machine | `RUN_E2E=1` (CI sets this) |
 | **L3 — In-process** | `pi-coding-agent-test@0.1.1` | ~1-3s/test | Real Pi + scripted LLM responses (deterministic) | **`RUN_L3_E2E=1`** (currently broken — Phase 4) |
 | **Tier 3 — Full-sequence RPC** | `scripts/e2e-rpc-test.mjs` | hours (real LLM) | Whole chain brainstorm → handoff against a live pi + real model | **CI-only** (`workflow_dispatch`, cline-pass DeepSeek via `CLINE_PASS_AUTH_JSON`) |
+| **Tier 4 — Full sequence with real herdr scout panes** | `scripts/e2e-rpc-test.mjs` inside a herdr pane | hours (real LLM, 4 visible panes per scout stage) | Tier 3 chain **plus** real multi-pane scout dispatch (2–10 stages) through the herdr mux backend | **CI-only, explicit only** (`workflow_dispatch -f job=tier4`; never in `job=all`) |
 | **Perf** | `node --test` (timing) | variable | Doctor + handoff + walk latency budgets | `RUN_PERF=1` |
 
 > **Naming note (herdr initiative).** The herdr integration initiative numbers
@@ -27,6 +28,7 @@ Velpari uses 4 test layers, chosen for what they each prove best:
 
 - `gh workflow run test.yml --ref <branch> -f job=tier2` — Tier 2 only (`unit-and-e2e`, `herdr-l3`, `perf` and `tier3` are skipped).
 - `gh workflow run test.yml --ref <branch> -f job=tier3` — Tier 3 only.
+- `gh workflow run test.yml --ref <branch> -f job=tier4` — Tier 4 only (full sequence with real herdr scout panes; paid multi-hour acceptance run — dispatch **once**, re-dispatch needs a user decision).
 - Omitted (or `-f job=all`) — everything, i.e. exactly what a bare dispatch did before this input existed.
 
 Push and PR runs are unaffected: the input is empty for them and every gated job falls through its `github.event_name != 'workflow_dispatch'` arm. Note that the `concurrency` group is per-ref with `cancel-in-progress: true`, so dispatching on a branch while its push run is still in flight cancels that run.
@@ -39,6 +41,15 @@ Tier 2 also had two missing prerequisites, fixed alongside: the job never ran `n
 - How to run: GitHub Actions only — `gh workflow run test.yml --ref SQL-DB`, job `tier3` (manual dispatch, `timeout-minutes: 360`). Installs pi 0.87.1 + `pi-interactive-subagents` + tmux on the runner. Never runs on push (LLM cost/flakiness).
 - Key/env knobs (2026-10-09, final): the default model is `cline-pass/deepseek-v4.1-flash` (paid ClinePass plan — small free models proved too weak for the stage lifecycle: branch run 37965973660 passed 20/27, failing the LLM-driven brainstorm lifecycle). Auth: the `CLINE_PASS_AUTH_JSON` repo secret holds the OAuth credential from the dev machine's pi auth store; the job seeds it onto the runner and pi auto-refreshes. Caveats: per-token billing on ClinePass every run; WorkOS refresh-token rotation can invalidate the dev machine's local login (re-`/login` if so); refresh the secret when the local credential rotates. Free fallback: `E2E_MODEL=cline-free/mimo-v2.6-flash` + drop the auth-seed step. The cline provider is not built into pi — the tier3 job installs the `npm:@maxpaulus/pi-cline` extension to supply it (same as local pi setups). Kimi is the documented fallback: restore the `KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}` env line + `E2E_MODEL: kimi-coding/kimi-for-coding` in the tier3 job (the secret itself stays in the repo). Harness env: `E2E_UNTIL_STAGE` (stop early), `E2E_MODEL` (pi `--model` passthrough), `E2E_STAGE_TIMEOUT_MS` (default 20 min/stage). Spawn fixes `PI_SUBAGENT_MUX=tmux` and `VELPARI_EXCALIDRAW=0`.
 - Results: `tier3-result` artifact = `.tmp/tier3/run-<ts>/` (report.md + results.json + pi-stderr.log).
+
+### Tier 4 — full sequence with real herdr scout panes (2026-10-10)
+
+- What it is: the Tier 3 chain, but the harness runs **inside a managed herdr pane** and every scout stage splits real visible herdr panes (`E2E_SPAWN_SCOUTS=all`) through the fork plugin's herdr mux backend. It proves what Tier 3 cannot — that scout dispatch physically creates 4 panes with live `pi` children in the herdr backend, not just that reports appear. First local smokes on the fork (only pane layout differs): `.IDE_Plans/smoke/run-6/`.
+- How to run: GitHub Actions only, manual dispatch, explicit job — `gh workflow run test.yml --ref development -f job=tier4` (`timeout-minutes: 360`). It is deliberately **not** reachable through `-f job=all`, so a casual dispatch can never spend the paid multi-hour run. The job installs pi 0.87.1 + the **herdr-capable fork** (`pi install git:github.com/Adi-Mudi/pi-interactive-subagents`, not upstream `HazAT`) + `npm:@maxpaulus/pi-cline`, installs the herdr CLI, seeds the cline-pass auth secret, seeds the default model in `settings.json` (tolerant merge), runs a `pi --model … -p "Reply with exactly: ok"` pre-flight, then starts a headless `herdr server` and runs the harness inside a real pane (same start/health/pane/sentinel pattern as `herdr-l3`).
+- Key/env knobs: `PI_SUBAGENT_MUX=herdr` (selects the fork's herdr backend), `E2E_SPAWN_SCOUTS=all` (dispatch real 4-scout panes at every scout stage; the first scout stage is asserted strictly, later stages are recorded as informational), `E2E_REPORT_ROOT=.tmp/tier4`, `E2E_MODEL=cline-pass/deepseek-v4.1-flash`.
+- Cost rule: one dispatch per acceptance gate. `CLINE_PASS_AUTH_JSON` is per-token billed; a re-dispatch is a user decision, never an automatic retry.
+- Results: `tier4-result` artifact = `.tmp/tier4/run-<ts>/` (report.md + results.json + events.jsonl + pi-stderr.log) **plus** `.tmp/herdr-tier4/` (herdr server log, `herdr status server`, workspace JSON, full pane output).
+- Fallback note (limitation slot): if headless herdr inside the CI runner proves impossible (e.g. install endpoint or server needs a real terminal), this subsection is where the limitation gets documented — a Tier 4 limitation is recorded here for the user to decide, never silently downgraded to a Tier 3 pass.
 
 ## 2. Layer Selection — When to Use Which
 
@@ -255,6 +266,8 @@ npm run test:herdr-mux            # multiplexer detection + brainstorm gate (2 f
 | `unit-and-e2e` | always | hard fail if statements < 92% |
 | `perf` | always (after unit-and-e2e) | soft fail (continue-on-error) — leaves PR comment |
 | `tier2` | workflow_dispatch only | hard fail if `KIMI_API_KEY` is set |
+| `tier3` | workflow_dispatch only (`-f job=tier3`, or `job=all`) | hard fail |
+| `tier4` | workflow_dispatch only (`-f job=tier4`) — **never** in `job=all` | hard fail — installs herdr, starts the headless server, and runs the full sequence inside a real pane with real 4-scout dispatch at every scout stage |
 | `herdr-l3` | always (after unit-and-e2e); `herdr*` branches are the initiative's | hard fail — installs herdr on `ubuntu-latest` + `macos-latest`, starts the headless server, health-checks `herdr status server`, then runs the multiplexer + brainstorm-gate test files inside a real herdr pane |
 
 `herdr-l3` is **L3 — herdr-in-CI** (see the naming note in §1). It drives the
