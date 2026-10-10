@@ -28,8 +28,9 @@ import { trend, type EvalRow } from "../../core/eval.js";
 import { openEvalDb, listEvalRows, closeStoreDb } from "../../io/db.js";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 
-/** Info note surfaced once per report — the judge path is a Phase B item. */
-export const JUDGE_PENDING_NOTE = "Judge scores: pending (Phase B) — deterministic scores only.";
+/** Info note surfaced when a stage has no judged row — judge data arrives with a reviewer-stage publish. */
+export const JUDGE_PENDING_NOTE =
+	"Judge scores: none recorded yet — rubric judge scores appear once a reviewer-stage publish carries a scores block.";
 
 /** Title of the section; single source of truth for the doctor test. */
 export const EVAL_QUALITY_TITLE = "Quality (local evals)";
@@ -134,6 +135,8 @@ export function checkEvalQualitySection(cwd: string, projectName: string): Diagn
 		else byStage.set(row.stage, [row]);
 	}
 
+	let judgedStages = 0;
+
 	for (const [stage, stageRows] of byStage) {
 		const sorted = sortByCreatedAtAsc(stageRows);
 		const t = trend(stageRows, stage);
@@ -160,8 +163,54 @@ export function checkEvalQualitySection(cwd: string, projectName: string): Diagn
 					`scores across this boundary are not directly comparable.`,
 			});
 		}
+
+		// Phase B (B2.3): judge line for the latest judged row — overall,
+		// per-criterion sub-scores, judge + rubric identity. Informational only.
+		const judgedRows = sorted.filter((row) => row.judgeScores !== null);
+		const judge = judgedRows.length > 0 ? judgedRows[judgedRows.length - 1]!.judgeScores : null;
+		if (judge) {
+			judgedStages++;
+			const criteriaLines = judge.criteria.map(
+				(c) => `- ${c.id}: ${fmtScore(c.score)}${c.note ? ` (${c.note})` : ""}`,
+			);
+			items.push({
+				status: "ok",
+				message:
+					`Stage '${stage}': judge ${fmtScore(judge.overall)} — ${judge.judgeModel}; ` +
+					`rubric ${judge.rubricId}@v${judge.rubricVersion} (${shortHash(judge.rubricHash)})`,
+				details: criteriaLines.length > 0 ? criteriaLines : undefined,
+			});
+			if (judge.note) {
+				items.push({
+					status: "warning",
+					message: `Stage '${stage}': judge overall mismatch — ${judge.note}`,
+				});
+			}
+			// Discontinuity: a judge model or rubric change between consecutive
+			// judged rows makes their scores non-comparable. Info, never error.
+			const prevJudge = judgedRows.length >= 2 ? judgedRows[judgedRows.length - 2]!.judgeScores : null;
+			if (prevJudge) {
+				const changes: string[] = [];
+				if (prevJudge.judgeModel !== judge.judgeModel) {
+					changes.push(`judgeModel ${prevJudge.judgeModel} → ${judge.judgeModel}`);
+				}
+				if (prevJudge.rubricHash !== judge.rubricHash) {
+					changes.push(`rubricHash ${shortHash(prevJudge.rubricHash)} → ${shortHash(judge.rubricHash)}`);
+				}
+				if (changes.length > 0) {
+					items.push({
+						status: "info",
+						message:
+							`Stage '${stage}': judge identity changed (${changes.join("; ")}) — ` +
+							`judge scores across this boundary are not directly comparable.`,
+					});
+				}
+			}
+		}
 	}
 
-	items.push({ status: "info", message: JUDGE_PENDING_NOTE });
+	if (judgedStages === 0) {
+		items.push({ status: "info", message: JUDGE_PENDING_NOTE });
+	}
 	return { title: EVAL_QUALITY_TITLE, items };
 }

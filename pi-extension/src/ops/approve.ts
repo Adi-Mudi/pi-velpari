@@ -28,6 +28,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { advanceStage, appendStageEntry, clearFeasibilitySession, loadState } from "../core/state.js";
@@ -53,6 +54,7 @@ import { parseFrontmatterBlock } from "../core/frontmatter.js";
 import {
 	buildRunDir,
 	evalDbPath,
+	findPackageRoot,
 	GROUPED_CATEGORIES,
 	hasPublishedFeasibility,
 	resolveDocArtifact,
@@ -87,7 +89,8 @@ import {
 } from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { openEvalDb, insertEvalRow, closeStoreDb } from "../io/db.js";
-import { detConfigHash, computeTotalScore, detScoresFromGateAndDoctor, type DetScore } from "../core/eval.js";
+import { blendTotal, detConfigHash, computeTotalScore, detScoresFromGateAndDoctor, type DetScore } from "../core/eval.js";
+import { loadJudgeScoresForPublish } from "./judge-scores.js";
 import { loadHistory } from "../core/history.js";
 import { ensureEvalGitIntegration } from "./git-attributes.js";
 import { PATHS, type Stage, nextCommandsFor, STAGE_TRANSITIONS } from "../core/constants.js";
@@ -1269,6 +1272,7 @@ export async function handleApprove(
 		cwd,
 		projectName,
 		runId: state.runId,
+		runDir,
 		// The stage that RAN (in-progress enum), so a rest-state re-approve
 		// trends with the original stage rather than its rest enum.
 		stage: approveRow?.stages[0] ?? state.currentStage,
@@ -1390,6 +1394,8 @@ interface PublishEvalInput {
 	cwd: string;
 	projectName: string;
 	runId: string;
+	/** Absolute run directory — the reviewer report lives under it (Phase B). */
+	runDir: string;
 	stage: string;
 	artifactKind: string;
 	version: string | null;
@@ -1442,11 +1448,17 @@ function stageDurationMs(cwd: string, runId: string, approveCommand: string): nu
 }
 
 /**
- * Record one deterministic eval row for a successful publish
- * (velpari-evals Phase A). Fully fail-open: any error is swallowed and
- * reported as an informational notice — the publish/advance is never
- * blocked. On first create it announces the rule-4 line and heals `.gitignore`
+ * Record one eval row for a successful publish
+ * (velpari-evals Phase A; judge blend Phase B). Fully fail-open: any error is
+ * swallowed and reported as an informational notice — the publish/advance is
+ * never blocked. On first create it announces the rule-4 line and heals `.gitignore`
  * with the local-only `Eval/` rule (A1.5).
+ *
+ * Phase B: when the published artifact is a reviewer stage and its report
+ * carries a valid `scores` block, that block is validated against the stage
+ * rubric (package-root rubric read — never the user project cwd), stored in
+ * `judge_scores`, and blended 50/50 with the deterministic total. Any judge
+ * failure degrades to a deterministic-only row.
  * @param {PublishEvalInput} input - Publish context + computed DetScores.
  * @returns {void}
  */
@@ -1454,6 +1466,24 @@ function recordPublishEval(input: PublishEvalInput): void {
 	try {
 		const dbPath = evalDbPath(input.cwd, input.projectName);
 		const firstCreate = !existsSync(dbPath);
+		const detTotal = computeTotalScore(input.detScores);
+		// Phase B (B2.2): resolve the stage rubric from the PACKAGE root (never
+		// the user project cwd — `loadRubricForStage` is cwd-relative) and read
+		// this run's reviewer report. Null on any gap → deterministic-only row.
+		let packageRoot: string | null = null;
+		try {
+			packageRoot = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+		} catch {
+			packageRoot = null;
+		}
+		const judgeScores =
+			packageRoot === null
+				? null
+				: loadJudgeScoresForPublish({
+						runDir: input.runDir,
+						artifactKind: input.artifactKind,
+						packageRoot,
+					});
 		const db = openEvalDb(dbPath);
 		try {
 			insertEvalRow(db, {
@@ -1465,8 +1495,8 @@ function recordPublishEval(input: PublishEvalInput): void {
 				model: input.model,
 				durationMs: input.durationMs,
 				detScores: input.detScores,
-				judgeScores: null, // Phase A: judge flow is Phase B
-				totalScore: computeTotalScore(input.detScores),
+				judgeScores,
+				totalScore: judgeScores ? blendTotal(detTotal, judgeScores.overall) : detTotal,
 				detConfigHash: detConfigHash(),
 				attempts: input.attempts,
 				createdAt: new Date().toISOString(),

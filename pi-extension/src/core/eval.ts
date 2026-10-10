@@ -10,8 +10,11 @@
 // shapes are accepted STRUCTURALLY (DoctorReportLike / GateResultLike), so
 // no L1 (`doctor/`, `ops/`) type import leaks down here.
 //
-// Scores are deterministic only in Phase A. Judge (LLM rubric) scores are a
-// Phase B concern — `EvalRow.judgeScores` is typed `null` for now.
+// Scores are deterministic only in Phase A. Phase B (Lane B2) adds the
+// judge (LLM rubric) side: the reviewer sub-agent emits a `scores:` block in
+// its report, the publish chain validates it against the stage rubric and
+// persists it in `EvalRow.judgeScores`. The two sides blend 50/50 into
+// `total_score`.
 // ============================================================================
 
 import { createHash } from "node:crypto";
@@ -30,10 +33,39 @@ export interface DetScore {
 }
 
 /**
- * One persisted eval row (Phase A shape). Judge scores are null until the
- * Phase B judge flow lands; `detConfigHash` (G1) makes a scoring-config
- * change distinguishable from a real quality change; `attempts` (G4) is the
- * best-effort publish-attempt count, or null when unavailable.
+ * One criterion score inside a reviewer `scores` block (Phase B contract).
+ * `score` is normalized to 0..1; `note` is one optional human-readable line.
+ */
+export interface JudgeCriterionScore {
+	id: string;
+	score: number;
+	note?: string;
+}
+
+/**
+ * The reviewer `scores` block persisted in `eval_runs.judge_scores` (Phase B,
+ * locked contract). Identity fields (`rubricId`/`rubricVersion`/`rubricHash`/
+ * `judgeModel`) pin the judge + rubric so a change shows as a trend
+ * discontinuity (decision 3). `note` is set by the publish chain when the
+ * reported `overall` disagrees with the rubric-weighted recompute (a doctor
+ * warning, never an error).
+ */
+export interface JudgeScores {
+	rubricId: string;
+	rubricVersion: number;
+	rubricHash: string;
+	judgeModel: string;
+	criteria: JudgeCriterionScore[];
+	overall: number;
+	note?: string;
+}
+
+/**
+ * One persisted eval row (Phase A shape + Phase B judge block). Judge scores
+ * are null on a deterministic-only row; `detConfigHash` (G1) makes a
+ * scoring-config change distinguishable from a real quality change;
+ * `attempts` (G4) is the best-effort publish-attempt count, or null when
+ * unavailable.
  */
 export interface EvalRow {
 	project: string;
@@ -44,7 +76,7 @@ export interface EvalRow {
 	model: string;
 	durationMs: number | null;
 	detScores: DetScore[];
-	judgeScores: null;
+	judgeScores: JudgeScores | null;
 	totalScore: number;
 	detConfigHash: string;
 	attempts: number | null;
@@ -80,6 +112,27 @@ export const DET_SCORE_WEIGHTS: Readonly<Record<string, number>> = {
 	"mvp-coverage": 1,
 };
 
+/**
+ * Decision 6 — the deterministic/judge blend weight. `0.5` = a plain mean of
+ * the two totals (the shipped v1 blend). Part of the scoring config, so a
+ * change is visible via {@link detConfigHash}.
+ */
+export const JUDGE_BLEND_WEIGHT = 0.5;
+
+/**
+ * Blend the deterministic total with the judge overall (decision 6). The
+ * weight is symmetric with {@link JUDGE_BLEND_WEIGHT}. Non-finite judge
+ * values fall back to the deterministic total (defensive — the publish
+ * chain validates the block before calling this).
+ * @param {number} detTotal - Deterministic weighted total (0..1).
+ * @param {number} judgeOverall - Judge rubric overall (0..1).
+ * @returns {number} The blended total score.
+ */
+export function blendTotal(detTotal: number, judgeOverall: number): number {
+	if (!Number.isFinite(judgeOverall)) return detTotal;
+	return (1 - JUDGE_BLEND_WEIGHT) * detTotal + JUDGE_BLEND_WEIGHT * judgeOverall;
+}
+
 /** Canonical JSON: object keys sorted (deep), so equal tables always hash equal. */
 function canonicalJson(value: unknown): string {
 	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
@@ -90,14 +143,21 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * G1 — stable hash of the deterministic scoring configuration. sha-256 over
- * the canonical JSON of the weight table, hex, first 16 chars. No
- * timestamps, so identical configs hash identically across machines/runs.
+ * G1 + decision 6 — stable hash of the deterministic scoring configuration:
+ * the weight table AND the judge blend weight. sha-256 over the canonical
+ * JSON, hex, first 16 chars. No timestamps, so identical configs hash
+ * identically across machines/runs. Including the blend weight means a
+ * change to the deterministic/judge mix shows up as a config change (rather
+ * than a silent score shift).
  * @param {Readonly<Record<string, number>>} weights - Weight table (defaults to the shipped table).
+ * @param {number} judgeBlendWeight - Deterministic/judge blend weight (defaults to {@link JUDGE_BLEND_WEIGHT}).
  * @returns {string} 16-hex-char config hash.
  */
-export function detConfigHash(weights: Readonly<Record<string, number>> = DET_SCORE_WEIGHTS): string {
-	return createHash("sha256").update(canonicalJson(weights)).digest("hex").slice(0, 16);
+export function detConfigHash(
+	weights: Readonly<Record<string, number>> = DET_SCORE_WEIGHTS,
+	judgeBlendWeight: number = JUDGE_BLEND_WEIGHT,
+): string {
+	return createHash("sha256").update(canonicalJson({ weights, judgeBlendWeight })).digest("hex").slice(0, 16);
 }
 
 /**

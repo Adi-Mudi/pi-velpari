@@ -23,7 +23,7 @@ import {
 import { openEvalDb, closeStoreDb, insertEvalRow } from "../src/io/db.js";
 import { evalDbPath } from "../src/core/paths.js";
 import type { DatabaseSync } from "node:sqlite";
-import type { DetScore, EvalRow } from "../src/core/eval.js";
+import type { DetScore, EvalRow, JudgeScores } from "../src/core/eval.js";
 
 const PROJECT = "EvalApp";
 
@@ -47,6 +47,23 @@ interface SeedOpts {
 	detConfigHash?: string;
 	attempts?: number;
 	detScores?: DetScore[];
+	judgeScores?: JudgeScores;
+}
+
+/** Build a judge-scores block with sensible defaults. */
+function judgeBlock(overrides: Partial<JudgeScores> = {}): JudgeScores {
+	return {
+		rubricId: "pseudocode",
+		rubricVersion: 1,
+		rubricHash: "0123456789abcdef",
+		judgeModel: "model-a",
+		criteria: [
+			{ id: "per-atomic-function-coverage", score: 0.9, note: "one AF thin" },
+			{ id: "algorithmic-completeness", score: 0.7 },
+		],
+		overall: 0.8,
+		...overrides,
+	};
 }
 
 /** Build and insert one eval row through the A1 API. */
@@ -60,7 +77,7 @@ function seedRow(db: DatabaseSync, opts: SeedOpts): void {
 		model: opts.model ?? "test-model",
 		durationMs: 1000,
 		detScores: opts.detScores ?? [{ name: "freshness", score: opts.totalScore }],
-		judgeScores: null,
+		judgeScores: opts.judgeScores ?? null,
 		totalScore: opts.totalScore,
 		detConfigHash: opts.detConfigHash ?? "0123456789abcdef",
 		attempts: opts.attempts ?? 1,
@@ -170,5 +187,88 @@ describe("checkEvalQualitySection", () => {
 		});
 		assert.ok(section!.items.some((i) => i.status === "info" && /unreadable/i.test(i.message)));
 		assert.ok(section!.items.every((i) => i.status !== "error"));
+	});
+
+	it("judged row → per-stage judge line (overall, criteria, identity), no pending note", () => {
+		withEvalDb((db) => {
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.7,
+				createdAt: "2026-10-01T00:00:00.000Z",
+				judgeScores: judgeBlock(),
+			});
+		});
+		const section = checkEvalQualitySection(cwd, PROJECT);
+		const judgeLine = section.items.find((i) => /Stage 'pseudocode': judge/.test(i.message));
+		assert.ok(judgeLine, "expected a per-stage judge line");
+		assert.equal(judgeLine?.status, "ok");
+		assert.match(judgeLine?.message ?? "", /judge 0\.800/);
+		assert.match(judgeLine?.message ?? "", /model-a/);
+		assert.match(judgeLine?.message ?? "", /pseudocode@v1/);
+		assert.match(judgeLine?.message ?? "", /01234567/);
+		const details = (judgeLine?.details ?? []).join("\n");
+		assert.match(details, /per-atomic-function-coverage: 0\.900/);
+		assert.match(details, /algorithmic-completeness: 0\.700/);
+		assert.ok(section.items.every((i) => i.message !== JUDGE_PENDING_NOTE), "no pending note when judged rows exist");
+		assert.ok(section.items.every((i) => i.status !== "error"));
+	});
+
+	it("judge overall mismatch note → warning, never an error", () => {
+		withEvalDb((db) => {
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.7,
+				createdAt: "2026-10-01T00:00:00.000Z",
+				judgeScores: judgeBlock({ note: "reported overall 0.400 disagrees with the rubric-weighted recompute 0.800" }),
+			});
+		});
+		const section = checkEvalQualitySection(cwd, PROJECT);
+		const warning = section.items.find((i) => /judge overall mismatch/.test(i.message));
+		assert.ok(warning, "expected the mismatch warning");
+		assert.equal(warning?.status, "warning");
+		assert.ok(section.items.every((i) => i.status !== "error"));
+	});
+
+	it("judge identity change between consecutive rows → info discontinuity marker", () => {
+		withEvalDb((db) => {
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.6,
+				createdAt: "2026-10-01T00:00:00.000Z",
+				judgeScores: judgeBlock({ judgeModel: "model-a", rubricHash: "aaaaaaaaaaaaaaaa" }),
+			});
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.9,
+				createdAt: "2026-10-02T00:00:00.000Z",
+				judgeScores: judgeBlock({ judgeModel: "model-b", rubricHash: "bbbbbbbbbbbbbbbb" }),
+			});
+		});
+		const section = checkEvalQualitySection(cwd, PROJECT);
+		const marker = section.items.find((i) => /judge identity changed/.test(i.message));
+		assert.ok(marker, "expected a judge-identity discontinuity marker");
+		assert.equal(marker?.status, "info");
+		assert.match(marker?.message ?? "", /model-a → model-b/);
+		assert.match(marker?.message ?? "", /aaaaaaaa → bbbbbbbb/);
+		assert.ok(section.items.every((i) => i.status !== "error"));
+	});
+
+	it("stable judge identity → no discontinuity marker", () => {
+		withEvalDb((db) => {
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.6,
+				createdAt: "2026-10-01T00:00:00.000Z",
+				judgeScores: judgeBlock(),
+			});
+			seedRow(db, {
+				stage: "pseudocode",
+				totalScore: 0.7,
+				createdAt: "2026-10-02T00:00:00.000Z",
+				judgeScores: judgeBlock({ overall: 0.9 }),
+			});
+		});
+		const section = checkEvalQualitySection(cwd, PROJECT);
+		assert.ok(section.items.every((i) => !/judge identity changed/.test(i.message)));
 	});
 });
