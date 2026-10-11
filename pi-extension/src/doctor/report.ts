@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { PATHS } from "../core/constants.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { iconFor, type DiagnosticReport, type DiagnosticSection, type DiagnosticStatus } from "./_types.js";
-import { buildActionItemsSection } from "./index.js";
+import { buildActionItemsSection } from "./action-items.js";
 import { sectionId } from "./report-schema.js";
 
 /** Coarse buckets used by `opts.grouped`; additions fall to "Other". */
