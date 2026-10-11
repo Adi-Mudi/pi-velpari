@@ -30,6 +30,7 @@ interface SettingsShape {
 	compaction?: { enabled?: boolean; reserveTokens?: number };
 }
 
+/** Read the active agent-dir settings.json, or null when absent/unreadable. */
 function loadSettings(agentDirOverride?: string): SettingsShape | null {
 	try {
 		const settingsPath = join(agentDirOverride ?? getAgentDir(), "settings.json");
@@ -40,6 +41,7 @@ function loadSettings(agentDirOverride?: string): SettingsShape | null {
 	}
 }
 
+/** Compare two dotted version strings; -1/0/1. */
 function compareVersions(a: string, b: string): number {
 	const pa = a.split(".").map((n) => Number.parseInt(n, 10));
 	const pb = b.split(".").map((n) => Number.parseInt(n, 10));
