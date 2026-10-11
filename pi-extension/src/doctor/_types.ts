@@ -23,6 +23,8 @@ export interface DiagnosticItem {
 export interface DiagnosticSection {
 	title: string;
 	items: DiagnosticItem[];
+	/** Optional stable machine id (kebab). Falls back to slug(title). */
+	id?: string;
 }
 
 interface DiagnosticSummary {

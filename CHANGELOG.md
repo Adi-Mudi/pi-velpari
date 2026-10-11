@@ -9,6 +9,17 @@ All notable changes to this project will be documented in this file.
 - **evals Phase A — local quality scoring at publish.** Every publish records deterministic scores + run metadata to `Eval/<projectName>/eval.db` (a gitignored, user-deletable SQLite DB beside `Doc/`), and the doctor gains a **Quality (local evals)** section (latest / delta / mean of last 10, per-model breakdown, scoring-config-change marker). Informational only — missing or deleted `Eval/` never blocks a command.
 - **evals Phase B — judge (rubric) scores wired into the publish chain.** The 4 reviewer stages (atomic-function / pseudocode / testplan / design) now emit a locked `scores:` block (`rubricId`, `rubricVersion`, `rubricHash`, `judgeModel`, `criteria[]`, `overall`) in their report, scored against the versioned `skills/eval-rubrics/<stage>.yaml` rubrics (shipped in Phase B/B1). The publish chain validates the block against the stage rubric (package-root read), stores it in the `eval_runs.judge_scores` column, and blends `total_score` 50/50 with the deterministic total (the blend weight is part of `det_config_hash`). Judge identity is pinned per row, so a judge-model or rubric change surfaces as a doctor discontinuity marker. Fail-open throughout: a missing/invalid block is a deterministic-only row and never blocks a publish; a reported/recomputed `overall` mismatch is a doctor warning, not an error. The doctor's `Quality (local evals)` section gains the per-stage judge line (overall + per-criterion sub-scores + identity).
 - **evals Phase C — CI quality gate for golden-mission runs.** Two fixed golden missions (`Doc/test-fixtures/eval-missions/cli-todo.md`, `notes-api.md`) are driven through the full velpari lifecycle by `scripts/eval-run.mjs` (lane C1, reusing the Tier 3 RPC pattern) and the resulting `reportVersion: 1` reports are compared to committed baselines by `scripts/eval-baseline.mjs` (lane C2). A new dispatch-only `tier5-evals` GitHub Actions job runs both missions with a real model and gates on per-stage tolerance bands (floor = baseline − 0.15; `--band`/`EVAL_BASELINE_BAND`; never exact-match, G3). Fail-open until a baseline file exists, so the first dispatch captures the reference and the gate only activates once the baseline is recorded (`node scripts/eval-baseline.mjs record --report <report.json>` writes `Doc/test-fixtures/eval-baselines/<model-slug>/<mission>.baseline.json`). Local LLM-free gate: `node --test scripts/eval-baseline.test.mjs scripts/eval-run.test.mjs`.
+### Fixed
+
+- **Doctor summary double-count** — the derived `Action items` callout is now render-only: it is built on demand at render time (the `--quiet` view only) and is never stored in `report.sections`, so the summary counts each real check exactly once.
+
+### Changed
+
+- **Doctor is Velpari-only in scope** — removed the dead-package-entry finding (a stale non-npm/non-git `settings.json` path warning) and the `pi`-binary probe; the competing-provider guard stays. Bundled-scout-missing noise collapses to one `info` line, while custom-mapped missing scouts stay individual `error` items. **Intended loss:** the "dead package entry" finding is gone — a deliberate scope decision, not a regression.
+
+### Hardened
+
+- **`safeSection` wraps every `runDoctor` check** (`doctor/safe-section.ts`) — a throwing check renders a `Check failed` error section instead of crashing the audit (the doctor "always renders" contract).
 
 ## [2.1.0] — 2026-10-09 — herdr multiplexer integration (release)
 

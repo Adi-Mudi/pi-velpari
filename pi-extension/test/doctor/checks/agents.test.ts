@@ -10,7 +10,7 @@
 
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ import {
 	VALID_SESSION_MODES,
 	VALID_SPAWNING,
 	VALID_THINKING_LEVELS,
+	checkScoutAgentsSection,
 	checkStageSkillsSection,
 	parseFrontmatter,
 } from "../../../src/doctor/checks/agents.js";
@@ -124,6 +125,66 @@ describe("checkStageSkillsSection — package-root scoping", () => {
 			);
 		} finally {
 			rmSync(bare, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("checkScoutAgentsSection — D3 aggregated noise (R-STRICT)", () => {
+	const totalScouts = Object.values(ALL_STAGE_SCOUTS).flat().length;
+
+	it("bundled scouts missing → ONE info item, no per-scout warnings", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "velpari-scout-agents-bare-"));
+		try {
+			const section = checkScoutAgentsSection(cwd);
+			const aggregated = section.items.filter((i) => /bundled scout agent\(s\) not yet installed/.test(i.message));
+			assert.equal(aggregated.length, 1, "exactly one aggregated info item");
+			assert.equal(aggregated[0]!.status, "info");
+			assert.match(aggregated[0]!.message, new RegExp(`^${totalScouts} bundled scout agent`));
+			assert.equal(
+				section.items.filter((i) => i.status === "warning").length,
+				0,
+				"no per-scout warnings for bundled defaults",
+			);
+			assert.equal(
+				section.items.filter((i) => i.status === "error").length,
+				0,
+				"no errors when only bundled defaults are missing",
+			);
+			assert.equal(
+				section.items.filter((i) => /^Scout agents summary:/.test(i.message)).length,
+				1,
+				"summary line still present",
+			);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("custom-mapped missing scout → individual error, still one aggregated info", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "velpari-scout-agents-custom-"));
+		try {
+			const role = "fr-extractor";
+			const occurrences = Object.values(ALL_STAGE_SCOUTS)
+				.flat()
+				.filter((r) => r === role).length;
+			assert.ok(occurrences >= 1, `${role} must be a scout role`);
+			mkdirSync(join(cwd, ".pi", "velpari"), { recursive: true });
+			writeFileSync(
+				join(cwd, ".pi", "velpari", "agents.json"),
+				JSON.stringify({ version: 1, agents: { [role]: "missing-custom-agent" } }),
+			);
+			const section = checkScoutAgentsSection(cwd);
+			const errors = section.items.filter((i) => i.status === "error");
+			assert.equal(errors.length, occurrences, "one error per custom-mapped occurrence");
+			assert.ok(
+				errors.some((i) => /missing-custom-agent\.md/.test(i.message) && /MISSING/.test(i.message)),
+				"error names the missing custom-mapped agent",
+			);
+			const aggregated = section.items.filter((i) => /bundled scout agent\(s\) not yet installed/.test(i.message));
+			assert.equal(aggregated.length, 1, "custom role does not break aggregation");
+			assert.match(aggregated[0]!.message, new RegExp(`^${totalScouts - occurrences} bundled scout agent`));
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 });

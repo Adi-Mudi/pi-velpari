@@ -74,6 +74,40 @@ typed approve commands exist for recovery when that path is unavailable.
 | `/velpari-merge-back` | Guided merge-back of a parallel line (N12) — dry-run plan, then `--execute`: confirm → git merge → store verify → doctor → staleness → F14 flags. |
 | `/velpari-revision-status` | View a revision's F16 status and restore withdrawn → published (typed reason + confirmation, audited). Withdrawal stays on `/velpari-tombstone`; `superseded` is system-owned (set only by a new publish). |
 
+### `/velpari-doctor` — report delivery & repair (Doctor upgrade v1)
+
+The standalone command renders the **full audit into the chat** (capped, with
+an `…truncated, see report file` fallback) plus a **"Recommended next steps"**
+block that lists error (then warning) items with their fix suggestions — the
+machine/notify paths for embedded and preflight runs stay summary-only
+(SAFE-1). Three flags tune the delivery:
+
+- `--velpari-quiet` — summary only: the header, the counts, and the action
+  items; no full-report chat push.
+- `--velpari-check` — non-interactive check mode: report `Doctor: PASS` /
+  `Doctor: FAIL (N errors)` and set `process.exitCode` (0 clean / 1 errors)
+  so CI and preflight can gate on it. Suppresses the `--velpari-fix` picker.
+- `--velpari-json` — also write the versioned machine-readable report to
+  `.IDE_Plans/velpari/doctor-report.json` (`schemaVersion: 1`, stable section
+  ids and per-item status/suggestion).
+
+The `--velpari-fix` repair flow is a **bounded** verify → repair → re-verify
+loop (`maxAttempts`, default 3 — never infinite), and every applied fix
+appends one row to `.IDE_Plans/velpari/doctor-fix-audit.jsonl`. The
+`git-integration-heal` remediation is auto-safe: it appends the missing
+store-DB binary attribute / WAL sidecar ignore patterns to the user repo's
+`.gitattributes` / `.gitignore` (the same call the publish chain makes).
+
+**Optimization (P0–P3).** Four outcomes landed on top of Doctor upgrade v1:
+correct counts (the `Action items` callout is render-only and `--quiet`-only —
+the summary counts each real section exactly once); Velpari-only scope (the
+dead-package-entry and `pi`-binary probes are removed, the competing-provider
+guard stays); stricter (bundled-scout-missing collapses to one `info` line,
+custom-mapped missing scouts stay individual `error` items); and hardened
+(`doctor/safe-section.ts:safeSection` wraps every `runDoctor` check, so a
+throwing check renders a `Check failed` error section instead of crashing the
+audit).
+
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 
 When a declared input of a published artifact changed but the change has

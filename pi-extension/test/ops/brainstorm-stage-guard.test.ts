@@ -85,6 +85,8 @@ function setMux() {
 	delete process.env.WEZTERM_EXECUTABLE;
 	delete process.env.CMUX_PANE_ID;
 	delete process.env.CMUX_SESSION_NAME;
+	delete process.env.HERDR_ENV;
+	delete process.env.HERDR_PANE_ID;
 	process.env.PI_SUBAGENT_MUX = "zellij";
 }
 
@@ -97,6 +99,8 @@ function clearAllMux() {
 	delete process.env.WEZTERM_EXECUTABLE;
 	delete process.env.CMUX_PANE_ID;
 	delete process.env.CMUX_SESSION_NAME;
+	delete process.env.HERDR_ENV;
+	delete process.env.HERDR_PANE_ID;
 }
 
 function makeStateAt(stage: RunState["currentStage"], mission = "test-mission"): RunState {
