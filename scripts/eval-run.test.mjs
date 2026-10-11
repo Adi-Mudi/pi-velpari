@@ -29,6 +29,7 @@ import {
 	loadMission,
 	parseMissionMarkdown,
 	parseRunArgs,
+	pinnedExtensionPaths,
 	resolveUntil,
 } from "./eval-run.mjs";
 
@@ -498,4 +499,24 @@ test("eval-run CLI: --help exits 0; unknown mission exits 2 with a clean error",
 	const noMission = spawnSync(process.execPath, [RUN_CLI], { encoding: "utf8" });
 	assert.equal(noMission.status, 2);
 	assert.match(noMission.stderr, /--mission <slug> is required/);
+});
+
+test("pinnedExtensionPaths: pins the cline provider so --ne runs can resolve the model", () => {
+	// Regression guard (ledger P4): `-ne` disables extension discovery, so the
+	// globally installed cline provider must be pinned explicitly or pi exits
+	// with 'Model "cline-pass/..." not found' and get_commands times out.
+	const none = pinnedExtensionPaths(join(tmpdir(), "no-such-home-xyz"));
+	assert.deepEqual(none, [], "absent plugins are skipped (CI has no local clone)");
+
+	const fakeHome = mkdtempSync(join(tmpdir(), "eval-home-"));
+	try {
+		const cline = join(fakeHome, ".pi", "agent", "npm", "node_modules", "@maxpaulus", "pi-cline");
+		mkdirSync(cline, { recursive: true });
+		writeFileSync(join(cline, "index.ts"), "export {};\n");
+		const found = pinnedExtensionPaths(fakeHome);
+		assert.equal(found.length, 1);
+		assert.match(found[0], /@maxpaulus\/pi-cline\/index\.ts$/);
+	} finally {
+		rmSync(fakeHome, { recursive: true, force: true });
+	}
 });

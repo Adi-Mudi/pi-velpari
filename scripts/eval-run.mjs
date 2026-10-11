@@ -606,6 +606,34 @@ export function buildSpawnEnv(base = process.env) {
 	return env;
 }
 
+/**
+ * Extension paths that MUST be pinned when `-ne` is used. `-ne` disables
+ * extension discovery, so a globally installed provider plugin is invisible to
+ * the child: without the cline provider the `cline-pass/*` model cannot resolve
+ * and pi exits before answering RPC (`get_commands` timeout — proven locally
+ * 2026-10-11 and documented in scripts/e2e-rpc-test.mjs:567-590). The subagents
+ * plugin is pinned for parity with the tier3 harness when it is installed
+ * locally; on CI (install-free) it is simply absent.
+ */
+export function pinnedExtensionPaths(home = homedir()) {
+	const candidates = [
+		join(home, ".pi", "agent", "npm", "node_modules", "@maxpaulus", "pi-cline", "index.ts"),
+		join(
+			home,
+			".pi",
+			"agent",
+			"git",
+			"github.com",
+			"Adi-Mudi",
+			"pi-interactive-subagents",
+			"pi-extension",
+			"subagents",
+			"index.ts",
+		),
+	];
+	return candidates.filter((p) => existsSync(p));
+}
+
 async function runGolden(args) {
 	const mission = loadMission(args.mission, { fixturesDir: args.fixturesDir });
 	if (!mission.ok) {
@@ -643,6 +671,9 @@ async function runGolden(args) {
 	if (!args.spawnScouts) spawnArgs.push("--no-session");
 	if (!useGlobal) {
 		spawnArgs.push("-ne", "--extension", EXTENSION_PATH);
+		// `-ne` also hides the globally installed provider plugins — pin them
+		// explicitly or the model cannot resolve (see pinnedExtensionPaths).
+		for (const ext of pinnedExtensionPaths()) spawnArgs.push("--extension", ext);
 	}
 	if (args.model) spawnArgs.push("--model", args.model);
 
