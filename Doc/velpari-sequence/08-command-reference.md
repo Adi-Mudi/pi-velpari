@@ -98,6 +98,16 @@ appends one row to `.IDE_Plans/velpari/doctor-fix-audit.jsonl`. The
 store-DB binary attribute / WAL sidecar ignore patterns to the user repo's
 `.gitattributes` / `.gitignore` (the same call the publish chain makes).
 
+**Optimization (P0–P3).** Four outcomes landed on top of Doctor upgrade v1:
+correct counts (the `Action items` callout is render-only and `--quiet`-only —
+the summary counts each real section exactly once); Velpari-only scope (the
+dead-package-entry and `pi`-binary probes are removed, the competing-provider
+guard stays); stricter (bundled-scout-missing collapses to one `info` line,
+custom-mapped missing scouts stay individual `error` items); and hardened
+(`doctor/safe-section.ts:safeSection` wraps every `runDoctor` check, so a
+throwing check renders a `Check failed` error section instead of crashing the
+audit).
+
 ### `/velpari-reconfirm` — the re-confirm path (spec 02: second resolution path)
 
 When a declared input of a published artifact changed but the change has

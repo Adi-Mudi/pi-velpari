@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Doctor summary double-count** — the derived `Action items` callout is now render-only: it is built on demand at render time (the `--quiet` view only) and is never stored in `report.sections`, so the summary counts each real check exactly once.
+
+### Changed
+
+- **Doctor is Velpari-only in scope** — removed the dead-package-entry finding (a stale non-npm/non-git `settings.json` path warning) and the `pi`-binary probe; the competing-provider guard stays. Bundled-scout-missing noise collapses to one `info` line, while custom-mapped missing scouts stay individual `error` items. **Intended loss:** the "dead package entry" finding is gone — a deliberate scope decision, not a regression.
+
+### Hardened
+
+- **`safeSection` wraps every `runDoctor` check** (`doctor/safe-section.ts`) — a throwing check renders a `Check failed` error section instead of crashing the audit (the doctor "always renders" contract).
+
 ## [2.1.0] — 2026-10-09 — herdr multiplexer integration (release)
 
 ### Added
