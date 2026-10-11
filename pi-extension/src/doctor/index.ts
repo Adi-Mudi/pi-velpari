@@ -457,14 +457,18 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		checkSemverBumpSection(cwd, projectName),
 	];
 
-	// Phase 5: prepend an "Action items" callout so errors and warnings
-	// survive TUI truncation. Built AFTER the main sections so it sees
-	// every actionable item.
-	const actionItems = buildActionItemsSection(sections);
-	const finalSections = [actionItems, ...sections];
+	// The "Action items" callout is a derived, presentation-only view: it
+	// is built at render time (see report.ts) and never stored here, so
+	// `summary` counts each real check exactly once.
+	return composeReport(sections);
+}
 
-	const { summary, ok } = summarize(finalSections);
-	return { ok, summary, sections: finalSections };
+/** Compose the final report from the REAL sections only; the summary
+ *  counts each check exactly once (the Action-items callout is a derived
+ *  view built at render time, never stored here). */
+export function composeReport(sections: DiagnosticSection[]): DiagnosticReport {
+	const { summary, ok } = summarize(sections);
+	return { ok, summary, sections };
 }
 
 /**
@@ -472,7 +476,7 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
  * and warning item with its suggestion. Useful when the full report
  * is truncated by the TUI notify (8000-char cap).
  */
-function buildActionItemsSection(sections: DiagnosticSection[]): DiagnosticSection {
+export function buildActionItemsSection(sections: DiagnosticSection[]): DiagnosticSection {
 	const items: DiagnosticItem[] = [];
 	for (const section of sections) {
 		for (const item of section.items) {

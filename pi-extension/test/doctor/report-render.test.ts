@@ -18,9 +18,9 @@ const REPORT: DiagnosticReport = {
 	ok: false,
 	summary: { ok: 1, warning: 1, error: 1, info: 0 },
 	sections: [
-		{ title: "Action items", items: [{ status: "error", message: "Boom", suggestion: "Fix it" }] },
 		{ title: "Environment", items: [{ status: "ok", message: "Fine" }] },
 		{ title: "Custom thing", items: [{ status: "warning", message: "Hmm" }] },
+		{ title: "PSRS thing", items: [{ status: "error", message: "Boom", suggestion: "Fix it" }] },
 	],
 };
 
@@ -31,11 +31,6 @@ const EXPECTED_DEFAULT = [
 	"",
 	"❌ Please fix the errors above. Each error item carries a `→ Fix:` hint.",
 	"",
-	"## Action items",
-	"",
-	"❌ Boom",
-	"   → Fix: Fix it",
-	"",
 	"## Environment",
 	"",
 	"✅ Fine",
@@ -44,11 +39,20 @@ const EXPECTED_DEFAULT = [
 	"",
 	"⚠️ Hmm",
 	"",
+	"## PSRS thing",
+	"",
+	"❌ Boom",
+	"   → Fix: Fix it",
+	"",
 ].join("\n");
 
 describe("renderReport — default", () => {
 	it("renders the legacy format byte for byte", () => {
 		assert.equal(renderReport(REPORT), EXPECTED_DEFAULT);
+	});
+
+	it("does not store or print the derived Action-items callout", () => {
+		assert.ok(!renderReport(REPORT).includes("## Action items"));
 	});
 
 	it("keeps formatDiagnosticReport as a thin wrapper", () => {
@@ -62,11 +66,13 @@ describe("renderReport — default", () => {
 });
 
 describe("renderReport — quiet", () => {
-	it("keeps header + summary + Action items only", () => {
+	it("keeps header + summary + the built Action items callout only", () => {
 		const text = renderReport(REPORT, { quiet: true });
 		assert.match(text, /^# Velpari Doctor Report/);
 		assert.match(text, /Summary: 1 OK, 1 warnings, 1 errors, 0 info\./);
 		assert.match(text, /## Action items/);
+		assert.match(text, /PSRS thing: Boom → Fix: Fix it/);
+		assert.match(text, /Custom thing: Hmm/);
 		assert.ok(!text.includes("## Environment"), "quiet mode must drop non-action sections");
 		assert.ok(!text.includes("## Custom thing"), "quiet mode must drop non-action sections");
 	});
@@ -81,9 +87,9 @@ describe("renderReport — grouped", () => {
 		assert.match(text, /### Custom thing/);
 	});
 
-	it("renders Action items before the buckets", () => {
+	it("does not print the derived Action items callout", () => {
 		const text = renderReport(REPORT, { grouped: true });
-		assert.ok(text.indexOf("## Action items") < text.indexOf("## Environment —"));
+		assert.ok(!text.includes("## Action items"), "grouped view must not carry the callout");
 	});
 
 	it("counts errors per group", () => {
