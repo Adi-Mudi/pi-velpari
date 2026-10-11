@@ -170,9 +170,7 @@ export function checkEvalQualitySection(cwd: string, projectName: string): Diagn
 		const judge = judgedRows.length > 0 ? judgedRows[judgedRows.length - 1]!.judgeScores : null;
 		if (judge) {
 			judgedStages++;
-			const criteriaLines = judge.criteria.map(
-				(c) => `- ${c.id}: ${fmtScore(c.score)}${c.note ? ` (${c.note})` : ""}`,
-			);
+			const criteriaLines = judge.criteria.map((c) => `- ${c.id}: ${fmtScore(c.score)}${c.note ? ` (${c.note})` : ""}`);
 			items.push({
 				status: "ok",
 				message:

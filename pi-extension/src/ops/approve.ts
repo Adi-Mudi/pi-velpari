@@ -89,7 +89,13 @@ import {
 } from "./export-doc.js";
 import { runDoctor, writeDoctorReport } from "../doctor/index.js";
 import { openEvalDb, insertEvalRow, closeStoreDb } from "../io/db.js";
-import { blendTotal, detConfigHash, computeTotalScore, detScoresFromGateAndDoctor, type DetScore } from "../core/eval.js";
+import {
+	blendTotal,
+	detConfigHash,
+	computeTotalScore,
+	detScoresFromGateAndDoctor,
+	type DetScore,
+} from "../core/eval.js";
 import { loadJudgeScoresForPublish } from "./judge-scores.js";
 import { loadHistory } from "../core/history.js";
 import { ensureEvalGitIntegration } from "./git-attributes.js";

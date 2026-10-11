@@ -175,7 +175,7 @@ export function computeTotalScore(
 	let weighted = 0;
 	let totalWeight = 0;
 	for (const det of detScores) {
-		const weight = Object.prototype.hasOwnProperty.call(weights, det.name) ? (weights[det.name] ?? 1) : 1;
+		const weight = Object.hasOwn(weights, det.name) ? (weights[det.name] ?? 1) : 1;
 		weighted += det.score * weight;
 		totalWeight += weight;
 	}

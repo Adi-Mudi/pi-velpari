@@ -191,7 +191,12 @@ export function parseRubric(yamlText: string): Rubric {
 			throw new RubricValidationError(`${where}.input_summary: non-empty string required`);
 		}
 		const expectedScore = entry.expected_score;
-		if (typeof expectedScore !== "number" || !Number.isFinite(expectedScore) || expectedScore < 0 || expectedScore > 1) {
+		if (
+			typeof expectedScore !== "number" ||
+			!Number.isFinite(expectedScore) ||
+			expectedScore < 0 ||
+			expectedScore > 1
+		) {
 			throw new RubricValidationError(
 				`${where}.expected_score: number in [0,1] required, got ${String(expectedScore)}`,
 			);
@@ -252,10 +257,7 @@ export function rubricHash(rubricFileBytes: Uint8Array | string): string {
  * @param {ReadonlyArray<RubricScore>} criteriaScores - Reviewer criterion scores.
  * @returns {OverallDetail} The overall plus missing/unknown flags.
  */
-export function computeOverallDetail(
-	rubric: Rubric,
-	criteriaScores: ReadonlyArray<RubricScore>,
-): OverallDetail {
+export function computeOverallDetail(rubric: Rubric, criteriaScores: ReadonlyArray<RubricScore>): OverallDetail {
 	const provided = new Map<string, number>();
 	for (const score of criteriaScores) {
 		if (typeof score?.id === "string") provided.set(score.id, score.score);
