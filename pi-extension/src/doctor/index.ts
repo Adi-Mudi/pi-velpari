@@ -471,37 +471,6 @@ export function composeReport(sections: DiagnosticSection[]): DiagnosticReport {
 	return { ok, summary, sections };
 }
 
-/**
- * Build a top-of-report "Action items" callout listing every error
- * and warning item with its suggestion. Useful when the full report
- * is truncated by the TUI notify (8000-char cap).
- */
-export function buildActionItemsSection(sections: DiagnosticSection[]): DiagnosticSection {
-	const items: DiagnosticItem[] = [];
-	for (const section of sections) {
-		for (const item of section.items) {
-			if (item.status !== "error" && item.status !== "warning") continue;
-			const fix = item.suggestion ? ` → Fix: ${item.suggestion}` : "";
-			items.push({
-				status: item.status,
-				message: `${section.title}: ${item.message}${fix}`,
-			});
-		}
-	}
-	if (items.length === 0) {
-		return {
-			title: "Action items",
-			items: [
-				{
-					status: "ok",
-					message: "No errors or warnings — nothing to fix.",
-				},
-			],
-		};
-	}
-	return { title: "Action items", items };
-}
-
 /** Maximum length of the notify that the handler pushes to the TUI. */
 const MAX_NOTIFY_LENGTH = 8000;
 
