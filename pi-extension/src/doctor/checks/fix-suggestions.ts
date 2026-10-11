@@ -190,6 +190,11 @@ export const SUGGESTIONS = {
 		"Add `Doc/store/**/index.db binary` to .gitattributes — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
 	"git-ignore-missing":
 		"Add `Doc/store/**/index.db-wal` and `Doc/store/**/index.db-shm` to .gitignore — or just publish once: the chain auto-heals the file (ops/git-attributes.ts) and commits it. Manual procedure: skills/db-store-merge-runbook.md.",
+	// Doctor upgrade Phase 2 (U3) — one auto-safe pair heals both
+	// git-integration warnings above (ops/git-attributes.ts:
+	// ensureStoreGitIntegration).
+	"git-integration-heal":
+		"Auto-safe heal available: run `/velpari-doctor --velpari-fix` and pick \"Fix all\" — it appends the missing store-DB binary attribute / WAL sidecar ignore patterns via ops/git-attributes.ts:ensureStoreGitIntegration.",
 
 	// Phase 10 — portfolio registry (§15.5 drift visibility)
 	"portfolio-stale":
@@ -342,6 +347,11 @@ export const FIX_LEVELS: Partial<Record<SuggestionKey, FixLevel>> = {
 	"bookkeeping-advance": "auto-safe",
 	"scaffold-missing": "auto-safe",
 	"config-restore-git": "auto-safe",
+	// Doctor upgrade Phase 2 (U3) — git-integration self-heal pair.
+	// The two warnings map to the single `git-integration-heal` fn.
+	"git-integration-heal": "auto-safe",
+	"git-attr-missing": "auto-safe",
+	"git-ignore-missing": "auto-safe",
 
 	// Phase 3 (Level C — agentic fix via parent LLM). Each entry
 	// triggers `buildFixBrief` and dispatches a structured prompt
@@ -367,6 +377,8 @@ export const SAFE_WHITELIST: ReadonlySet<string> = new Set([
 	"bookkeeping-advance",
 	"scaffold-missing",
 	"config-restore-git",
+	// Doctor upgrade Phase 2 (U3) — paired fn git-integration-heal.ts.
+	"git-integration-heal",
 ]);
 
 /**

@@ -13,6 +13,8 @@ import { remediate as workingPublishedDrift } from "./working-published-drift.js
 import { remediate as bookkeepingAdvance } from "./bookkeeping-advance.js";
 import { remediate as scaffoldMissing } from "./scaffold-missing.js";
 import { remediate as configRestoreGit } from "./config-restore-git.js";
+// Doctor upgrade Phase 2 (U3) — git-integration self-heal pair.
+import { remediate as gitIntegrationHeal } from "./git-integration-heal.js";
 
 interface RemediateContext {
 	cwd: string;
@@ -39,4 +41,6 @@ export const REMEDIATE_FNS: Readonly<Record<string, RemediateFn>> = {
 	"bookkeeping-advance": bookkeepingAdvance,
 	"scaffold-missing": scaffoldMissing,
 	"config-restore-git": configRestoreGit,
+	// Doctor upgrade Phase 2 (U3) — heals git-attr-missing / git-ignore-missing.
+	"git-integration-heal": gitIntegrationHeal,
 };

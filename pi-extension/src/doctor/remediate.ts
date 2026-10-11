@@ -15,6 +15,10 @@
  *      dispatcher in `fix-dispatch.ts` aggregates failures and
  *      notifies the user without crashing the audit loop.
  *
+ *   3. A best-effort audit row per run (`fix-audit.ts:recordFixAudit`,
+ *      T8) — appended to `.IDE_Plans/velpari/doctor-fix-audit.jsonl`.
+ *      A failed audit NEVER breaks the repair.
+ *
  * The orchestrator NEVER calls `runDoctor` itself. Re-auditing after a
  * remediate run is the dispatcher's job (see
  * `doctor/fix-dispatch.ts:dispatchFixChoice` `kind: "all-safe"` branch
@@ -23,6 +27,7 @@
 
 import { SAFE_WHITELIST } from "./checks/fix-suggestions.js";
 import { REMEDIATE_FNS, type RemediateOutcome } from "./checks/remediate/index.js";
+import { recordFixAudit } from "./fix-audit.js";
 
 interface RunRemediateOptions {
 	cwd: string;
@@ -65,11 +70,29 @@ export async function runRemediate(opts: RunRemediateOptions): Promise<RunRemedi
 	try {
 		outcome = await fn({ cwd: opts.cwd, projectName: opts.projectName });
 	} catch (err) {
+		// Best-effort audit (T8) — a failed write must not mask the real error.
+		try {
+			recordFixAudit(
+				{ at: new Date().toISOString(), fingerprint: opts.fingerprint, ok: false, changedFiles: [] },
+				opts.cwd,
+			);
+		} catch {
+			/* audit must never break the repair */
+		}
 		return {
 			ok: false,
 			message: `Remediate "${opts.fingerprint}" failed: ${(err as Error).message ?? String(err)}`,
 			changedFiles: [],
 		};
+	}
+	// Best-effort audit (T8) — record the attempt, never break the repair.
+	try {
+		recordFixAudit(
+			{ at: new Date().toISOString(), fingerprint: opts.fingerprint, ok: true, changedFiles: outcome.changedFiles },
+			opts.cwd,
+		);
+	} catch {
+		/* audit must never break the repair */
 	}
 	return {
 		ok: true,
