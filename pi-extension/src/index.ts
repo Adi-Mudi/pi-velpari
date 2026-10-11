@@ -103,5 +103,25 @@ export default function (pi: ExtensionAPI) {
 		type: "boolean",
 		default: false,
 	});
+	// Doctor upgrade (Phase 0, contract C5): report-delivery flags. The
+	// behaviour is wired in later phases; registration here only freezes
+	// the contract. velpari-quiet = quiet chat render; velpari-check =
+	// non-interactive pass/fail; velpari-json = also write the versioned
+	// machine-readable report.
+	pi.registerFlag("velpari-quiet", {
+		description: "Doctor: print only the header, summary, and action items (quieter chat render).",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("velpari-check", {
+		description: "Doctor: non-interactive check mode — report the verdict and exit non-zero on errors.",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("velpari-json", {
+		description: "Doctor: also write the versioned machine-readable report (.IDE_Plans/velpari/doctor-report.json).",
+		type: "boolean",
+		default: false,
+	});
 	setRunReviewerFlagResolver(() => pi.getFlag?.("velpari-run-reviewer") === true);
 }

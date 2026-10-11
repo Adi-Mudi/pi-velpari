@@ -10,9 +10,11 @@
  * writes. The auto batch runs the EXISTING Level-B loop
  * (`runAllSafeRemediates` — whitelist check → registered fn →
  * try/catch); manual items go through the injected per-item dispatch
- * (`fix-dispatch.ts:dispatchFixChoice`, supplied by the caller); then
- * one `reRun()` re-audit decides the outcome. Max ONE fix-flow attempt
- * per call — still dirty → report remaining, never loop.
+ * (`fix-dispatch.ts:dispatchFixChoice`, supplied by the caller); then a
+ * bounded verify → repair → re-verify loop
+ * (`verify-repair.ts:shouldContinue`) decides the outcome. The batch is
+ * confirmed ONCE; retries re-run the SAME approved batch with **no new
+ * prompts**, up to `maxAttempts` (default 3) — never an infinite loop.
  *
  * Layer 1: uses the injected `PreflightUi` primitives directly (the
  * scan-gate precedent) — no `ui/` import, no `doctor/index.ts` import
@@ -21,19 +23,21 @@
  * this module, asserted by test + import scan.
  *
  * Recursion contract (v1.3, B#7 re-investigation — accept with evidence):
- * this flow NEVER re-enters itself. Max ONE attempt per invocation: the
- * `for(;;)` below re-asks only after "Show details" / an interactive
- * fixable selection; `reRun` only re-audits (runPreflight / runDoctor —
- * neither calls runFixFlow); `dispatchOne` walks manual items linearly;
- * and `remediateOne` has no path back into the flow. Re-entry from
- * outside requires a fresh user command (`/velpari-doctor --fix`) —
- * user-gated, not code recursion.
+ * this flow NEVER re-enters itself. The `for(;;)` select loop below
+ * re-asks only after "Show details" / an interactive fixable selection;
+ * the bounded repair loop re-runs the SAME confirmed batch up to
+ * `maxAttempts` and never calls `runFixFlow` again; `reRun` only
+ * re-audits (runPreflight / runDoctor — neither calls runFixFlow);
+ * `dispatchOne` walks manual items linearly; and `remediateOne` has no
+ * path back into the flow. Re-entry from outside requires a fresh user
+ * command (`/velpari-doctor --fix`) — user-gated, not code recursion.
  */
 
 import type { DiagnosticReport } from "./_types.js";
 import { runAllSafeRemediates } from "./remediate.js";
 import { listActionableItems, type ActionableItem } from "./fix-dispatch.js";
 import { SAFE_WHITELIST, SUGGESTIONS, levelFor, type FixLevel, type SuggestionKey } from "./checks/fix-suggestions.js";
+import { DEFAULT_MAX_ATTEMPTS, shouldContinue, type VerifyOutcome } from "./verify-repair.js";
 import type { PreflightFinding } from "./preflight.js"; // type-only: no runtime cycle
 
 /** The Pi UI primitives the flow needs (absent functions degrade, never hang). */
@@ -46,7 +50,7 @@ export interface PreflightUi {
 	confirm?(title: string, message?: string): Promise<boolean>;
 }
 
-/** Outcome of one fix-flow attempt (max 1 attempt per call). */
+/** Outcome of one fix-flow invocation (one confirm, up to `maxAttempts` repair passes). */
 export type FixFlowOutcome =
 	/** Batch ran (and/or manual dispatches happened) — check `remainingManual`. */
 	| { action: "fixed"; remainingManual: number }
@@ -79,6 +83,11 @@ export interface FixFlowOptions {
 	 * injectable so tests can spy "zero remediate calls" on decline.
 	 */
 	runAuto?: () => Promise<unknown>;
+	/**
+	 * Hard cap on verify → repair → re-verify passes after the ONE confirm
+	 * (defaults to `verify-repair.ts:DEFAULT_MAX_ATTEMPTS` = 3). Never exceeded.
+	 */
+	maxAttempts?: number;
 }
 
 /** Partitioned view over one source: what the batch will do vs what stays manual. */
@@ -203,44 +212,62 @@ export async function runFixFlow(opts: FixFlowOptions): Promise<FixFlowOutcome> 
 			return { action: "aborted", reason: "user declined batch" }; // zero writes
 		}
 
-		// Auto batch — the existing Level-B loop (whitelist → fn → try/catch).
-		// C-F2 (v1.2): runs after every confirm — the confirm list IS the
-		// whitelist, so display and executor cannot diverge (the old
-		// autoNames>0 gate skipped the batch whenever no suggestion text
-		// reverse-mapped while the user had just confirmed the full safe list).
+		const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+		let attempts = 0;
+		let fresh: VerifyOutcome = { ok: false, actionableCount: view.items.length };
 		const runAuto =
 			opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
-		try {
-			await runAuto();
-		} catch (err) {
-			opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
-		}
 
-		// Manual remainder — caller's per-item dispatch (absent in preflight:
-		// manual preflight rows are Abort-only by the decision table).
-		if (opts.dispatchOne) {
-			for (const item of view.manual) {
-				try {
-					await opts.dispatchOne(item);
-				} catch (err) {
-					opts.ui.notify(`Fix dispatch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+		// Bounded verify → repair → re-verify (T3). The confirm above is the
+		// ONE prompt; every pass below re-runs the SAME approved batch (no new
+		// prompts), re-audits, then lets `shouldContinue` decide whether the
+		// attempt budget allows another pass. Never exceeds `maxAttempts`.
+		for (;;) {
+			attempts++;
+
+			// Auto batch — the existing Level-B loop (whitelist → fn → try/catch).
+			// C-F2 (v1.2): runs after every confirm — the confirm list IS the
+			// whitelist, so display and executor cannot diverge (the old
+			// autoNames>0 gate skipped the batch whenever no suggestion text
+			// reverse-mapped while the user had just confirmed the full safe list).
+			try {
+				await runAuto();
+			} catch (err) {
+				opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+			}
+
+			// Manual remainder — caller's per-item dispatch (absent in preflight:
+			// manual preflight rows are Abort-only by the decision table).
+			if (opts.dispatchOne) {
+				for (const item of view.manual) {
+					try {
+						await opts.dispatchOne(item);
+					} catch (err) {
+						opts.ui.notify(`Fix dispatch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+					}
 				}
 			}
+
+			// Re-audit, then decide. The condition lives in `shouldContinue` (pure).
+			fresh = await opts.reRun();
+			const clean = fresh.ok && fresh.actionableCount === 0;
+			// C-F4 (Phase 4): `fresh.actionableCount` counts ALL actionable items,
+			// not just manual ones — reporting it as "remaining manual" overcounted.
+			// The notify below already reports the accurate actionable total.
+			if (!clean) {
+				opts.ui.notify(
+					`Attempt ${attempts}/${maxAttempts}: ${fresh.actionableCount} item(s) remain after the batch — fix the manual items below, then re-run the command.`,
+					"warning",
+				);
+			} else {
+				opts.ui.notify(`Attempt ${attempts}/${maxAttempts}: clean.`, "info");
+			}
+
+			if (!shouldContinue(attempts, maxAttempts, fresh)) break;
 		}
 
-		// ONE re-audit — max 1 attempt, no infinite loop.
-		const fresh = await opts.reRun();
 		const clean = fresh.ok && fresh.actionableCount === 0;
-		// C-F4 (Phase 4): `fresh.actionableCount` counts ALL actionable items,
-		// not just manual ones — reporting it as "remaining manual" overcounted.
-		// The notify below already reports the accurate actionable total.
 		const remainingManual = clean ? 0 : view.manual.length;
-		if (!clean) {
-			opts.ui.notify(
-				`${fresh.actionableCount} item(s) remain after the batch — fix the manual items below, then re-run the command.`,
-				"warning",
-			);
-		}
 		return { action: "fixed", remainingManual };
 	}
 }

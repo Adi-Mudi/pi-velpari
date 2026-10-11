@@ -2,9 +2,11 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PATHS } from "../core/constants.js";
 import { loadFilesConfig, validateFilesConfig } from "../core/config.js";
+import { exitCodeFor, isCheckMode, isJsonMode } from "../doctor/check-mode.js";
 import { handleDoctor } from "../doctor/index.js";
 import { dispatchFixChoice, listActionableItems } from "../doctor/fix-dispatch.js";
 import { runFixFlow } from "../doctor/fix-flow.js";
+import { JSON_REPORT_PATH, writeDoctorJson } from "../doctor/report-schema.js";
 
 /**
  * Real handler for /velpari-doctor.
@@ -34,10 +36,32 @@ export function registerDoctorCommand(pi: ExtensionAPI): void {
 			// --velpari-skip-doctor short-circuited; no report to act on.
 			if (result.skipped || !result.report) return;
 
+			// Doctor upgrade P1 / T1: --velpari-json writes the versioned
+			// machine-readable report beside the markdown report.
+			const jsonMode = isJsonMode(pi);
+			if (jsonMode) {
+				writeDoctorJson(result.report, cwd);
+				ctx.ui.notify(`Machine-readable report written to ${join(cwd, JSON_REPORT_PATH)}.`, "info");
+			}
+
+			// Doctor upgrade P1 / T2: --velpari-check is the non-interactive
+			// pass/fail path. Report the verdict and set the process exit code
+			// so CI / preflight can gate on it. No picker follows.
+			const checkMode = isCheckMode(pi);
+			if (checkMode) {
+				const code = exitCodeFor(result.report);
+				ctx.ui.notify(
+					code === 0 ? "Doctor: PASS" : `Doctor: FAIL (${result.report.summary.error} errors)`,
+					code === 0 ? "info" : "error",
+				);
+				process.exitCode = code;
+			}
+
 			// --velpari-fix is the opt-in for the interactive picker.
-			// Default off so existing behavior is unchanged.
+			// Default off so existing behavior is unchanged. The picker is
+			// suppressed in the non-interactive check/json modes.
 			const wantFix = pi.getFlag?.("velpari-fix") === true;
-			if (!wantFix) return;
+			if (!wantFix || checkMode || jsonMode) return;
 
 			const items = listActionableItems(result.report);
 			if (items.length === 0) {
