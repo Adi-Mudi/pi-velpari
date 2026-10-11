@@ -165,7 +165,9 @@ export function parseFrontmatter(markdown: string): Record<string, string> {
  * agent name through `.pi/velpari/agents.json` (identity when absent),
  * and check the resolved file's presence + frontmatter. A custom-mapped
  * agent that is missing is an error (auto-bootstrap only installs the
- * bundled defaults); a missing default stays a warning. A corrupt
+ * bundled defaults); missing bundled defaults are aggregated into ONE
+ * `info` item (D3, R-STRICT) — each auto-bootstraps on first use, so N
+ * per-scout warnings would be pure noise. A corrupt
  * agents.json is NOT reported here — checkAgentMappingSection owns it;
  * this check falls back to default names in that case.
  */
@@ -174,6 +176,7 @@ export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
 	const agentsDir = join(cwd, ".pi", "agents");
 	let totalMissing = 0;
 	let totalBadFrontmatter = 0;
+	let bundledMissing = 0;
 
 	let agentConfig: AgentConfig | null = null;
 	try {
@@ -191,13 +194,20 @@ export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
 			const target = join(agentsDir, `${agentName}.md`);
 			if (!existsSync(target)) {
 				totalMissing++;
-				items.push({
-					status: isCustom ? "error" : "warning",
-					message: isCustom
-						? `${agentName}.md (${stage}, role ${role}) MISSING —${customNote} Auto-bootstrap only installs bundled defaults.`
-						: `${agentName}.md (${stage}) MISSING — will auto-bootstrap on first /velpari-${stage}.`,
-					suggestion: suggestionFor(isCustom ? "agent-mapping-missing" : "scout-agent-missing"),
-				});
+				if (isCustom) {
+					// Custom-mapped agents do not auto-heal — keep them as
+					// individual errors so the mapping gets fixed.
+					items.push({
+						status: "error",
+						message: `${agentName}.md (${stage}, role ${role}) MISSING —${customNote} Auto-bootstrap only installs bundled defaults.`,
+						suggestion: suggestionFor("agent-mapping-missing"),
+					});
+				} else {
+					// D3 (R-STRICT): bundled defaults auto-bootstrap on first
+					// use — aggregate them into one `info` item below instead
+					// of one warning per scout.
+					bundledMissing++;
+				}
 				continue;
 			}
 			const content = readFileSync(target, "utf8");
@@ -217,6 +227,17 @@ export function checkScoutAgentsSection(cwd: string): DiagnosticSection {
 				});
 			}
 		}
+	}
+
+	// D3 (R-STRICT): one aggregated info item for the bundled-default
+	// scouts that are simply not installed yet (each auto-bootstraps on
+	// first /velpari-<stage>), instead of N per-scout warnings.
+	if (bundledMissing > 0) {
+		items.push({
+			status: "info",
+			message: `${bundledMissing} bundled scout agent(s) not yet installed — each auto-bootstraps on first /velpari-<stage>.`,
+			suggestion: suggestionFor("scout-agent-missing"),
+		});
 	}
 
 	const totalScouts = Object.values(ALL_STAGE_SCOUTS).flat().length;
