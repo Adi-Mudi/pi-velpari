@@ -19,14 +19,15 @@
  * `renderReport(report)` for back-compat with every existing caller.
  *
  * The report is written with `atomicWriteFile` (io/atomic-write.ts).
- * An "Action items" callout is prepended by the orchestrator so errors
- * survive TUI truncation.
+ * The `--quiet` render builds an "Action items" callout at render time
+ * so errors survive TUI truncation; it is never stored in `sections`.
  */
 
 import { join } from "node:path";
 import { PATHS } from "../core/constants.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { iconFor, type DiagnosticReport, type DiagnosticSection, type DiagnosticStatus } from "./_types.js";
+import { buildActionItemsSection } from "./index.js";
 import { sectionId } from "./report-schema.js";
 
 /** Coarse buckets used by `opts.grouped`; additions fall to "Other". */
@@ -94,8 +95,7 @@ export function renderReport(report: DiagnosticReport, opts: RenderOptions = {})
 	lines.push("");
 
 	if (opts.quiet) {
-		const actionItems = report.sections.find((section) => sectionId(section) === "action-items");
-		if (actionItems) renderSection(lines, actionItems);
+		renderSection(lines, buildActionItemsSection(report.sections));
 		return applyMaxChars(lines.join("\n"), opts.maxChars);
 	}
 
@@ -157,14 +157,10 @@ function groupForSection(id: string): GroupName {
 	return "Other";
 }
 
-/** Render the grouped view: Action items first, then buckets in fixed order. */
+/** Render the grouped view: sections bucketed in fixed group order. */
 function renderGrouped(lines: string[], sections: DiagnosticSection[]): void {
-	const actionItems = sections.find((section) => sectionId(section) === "action-items");
-	if (actionItems) renderSection(lines, actionItems);
-
 	const buckets = new Map<GroupName, DiagnosticSection[]>();
 	for (const section of sections) {
-		if (section === actionItems) continue;
 		const group = groupForSection(sectionId(section));
 		const list = buckets.get(group) ?? [];
 		list.push(section);

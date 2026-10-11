@@ -19,7 +19,7 @@ const REPORT: DiagnosticReport = {
 	ok: false,
 	summary: { ok: 1, warning: 1, error: 1, info: 0 },
 	sections: [
-		{ title: "Action items", items: [{ status: "error", message: "Boom", suggestion: "Fix it" }] },
+		{ title: "Config", items: [{ status: "error", message: "Boom", suggestion: "Fix it" }] },
 		{ title: "Environment", items: [{ status: "ok", message: "Fine" }] },
 		{
 			title: "Setup progress",
@@ -86,9 +86,9 @@ describe("buildChatReport — setup-progress hoist", () => {
 		const text = buildChatReport(REPORT);
 		const setup = text.indexOf("## Setup progress");
 		assert.ok(setup >= 0, "setup-progress section must render");
-		assert.ok(setup < text.indexOf("## Action items"), "setup-progress must precede the action items");
 		assert.ok(setup < text.indexOf("## Environment"), "setup-progress must precede other sections");
 		assert.ok(setup < text.indexOf("## Custom thing"), "setup-progress must precede other sections");
+		assert.ok(!text.includes("## Action items"), "the chat body no longer carries the derived callout");
 	});
 });
 

@@ -10,8 +10,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../../src/doctor/index.js";
+import { renderReport } from "../../src/doctor/report.js";
 import { ensureStandardScaffold } from "../../src/ops/self-heal.js";
-import type { DiagnosticSection, DiagnosticItem } from "../../src/doctor/_types.js";
+import type { DiagnosticSection } from "../../src/doctor/_types.js";
 
 /** The 8 Doctor v2 (N22) sections Phase C registers in `runDoctor`. */
 const V2_TITLES = [
@@ -81,17 +82,11 @@ test("corrupt files.json renders Config: UNREADABLE with a Fix, never throws", (
 	assert.ok(cfg, "Config section must render");
 	assert.match(cfg.items[0].message, /^Config: UNREADABLE/);
 	assert.equal(cfg.items[0].status, "error");
-	// Action items callout (report head) carries the error + its fix.
-	const actions = report!.sections[0];
-	assert.match(actions.title, /Action items/);
-	assert.ok(
-		actions.items.some((i: DiagnosticItem) => i.message.includes("Config: UNREADABLE")),
-		"action items must surface Config: UNREADABLE",
-	);
-	assert.ok(
-		actions.items.some((i: DiagnosticItem) => i.message.includes("→ Fix:")),
-		"action items must carry fix suggestions",
-	);
+	// The quiet render's built Action-items callout carries the error + fix.
+	const quiet = renderReport(report!, { quiet: true });
+	assert.match(quiet, /## Action items/);
+	assert.ok(quiet.includes("Config: UNREADABLE"), "action items must surface Config: UNREADABLE");
+	assert.ok(quiet.includes("→ Fix:"), "action items must carry fix suggestions");
 });
 
 test("corrupt state.json renders Run state: UNREADABLE, never throws", () => {
