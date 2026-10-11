@@ -192,6 +192,7 @@ describe("runFixFlow", () => {
 			cwd: "/tmp/x",
 			projectName: "X",
 			source,
+			maxAttempts: 1,
 			reRun: async () => {
 				reRunCalls++;
 				return { ok: false, actionableCount: 1 }; // manual config-invalid still open
@@ -253,6 +254,7 @@ describe("runFixFlow", () => {
 			cwd: "/tmp/x",
 			projectName: "X",
 			source: { kind: "doctor", report },
+			maxAttempts: 1,
 			reRun: async () => ({ ok: false, actionableCount: 1 }),
 			runAuto: async () => {
 				autoRan = true;
@@ -292,6 +294,7 @@ describe("runFixFlow", () => {
 			cwd: "/tmp/x",
 			projectName: "X",
 			source: { kind: "doctor", report },
+			maxAttempts: 1,
 			reRun: async () => ({ ok: false, actionableCount: 1 }),
 			runAuto: async () => {
 				autoCalls++;
