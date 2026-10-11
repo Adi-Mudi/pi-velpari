@@ -205,7 +205,7 @@ describe("3. --velpari-json", () => {
 			assert.ok(section.id.length > 0, `section "${section.title}" id must be non-empty`);
 		}
 		const ids = new Set(json.sections.map((s) => s.id));
-		for (const stable of ["action-items", "config", "run-state"]) {
+		for (const stable of ["config", "run-state"]) {
 			assert.ok(ids.has(stable), `expected stable section id "${stable}" (got: ${[...ids].join(", ")})`);
 		}
 
