@@ -545,7 +545,7 @@ export async function handleDoctor(
 	const quiet = pi?.getFlag?.("velpari-quiet") === true;
 	const check = pi?.getFlag?.("velpari-check") === true;
 	const wantJson = pi?.getFlag?.("velpari-json") === true;
-	if (pi && !quiet && !check && !wantJson) {
+	if (pi && !quiet && !check && !wantJson && typeof pi.sendUserMessage === "function") {
 		await pi.sendUserMessage(`${buildChatReport(report)}\n\nReport saved to ${reportPath}`);
 		return { skipped: false, report };
 	}
