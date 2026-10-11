@@ -336,12 +336,18 @@ class RpcClient {
 			}
 		});
 		proc.stderr.on("data", (chunk) => {
+			this.stderrBuf = (this.stderrBuf + chunk.toString()).slice(-4000);
 			try {
 				appendFileSync(stderrLog, chunk);
 			} catch {
 				// report dir may not exist yet
 			}
 		});
+	}
+
+	/** Last ~4 KB of the child's stderr — the only clue when pi dies at startup. */
+	stderrTail() {
+		return (this.stderrBuf || "").trim() || "(no stderr)";
 	}
 
 	_handle(obj) {
@@ -681,15 +687,38 @@ async function runGolden(args) {
 	// mux-detection paths; a golden run must be mux-independent.
 	const spawnEnv = buildSpawnEnv();
 
-	const pi = spawn("pi", spawnArgs, { cwd: workspace, stdio: ["pipe", "pipe", "pipe"], env: spawnEnv });
-	const client = new RpcClient(pi, stderrLog);
-	client.onUiRequest = makeUiRouter();
+	// A pi process + its RPC client. Factored so a failed STARTUP can be retried
+	// once (ledger P5): inside one CI job the first golden run succeeded and the
+	// second spawn of the SAME command died with a get_commands timeout, so the
+	// harness now retries once and always prints pi's stderr tail on startup
+	// failure — without that tail the cause was invisible.
+	const spawnWorker = () => {
+		const p = spawn("pi", spawnArgs, { cwd: workspace, stdio: ["pipe", "pipe", "pipe"], env: spawnEnv });
+		const c = new RpcClient(p, stderrLog);
+		c.onUiRequest = makeUiRouter();
+		return { p, c };
+	};
+	let { p: pi, c: client } = spawnWorker();
 	let runId = "";
 	let resolvedModel = args.model || null;
 	let advancedTo = "";
 
 	try {
-		const cmdsResp = await client.sendCommand({ type: "get_commands" });
+		let cmdsResp;
+		try {
+			cmdsResp = await client.sendCommand({ type: "get_commands" });
+		} catch (startupErr) {
+			process.stderr.write(
+				`eval-run: startup failed (${startupErr?.message ?? startupErr}) — retrying once. pi stderr tail:\n${client.stderrTail()}\n`,
+			);
+			try {
+				pi.kill("SIGKILL");
+			} catch {
+				// already gone
+			}
+			({ p: pi, c: client } = spawnWorker());
+			cmdsResp = await client.sendCommand({ type: "get_commands" });
+		}
 		if (!cmdsResp.success) throw new Error("get_commands failed");
 		const stateResp = await client.sendCommand({ type: "get_state" });
 		if (stateResp.success && stateResp.data?.model) {

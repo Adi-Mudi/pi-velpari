@@ -1,0 +1,2400 @@
+{
+  "reportVersion": 1,
+  "generatedAt": "2026-10-11T04:32:15.607Z",
+  "model": "cline-pass/cline-pass/deepseek-v4.1-flash",
+  "missions": [
+    {
+      "mission": "cli-todo",
+      "runId": "2026-10-11T03-54-build-a-cli-todo-list-manager-",
+      "status": "completed",
+      "stages": [
+        {
+          "stage": "drafting-prd",
+          "totalScore": 0.9772727272727273,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 1
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "building-rtm",
+          "totalScore": 0.9621212121212122,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "analyzing-feasibility",
+          "totalScore": 0.9621212121212122,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "designing",
+          "totalScore": 0.9621212121212122,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "analyzing-atomic-functions",
+          "totalScore": 0.9772727272727273,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 1
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "writing-pseudocode",
+          "totalScore": 0.9621212121212122,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 1
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "planning-tests",
+          "totalScore": 0.9545454545454546,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 0.5
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "ordering-development",
+          "totalScore": 0.9545454545454546,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 0.5
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        },
+        {
+          "stage": "finalizing-design",
+          "totalScore": 0.9545454545454546,
+          "detScores": [
+            {
+              "name": "action-items",
+              "score": 0.5
+            },
+            {
+              "name": "setup-progress",
+              "score": 1
+            },
+            {
+              "name": "run-state",
+              "score": 1
+            },
+            {
+              "name": "config",
+              "score": 1
+            },
+            {
+              "name": "requirements-profile",
+              "score": 1
+            },
+            {
+              "name": "doc-artifacts",
+              "score": 1
+            },
+            {
+              "name": "grouped-legacy-paths",
+              "score": 1
+            },
+            {
+              "name": "working-published-separation",
+              "score": 1
+            },
+            {
+              "name": "psrs-shape",
+              "score": 1
+            },
+            {
+              "name": "rtm-traceability",
+              "score": 1
+            },
+            {
+              "name": "artifact-frontmatter",
+              "score": 1
+            },
+            {
+              "name": "rtm-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "rtm-test-cases-link-consistency",
+              "score": 0.5
+            },
+            {
+              "name": "atomic-functions-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "test-cases-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "development-order-data-sidecar",
+              "score": 1
+            },
+            {
+              "name": "execution-lanes",
+              "score": 1
+            },
+            {
+              "name": "trace-link-fingerprints",
+              "score": 1
+            },
+            {
+              "name": "phase-consistency-prd-rtm",
+              "score": 1
+            },
+            {
+              "name": "mvp-coverage",
+              "score": 1
+            },
+            {
+              "name": "feasibility-v2",
+              "score": 1
+            },
+            {
+              "name": "feasibility-decision-record",
+              "score": 1
+            },
+            {
+              "name": "stale-downstream-artifacts",
+              "score": 1
+            },
+            {
+              "name": "freshness",
+              "score": 1
+            },
+            {
+              "name": "store-db-integrity",
+              "score": 1
+            },
+            {
+              "name": "store-db-link-orphans",
+              "score": 1
+            },
+            {
+              "name": "audit-hash-chain-n15",
+              "score": 1
+            },
+            {
+              "name": "baselines-vs-revisions-f7",
+              "score": 1
+            },
+            {
+              "name": "last-verified-backup-n11",
+              "score": 1
+            },
+            {
+              "name": "git-integration",
+              "score": 1
+            },
+            {
+              "name": "portfolio-registry",
+              "score": 1
+            },
+            {
+              "name": "id-coverage",
+              "score": 1
+            },
+            {
+              "name": "sequence-hardening",
+              "score": 1
+            },
+            {
+              "name": "run-lock-n13",
+              "score": 1
+            },
+            {
+              "name": "run-worktree-n14",
+              "score": 1
+            },
+            {
+              "name": "multiplexer-required-for-velpari-brainstorm-v2-1",
+              "score": 0.5
+            },
+            {
+              "name": "herdr-integration-readiness",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-extension",
+              "score": 1
+            },
+            {
+              "name": "stray-files",
+              "score": 1
+            },
+            {
+              "name": "web-tool-lock",
+              "score": 1
+            },
+            {
+              "name": "agent-file-integrity",
+              "score": 1
+            },
+            {
+              "name": "scout-agents-pi-agents",
+              "score": 0.5
+            },
+            {
+              "name": "agent-mapping-agents-json",
+              "score": 1
+            },
+            {
+              "name": "stage-skills",
+              "score": 1
+            },
+            {
+              "name": "secret-scan-nfr-04",
+              "score": 1
+            },
+            {
+              "name": "official-extension-readiness",
+              "score": 1
+            },
+            {
+              "name": "available-scans-scan-gate",
+              "score": 1
+            },
+            {
+              "name": "sub-agent-generator-completeness",
+              "score": 1
+            },
+            {
+              "name": "generated-agent-freshness",
+              "score": 1
+            },
+            {
+              "name": "reviewer-verdict",
+              "score": 1
+            },
+            {
+              "name": "design-readiness-phase-1",
+              "score": 1
+            },
+            {
+              "name": "shape",
+              "score": 1
+            },
+            {
+              "name": "logging-plan-doc-observability-logging-plan-project-md",
+              "score": 1
+            },
+            {
+              "name": "environment",
+              "score": 1
+            },
+            {
+              "name": "pi-extension-conformance",
+              "score": 1
+            },
+            {
+              "name": "config-tamper-drift-vs-recorded-baseline-git-intent",
+              "score": 1
+            },
+            {
+              "name": "newly-generated-files-generated-manifest-validation",
+              "score": 1
+            },
+            {
+              "name": "worktree-binding-n17",
+              "score": 1
+            },
+            {
+              "name": "soft-locks-n19",
+              "score": 1
+            },
+            {
+              "name": "store-digest-vs-git-foreign-modification-n21-layer-4",
+              "score": 1
+            },
+            {
+              "name": "semver-bump-n27",
+              "score": 1
+            },
+            {
+              "name": "quality-local-evals",
+              "score": 1
+            },
+            {
+              "name": "publish-gate",
+              "score": 0.5
+            }
+          ],
+          "judgeOverall": null,
+          "judgeModel": null,
+          "rubricId": null,
+          "rubricVersion": null,
+          "rubricHash": null,
+          "detConfigHash": "012d249988c4bb03",
+          "attempts": 1
+        }
+      ],
+      "overallMean": 0.9629629629629631
+    }
+  ]
+}
