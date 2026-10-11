@@ -6,7 +6,7 @@
 //   node --test scripts/eval-run.test.mjs
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,6 +30,8 @@ import {
 	parseMissionMarkdown,
 	parseRunArgs,
 	pinnedExtensionPaths,
+	shutdownWorker,
+	waitExit,
 	resolveUntil,
 } from "./eval-run.mjs";
 
@@ -519,4 +521,22 @@ test("pinnedExtensionPaths: pins the cline provider so --ne runs can resolve the
 	} finally {
 		rmSync(fakeHome, { recursive: true, force: true });
 	}
+});
+
+test("waitExit/shutdownWorker: teardown actually waits (ledger P5)", async () => {
+	// A child that ignores SIGTERM must still be gone after shutdownWorker.
+	const stubborn = spawn("node", ["-e", 'process.on("SIGTERM",()=>{}); setTimeout(()=>{}, 30000);'], {
+		stdio: "ignore",
+	});
+	await new Promise((r) => setTimeout(r, 300));
+	assert.equal(await waitExit(stubborn, 200), false, "still running → waitExit(false)");
+	await shutdownWorker(stubborn, "stubborn", 300);
+	await new Promise((r) => setTimeout(r, 300));
+	assert.ok(stubborn.exitCode !== null || stubborn.signalCode !== null, "SIGKILL escalation reaped the child");
+
+	// A well-behaved child exits on SIGTERM without escalation.
+	const polite = spawn("node", ["-e", "setTimeout(()=>{}, 30000);"], { stdio: "ignore" });
+	await new Promise((r) => setTimeout(r, 300));
+	await shutdownWorker(polite, "polite", 3000);
+	assert.ok(polite.exitCode !== null || polite.signalCode !== null, "polite child reaped");
 });

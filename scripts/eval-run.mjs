@@ -35,6 +35,10 @@ const EXTENSION_PATH = join(PROJECT_ROOT, "dist", "pi-extension", "src", "index.
 export const PROJECT_NAME = "EvalGoldenApp";
 
 const COMMAND_TIMEOUT_MS = 120000;
+// Startup is special: the first get_commands waits for extension AND provider
+// loading (the cline provider resolves its model catalog over the network), so it
+// gets a longer budget while later commands stay at COMMAND_TIMEOUT_MS (ledger P5).
+const STARTUP_TIMEOUT_MS = Number(process.env.EVAL_STARTUP_TIMEOUT_MS ?? 300000);
 const STAGE_TIMEOUT_MS = Number(process.env.EVAL_STAGE_TIMEOUT_MS ?? 20 * 60 * 1000);
 const QUIET_MS = Number(process.env.EVAL_QUIET_MS ?? 20000);
 
@@ -383,14 +387,14 @@ class RpcClient {
 		this.proc.stdin.write(`${JSON.stringify(cmd)}\n`);
 	}
 
-	sendCommand(cmd) {
+	sendCommand(cmd, timeoutMs = COMMAND_TIMEOUT_MS) {
 		const id = `req-${++this._reqCounter}`;
 		this._send({ ...cmd, id });
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.pendingResponses.delete(id);
 				reject(new Error(`Timeout waiting for response to ${cmd.type}`));
-			}, COMMAND_TIMEOUT_MS);
+			}, timeoutMs);
 			this.pendingResponses.set(id, (obj) => {
 				clearTimeout(timer);
 				resolve(obj);
@@ -640,6 +644,46 @@ export function pinnedExtensionPaths(home = homedir()) {
 	return candidates.filter((p) => existsSync(p));
 }
 
+/**
+ * Wait for a child to actually exit. Returns true when it did.
+ * Teardown used to be fire-and-forget (`kill("SIGTERM")` and move on), which
+ * lets a still-running pi — and any children it spawned — survive into the next
+ * golden run in the same job (ledger P5).
+ */
+export function waitExit(proc, ms) {
+	if (!proc || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve(true);
+	return new Promise((resolve) => {
+		const done = () => {
+			clearTimeout(timer);
+			proc.removeListener("exit", done);
+			resolve(true);
+		};
+		const timer = setTimeout(() => {
+			proc.removeListener("exit", done);
+			resolve(false);
+		}, ms);
+		proc.once("exit", done);
+	});
+}
+
+/** SIGTERM → wait → SIGKILL → wait. Never throws; always returns. */
+export async function shutdownWorker(proc, label = "pi", graceMs = 5000) {
+	if (!proc || proc.exitCode !== null || proc.signalCode !== null) return;
+	try {
+		proc.kill("SIGTERM");
+	} catch {
+		return;
+	}
+	if (await waitExit(proc, graceMs)) return;
+	process.stderr.write(`eval-run: ${label} ignored SIGTERM after ${graceMs}ms — SIGKILL\n`);
+	try {
+		proc.kill("SIGKILL");
+	} catch {
+		// already gone
+	}
+	await waitExit(proc, 3000);
+}
+
 async function runGolden(args) {
 	const mission = loadMission(args.mission, { fixturesDir: args.fixturesDir });
 	if (!mission.ok) {
@@ -706,18 +750,14 @@ async function runGolden(args) {
 	try {
 		let cmdsResp;
 		try {
-			cmdsResp = await client.sendCommand({ type: "get_commands" });
+			cmdsResp = await client.sendCommand({ type: "get_commands" }, STARTUP_TIMEOUT_MS);
 		} catch (startupErr) {
 			process.stderr.write(
 				`eval-run: startup failed (${startupErr?.message ?? startupErr}) — retrying once. pi stderr tail:\n${client.stderrTail()}\n`,
 			);
-			try {
-				pi.kill("SIGKILL");
-			} catch {
-				// already gone
-			}
+			await shutdownWorker(pi, "pi (failed startup)");
 			({ p: pi, c: client } = spawnWorker());
-			cmdsResp = await client.sendCommand({ type: "get_commands" });
+			cmdsResp = await client.sendCommand({ type: "get_commands" }, STARTUP_TIMEOUT_MS);
 		}
 		if (!cmdsResp.success) throw new Error("get_commands failed");
 		const stateResp = await client.sendCommand({ type: "get_state" });
@@ -840,11 +880,9 @@ async function runGolden(args) {
 	} catch (err) {
 		process.stderr.write(`eval-run: harness error: ${err?.message ?? err}\n`);
 	} finally {
-		try {
-			pi.kill("SIGTERM");
-		} catch {
-			// already gone
-		}
+		// Ordered teardown (ledger P5): the old fire-and-forget SIGTERM let a live
+		// pi survive into the NEXT golden run of the same CI job.
+		await shutdownWorker(pi, "pi (mission teardown)");
 	}
 
 	const dbPath = join(workspace, "Eval", PROJECT_NAME, "eval.db");
