@@ -1,0 +1,41 @@
+# Eval rubric — testplan reviewer stage (Phase B, decision 1/2).
+# One criterion per scored dimension of the reviewer mandate.
+# `# source:` names the reviewer-template rule the criterion is grounded in.
+rubric: testplan
+version: 1
+criteria:
+  - id: dual-artifact-present
+    weight: 3
+    description: Both the test-plan and test-cases drafts exist and carry their required sections.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #1 test-plan-missing, #2 test-cases-missing
+  - id: per-atomic-function-test-coverage
+    weight: 3
+    description: Every AF has at least one test case and the cases trace back to atomic-function ids.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #5 per-af-test, #10 coverage-traceability
+  - id: strategy-and-target-stated
+    weight: 2
+    description: The plan names its test strategy and declares a coverage % target where the tier requires it.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #3 test-strategy-stated, #4 coverage-target-stated
+  - id: test-pyramid-balanced
+    weight: 2
+    description: The unit:integration:e2e mix is reasonable with at least 50% unit tests.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #6 test-pyramid-balanced
+  - id: test-quality-assertions
+    weight: 2
+    description: Test cases assert real behaviour and do not share mutable state.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #7 test-independence, #8 assertion-quality
+  - id: flaky-pattern-free
+    weight: 2
+    description: No test relies on sleep or wall-clock timing.
+    # source: skills/agents/testplan-reviewer.md — "Checks (deterministic)" #9 flaky-pattern
+  - id: cross-scout-consistency
+    weight: 2
+    description: Coverage and test names agree across the four scout reports.
+    # source: skills/agents/testplan-reviewer.md — "Checks (semantic)" #11 cross-scout-contradiction, #12 test-misnaming
+calibration:
+  - input_summary: Plan plus cases covering every AF with a healthy pyramid and real assertions
+    expected_score: 0.9
+    tolerance: 0.1
+  - input_summary: Cases missing two AFs and a scout disagreement on the coverage target
+    expected_score: 0.35
+    tolerance: 0.15

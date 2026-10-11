@@ -61,6 +61,40 @@ Write **one** JSON file at `<reviewerReportPath>`:
 - **needs-fix** — at least one error that the parent LLM can fix in the working copy and re-run. Loop: fix → re-spawn reviewer → re-check.
 - **block** — at least one error that requires human intervention (e.g. contradictory source artifacts). Parent LLM stops and notifies the user.
 
+## Scores block (rubric — evals Phase B)
+
+The verdict is the source of truth for the gate. In ADDITION, attach a
+top-level `scores` object scoring every criterion of the atomic-function
+rubric at `skills/eval-rubrics/atomic-function.yaml`. This is additive — it
+never changes the `verdict` contract above.
+
+```json
+{
+  "scores": {
+    "rubricId": "atomic-function",
+    "rubricVersion": 1,
+    "rubricHash": "0123456789abcdef",
+    "judgeModel": "<the model id you are running as>",
+    "criteria": [
+      { "id": "base-core-fields-complete", "score": 1.0, "note": "all 8 fields present" },
+      { "id": "tier-specific-fields-complete", "score": 0.5, "note": "risk empty on the advanced tier" },
+      { "id": "classification-valid", "score": 1.0 },
+      { "id": "complexity-within-tier-limit", "score": 1.0 },
+      { "id": "architecture-signal-quality", "score": 0.5 },
+      { "id": "cross-scout-consistency", "score": 1.0 },
+      { "id": "standards-traceability", "score": 1.0 }
+    ],
+    "overall": 0.857
+  }
+}
+```
+
+Locked rules:
+- Every rubric criterion `id` appears exactly once; no unknown ids.
+- `score` and `overall` are in `[0, 1]`; `overall` is the rubric-weighted mean.
+- `rubricHash` = first 16 hex chars of `sha256` over the rubric file bytes.
+- Rubric file missing → OMIT the `scores` block entirely (never invent one).
+
 ## Checks (deterministic — migrated from doctor/checks/atomic-tier.ts)
 
 The 10 deterministic rules. Apply them strictly. These are the rules the
