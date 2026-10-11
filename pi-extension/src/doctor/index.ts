@@ -25,6 +25,7 @@ import { loadState } from "../core/state.js";
 import { loadHistory } from "../core/history.js";
 import { buildWorkingGroupedPath } from "../core/paths.js";
 import { type DiagnosticItem, type DiagnosticReport, type DiagnosticSection, summarize } from "./_types.js";
+import { safeSection } from "./safe-section.js";
 import { buildChatReport } from "./chat-render.js";
 import { writeDoctorReport } from "./report.js";
 import { checkGroupedLegacyPathsSection } from "./checks/paths.js";
@@ -371,90 +372,92 @@ function buildMultiplexerSection(cwd: string): DiagnosticSection {
 export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolean } = {}): DiagnosticReport {
 	const projectName = readProjectName(cwd);
 
+	// D7 hardening: every check runs through safeSection so a throwing
+	// check renders an error section instead of crashing runDoctor.
 	const sections: DiagnosticSection[] = [
-		checkSetupProgress(cwd),
-		buildStateSection(cwd),
-		buildConfigSection(cwd),
-		checkRequirementsProfileSection(cwd),
-		buildDocArtifactsSection(cwd),
-		checkGroupedLegacyPathsSection(cwd, projectName),
-		checkWorkingPublishedSeparationSection(cwd, projectName),
-		checkPsrsSection(cwd, projectName),
-		checkRtmTraceabilitySection(cwd, projectName),
-		checkFrontmatterSection(cwd, projectName),
-		checkRtmDataSection(cwd, projectName),
-		checkTraceLinkConsistencySection(cwd, projectName),
-		checkAfDataSection(cwd, projectName),
-		checkTestCasesDataSection(cwd, projectName),
-		checkDevOrderDataSection(cwd, projectName),
+		safeSection(() => checkSetupProgress(cwd)),
+		safeSection(() => buildStateSection(cwd)),
+		safeSection(() => buildConfigSection(cwd)),
+		safeSection(() => checkRequirementsProfileSection(cwd)),
+		safeSection(() => buildDocArtifactsSection(cwd)),
+		safeSection(() => checkGroupedLegacyPathsSection(cwd, projectName)),
+		safeSection(() => checkWorkingPublishedSeparationSection(cwd, projectName)),
+		safeSection(() => checkPsrsSection(cwd, projectName)),
+		safeSection(() => checkRtmTraceabilitySection(cwd, projectName)),
+		safeSection(() => checkFrontmatterSection(cwd, projectName)),
+		safeSection(() => checkRtmDataSection(cwd, projectName)),
+		safeSection(() => checkTraceLinkConsistencySection(cwd, projectName)),
+		safeSection(() => checkAfDataSection(cwd, projectName)),
+		safeSection(() => checkTestCasesDataSection(cwd, projectName)),
+		safeSection(() => checkDevOrderDataSection(cwd, projectName)),
 		// Phase 7 (N16) — execution-lane integrity: step-in-one-lane,
 		// cross-lane deps without an integration point, DAG acyclicity,
 		// name-match. Legacy artifacts (no lane rows) stay not-checkable.
-		checkDevLanesSection(cwd, projectName),
-		checkFingerprintsSection(cwd, projectName),
-		checkPhaseConsistencySection(cwd, projectName),
-		checkMvpCoverageSection(cwd, projectName),
-		checkFeasibilityV2Section(cwd, projectName),
-		checkFeasibilityRecordSection(cwd, projectName),
-		checkStaleDownstreamSection(cwd, projectName),
-		checkFreshnessSection(cwd),
+		safeSection(() => checkDevLanesSection(cwd, projectName)),
+		safeSection(() => checkFingerprintsSection(cwd, projectName)),
+		safeSection(() => checkPhaseConsistencySection(cwd, projectName)),
+		safeSection(() => checkMvpCoverageSection(cwd, projectName)),
+		safeSection(() => checkFeasibilityV2Section(cwd, projectName)),
+		safeSection(() => checkFeasibilityRecordSection(cwd, projectName)),
+		safeSection(() => checkStaleDownstreamSection(cwd, projectName)),
+		safeSection(() => checkFreshnessSection(cwd)),
 		// Standalone runs stamp store_meta.integrity_checked_at; the
 		// embedded post-publish run (approve.ts) passes embedded: true and
 		// never writes — the DB file was just git-committed (Phase 7).
-		checkDbIntegritySection(cwd, { embedded: opts.embedded === true }),
-		checkDbLinkOrphansSection(cwd),
+		safeSection(() => checkDbIntegritySection(cwd, { embedded: opts.embedded === true })),
+		safeSection(() => checkDbLinkOrphansSection(cwd)),
 		// Phase 6 — store-level recovery visibility: broken hash chain is
 		// an ERROR naming the row (N15), drifted baselines report (F7),
 		// and the newest snapshot is proven on the spot (N11).
-		checkHashChainSection(cwd),
-		checkBaselinesSection(cwd),
-		checkLastBackupSection(cwd),
+		safeSection(() => checkHashChainSection(cwd)),
+		safeSection(() => checkBaselinesSection(cwd)),
+		safeSection(() => checkLastBackupSection(cwd)),
 		// Phase 9 — G2a visibility: user-repo git protection for the raw
 		// store DB (binary attr + WAL ignores). Warnings only; the next
 		// publish auto-heals via ops/git-attributes.ts.
-		checkGitIntegrationSection(cwd),
+		safeSection(() => checkGitIntegrationSection(cwd)),
 		// Phase 10 — §15.5 drift visibility: portfolio registry vs the
 		// per-project DBs + D8 image-asset existence (traversal rejected).
-		checkPortfolioSection(cwd),
-		checkIdCoverageSection(cwd),
-		checkGateWiringSection(cwd),
+		safeSection(() => checkPortfolioSection(cwd)),
+		safeSection(() => checkIdCoverageSection(cwd)),
+		safeSection(() => checkGateWiringSection(cwd)),
 		// Phase 6 — run-level recovery visibility: N13 stale lock (with the
 		// /velpari-reset path) + N14 worktree-removal warning. Gate-wiring's
 		// lock line is an info pointer to these (D5 — one defect, one severity).
-		checkRunLockSection(cwd),
-		checkWorktreeRemovalSection(cwd),
-		buildMultiplexerSection(cwd),
-		checkHerdrSection(cwd),
-		checkSubagentExtension(),
-		checkStrayFiles(cwd),
-		checkWebToolLock(cwd),
-		checkAgentFileIntegrity(cwd),
-		checkScoutAgentsSection(cwd),
-		checkAgentMappingSection(cwd),
-		checkStageSkillsSection(cwd),
-		checkSecretScan(cwd),
-		checkOfficialReadiness(cwd),
-		checkScanOptions(cwd),
-		checkSubAgentGeneratorSection(cwd),
-		checkAgentFreshnessSection(cwd),
+		safeSection(() => checkRunLockSection(cwd)),
+		safeSection(() => checkWorktreeRemovalSection(cwd)),
+		safeSection(() => buildMultiplexerSection(cwd)),
+		safeSection(() => checkHerdrSection(cwd)),
+		safeSection(() => checkSubagentExtension()),
+		safeSection(() => checkStrayFiles(cwd)),
+		safeSection(() => checkWebToolLock(cwd)),
+		safeSection(() => checkAgentFileIntegrity(cwd)),
+		safeSection(() => checkScoutAgentsSection(cwd)),
+		safeSection(() => checkAgentMappingSection(cwd)),
+		safeSection(() => checkStageSkillsSection(cwd)),
+		safeSection(() => checkSecretScan(cwd)),
+		safeSection(() => checkOfficialReadiness(cwd)),
+		safeSection(() => checkScanOptions(cwd)),
+		safeSection(() => checkSubAgentGeneratorSection(cwd)),
+		safeSection(() => checkAgentFreshnessSection(cwd)),
 		// C3 — Layer-3 anytime reporting: last known verifier verdicts +
 		// verdict-vs-published-artifact freshness (spec 03 §Gate summary).
-		checkVerifierVerdictsSection(cwd),
-		checkDesignReadiness(loadDesignWorkingContent(cwd)),
-		checkShapeCompatibilityAll(cwd),
+		safeSection(() => checkVerifierVerdictsSection(cwd)),
+		safeSection(() => checkDesignReadiness(loadDesignWorkingContent(cwd))),
+		safeSection(() => checkShapeCompatibilityAll(cwd)),
 		// v1.4.0 — cross-cutting discipline command /velpari-design-logging.
 		// Audits Doc/observability/logging-plan_<project>.md. Hard error
 		// when an active standards overlay requires logging.
-		checkLoggingPlanSection(cwd, projectName),
+		safeSection(() => checkLoggingPlanSection(cwd, projectName)),
 		// Phase C — Doctor v2 (N22): Senai-style + new concern sections.
-		checkEnvironmentSection(cwd),
-		checkPiExtensionConformance(cwd),
-		checkConfigTamperSection(cwd),
-		checkGeneratedFilesSection(cwd),
-		checkBindingMatchSection(cwd),
-		checkStoreLocksSection(cwd, projectName),
-		checkDigestGitSection(cwd, projectName),
-		checkSemverBumpSection(cwd, projectName),
+		safeSection(() => checkEnvironmentSection(cwd)),
+		safeSection(() => checkPiExtensionConformance(cwd)),
+		safeSection(() => checkConfigTamperSection(cwd)),
+		safeSection(() => checkGeneratedFilesSection(cwd)),
+		safeSection(() => checkBindingMatchSection(cwd)),
+		safeSection(() => checkStoreLocksSection(cwd, projectName)),
+		safeSection(() => checkDigestGitSection(cwd, projectName)),
+		safeSection(() => checkSemverBumpSection(cwd, projectName)),
 	];
 
 	// The "Action items" callout is a derived, presentation-only view: it
