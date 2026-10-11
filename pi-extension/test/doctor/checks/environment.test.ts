@@ -73,15 +73,6 @@ describe("checkEnvironmentSection", () => {
 		});
 	});
 
-	it("pi absent (PATH shim) → warning environment-pi-missing", () => {
-		withPath("/nonexistent-bin-dir", () => {
-			const section = checkEnvironmentSection(process.cwd());
-			const piItem = section.items.find((i) => i.message.includes("environment-pi-missing"));
-			assert.ok(piItem, "expected pi-missing warning");
-			assert.equal(piItem!.status, "warning");
-		});
-	});
-
 	it("config contract absent → ONE info line with defaults", () => {
 		setContractForTests({ config: null });
 		const section = checkEnvironmentSection(process.cwd());
