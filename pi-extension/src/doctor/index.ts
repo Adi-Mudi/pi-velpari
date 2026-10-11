@@ -25,6 +25,7 @@ import { loadState } from "../core/state.js";
 import { loadHistory } from "../core/history.js";
 import { buildWorkingGroupedPath } from "../core/paths.js";
 import { type DiagnosticItem, type DiagnosticReport, type DiagnosticSection, summarize } from "./_types.js";
+import { buildChatReport } from "./chat-render.js";
 import { writeDoctorReport } from "./report.js";
 import { checkGroupedLegacyPathsSection } from "./checks/paths.js";
 import { checkWorkingPublishedSeparationSection } from "./checks/working-published.js";
@@ -537,6 +538,18 @@ export async function handleDoctor(
 	const report = runDoctor(cwd);
 	writeDoctorReport(report, cwd);
 	const reportPath = join(cwd, PATHS.DOCTOR_REPORT);
+
+	// Doctor upgrade (Phase 1, lane a1): standalone runs render the full
+	// chat report to the parent LLM. The quiet / check / json flag modes
+	// (and the no-`pi` test rig) keep the legacy notify-only tail.
+	const quiet = pi?.getFlag?.("velpari-quiet") === true;
+	const check = pi?.getFlag?.("velpari-check") === true;
+	const wantJson = pi?.getFlag?.("velpari-json") === true;
+	if (pi && !quiet && !check && !wantJson) {
+		await pi.sendUserMessage(`${buildChatReport(report)}\n\nReport saved to ${reportPath}`);
+		return { skipped: false, report };
+	}
+
 	// Format a short summary for the TUI notify; full report goes to disk.
 	const summaryLine = `Doctor: ${report.summary.ok} OK / ${report.summary.warning} warnings / ${report.summary.error} errors${report.ok ? "" : " — see report for fixes."}`;
 	if (summaryLine.length <= MAX_NOTIFY_LENGTH) {
