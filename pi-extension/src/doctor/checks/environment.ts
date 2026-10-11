@@ -2,19 +2,18 @@
  * Environment check — Phase C (G2a), Doctor v2.
  *
  * SHAPE copied from Senai's `checks-environment.ts`; content is 100%
- * velpari. Five probes:
+ * velpari. Four probes:
  *
  *   1. node vs `package.json:engines.node` — read FROM DISK (never
  *      hardcoded) via `findPackageRoot` walking up from this module, so
  *      it works in the extension checkout and in node_modules alike.
  *   2. `git --version` via spawnSync — publish commits cannot run
  *      without it.
- *   3. `pi --version` via spawnSync — RPC/e2e tooling needs the binary.
- *   4. Phase B config accessors via the contract adapter — absent → ONE
+ *   3. Phase B config accessors via the contract adapter — absent → ONE
  *      `info` line (defaults remote / 3 / backend); present → `ok`
  *      lines; a throwing accessor (B's throw-on-invalid) → `warning`
  *      naming the key.
- *   5. Multiplexer/peer-dep coverage is NOT duplicated here — it stays
+ *   4. Multiplexer/peer-dep coverage is NOT duplicated here — it stays
  *      in the existing `buildMultiplexerSection` (doctor/index.ts).
  *
  * Whole function try/catch-wrapped (doctor ALWAYS renders). Read-only:
@@ -154,20 +153,7 @@ export function checkEnvironmentSection(cwd: string): DiagnosticSection {
 			});
 		}
 
-		// 3. pi
-		const pi = probe("pi", ["--version"]);
-		if (pi.ok) {
-			items.push({ status: "ok", message: `${pi.version ?? "pi"} on PATH.` });
-		} else {
-			items.push({
-				status: "warning",
-				message:
-					"environment-pi-missing: pi binary not found on PATH — RPC/e2e tooling and the extension host need it.",
-				suggestion: suggestionFor("environment-pi-missing"),
-			});
-		}
-
-		// 4. Phase B config accessors (contract)
+		// 3. Phase B config accessors (contract)
 		const api = resolveConfigApi();
 		if (api === null) {
 			items.push({

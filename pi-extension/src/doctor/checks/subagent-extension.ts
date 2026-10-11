@@ -6,8 +6,6 @@
  *   - version ≥ 3.7.2 (warning if older; the version comes from the
  *     cloned git repo's package.json)
  *   - no competing subagent providers (warning if more than one)
- *   - no dead local-path entries (warning if a non-npm: / non-git:
- *     path doesn't resolve)
  *
  * Mirrors Senai's checks-environment.checkSubagentExtension, adapted
  * to the Velpari scope (only the subagent provider matters; Senai
@@ -16,7 +14,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { join, isAbsolute } from "node:path";
+import { join } from "node:path";
 import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 
@@ -69,23 +67,7 @@ export function checkSubagentExtension(agentDirOverride?: string): DiagnosticSec
 	const packages = Array.isArray(settings.packages) ? settings.packages : [];
 	const agentDir = agentDirOverride ?? getAgentDir();
 
-	// 1. Dead local-path entries.
-	for (const pkg of packages) {
-		if (pkg.startsWith("npm:") || pkg.startsWith("git:")) continue;
-		const resolved = isAbsolute(pkg) ? pkg : join(agentDir, pkg);
-		if (!existsSync(resolved)) {
-			items.push({
-				status: "warning",
-				message: `Dead package entry in settings.json: "${pkg}"`,
-				details: [
-					`Resolved path does not exist: ${resolved}`,
-					"A stale entry can later reappear and shadow the real sub-agent provider. Remove it.",
-				],
-			});
-		}
-	}
-
-	// 2. Multiple sub-agent providers installed.
+	// 1. Multiple sub-agent providers installed.
 	const providers = packages.filter((pkg) => SUBAGENT_PROVIDER_PACKAGES.some((known) => pkg.includes(known)));
 	if (providers.length > 1) {
 		items.push({
@@ -98,7 +80,7 @@ export function checkSubagentExtension(agentDirOverride?: string): DiagnosticSec
 		});
 	}
 
-	// 3. pi-interactive-subagents presence and version.
+	// 2. pi-interactive-subagents presence and version.
 	const hasProvider = packages.some((pkg) => pkg.includes("pi-interactive-subagents"));
 	if (!hasProvider) {
 		items.push({
