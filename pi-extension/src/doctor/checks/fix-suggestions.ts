@@ -194,7 +194,7 @@ export const SUGGESTIONS = {
 	// git-integration warnings above (ops/git-attributes.ts:
 	// ensureStoreGitIntegration).
 	"git-integration-heal":
-		"Auto-safe heal available: run `/velpari-doctor --velpari-fix` and pick \"Fix all\" — it appends the missing store-DB binary attribute / WAL sidecar ignore patterns via ops/git-attributes.ts:ensureStoreGitIntegration.",
+		'Auto-safe heal available: run `/velpari-doctor --velpari-fix` and pick "Fix all" — it appends the missing store-DB binary attribute / WAL sidecar ignore patterns via ops/git-attributes.ts:ensureStoreGitIntegration.',
 
 	// Phase 10 — portfolio registry (§15.5 drift visibility)
 	"portfolio-stale":
