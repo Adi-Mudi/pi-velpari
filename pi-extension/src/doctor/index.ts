@@ -54,6 +54,7 @@ import {
 	checkAgentFileIntegrity,
 	checkAgentMappingSection,
 } from "./checks/agents.js";
+import { checkAgentToolContract } from "./checks/agent-tool-contract.js";
 import { checkRequirementsProfileSection } from "./checks/profile.js";
 import { checkSecretScan } from "./checks/secrets.js";
 import { checkSetupProgress } from "./checks/setup-progress.js";
@@ -435,6 +436,7 @@ export function runDoctor(cwd: string = process.cwd(), opts: { embedded?: boolea
 		safeSection(() => checkWebToolLock(cwd)),
 		safeSection(() => checkAgentFileIntegrity(cwd)),
 		safeSection(() => checkScoutAgentsSection(cwd)),
+		safeSection(() => checkAgentToolContract(cwd)),
 		safeSection(() => checkAgentMappingSection(cwd)),
 		safeSection(() => checkStageSkillsSection(cwd)),
 		safeSection(() => checkSecretScan(cwd)),
