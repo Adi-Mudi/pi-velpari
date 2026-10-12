@@ -34,8 +34,8 @@ import { GENERATION_PHASES, VELPARI_BRAINSTORM_GENERATED_ROLES } from "../../src
 const REPO_ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 
 describe("agents-generator (Phase 2 surface)", () => {
-	it("GENERATOR_VERSION is 2 (per-phase generation)", () => {
-		assert.equal(GENERATOR_VERSION, 2);
+	it("GENERATOR_VERSION is 3 (PH format: thinking + template session-mode)", () => {
+		assert.equal(GENERATOR_VERSION, 3);
 	});
 
 	describe("VELPARI_BRAINSTORM_GENERATED_ROLES (Phase 3, 4-row table)", () => {

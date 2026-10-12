@@ -280,6 +280,13 @@ export type VelpariRole = (typeof VELPARI_ROLES)[number];
  * generation time — only roles with a bespoke contract (the 4 brainstorm
  * roles here + the 4 reviewers below) keep a hand-authored definition
  * table.
+ *
+ * §15.1 (P0): these hand-authored defs intentionally do NOT carry
+ * `sessionMode`/`autoExit`/`spawning`, so the generator emits its
+ * documented `lineage-only` default. This is a recorded override (these
+ * roles run inside the interactive brainstorm session), NOT drift — the
+ * bundled templates declare `standalone`, which Phases 2–4 honour
+ * verbatim via `scoutTemplateRoleDef`.
  */
 export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 	{
@@ -373,6 +380,10 @@ export const DEFAULT_AGENTS: Record<VelpariRole, string> = Object.fromEntries(
  * the bundled `skills/agents/<role>.md` templates via
  * `core/agents-generator.ts:scoutTemplateRoleDef`, same as the other
  * Phase 2–4 roles.
+ *
+ * §15.2 (P0): this table is the canonical reference ONLY — it is never
+ * returned by `roleDefsForPhase` (commands/generate-sub-agents.ts); the
+ * runtime reviewer path is `scoutTemplateRoleDef`.
  */
 export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 	{
