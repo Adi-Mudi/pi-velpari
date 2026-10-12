@@ -25,6 +25,7 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 import { STAGE_REGISTRY } from "../../stages/registry.js";
 import { findPackageRoot } from "../../core/paths.js";
+import { KNOWN_TOOL_NAMES, REQUIRED_AGENT_FIELDS, SESSION_MODES, THINKING_LEVELS } from "../../core/agent-schema.js";
 import {
 	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
@@ -32,6 +33,7 @@ import {
 	LOGGING_SCOUT_ROLES,
 	resolveAgentName,
 	validateMappedAgents,
+	VELPARI_ROLES,
 	type AgentConfig,
 	type VelpariRole,
 } from "../../core/agents-config.js";
@@ -40,47 +42,17 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const REQUIRED_AGENT_FIELDS = [
-	"name",
-	"description",
-	"tools",
-	"thinking",
-	"session-mode",
-	"auto-exit",
-	"spawning",
-];
+// Agent frontmatter schema (DSI P0, D12) — single source of truth in
+// core/agent-schema.ts. Re-exported here under the historical names so
+// existing importers (doctor/checks/generated-files.ts, doctor/index.ts,
+// test/doctor/checks/agents.test.ts) keep working.
+export { KNOWN_TOOL_NAMES, REQUIRED_AGENT_FIELDS };
 
-/**
- * Known pi tool names. Mirrors Senai's `_types.ts`. Anything outside
- * this set in an agent's `tools:` is a typo that blocks scout startup.
- */
-export const KNOWN_TOOL_NAMES: Set<string> = new Set([
-	"read",
-	"write",
-	"edit",
-	"bash",
-	"grep",
-	"find",
-	"ls",
-	"askuserquestion",
-	"intercom",
-	"subagent",
-	"taskcreate",
-	"taskexecute",
-	"taskget",
-	"tasklist",
-	"taskoutput",
-	"taskstop",
-	"taskupdate",
-	"websearch",
-	"fetchurl",
-]);
+/** @deprecated Use `THINKING_LEVELS` from core/agent-schema.js. */
+export const VALID_THINKING_LEVELS: ReadonlySet<string> = THINKING_LEVELS;
 
-/** Valid pi thinking levels. */
-export const VALID_THINKING_LEVELS: Set<string> = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-/** Valid `session-mode:` values per pi's agent frontmatter spec. */
-export const VALID_SESSION_MODES: Set<string> = new Set(["standalone", "lineage-only"]);
+/** @deprecated Use `SESSION_MODES` from core/agent-schema.js. */
+export const VALID_SESSION_MODES: ReadonlySet<string> = SESSION_MODES;
 
 /** Valid `auto-exit:` values. */
 export const VALID_AUTO_EXIT: Set<string> = new Set(["true", "false"]);
@@ -279,7 +251,7 @@ export function checkAgentMappingSection(cwd: string): DiagnosticSection {
 	if (!config) {
 		items.push({
 			status: "info",
-			message: "No agents.json — all 42 roles use bundled defaults.",
+			message: `No agents.json — all ${VELPARI_ROLES.length} roles use bundled defaults.`,
 		});
 		return { title: "Agent mapping (agents.json)", items };
 	}

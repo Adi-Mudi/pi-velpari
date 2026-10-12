@@ -15,7 +15,9 @@
  * Mirrors `pi-seani/pi-extension/src/agents/generator.ts` (Senai parity).
  * Velpari-specific simplifications:
  *   - No runtime dep on `@adi-mudi/pi-chirpi` (Velpari standalone)
- *   - `GENERATOR_VERSION = 2` (per-phase generation — v1 was brainstorm-only)
+ *   - `GENERATOR_VERSION = 3` (per-phase generation; v1 brainstorm-only,
+ *     v2 per-phase, v3 PH format — emits `thinking:` + honors template
+ *     `session-mode`)
  *   - The `ArchitectReport` slot is fed by `core/project-context.ts:
  *     loadProjectContext(cwd, state, phase)` from published `Doc/`
  *     artifacts (sidecar-first), per spec
@@ -28,6 +30,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { findPackageRoot, slugify } from "./paths.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
+import { THINKING_LEVELS } from "./agent-schema.js";
 import { addToGeneratedManifest, loadGeneratedManifest } from "./generated-manifest.js";
 import {
 	DEFAULT_AGENTS,
@@ -42,17 +45,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Bump when the generated agent format changes. Footer carries this number so
  *  doctor can flag files from an older format. v1: brainstorm-only release.
- *  v2: per-phase generation (Phases 1–4 via GENERATION_PHASES). */
-export const GENERATOR_VERSION = 2;
+ *  v2: per-phase generation (Phases 1–4 via GENERATION_PHASES).
+ *  v3: PH format — always emits `thinking:` and honours the template's
+ *  `session-mode`/`auto-exit`/`spawning` (pre-v3 files are stale → regenerate). */
+export const GENERATOR_VERSION = 3;
 
 /** Thinking level emitted when neither the def nor its role template declares
- *  one. Must stay in `doctor/checks/agents.ts:VALID_THINKING_LEVELS`. */
+ *  one. Validated against the shared schema (DSI P0, D12) so the generator
+ *  and the doctor can never drift apart. */
 export const DEFAULT_THINKING_LEVEL = "medium";
+if (!THINKING_LEVELS.has(DEFAULT_THINKING_LEVEL)) {
+	throw new Error(
+		`agents-generator: DEFAULT_THINKING_LEVEL "${DEFAULT_THINKING_LEVEL}" is not a valid thinking level (core/agent-schema.ts).`,
+	);
+}
 
 /** `session-mode:` / `auto-exit:` / `spawning:` fallbacks for defs that carry
  *  no template-derived value (the hand-authored Phase-1 tables).
  *  Template-derived roles emit their template's value instead — see
- *  `scoutTemplateRoleDef`. */
+ *  `scoutTemplateRoleDef`.
+ *
+ *  §15.1 (P0): the Phase-1 `VELPARI_BRAINSTORM_GENERATED_ROLES` table
+ *  deliberately does NOT read `session-mode` from its bundled templates.
+ *  Those 4 roles run inside the interactive brainstorm session and stay
+ *  `lineage-only` (pre-P0 behaviour) even though the shipped templates
+ *  declare `standalone`. This is a recorded override, not drift — the
+ *  template-derived Phases 2–4 honour the template verbatim. */
 export const DEFAULT_SESSION_MODE = "lineage-only";
 export const DEFAULT_AUTO_EXIT = true;
 export const DEFAULT_SPAWNING = false;
