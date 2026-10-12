@@ -45,6 +45,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *  v2: per-phase generation (Phases 1–4 via GENERATION_PHASES). */
 export const GENERATOR_VERSION = 2;
 
+/** Thinking level emitted when neither the def nor its role template declares
+ *  one. Must stay in `doctor/checks/agents.ts:VALID_THINKING_LEVELS`. */
+export const DEFAULT_THINKING_LEVEL = "medium";
+
+/** `session-mode:` / `auto-exit:` / `spawning:` fallbacks for defs that carry
+ *  no template-derived value (the hand-authored Phase-1 tables).
+ *  Template-derived roles emit their template's value instead — see
+ *  `scoutTemplateRoleDef`. */
+export const DEFAULT_SESSION_MODE = "lineage-only";
+export const DEFAULT_AUTO_EXIT = true;
+export const DEFAULT_SPAWNING = false;
+
 export interface GeneratedRoleDef {
 	role: string;
 	label: string;
@@ -59,6 +71,21 @@ export interface GeneratedRoleDef {
 	 *  at least one entry. */
 	outOfScope: string[];
 	interactive?: boolean;
+	/** Template `thinking:` value (a valid pi level). Emitted verbatim.
+	 *  When absent, `buildGeneratedAgentMarkdown` falls back to the role
+	 *  template's value, then `DEFAULT_THINKING_LEVEL`. */
+	thinking?: string;
+	/** Template `session-mode:` value (`standalone` | `lineage-only`).
+	 *  Emitted verbatim when present; otherwise `DEFAULT_SESSION_MODE`.
+	 *  Template-derived roles (Phases 2–4) carry the template's value;
+	 *  the hand-authored Phase-1 tables keep the documented default. */
+	sessionMode?: string;
+	/** Template `auto-exit:` value. Emitted verbatim when present;
+	 *  otherwise `DEFAULT_AUTO_EXIT`. */
+	autoExit?: boolean;
+	/** Template `spawning:` value. Emitted verbatim when present;
+	 *  otherwise `DEFAULT_SPAWNING`. */
+	spawning?: boolean;
 	/** When set, the generator loads the file at this path (relative to
 	 *  the agents source directory) and uses ITS content as the agent body
 	 *  — replacing the standard mandate + outOfScope + completion contract
@@ -126,6 +153,7 @@ export function getProjectTechnologiesDir(cwd: string): string {
  *  (`a, b`). Anything else returns []. Surrounding single/double quotes
  *  on individual items are stripped (YAML lists commonly quote values). */
 export function parseKeywords(raw: unknown): string[] {
+	/** Normalize one keyword token: trim, lowercase, strip surrounding quotes. */
 	const strip = (s: string) =>
 		s
 			.trim()
@@ -170,6 +198,11 @@ function parseResourceFrontmatter(
 	return { id, name, keywords, body };
 }
 
+/** Load every valid technology resource markdown file from one directory.
+ *  Unreadable / malformed files are skipped (never a dead-end).
+ *  @param dir - Directory to scan (bundled or project technologies dir).
+ *  @param source - Provenance tag stamped onto every loaded resource.
+ *  @returns The successfully parsed resources ([] when the dir is absent). */
 function loadResourcesFromDir(dir: string, source: TechnologyResource["source"]): TechnologyResource[] {
 	if (!fs.existsSync(dir)) return [];
 	const resources: TechnologyResource[] = [];
@@ -257,6 +290,11 @@ export function hashFile(filePath: string): string | null {
 
 // ─── Agent markdown assembly ──────────────────────────────────────────────
 
+/** Render the optional `## Project context` markdown block from the
+ *  architect report slot. Returns "" when the report is null or empty so
+ *  callers can skip the block entirely.
+ *  @param report - Architect report (tech stack / atomic functions / constraints).
+ *  @returns The context block markdown, or "" when there is nothing to render. */
 function buildProjectContextBlock(report: ArchitectReport | null): string {
 	if (!report) return "";
 	if (report.techStack.length === 0 && report.atomicFunctions.length === 0 && report.constraints.length === 0) {
@@ -357,6 +395,26 @@ export function scoutTemplateRoleDef(role: string): GeneratedRoleDef | null {
 					.map((t) => t.trim())
 					.filter(Boolean)
 			: ["read", "write", "bash"];
+	// Template frontmatter carried into the generated def. `thinking` +
+	// `session-mode` are REQUIRED_AGENT_FIELDS in the doctor, so reading
+	// them here is what keeps every generated agent passing the integrity
+	// check. (PH hotfix: the pre-hotfix generator dropped `thinking`
+	// entirely and hardcoded `session-mode: lineage-only`, diverging from
+	// every bundled template's `session-mode: standalone`.)
+	const thinkingMatch = fm.match(/^thinking:\s*(.+)$/m);
+	const sessionModeMatch = fm.match(/^session-mode:\s*(.+)$/m);
+	const autoExitMatch = fm.match(/^auto-exit:\s*(.+)$/m);
+	const spawningMatch = fm.match(/^spawning:\s*(.+)$/m);
+	/** Parse a YAML boolean frontmatter value ("true"/"false").
+	 *  @param m - The regex match for the frontmatter line, or null.
+	 *  @returns The parsed boolean, or undefined when absent/invalid. */
+	const boolFrom = (m: RegExpMatchArray | null): boolean | undefined => {
+		if (!m || m[1] === undefined) return undefined;
+		const value = m[1].trim().toLowerCase();
+		if (value === "true") return true;
+		if (value === "false") return false;
+		return undefined;
+	};
 	return {
 		role,
 		label: ROLE_LABELS[role as VelpariRole] ?? role,
@@ -368,6 +426,10 @@ export function scoutTemplateRoleDef(role: string): GeneratedRoleDef | null {
 			"Do not write or modify anything outside the report path assigned in your task.",
 		],
 		bodyFile: `${role}.md`,
+		thinking: thinkingMatch?.[1]?.trim() || undefined,
+		sessionMode: sessionModeMatch?.[1]?.trim() || undefined,
+		autoExit: boolFrom(autoExitMatch),
+		spawning: boolFrom(spawningMatch),
 	};
 }
 
@@ -382,14 +444,27 @@ export function buildGeneratedAgentMarkdown(
 ): string {
 	const description = `${def.invocationHint} — ${def.label} for ${projectName}. Generated by pi-velpari.`;
 
+	// `thinking:` is a REQUIRED_AGENT_FIELDS key (doctor/checks/agents.ts), so
+	// it is ALWAYS emitted: the def's value (template-derived for Phases 2–4),
+	// else the role template's value, else a documented default. `session-mode`
+	// / `auto-exit` / `spawning` emit the def's template-derived value, else the
+	// documented defaults. (PH hotfix: the pre-hotfix generator dropped
+	// `thinking` and hardcoded `session-mode: lineage-only`, so every generated
+	// agent failed the doctor integrity check and diverged from the templates.)
+	const thinking = def.thinking ?? scoutTemplateRoleDef(def.role)?.thinking ?? DEFAULT_THINKING_LEVEL;
+	const sessionMode = def.sessionMode ?? DEFAULT_SESSION_MODE;
+	const autoExit = def.autoExit ?? DEFAULT_AUTO_EXIT;
+	const spawning = def.spawning ?? DEFAULT_SPAWNING;
+
 	const lines: string[] = [
 		"---",
 		`name: ${agentName}`,
 		`description: ${description}`,
 		`tools: ${def.tools.join(", ")}`,
-		"session-mode: lineage-only",
-		"auto-exit: true",
-		"spawning: false",
+		`thinking: ${thinking}`,
+		`session-mode: ${sessionMode}`,
+		`auto-exit: ${autoExit}`,
+		`spawning: ${spawning}`,
 		...(def.interactive ? ["interactive: true"] : []),
 		"---",
 		"",
