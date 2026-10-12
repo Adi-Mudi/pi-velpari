@@ -19,6 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { runAgentGenerator } from "../../src/commands/generate-sub-agents.js";
+import { GENERATOR_VERSION } from "../../src/core/agents-generator.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 interface Call {
@@ -36,6 +37,11 @@ afterEach(() => {
 	fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+/** Build a mock ExtensionContext whose UI calls are recorded for assertions.
+ *  @param cwd - Project root the generator runs against.
+ *  @param ui - Optional UI overrides (select/input/confirm); defaults are used when absent.
+ *  @returns The mock context plus a `__calls` log of UI invocations.
+ */
 function makeCtx(
 	cwd: string,
 	ui: {
@@ -72,12 +78,21 @@ function makeCtx(
 	} as unknown as ExtensionContext & { __calls: Call[] };
 }
 
+/** Write a `.pi/velpari/agents.json` file with the given role mappings.
+ *  @param cwd - Project root.
+ *  @param agents - Role-to-agent-name mapping to persist.
+ *  @returns Nothing.
+ */
 function makeAgentsJson(cwd: string, agents: Record<string, string>): void {
 	const dir = path.join(cwd, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "agents.json"), JSON.stringify({ version: 1, agents }), "utf8");
 }
 
+/** Derive the generator slug for a temp project from its folder basename.
+ *  @param cwd - Project root (the temp directory).
+ *  @returns The slugified basename.
+ */
 function slugOf(cwd: string): string {
 	return path
 		.basename(cwd)
@@ -106,10 +121,10 @@ describe("generator v2 — Phase 3 emits reviewer copies (from bundled templates
 			const p = path.join(agentsDir, `${slug}-${role}.md`);
 			assert.ok(fs.existsSync(p), `${role} should exist at ${p}`);
 			// The generated copy carries the canonical template body (the
-			// reviewer's verdict contract) + the v2 generator footer.
+			// reviewer's verdict contract) + the current generator footer.
 			const content = fs.readFileSync(p, "utf8");
 			assert.match(content, /from canonical body file: /);
-			assert.match(content, /generator v2/);
+			assert.match(content, new RegExp(`generator v${GENERATOR_VERSION}`));
 		}
 
 		// agents.json maps the reviewer roles to the generated names.
