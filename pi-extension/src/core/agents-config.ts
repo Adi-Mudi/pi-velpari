@@ -286,6 +286,7 @@ export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "extractor",
 		label: "Brainstorm — Answer Extractor",
 		tools: ["read", "write", "bash"],
+		thinking: "minimal",
 		mandate:
 			"Capture each interview answer verbatim from the brainstorm interview and classify it as new-requirement, refinement, or helper-function. Write a structured JSON report to the assigned artifact path.",
 		invocationHint:
@@ -301,6 +302,7 @@ export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "prd-checker",
 		label: "Brainstorm — PRD Delta Checker",
 		tools: ["read", "write", "bash"],
+		thinking: "minimal",
 		mandate:
 			"Read the existing PRD (when present). For each interview answer, classify it as an update to an existing FR-N or as a brand-new FR-N. Emit a JSON delta report.",
 		invocationHint:
@@ -316,6 +318,7 @@ export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "rtm-checker",
 		label: "Brainstorm — RTM Impact Checker",
 		tools: ["read", "write", "bash"],
+		thinking: "minimal",
 		mandate:
 			"Read the existing RTM (when present). For each FR-N touched by an interview answer, identify test-case implications. Emit a JSON report.",
 		invocationHint:
@@ -331,6 +334,7 @@ export const VELPARI_BRAINSTORM_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "web-search-agent",
 		label: "Brainstorm — Web Research (Consent-Gated)",
 		tools: ["read", "write", "bash", "WebSearch", "FetchURL"],
+		thinking: "minimal",
 		mandate:
 			"Fetch external references for the user's input — community resources (Stack Overflow, Reddit, GitHub issues), official documentation (language, framework, library docs), and similar open-source projects. Emit a JSON report.",
 		invocationHint:
@@ -375,6 +379,7 @@ export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "reviewer",
 		label: "Stage — adversarial reviewer",
 		tools: ["read", "write", "bash"],
+		thinking: "high",
 		mandate:
 			"Read the merged working-copy draft and the N source-scout reports; emit a structured verdict JSON (errors / warnings / info + final verdict = approve | needs-fix | block). The verdict is the single source of truth for tier checks at publish time — the doctor gate consumes it but does not re-derive any rule.",
 		invocationHint:
@@ -390,6 +395,7 @@ export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "pseudocode-reviewer",
 		label: "Stage — adversarial reviewer (pseudocode)",
 		tools: ["read", "write", "bash"],
+		thinking: "high",
 		mandate:
 			"Read the merged pseudocode draft and the 4 source-scout reports (pseudo-algorithm-extractor, pseudo-edge-case-handler, pseudo-complexity-analyzer, pseudo-consolidator). Emit a structured verdict JSON — per-af-missing, pseudocode-empty, complexity-stated, inputs-declared, outputs-declared, complexity-exceeded, edge-cases-missing, error-handling-missing, dependency-cyclic, atomic-tier-mismatch + cross-scout-contradiction, algorithm-rename-mismatch, tier-mismatch, standards-mapping-missing.",
 		invocationHint:
@@ -405,6 +411,7 @@ export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "testplan-reviewer",
 		label: "Stage — adversarial reviewer (testplan)",
 		tools: ["read", "write", "bash"],
+		thinking: "high",
 		mandate:
 			"Read the merged test-plan + test-cases drafts and the 4 source-scout reports (testplan-strategy-designer, testplan-unit-test-generator, testplan-integration-test-generator, testplan-coverage-tracer). Emit a structured verdict JSON — test-plan-missing, test-cases-missing, test-strategy-stated, coverage-target-stated, per-af-test, test-pyramid-balanced, test-independence, assertion-quality, flaky-pattern, coverage-traceability + cross-scout-contradiction, test-misnaming, tier-mismatch, standards-mapping-missing.",
 		invocationHint:
@@ -420,6 +427,7 @@ export const VELPARI_REVIEWER_GENERATED_ROLES: readonly GeneratedRoleDef[] = [
 		role: "design-reviewer",
 		label: "Stage — adversarial reviewer (design)",
 		tools: ["read", "write", "bash"],
+		thinking: "high",
 		mandate:
 			"Read the merged design draft and the 5 source-scout reports (design-style-selector, design-module-decomposer, design-contract-definer, design-data-flow-mapper, design-error-definer). Emit a structured verdict JSON covering arc42 + SEI ATAM + C4 sections — section-0-missing, section-04-missing, section-5-missing, section-9-missing, section-10-missing, section-11-missing, section-12-missing, section-13-missing, section-14-missing, adr-001-present, qa-scenarios-stated, c4-diagrams-complete + cross-scout-contradiction, adr-inconsistent, tier-mismatch, standards-mapping-missing.",
 		invocationHint:
@@ -625,6 +633,9 @@ interface DiscoveredAgent {
 	filePath?: string;
 }
 
+/** Check whether a path exists and is a directory.
+ *  @param p - Path to test.
+ *  @returns True when `p` is a readable directory, false otherwise. */
 function isDirectory(p: string): boolean {
 	try {
 		return statSync(p).isDirectory();
@@ -716,6 +727,10 @@ export function discoverAgents(cwd: string): DiscoveredAgent[] {
 	return agents;
 }
 
+/** Discover every valid agent markdown file in one directory.
+ *  @param dir - Directory to scan for `*.md` agent files.
+ *  @param source - Provenance tag ("project" or "user") stamped on results.
+ *  @returns The parsed agents found ([] when the dir is absent/unreadable). */
 function loadAgentsFromDir(dir: string, source: "project" | "user"): DiscoveredAgent[] {
 	const agents: DiscoveredAgent[] = [];
 	if (!existsSync(dir)) return agents;
