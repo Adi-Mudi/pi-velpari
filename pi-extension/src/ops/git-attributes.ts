@@ -41,6 +41,10 @@ export const PORTFOLIO_IGNORE_LINES: readonly string[] = ["Doc/store/portfolio.d
  *  under Backup/velpari/<project>/ are never committed or pushed. */
 export const BACKUP_IGNORE_LINES: readonly string[] = ["Backup/"];
 
+/** velpari-evals Phase A: the local-only quality-eval folder (rule 5).
+ *  `Eval/` holds per-project telemetry DBs that are never committed. */
+export const EVAL_IGNORE_LINES: readonly string[] = ["Eval/"];
+
 /** Result of one ensureStoreGitIntegration call. */
 export interface GitIntegrationResult {
 	/** true when at least one line was appended to at least one file. */
@@ -122,6 +126,41 @@ export function ensureStoreGitIntegration(cwd: string): GitIntegrationResult {
 		);
 		if (missingIgnores.length > 0) {
 			const added = appendLines(ignorePath, missingIgnores);
+			if (added) {
+				appended.push(`.gitignore: ${added}`);
+				changedPaths.push(ignorePath);
+			}
+		}
+	} catch (err) {
+		appended.push(
+			`heal failed (publish continues; run /velpari-doctor for the fix): ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+	return { changed: appended.length > 0 && changedPaths.length > 0, appended, changedPaths };
+}
+
+/**
+ * Ensure the USER repo's `.gitignore` carries the local-only `Eval/` rule
+ * (velpari-evals Phase A, rule 5 — auto-gitignored). Same append-only,
+ * idempotent, never-throwing contract as {@link ensureStoreGitIntegration},
+ * but it touches `.gitignore` only. Called by the publish-time eval recorder
+ * on every publish; a no-op after the first heal.
+ *
+ * The healed `.gitignore` is a normal project file — the caller MAY include it
+ * in the publish commit; `Eval/**` itself never joins any commit path list.
+ *
+ * @param {string} cwd - Project root (the user's git work tree).
+ * @returns {GitIntegrationResult} What was appended (usually nothing).
+ */
+export function ensureEvalGitIntegration(cwd: string): GitIntegrationResult {
+	const ignorePath = join(cwd, ".gitignore");
+	const appended: string[] = [];
+	const changedPaths: string[] = [];
+	try {
+		const ignoreContent = existsSync(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
+		const missing = EVAL_IGNORE_LINES.filter((line) => !hasLine(ignoreContent, line));
+		if (missing.length > 0) {
+			const added = appendLines(ignorePath, missing);
 			if (added) {
 				appended.push(`.gitignore: ${added}`);
 				changedPaths.push(ignorePath);

@@ -54,6 +54,7 @@ import { GENESIS_HASH, computeEntryHash } from "../core/hashchain.js"; // L0 (D1
 // Pinned by test/db-store/import-order.test.ts (backup-first import order).
 import { createBackupSnapshot } from "../core/backup.js";
 import type { ArtifactKind } from "./store.js"; // type-only: erased at runtime — no store↔db cycle (D12)
+import type { EvalRow } from "../core/eval.js"; // type-only: eval rows are plain data (no runtime edge)
 import type { DatabaseSync } from "node:sqlite";
 
 // Lazy driver load (D9): `node:sqlite` is experimental and prints an
@@ -155,8 +156,8 @@ export const MIGRATIONS: readonly Migration[] = [
 ];
 
 /** Highest migration version known to this build (for the G3 downgrade guard). */
-export function maxKnownVersion(): number {
-	return MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+export function maxKnownVersion(migrations: readonly Migration[] = MIGRATIONS): number {
+	return migrations[migrations.length - 1]?.version ?? 0;
 }
 
 /** Production PRAGMA set per RES-2. Applied on every open, before any use. */
@@ -271,13 +272,13 @@ export function openStoreDb(dbPath: string): DatabaseSync {
 }
 
 /** Run pending migrations sequentially, each in its own transaction. */
-export function migrate(db: DatabaseSync): void {
+export function migrate(db: DatabaseSync, migrations: readonly Migration[] = MIGRATIONS): void {
 	const current = db.prepare("PRAGMA user_version").get() as {
 		user_version: number;
 	};
 	let at = current.user_version;
 
-	for (const migration of MIGRATIONS) {
+	for (const migration of migrations) {
 		if (migration.version <= at) continue;
 		db.exec("BEGIN IMMEDIATE;");
 		try {
@@ -783,4 +784,184 @@ export function storeMetaSet(db: DatabaseSync, key: string, value: string): void
 export function storeMetaGet(db: DatabaseSync, key: string): string | null {
 	const row = db.prepare("SELECT value FROM store_meta WHERE key = ?").get(key) as { value: string } | undefined;
 	return row === undefined ? null : row.value;
+}
+
+// ---------------------------------------------------------------------------
+// eval DB (velpari-evals Phase A) — a THIRD local SQLite file family with its
+// own schema module + user_version ceiling + migration list. Never committed
+// (ops/git-attributes.ts heals `Eval/` into .gitignore), never part of the
+// store's transaction/backup/hash-chain discipline, and fail-open by design:
+// missing/deleted Eval/ must never break a velpari command.
+//
+// D9 note: this stays inside io/db.ts — the sole `node:sqlite` importer.
+// ---------------------------------------------------------------------------
+
+/** v001 eval schema DDL: metadata envelope + one row per publish. */
+const EVAL_SCHEMA_V001 = `
+CREATE TABLE IF NOT EXISTS eval_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE eval_runs (
+  id INTEGER PRIMARY KEY,
+  project TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  artifact_kind TEXT NOT NULL,
+  version TEXT,
+  model TEXT,
+  duration_ms INTEGER,
+  det_scores TEXT NOT NULL,
+  judge_scores TEXT,
+  total_score REAL NOT NULL,
+  det_config_hash TEXT NOT NULL,
+  attempts INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX idx_eval_runs_project_stage ON eval_runs(project, stage, created_at);
+`;
+
+/**
+ * Ordered eval migration list. Separate from the store's {@link MIGRATIONS} —
+ * this DB has its OWN `user_version` namespace. Forward-only: append new
+ * steps with increasing versions, never reorder/edit an applied one.
+ */
+export const EVAL_MIGRATIONS: readonly Migration[] = [
+	{
+		version: 1,
+		name: "eval schema — eval_meta + eval_runs (Phase A)",
+		up: (db: DatabaseSync) => {
+			db.exec(EVAL_SCHEMA_V001);
+		},
+	},
+];
+
+/**
+ * Open (and create if missing) the per-project eval DB at `dbPath`, apply the
+ * production PRAGMA set, run pending eval migrations, and enforce the eval
+ * DB's independent G3 downgrade guard. No backup (local telemetry).
+ *
+ * @throws Error when the DB's user_version exceeds maxKnownVersion(EVAL_MIGRATIONS).
+ */
+export function openEvalDb(dbPath: string): DatabaseSync {
+	mkdirSync(dirname(dbPath), { recursive: true });
+	const db = new (databaseSyncCtor())(dbPath);
+	applyPragmas(db);
+
+	const current = db.prepare("PRAGMA user_version").get() as {
+		user_version: number;
+	};
+	if (current.user_version > maxKnownVersion(EVAL_MIGRATIONS)) {
+		db.close();
+		throw new Error(
+			`velpari eval: database at '${dbPath}' has schema version ${current.user_version}, ` +
+				`but this extension supports at most ${maxKnownVersion(EVAL_MIGRATIONS)}. ` +
+				`Upgrade your extension to open it.`,
+		);
+	}
+
+	migrate(db, EVAL_MIGRATIONS);
+	return db;
+}
+
+/** Raw `eval_runs` row shape as stored (snake_case; det_scores = JSON text). */
+interface EvalRunDbRow {
+	project: string;
+	run_id: string;
+	stage: string;
+	artifact_kind: string;
+	version: string | null;
+	model: string | null;
+	duration_ms: number | null;
+	det_scores: string;
+	judge_scores: string | null;
+	total_score: number;
+	det_config_hash: string;
+	attempts: number | null;
+	created_at: string;
+}
+
+/**
+ * Insert one eval row. `judgeScores` (Phase B) is serialized to JSON text;
+ * null stays null (deterministic-only row).
+ * @param {DatabaseSync} db - Open eval DB connection.
+ * @param {EvalRow} row - The row to persist.
+ * @returns {number} The new eval_runs.id.
+ */
+export function insertEvalRow(db: DatabaseSync, row: EvalRow): number {
+	const inserted = db
+		.prepare(
+			`INSERT INTO eval_runs
+			   (project, run_id, stage, artifact_kind, version, model, duration_ms, det_scores, judge_scores, total_score, det_config_hash, attempts, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.run(
+			row.project,
+			row.runId,
+			row.stage,
+			row.artifactKind,
+			row.version,
+			row.model,
+			row.durationMs,
+			JSON.stringify(row.detScores),
+			row.judgeScores === null ? null : JSON.stringify(row.judgeScores),
+			row.totalScore,
+			row.detConfigHash,
+			row.attempts,
+			row.createdAt,
+		);
+	return Number(inserted.lastInsertRowid);
+}
+
+/**
+ * List eval rows for a project, newest first. `stage` narrows to one stage;
+ * `limit` caps the result. Malformed `det_scores` JSON is tolerated
+ * (fail-open → empty list for that row) — eval data must never throw.
+ * @param {DatabaseSync} db - Open eval DB connection.
+ * @param {string} project - Project name.
+ * @param {string} [stage] - Optional stage filter.
+ * @param {number} [limit] - Optional max row count.
+ * @returns {EvalRow[]} Rows ordered by created_at DESC, id DESC.
+ */
+export function listEvalRows(db: DatabaseSync, project: string, stage?: string, limit?: number): EvalRow[] {
+	const params: (string | number)[] = stage === undefined ? [project] : [project, stage];
+	let sql =
+		`SELECT * FROM eval_runs WHERE project = ?` +
+		(stage === undefined ? "" : " AND stage = ?") +
+		" ORDER BY created_at DESC, id DESC";
+	if (limit !== undefined) {
+		sql += " LIMIT ?";
+		params.push(limit);
+	}
+	const rows = db.prepare(sql).all(...params) as unknown as EvalRunDbRow[];
+	return rows.map((row) => {
+		let detScores: EvalRow["detScores"] = [];
+		try {
+			detScores = JSON.parse(row.det_scores) as EvalRow["detScores"];
+		} catch {
+			detScores = [];
+		}
+		// Fail-open: malformed judge JSON is treated as a deterministic-only row
+		// — eval data must never throw.
+		let judgeScores: EvalRow["judgeScores"] = null;
+		if (row.judge_scores !== null) {
+			try {
+				judgeScores = JSON.parse(row.judge_scores) as EvalRow["judgeScores"];
+			} catch {
+				judgeScores = null;
+			}
+		}
+		return {
+			project: row.project,
+			runId: row.run_id,
+			stage: row.stage,
+			artifactKind: row.artifact_kind,
+			version: row.version,
+			model: row.model ?? "unknown",
+			durationMs: row.duration_ms,
+			detScores,
+			judgeScores,
+			totalScore: row.total_score,
+			detConfigHash: row.det_config_hash,
+			attempts: row.attempts,
+			createdAt: row.created_at,
+		};
+	});
 }

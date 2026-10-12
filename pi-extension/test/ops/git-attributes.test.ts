@@ -13,11 +13,13 @@ import { join } from "node:path";
 
 import {
 	ensureStoreGitIntegration,
+	ensureEvalGitIntegration,
 	STORE_DB_ATTR_LINE,
 	STORE_IGNORE_LINES,
 	PORTFOLIO_ATTR_LINE,
 	PORTFOLIO_IGNORE_LINES,
 	BACKUP_IGNORE_LINES,
+	EVAL_IGNORE_LINES,
 } from "../../src/ops/git-attributes.js";
 
 let dirs: string[] = [];
@@ -154,5 +156,54 @@ describe("ensureStoreGitIntegration", () => {
 		assert.equal(result.changed, false);
 		assert.ok(result.appended.some((l) => /heal failed/.test(l)));
 		assert.ok(!existsSync(join(dir, ".gitignore")));
+	});
+});
+
+describe("ensureEvalGitIntegration (velpari-evals Phase A)", () => {
+	test("no .gitignore → creates it with the local Eval/ rule", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const result = ensureEvalGitIntegration(dir);
+		assert.equal(result.changed, true);
+		assert.deepEqual(result.changedPaths, [join(dir, ".gitignore")]);
+		const ignore = readFileSync(join(dir, ".gitignore"), "utf8");
+		for (const line of EVAL_IGNORE_LINES) assert.ok(ignore.includes(line), `${line} must heal`);
+		assert.equal(existsSync(join(dir, ".gitattributes")), false, "eval heal touches .gitignore only");
+	});
+
+	test("existing .gitignore → appends, preserves every original line", () => {
+		const dir = dirs[dirs.length - 1]!;
+		writeFileSync(join(dir, ".gitignore"), "node_modules/\ndist/\n", "utf8");
+		const result = ensureEvalGitIntegration(dir);
+		assert.equal(result.changed, true);
+		const lines = readFileSync(join(dir, ".gitignore"), "utf8").split("\n").map((l) => l.trim());
+		assert.ok(lines.indexOf("node_modules/") < lines.indexOf("Eval/"));
+		assert.ok(lines.includes("dist/"));
+	});
+
+	test("idempotent: second call appends nothing (changed:false)", () => {
+		const dir = dirs[dirs.length - 1]!;
+		const first = ensureEvalGitIntegration(dir);
+		assert.equal(first.changed, true);
+		const before = readFileSync(join(dir, ".gitignore"), "utf8");
+		const second = ensureEvalGitIntegration(dir);
+		assert.equal(second.changed, false);
+		assert.deepEqual(second.appended, []);
+		assert.equal(readFileSync(join(dir, ".gitignore"), "utf8"), before);
+	});
+
+	test("pre-existing Eval/ line is not duplicated", () => {
+		const dir = dirs[dirs.length - 1]!;
+		writeFileSync(join(dir, ".gitignore"), "Eval/\n", "utf8");
+		const result = ensureEvalGitIntegration(dir);
+		assert.equal(result.changed, false);
+		assert.equal(readFileSync(join(dir, ".gitignore"), "utf8").split("\n").filter((l) => l.trim() === "Eval/").length, 1);
+	});
+
+	test("heal failure never throws (unwritable file → changed:false + failure note)", () => {
+		const dir = dirs[dirs.length - 1]!;
+		mkdirSync(join(dir, ".gitignore"));
+		const result = ensureEvalGitIntegration(dir);
+		assert.equal(result.changed, false);
+		assert.ok(result.appended.some((l) => /heal failed/.test(l)));
 	});
 });

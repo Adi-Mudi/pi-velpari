@@ -1,0 +1,41 @@
+# Eval rubric — atomic-function reviewer stage (Phase B, decision 1/2).
+# One criterion per scored dimension of the reviewer mandate.
+# `# source:` names the reviewer-template rule the criterion is grounded in.
+rubric: atomic-function
+version: 1
+criteria:
+  - id: base-core-fields-complete
+    weight: 3
+    description: Every atomic function carries all 8 base-core fields, none empty.
+    # source: skills/agents/reviewer.md — "Checks (deterministic)" #1 base-core-missing
+  - id: tier-specific-fields-complete
+    weight: 2
+    description: Fields required by the declared tier are present and non-empty.
+    # source: skills/agents/reviewer.md — "Checks (deterministic)" #2 tier-specific-missing
+  - id: classification-valid
+    weight: 2
+    description: cohesion and verification are in the allowed vocabularies and testable is yes.
+    # source: skills/agents/reviewer.md — "Checks (deterministic)" #3 cohesion-invalid, #4 verification-invalid, #5 testable-invalid
+  - id: complexity-within-tier-limit
+    weight: 2
+    description: Declared complexity does not exceed 10 (intermediate / advanced tiers).
+    # source: skills/agents/reviewer.md — "Checks (deterministic)" #6 complexity-exceeded
+  - id: architecture-signal-quality
+    weight: 2
+    description: EARS pattern, argument count and coupling signals match the tier without unexplained high values.
+    # source: skills/agents/reviewer.md — "Checks (deterministic)" #7 ears-pattern-invalid, #8 arg-count-high, #9 coupling-high
+  - id: cross-scout-consistency
+    weight: 2
+    description: No two scouts propose the same FR as conflicting AFs and no AFs should be merged.
+    # source: skills/agents/reviewer.md — "Checks (semantic)" #11 cross-scout-contradiction, #12 missing-merge
+  - id: standards-traceability
+    weight: 1
+    description: Every cited standard is named and every overlay regime maps to a rule.
+    # source: skills/agents/reviewer.md — "Checks (semantic)" #14 standards-mapping-missing
+calibration:
+  - input_summary: Basic-tier working copy with complete base-core fields and no classification errors
+    expected_score: 0.9
+    tolerance: 0.1
+  - input_summary: Advanced-tier working copy missing risk fields plus a cross-scout AF overlap
+    expected_score: 0.4
+    tolerance: 0.15

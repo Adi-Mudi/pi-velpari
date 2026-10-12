@@ -17,6 +17,38 @@ config in `.pi/velpari/`. Temporary run material stays in `.IDE_Plans/`.
 | Doctor report | `.IDE_Plans/velpari/doctor-report.md` | temporary (unchanged) |
 | Run history / audit trail | `.IDE_Plans/velpari/runs/<run-id>/history.jsonl` (per-run) | temporary — **moved out of `state.json`** |
 
+## Local eval data: `Eval/` — not control data
+
+Deterministic quality scores live in a separate, **local-only** SQLite
+database at `Eval/<projectName>/eval.db` (beside `Doc/`, never under
+`.pi/velpari/`). It holds scores plus run metadata only — stage, version,
+model, duration, attempt count, a scoring-config hash (`det_config_hash`),
+and the per-check score list. It never stores artifact text.
+
+- **Not control data.** `Eval/` is developer telemetry, not configuration —
+  it is intentionally outside the config-sized rule below.
+- **Not project truth.** It is gitignored on first write and is never part
+  of the committed artifact store, its backups, or its hash chain.
+- **Deletable / fail-open.** Missing, deleted, or unreadable eval data never
+  blocks a command; reads and writes degrade to an informational note.
+- **Schema v1** carries `det_scores`, `det_config_hash` (weight-table + judge
+  blend-weight hash, so a scoring change is distinguishable from a real quality
+  change), `attempts`, and a nullable `judge_scores` column.
+- **Phase B — `judge_scores` is live.** A reviewer-stage publish (atomic-function
+  / pseudocode / testplan / design) stores the reviewer's locked `scores` block
+  here as JSON: `rubricId`, `rubricVersion`, `rubricHash`, `judgeModel`,
+  `criteria[]` (`id` / `score` / optional `note`), `overall`, plus an optional
+  publish-chain `note`. The block is validated against the stage rubric at
+  `skills/eval-rubrics/<stage>.yaml` (package-root read, never the project cwd),
+  the rubric-weighted `overall` is recomputed, and `total_score` becomes the
+  50/50 mean of the deterministic total and the judge `overall`.
+- **Identity pinning (G2).** `judgeModel` + `rubricHash` are recorded per row so
+  a judge or rubric change shows up as a `Quality (local evals)` discontinuity
+  marker — judge scores across that boundary are never silently mixed. A
+  reported/recomputed `overall` mismatch is a doctor warning; a missing or
+  invalid block degrades to a deterministic-only row (JSON `NULL`), and judge
+  wiring never blocks a publish.
+
 ## The config-sized rule
 
 > **Control files hold current values, never history. Reading one always

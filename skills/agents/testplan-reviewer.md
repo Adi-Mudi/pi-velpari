@@ -48,6 +48,40 @@ Write **one** JSON file at `<reviewerReportPath>` with the standard verdict shap
 }
 ```
 
+## Scores block (rubric — evals Phase B)
+
+The verdict is the source of truth for the gate. In ADDITION, attach a
+top-level `scores` object scoring every criterion of the testplan rubric at
+`skills/eval-rubrics/testplan.yaml`. This is additive — it never changes the
+`verdict` contract above.
+
+```json
+{
+  "scores": {
+    "rubricId": "testplan",
+    "rubricVersion": 1,
+    "rubricHash": "0123456789abcdef",
+    "judgeModel": "<the model id you are running as>",
+    "criteria": [
+      { "id": "dual-artifact-present", "score": 1.0, "note": "plan + cases both present" },
+      { "id": "per-atomic-function-test-coverage", "score": 0.5, "note": "two AFs have no cases" },
+      { "id": "strategy-and-target-stated", "score": 1.0 },
+      { "id": "test-pyramid-balanced", "score": 1.0 },
+      { "id": "test-quality-assertions", "score": 1.0 },
+      { "id": "flaky-pattern-free", "score": 1.0 },
+      { "id": "cross-scout-consistency", "score": 0.5 }
+    ],
+    "overall": 0.857
+  }
+}
+```
+
+Locked rules:
+- Every rubric criterion `id` appears exactly once; no unknown ids.
+- `score` and `overall` are in `[0, 1]`; `overall` is the rubric-weighted mean.
+- `rubricHash` = first 16 hex chars of `sha256` over the rubric file bytes.
+- Rubric file missing → OMIT the `scores` block entirely (never invent one).
+
 ## Checks (deterministic)
 
 | # | Rule | Severity | When |
