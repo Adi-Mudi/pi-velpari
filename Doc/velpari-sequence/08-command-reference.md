@@ -86,17 +86,33 @@ machine/notify paths for embedded and preflight runs stay summary-only
   items; no full-report chat push.
 - `--velpari-check` — non-interactive check mode: report `Doctor: PASS` /
   `Doctor: FAIL (N errors)` and set `process.exitCode` (0 clean / 1 errors)
-  so CI and preflight can gate on it. Suppresses the `--velpari-fix` picker.
+  so CI and preflight can gate on it. Suppresses the `--velpari-fix` /
+  `--velpari-auto-fix` repair flows.
 - `--velpari-json` — also write the versioned machine-readable report to
   `.IDE_Plans/velpari/doctor-report.json` (`schemaVersion: 1`, stable section
   ids and per-item status/suggestion).
 
-The `--velpari-fix` repair flow is a **bounded** verify → repair → re-verify
-loop (`maxAttempts`, default 3 — never infinite), and every applied fix
-appends one row to `.IDE_Plans/velpari/doctor-fix-audit.jsonl`. The
-`git-integration-heal` remediation is auto-safe: it appends the missing
-store-DB binary attribute / WAL sidecar ignore patterns to the user repo's
-`.gitattributes` / `.gitignore` (the same call the publish chain makes).
+The `--velpari-fix` repair flow is the **gated** stage machine
+(`doctor/repair-session.ts:runRepairSession`): `Analyze → Report → GATE A →
+Plan → GATE B → Apply → Verify → GATE C`. Every gate blocks, and **no repair
+write happens before GATE B** — the reviewable fix plan
+(`.IDE_Plans/velpari/doctor-fix-plan.md` + its `.json` twin) is the one
+deliberate pre-gate write. GATE A offers Show details / Build a fix plan /
+Abort, then a per-item Include / Exclude / Defer feedback pass whose possible
+solutions are Fix now (auto-safe) / Manual step / Escalate (manual) / Ignore
+(accept the risk); GATE B confirms the batch; GATE C is Done / Re-plan
+(re-enters GATE B) / Abort. The gated path never auto-retries.
+
+The legacy one-confirm batch is preserved as `--velpari-auto-fix`
+(`doctor/fix-flow.ts:runFixFlow`): the AskUserQuestion-parity Fix all / Show
+details / Abort select, then one confirm-gated batch in a **bounded**
+verify → repair → re-verify loop (`maxAttempts`, default 3 — never infinite).
+Every feedback decision (either flow) appends one row to
+`.IDE_Plans/velpari/doctor-fix-audit.jsonl` (`decision: applied | ignored |
+deferred`). The `git-integration-heal` remediation is auto-safe: it appends
+the missing store-DB binary attribute / WAL sidecar ignore patterns to the
+user repo's `.gitattributes` / `.gitignore` (the same call the publish chain
+makes).
 
 **Optimization (P0–P3).** Four outcomes landed on top of Doctor upgrade v1:
 correct counts (the `Action items` callout is render-only and `--quiet`-only —
@@ -184,7 +200,8 @@ working or published artifacts.
 |---|---|
 | `--velpari-skip-doctor` | Skip the doctor pass (diagnostic use). |
 | `--velpari-stage <stage>` | Hard override of the target stage (diagnostic use). |
-| `--velpari-fix` | After `/velpari-doctor`, offer the interactive fix picker. |
+| `--velpari-fix` | After `/velpari-doctor`, open the gated repair flow (GATE A feedback → GATE B plan → GATE C verify; nothing written before GATE B). |
+| `--velpari-auto-fix` | After `/velpari-doctor`, run the legacy one-confirm fix batch (bounded verify → repair → re-verify). |
 | `--velpari-run-reviewer` | Force the adversarial reviewer at intermediate tier. |
 
 ## Transition table
