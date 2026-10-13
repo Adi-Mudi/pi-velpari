@@ -4,16 +4,17 @@
  * `renderReport()` produces the on-disk markdown report. This module is
  * the chat-friendly twin the `/velpari-doctor` handler sends to the
  * parent LLM: a short header + verdict, a "Recommended next steps"
- * callout (REC-2 — reuses the P0 `suggestion` field), and the full
- * report with the setup-progress section hoisted to the top (the
- * first-time-user UX is the entire point — the recommended next step
- * should survive TUI truncation).
+ * callout (REC-2 — reuses the P0 `suggestion` field, plus the D7 impact
+ * line), and the full report with the setup-progress section hoisted to
+ * the top (the first-time-user UX is the entire point — the recommended
+ * next step should survive TUI truncation).
  *
  * Pure. Layer rule: L1 `doctor/` — imports sibling L0-ish modules
- * (`_types.ts`, `report.ts`, `report-schema.ts`) only.
+ * (`_types.ts`, `report.ts`, `report-schema.ts`, `impact.ts`) only.
  */
 
 import { type DiagnosticItem, type DiagnosticReport, type DiagnosticSection } from "./_types.js";
+import { impactFor } from "./impact.js";
 import { TRUNCATION_TAIL, renderReport } from "./report.js";
 import { sectionId } from "./report-schema.js";
 
@@ -57,14 +58,15 @@ export function buildChatReport(report: DiagnosticReport, opts: ChatRenderOption
 	if (steps.length === 0) {
 		lines.push("- ✅ Nothing to fix — configuration looks good.");
 	} else {
-		for (const item of steps) lines.push(`- ${item.message} → ${item.suggestion}`);
+		for (const item of steps)
+			lines.push(`- ${item.message} → ${item.suggestion}  _(${impactFor(item.sectionId, item)})_`);
 	}
 	lines.push("");
 
 	// (3)+(4) Hoist setup-progress, then let renderReport do the section work.
 	const body = renderReport(
 		{ ...report, sections: orderSections(report.sections) },
-		{ grouped: opts.grouped, severityFirst: opts.severityFirst },
+		{ grouped: opts.grouped, severityFirst: opts.severityFirst, impact: true },
 	);
 	lines.push(body);
 
@@ -74,15 +76,18 @@ export function buildChatReport(report: DiagnosticReport, opts: ChatRenderOption
 /**
  * Collect every error item with a suggestion, then every warning item
  * with a suggestion, in report order. Types narrow the optional
- * `suggestion` away, so callers can render the arrow unconditionally.
+ * `suggestion` away, so callers can render the arrow unconditionally;
+ * the owning section id is carried so the D7 impact can be derived.
  */
-function collectNextSteps(sections: DiagnosticSection[]): Array<DiagnosticItem & { suggestion: string }> {
-	const out: Array<DiagnosticItem & { suggestion: string }> = [];
+function collectNextSteps(
+	sections: DiagnosticSection[],
+): Array<DiagnosticItem & { suggestion: string; sectionId: string }> {
+	const out: Array<DiagnosticItem & { suggestion: string; sectionId: string }> = [];
 	for (const status of ["error", "warning"] as const) {
 		for (const section of sections) {
 			for (const item of section.items) {
 				if (item.status !== status || !item.suggestion) continue;
-				out.push({ ...item, suggestion: item.suggestion });
+				out.push({ ...item, suggestion: item.suggestion, sectionId: sectionId(section) });
 			}
 		}
 	}
