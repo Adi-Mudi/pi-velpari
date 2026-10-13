@@ -31,6 +31,12 @@ import type { PreflightFinding } from "../../src/doctor/preflight.js";
 import type { DiagnosticReport } from "../../src/doctor/_types.js";
 import { SAFE_WHITELIST, suggestionFor } from "../../src/doctor/checks/fix-suggestions.js";
 import { readFixAudit } from "../../src/doctor/fix-audit.js";
+import {
+	FIX_PLAN_JSON_PATH,
+	FIX_PLAN_MD_PATH,
+	FIX_PLAN_SCHEMA_VERSION,
+	type FixPlanJson,
+} from "../../src/doctor/fix-plan.js";
 
 let tmpDir: string;
 
@@ -431,5 +437,33 @@ describe("runRepairSession", () => {
 		assert.equal(confirmCalls(), 0, "GATE B never reached");
 		const audit = readFixAudit(tmpDir);
 		assert.equal(audit.length, 2, "both decisions recorded");
+	});
+
+	it("(k) Plan stage writes the reviewable fix-plan artifact before GATE B (included items only)", async () => {
+		const { ui } = mockUi(["Build a fix plan", "Fix now (auto-safe)", "Ignore (accept the risk)"], true);
+		const source: RepairSessionSource = {
+			kind: "preflight",
+			findings: [finding("bookkeeping-advance", true), finding("config-invalid", false)],
+		};
+		const outcome = await runRepairSession({
+			ui,
+			cwd: tmpDir,
+			projectName: "X",
+			source,
+			reRun: async () => ({ ok: false, actionableCount: 1 }),
+			runAuto: async () => {},
+			dispatchOne: async () => {},
+		});
+		assert.equal(outcome.action, "fixed");
+		const mdPath = path.join(tmpDir, FIX_PLAN_MD_PATH);
+		const jsonPath = path.join(tmpDir, FIX_PLAN_JSON_PATH);
+		assert.ok(fs.existsSync(mdPath), "fix-plan markdown twin written");
+		assert.ok(fs.existsSync(jsonPath), "fix-plan JSON twin written");
+		const plan = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as FixPlanJson;
+		assert.equal(plan.schemaVersion, FIX_PLAN_SCHEMA_VERSION);
+		assert.equal(plan.projectName, "X");
+		assert.equal(plan.items.length, 1, "only the included item is in the plan");
+		assert.equal(plan.items[0]?.message, "bookkeeping-advance: test item");
+		assert.match(fs.readFileSync(mdPath, "utf8"), /# Velpari Doctor — Fix Plan/);
 	});
 });
