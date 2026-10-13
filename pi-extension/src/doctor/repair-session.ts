@@ -5,8 +5,10 @@
  * (`doctor/fix-flow.ts`, preserved unchanged as the explicit
  * `--velpari-auto-fix` entry point). This module runs the
  * `Analyze → Report → GATE A → Plan → GATE B → Apply → Verify` stage
- * machine: every gate blocks for the developer, and **nothing is
- * written before GATE B** (decline at either gate = zero writes).
+ * machine: every gate blocks for the developer, and **no repair is applied
+ * before GATE B** (decline at either gate = zero repair writes; the
+ * reviewable fix-plan artifact is written during the Plan stage, after the
+ * feedback pass and before GATE B).
  *
  * Stage machine:
  *   1. Analyze/Report — the caller already ran `runDoctor`; `notify` the summary.
@@ -14,7 +16,9 @@
  *      Show details lists each actionable item then re-asks; Abort ends
  *      with zero writes; Build a fix plan continues.
  *   3. Plan — build the batch list (auto-safe whitelist + manual items),
- *      exactly as `fix-flow.ts` does today.
+ *      exactly as `fix-flow.ts` does today, and write the reviewable
+ *      fix-plan artifact (`.md` + `.json` twins, `fix-plan.ts`) for the
+ *      included set.
  *   4. Feedback (D4 + D8) — after "Build a fix plan", one select per
  *      actionable item: its possible solutions (derived from
  *      `action-policy.decideAction` + `FixLevel` — Fix now / Manual step /
@@ -45,6 +49,7 @@ import { decideAction } from "./action-policy.js";
 import type { FixAction } from "./failure-taxonomy.js";
 import { recordFixAudit, type FixDecision } from "./fix-audit.js";
 import { sectionId } from "./report-schema.js";
+import { FIX_PLAN_MD_PATH, buildFixPlan, writeFixPlan, type FixPlanView } from "./fix-plan.js";
 import type { PreflightFinding } from "./preflight.js"; // type-only: no runtime cycle
 
 /** The Pi UI primitives the gated session needs (absent functions degrade, never hang). */
@@ -101,6 +106,8 @@ interface RepairItem {
 	item: ActionableItem;
 	/** The possible solution derived from `action-policy.decideAction`. */
 	action: FixAction;
+	/** Stable machine section id (feeds the fix-plan `impact`/`action`). */
+	sectionId: string;
 	/** Best-effort fingerprint for the audit journal. */
 	fingerprint: string;
 	/** Resolved GATE-A feedback decision (defaults to `"applied"`). */
@@ -152,7 +159,7 @@ function buildView(source: RepairSessionSource): RepairView {
 				level: (levelFor(f.fingerprint as SuggestionKey) ?? "interactive") as FixLevel,
 			};
 			const action: FixAction = f.autoFixable ? "auto-safe" : decideAction("Preflight", item);
-			return { item, action, fingerprint: f.fingerprint, decision: "applied" };
+			return { item, action, sectionId: "Preflight", fingerprint: f.fingerprint, decision: "applied" };
 		});
 		return {
 			items,
@@ -167,6 +174,7 @@ function buildView(source: RepairSessionSource): RepairView {
 		return {
 			item,
 			action: decideAction(sid, item),
+			sectionId: sid,
 			fingerprint: keyForSuggestion(item.suggestion) ?? sid,
 			decision: "applied",
 		};
@@ -350,7 +358,14 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 	const includedAuto = included.filter((p) => p.action === "auto-safe");
 	const includedManual = included.filter((p) => p.action !== "auto-safe");
 
-	// GATE B — the plan + batch list is shown FIRST; decline = zero writes.
+	// Plan artifact (DGR P1c) — persist the reviewable fix plan (`.md` + `.json`)
+	// for the included set BEFORE GATE B, so the developer reviews exactly what
+	// the batch would do. This is the one deliberate write that precedes the
+	// gate; a re-plan replaces the previous plan on purpose.
+	const planView: FixPlanView = { items: included.map((p) => ({ ...p.item, sectionId: p.sectionId })) };
+	writeFixPlan(opts.cwd, buildFixPlan(planView, { projectName: opts.projectName }));
+
+	// GATE B — the plan + batch list is shown FIRST; decline = zero repair writes.
 	if (typeof opts.ui.confirm !== "function") {
 		return { action: "aborted", reason: "no confirm primitive available" };
 	}
@@ -368,7 +383,8 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 		(includedManual.length > 0
 			? `\n${includedManual.length} item(s) need a manual /velpari-* command after the automatic fixes.`
 			: "") +
-		(excluded.length > 0 ? `\n${excluded.length} item(s) excluded/deferred (recorded, not applied).` : "");
+		(excluded.length > 0 ? `\n${excluded.length} item(s) excluded/deferred (recorded, not applied).` : "") +
+		`\n\nReviewable plan: ${FIX_PLAN_MD_PATH}`;
 
 	const confirmed = await opts.ui.confirm(`Apply ${batchLines.length} fix(es)?`, batchList);
 	if (!confirmed) {
