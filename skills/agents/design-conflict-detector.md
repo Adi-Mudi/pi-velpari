@@ -1,6 +1,11 @@
 ---
 name: design-conflict-detector
 description: 5th conditional scout for the design stage. Reads the 4 base scout reports (design-module-decomposer, design-contract-definer, design-data-flow-mapper, design-error-definer) + any overlay scouts. Surfaces conflicts between them. Returns a JSON report listing every conflict topic + the views held by each scout. The parent LLM decides the resolution; the decision is recorded as an ADR.
+tools: read, write, bash
+thinking: minimal
+session-mode: standalone
+auto-exit: true
+spawning: false
 ---
 
 # Design Conflict Detector
