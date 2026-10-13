@@ -95,6 +95,20 @@ The doctor's agent section (extended) checks, before a phase starts:
 3. Reviewer presence per tier gate (advanced tier / reviewer-required overlay
    → reviewer agent must exist).
 4. No stale generator versions (footer `vN` < current).
+5. **Tool contract (P1).** Each role's effective agent `tools:` is compared
+   to `roleToolContract(role)` — the expected list derived from the bundled
+   `skills/agents/<role>.md` template (the source of truth). A **missing**
+   contract tool is an **error**; an extra tool outside the contract is a
+   **warning**; an exact (order-insensitive) match is ok. Absent agent files
+   are skipped — the Scout agents section owns presence.
+6. **Body integrity (P2a).** A body shorter than 200 chars, or a body whose
+   normalized text is byte-identical to another role's, is a **warning**
+   (warning-first, never an error).
+7. **Real-format fields (P2b).** The optional pi agent keys are validated
+   **only when present**: `model:` must be `provider/model-id` (a legacy
+   `:thinking` suffix is tolerated), `interactive:` a boolean,
+   `disallowed_tools:` known tool names, `allowed_subagents:` a non-empty
+   list. Unknown-but-valid forward-compat keys are tolerated.
 
 ## Fallback (permanent)
 
@@ -143,3 +157,22 @@ v2 applies these refinements to the model above:
    the phase table above: `testplan-reviewer` is generated in **Phase 3**
    (with the other three reviewers), not Phase 4 — the verdict is only needed
    at testplan publish, and Phase 3 already generates every reviewer.
+
+## Implementation notes (generator v3 + DSI doctor checks, 2026-10-13)
+
+The DSI initiative (`.IDE_Plans/doctor-subagent-integrity_master-plan_20261012_0134_v1.0.md`)
+closes the generator/doctor divergence that produced the `thinking` defect:
+
+1. **Generator v3.** `GENERATOR_VERSION = 3`. The generator always emits
+   `thinking:` and honours the template's `session-mode` / `auto-exit` /
+   `spawning` (previously it hardcoded `lineage-only` / `true` / `false` for
+   every generated agent). Pre-v3 generated files read as stale footers, so
+   the doctor recommends a regeneration.
+2. **One shared schema.** `core/agent-schema.ts` is the single source of
+   truth for the agent field set, `KNOWN_TOOL_NAMES`, `THINKING_LEVELS`,
+   `SESSION_MODES`, and `ROLE_TOOL_CONTRACT` — imported by **both** the
+   generator and the doctor, so the two can never diverge again.
+3. **Three new doctor checks.** `checkAgentToolContract` (missing contract
+   tool = error, extra = warning), the `checkAgentFileIntegrity` body check
+   (short + copy-paste → warning), and `checkAgentFormatFields` (the optional
+   real-format keys validated when present).
