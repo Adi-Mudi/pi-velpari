@@ -86,11 +86,20 @@ export default function (pi: ExtensionAPI) {
 	});
 	// v1.4.0 / Phase 8 Level A: opt-in interactive fix picker. When set
 	// and /velpari-doctor finds actionable items, commands/doctor.ts
-	// shows a picker (ui/fix-picker.ts) and dispatches via
-	// doctor/fix-dispatch.ts. Default off — existing behavior unchanged.
+	// opens the DGR gated repair flow (Analyze → Report → GATE A → Plan →
+	// GATE B → Apply → Verify; nothing is written before GATE B). Default
+	// off — existing behavior unchanged.
 	pi.registerFlag("velpari-fix", {
 		description:
-			"After /velpari-doctor, show an interactive picker for actionable items and dispatch the chosen one to the parent LLM.",
+			"After /velpari-doctor, open the gated repair flow (two developer gates: build a fix plan, then confirm the batch).",
+		type: "boolean",
+		default: false,
+	});
+	// DGR P0 (subphase P0.3): the legacy one-confirm batch moved here.
+	// Runs runFixFlow — the AskUserQuestion-parity Fix all / Show details /
+	// Abort select, then one confirm-gated batch with no further prompts.
+	pi.registerFlag("velpari-auto-fix", {
+		description: "After /velpari-doctor, run the one-confirm automatic fix batch (legacy --velpari-fix behaviour).",
 		type: "boolean",
 		default: false,
 	});
