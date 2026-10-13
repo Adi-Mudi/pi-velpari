@@ -15,10 +15,17 @@
  *      with zero writes; Build a fix plan continues.
  *   3. Plan — build the batch list (auto-safe whitelist + manual items),
  *      exactly as `fix-flow.ts` does today.
- *   4. GATE B — `confirm("Apply N fix(es)?", <the batch list>)`. Decline
+ *   4. Feedback (D4 + D8) — after "Build a fix plan", one select per
+ *      actionable item: its possible solutions (derived from
+ *      `action-policy.decideAction` + `FixLevel` — Fix now / Manual step /
+ *      Escalate) plus "Ignore (accept the risk)" / "Defer", with an
+ *      "Accept all (recommended)" fast path. Ignored/deferred items are
+ *      audited and never applied; the included set becomes the plan.
+ *   5. GATE B — `confirm("Apply N fix(es)?", <the batch list>)`. Decline
  *      ends with zero writes; confirm continues.
- *   5. Apply — `runAllSafeRemediates` + `dispatchOne` per manual item.
- *   6. Verify — `reRun()`; notify the result. (GATE C + the no-auto
+ *   6. Apply — `runAllSafeRemediates` (only when an auto-safe item is
+ *      included) + `dispatchOne` per included manual item.
+ *   7. Verify — `reRun()`; notify the result. (GATE C + the no-auto
  *      guarantee land in DGR P2; P0 stops here after one pass.)
  *
  * Non-interactive degrade (the `fix-flow.ts` precedent): if `ui.select`
@@ -34,6 +41,10 @@ import type { DiagnosticReport } from "./_types.js";
 import { runAllSafeRemediates } from "./remediate.js";
 import { listActionableItems, type ActionableItem } from "./fix-dispatch.js";
 import { SAFE_WHITELIST, SUGGESTIONS, levelFor, type FixLevel, type SuggestionKey } from "./checks/fix-suggestions.js";
+import { decideAction } from "./action-policy.js";
+import type { FixAction } from "./failure-taxonomy.js";
+import { recordFixAudit, type FixDecision } from "./fix-audit.js";
+import { sectionId } from "./report-schema.js";
 import type { PreflightFinding } from "./preflight.js"; // type-only: no runtime cycle
 
 /** The Pi UI primitives the gated session needs (absent functions degrade, never hang). */
@@ -81,14 +92,29 @@ export type RepairSessionOutcome =
 	/** Nothing was actionable — caller proceeds/reports clean. */
 	| { action: "no-actionables" };
 
+/**
+ * One planned repair item: the actionable item plus its derived solution
+ * (`decideAction`) and the feedback decision it carries through the session.
+ */
+interface RepairItem {
+	/** The item shown/ dispatched (stable `ActionableItem` shape). */
+	item: ActionableItem;
+	/** The possible solution derived from `action-policy.decideAction`. */
+	action: FixAction;
+	/** Best-effort fingerprint for the audit journal. */
+	fingerprint: string;
+	/** Resolved GATE-A feedback decision (defaults to `"applied"`). */
+	decision: FixDecision;
+}
+
 /** Partitioned view over one source: what the batch will do vs what stays manual. */
 interface RepairView {
 	/** Every actionable item, in source order (for Show details + dispatch). */
-	items: ActionableItem[];
+	items: RepairItem[];
 	/** Fix fingerprints the batch will run (auto-safe / preflight `autoFixable`). */
 	autoNames: string[];
 	/** Items that need a manual command (never auto-executed). */
-	manual: ActionableItem[];
+	manual: RepairItem[];
 }
 
 /**
@@ -108,47 +134,146 @@ function keyForSuggestion(suggestion: string): SuggestionKey | null {
 /**
  * Build the actionable partition for one source (mirrors
  * `fix-flow.ts:buildView`, kept local so the auto path stays untouched).
+ * Each item also carries its derived possible solution (D8) and a
+ * fingerprint for the audit journal.
  * @param {RepairSessionSource} source - Preflight findings or a doctor report.
  * @returns {RepairView} Items + auto batch names + manual remainder.
  */
 function buildView(source: RepairSessionSource): RepairView {
 	if (source.kind === "preflight") {
 		const relevant = source.findings.filter((f) => f.blocking || f.autoFixable);
-		return {
-			items: relevant.map((f, i) => ({
+		const items: RepairItem[] = relevant.map((f, i) => {
+			const item: ActionableItem = {
 				index: i,
 				section: "Preflight",
 				status: f.blocking ? ("error" as const) : ("warning" as const),
 				message: f.item.message,
 				suggestion: f.item.suggestion ?? "",
 				level: (levelFor(f.fingerprint as SuggestionKey) ?? "interactive") as FixLevel,
-			})),
-			autoNames: relevant.filter((f) => f.autoFixable).map((f) => f.fingerprint),
-			manual: relevant
-				.filter((f) => !f.autoFixable)
-				.map((f, i) => ({
-					index: i,
-					section: "Preflight",
-					status: "error" as const,
-					message: f.item.message,
-					suggestion: f.item.suggestion ?? "",
-					level: "interactive" as FixLevel,
-				})),
+			};
+			const action: FixAction = f.autoFixable ? "auto-safe" : decideAction("Preflight", item);
+			return { item, action, fingerprint: f.fingerprint, decision: "applied" };
+		});
+		return {
+			items,
+			autoNames: items.filter((p) => p.action === "auto-safe").map((p) => p.fingerprint),
+			manual: items.filter((p) => p.action !== "auto-safe"),
 		};
 	}
 	const items = listActionableItems(source.report);
-	const autoNames: string[] = [];
-	const manualIdx: number[] = [];
-	items.forEach((item, i) => {
-		const key = keyForSuggestion(item.suggestion);
-		if (key !== null && levelFor(key) === "auto-safe") autoNames.push(key);
-		else manualIdx.push(i);
+	const idByTitle = new Map(source.report.sections.map((s) => [s.title, sectionId(s)] as const));
+	const planned: RepairItem[] = items.map((item) => {
+		const sid = idByTitle.get(item.section) ?? item.section;
+		return {
+			item,
+			action: decideAction(sid, item),
+			fingerprint: keyForSuggestion(item.suggestion) ?? sid,
+			decision: "applied",
+		};
 	});
 	return {
-		items,
-		autoNames,
-		manual: manualIdx.map((i) => items[i]!),
+		items: planned,
+		autoNames: planned.filter((p) => p.action === "auto-safe").map((p) => p.fingerprint),
+		manual: planned.filter((p) => p.action !== "auto-safe"),
 	};
+}
+
+/** D8 menu labels — the possible solutions for one actionable item. */
+const AUTO_LABEL = "Fix now (auto-safe)";
+const MANUAL_LABEL = "Manual step (`/velpari-*`)";
+const ESCALATE_LABEL = "Escalate (manual — store integrity)";
+const IGNORE_LABEL = "Ignore (accept the risk)";
+const DEFER_LABEL = "Defer";
+const ACCEPT_ALL_LABEL = "Accept all (recommended)";
+
+/**
+ * The label for one derived solution (D8). `agentic` and `manual` both
+ * route through the manual `/velpari-*` handoff; `escalate` (store
+ * integrity — human) gets its own row.
+ * @param {FixAction} action - The derived solution action.
+ * @returns {string} The menu/plan label.
+ */
+function labelFor(action: FixAction): string {
+	if (action === "auto-safe") return AUTO_LABEL;
+	if (action === "escalate") return ESCALATE_LABEL;
+	return MANUAL_LABEL;
+}
+
+/**
+ * The D8 option rows for one item: the derived primary solution, an
+ * optional safe alternative, then Ignore/Defer (D4 exclude/defer).
+ * @param {FixAction} action - The derived solution action.
+ * @returns {string[]} The option labels (without the accept-all fast path).
+ */
+function solutionOptions(action: FixAction): string[] {
+	const primary = labelFor(action);
+	const alternatives = action === "auto-safe" ? [MANUAL_LABEL] : [];
+	return [primary, ...alternatives, IGNORE_LABEL, DEFER_LABEL];
+}
+
+/**
+ * D4 + D8 — the per-item feedback pass. Each item gets its possible
+ * solutions (from `decideAction`) plus Ignore/Defer, with an
+ * "Accept all (recommended)" fast path. Mutates each item's `decision`
+ * (and `action`, when a non-default solution is picked).
+ * @param {RepairSessionUi} ui - UI primitives (`select` is present).
+ * @param {RepairItem[]} items - The planned items to resolve.
+ * @returns {Promise<boolean>} false when the user cancelled (caller aborts).
+ */
+async function collectFeedback(ui: RepairSessionUi, items: RepairItem[]): Promise<boolean> {
+	if (typeof ui.select !== "function") return false;
+	let acceptAll = false;
+	for (let i = 0; i < items.length; i++) {
+		const planned = items[i]!;
+		if (acceptAll) {
+			planned.decision = "applied";
+			continue;
+		}
+		const choice = await ui.select(`Issue ${i + 1}/${items.length}: ${planned.item.message}`, [
+			ACCEPT_ALL_LABEL,
+			...solutionOptions(planned.action),
+		]);
+		if (choice === null || choice === undefined) return false;
+		if (choice.startsWith("Accept all")) {
+			acceptAll = true;
+			planned.decision = "applied";
+			continue;
+		}
+		if (choice.startsWith("Ignore")) {
+			planned.decision = "ignored";
+			continue;
+		}
+		if (choice.startsWith("Defer")) {
+			planned.decision = "deferred";
+			continue;
+		}
+		// A solution label (or an unrecognized label → keep the derived solution).
+		if (choice.startsWith("Manual step")) planned.action = "manual";
+		else if (choice.startsWith("Escalate")) planned.action = "escalate";
+		else if (choice.startsWith("Fix now")) planned.action = "auto-safe";
+		planned.decision = "applied";
+	}
+	return true;
+}
+
+/**
+ * Best-effort audit row for one GATE-A feedback decision (D4).
+ * `recordFixAudit` never throws, so this can never break the session.
+ * @param {RepairItem} planned - The resolved item.
+ * @param {string} cwd - Project root.
+ * @param {boolean} ok - Whether the item was applied cleanly.
+ */
+function auditDecision(planned: RepairItem, cwd: string, ok: boolean): void {
+	recordFixAudit(
+		{
+			at: new Date().toISOString(),
+			fingerprint: planned.fingerprint,
+			ok,
+			changedFiles: [],
+			decision: planned.decision,
+		},
+		cwd,
+	);
 }
 
 /**
@@ -167,9 +292,9 @@ function reportSummary(source: RepairSessionSource, actionable: number): string 
 }
 
 /**
- * The gated repair session — Analyze → Report → GATE A → Plan → GATE B
- * → Apply → Verify. Never throws; every side effect is gated behind
- * GATE B (decline → `{ action: "aborted" }`, zero writes).
+ * The gated repair session — Analyze → Report → GATE A → Feedback →
+ * GATE B → Apply → Verify. Never throws; every side effect is gated
+ * behind GATE B (decline → `{ action: "aborted" }`, zero writes).
  * @param {RepairSessionOptions} opts - UI, cwd, project, source, reRun, optional dispatch/batch injectors.
  * @returns {Promise<RepairSessionOutcome>} fixed / aborted / no-actionables.
  */
@@ -198,7 +323,8 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 			return { action: "aborted", reason: "user aborted" };
 		}
 		if (choice.startsWith("Show details")) {
-			for (const item of view.items) {
+			for (const planned of view.items) {
+				const { item } = planned;
 				opts.ui.notify(`[${item.status}] ${item.section} — ${item.message}\n  → ${item.suggestion}`, "info");
 			}
 			continue; // re-ask (loop back to select)
@@ -207,37 +333,67 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 		break;
 	}
 
-	// GATE B — the batch list is shown FIRST; decline = zero writes.
+	// D4 + D8 — per-item feedback pass (include / exclude / defer + solutions).
+	// Cancelling the pass aborts with zero writes.
+	const collected = await collectFeedback(opts.ui, view.items);
+	if (!collected) return { action: "aborted", reason: "user cancelled feedback" };
+
+	const included = view.items.filter((p) => p.decision === "applied");
+	const excluded = view.items.filter((p) => p.decision !== "applied");
+	// Excluded / deferred items are recorded but never applied (D4).
+	for (const planned of excluded) auditDecision(planned, opts.cwd, false);
+	if (included.length === 0) {
+		opts.ui.notify("No items selected — nothing to apply.", "info");
+		return { action: "aborted", reason: "nothing selected" };
+	}
+
+	const includedAuto = included.filter((p) => p.action === "auto-safe");
+	const includedManual = included.filter((p) => p.action !== "auto-safe");
+
+	// GATE B — the plan + batch list is shown FIRST; decline = zero writes.
 	if (typeof opts.ui.confirm !== "function") {
 		return { action: "aborted", reason: "no confirm primitive available" };
 	}
 
-	const batchLines = [...Array.from(SAFE_WHITELIST), ...view.manual.map((m) => `manual: ${m.message}`)];
+	const planLines = included.map((p) => `  - [${labelFor(p.action)}] ${p.item.message}`);
+	// The safe batch is atomic (full whitelist); it only runs when at least one
+	// auto-safe item is included. Manual lines are the included manual remainder.
+	const batchLines = [
+		...(includedAuto.length > 0 ? Array.from(SAFE_WHITELIST) : []),
+		...includedManual.map((m) => `manual: ${m.item.message}`),
+	];
 	const batchList =
+		`Your plan:\n${planLines.join("\n")}\n\n` +
 		batchLines.map((l) => `  - ${l}`).join("\n") +
-		(view.manual.length > 0
-			? `\n${view.manual.length} item(s) need a manual /velpari-* command after the automatic fixes.`
-			: "");
+		(includedManual.length > 0
+			? `\n${includedManual.length} item(s) need a manual /velpari-* command after the automatic fixes.`
+			: "") +
+		(excluded.length > 0 ? `\n${excluded.length} item(s) excluded/deferred (recorded, not applied).` : "");
 
 	const confirmed = await opts.ui.confirm(`Apply ${batchLines.length} fix(es)?`, batchList);
 	if (!confirmed) {
 		return { action: "aborted", reason: "user declined batch" }; // zero writes
 	}
 
-	// Apply — the auto batch (whitelist → fn → try/catch) then the manual remainder.
+	// Apply — the safe batch (skipped when no auto-safe item is included) then
+	// the included manual remainder.
 	const runAuto = opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
-	try {
-		await runAuto();
-	} catch (err) {
-		opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+	if (includedAuto.length > 0) {
+		try {
+			await runAuto();
+		} catch (err) {
+			opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+		}
 	}
 
 	if (opts.dispatchOne) {
-		for (const item of view.manual) {
+		for (const planned of includedManual) {
 			try {
-				await opts.dispatchOne(item);
+				await opts.dispatchOne(planned.item);
+				auditDecision(planned, opts.cwd, true);
 			} catch (err) {
 				opts.ui.notify(`Fix dispatch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+				auditDecision(planned, opts.cwd, false);
 			}
 		}
 	}
@@ -254,6 +410,6 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 		);
 	}
 
-	const remainingManual = clean ? 0 : view.manual.length;
+	const remainingManual = clean ? 0 : includedManual.length;
 	return { action: "fixed", remainingManual };
 }
