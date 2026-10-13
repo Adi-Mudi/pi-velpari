@@ -14,15 +14,24 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { checkAgentMappingSection } from "../../src/doctor/checks/agents.js";
+import { VELPARI_ROLES } from "../../src/core/agents-config.js";
 
 let tmpDir: string;
 
+/** Write a `.pi/velpari/agents.json` file in the temp project.
+ *  @param config - The raw config object to serialize.
+ *  @returns Nothing.
+ */
 function writeAgentsJson(config: unknown): void {
 	const dir = path.join(tmpDir, ".pi", "velpari");
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, "agents.json"), JSON.stringify(config), "utf8");
 }
 
+/** Write a minimal agent markdown file in the temp project's `.pi/agents/`.
+ *  @param name - The agent name (also the file stem).
+ *  @returns Nothing.
+ */
 function writeProjectAgent(name: string): void {
 	const dir = path.join(tmpDir, ".pi", "agents");
 	fs.mkdirSync(dir, { recursive: true });
@@ -43,7 +52,7 @@ describe("checkAgentMappingSection", () => {
 		assert.equal(section.title, "Agent mapping (agents.json)");
 		assert.equal(section.items.length, 1);
 		assert.equal(section.items[0]?.status, "info");
-		assert.match(section.items[0]?.message ?? "", /all 42 roles use bundled defaults/);
+		assert.match(section.items[0]?.message ?? "", new RegExp(`all ${VELPARI_ROLES.length} roles use bundled defaults`));
 	});
 
 	it("valid custom mapping with existing custom agent file → ok", () => {

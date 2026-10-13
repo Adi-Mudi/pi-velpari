@@ -25,6 +25,7 @@ import type { DiagnosticItem, DiagnosticSection } from "../_types.js";
 import { suggestionFor } from "./fix-suggestions.js";
 import { STAGE_REGISTRY } from "../../stages/registry.js";
 import { findPackageRoot } from "../../core/paths.js";
+import { KNOWN_TOOL_NAMES, REQUIRED_AGENT_FIELDS, SESSION_MODES, THINKING_LEVELS } from "../../core/agent-schema.js";
 import {
 	BRAINSTORM_ROLES,
 	DEFAULT_AGENTS,
@@ -32,6 +33,7 @@ import {
 	LOGGING_SCOUT_ROLES,
 	resolveAgentName,
 	validateMappedAgents,
+	VELPARI_ROLES,
 	type AgentConfig,
 	type VelpariRole,
 } from "../../core/agents-config.js";
@@ -40,47 +42,17 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const REQUIRED_AGENT_FIELDS = [
-	"name",
-	"description",
-	"tools",
-	"thinking",
-	"session-mode",
-	"auto-exit",
-	"spawning",
-];
+// Agent frontmatter schema (DSI P0, D12) — single source of truth in
+// core/agent-schema.ts. Re-exported here under the historical names so
+// existing importers (doctor/checks/generated-files.ts, doctor/index.ts,
+// test/doctor/checks/agents.test.ts) keep working.
+export { KNOWN_TOOL_NAMES, REQUIRED_AGENT_FIELDS };
 
-/**
- * Known pi tool names. Mirrors Senai's `_types.ts`. Anything outside
- * this set in an agent's `tools:` is a typo that blocks scout startup.
- */
-export const KNOWN_TOOL_NAMES: Set<string> = new Set([
-	"read",
-	"write",
-	"edit",
-	"bash",
-	"grep",
-	"find",
-	"ls",
-	"askuserquestion",
-	"intercom",
-	"subagent",
-	"taskcreate",
-	"taskexecute",
-	"taskget",
-	"tasklist",
-	"taskoutput",
-	"taskstop",
-	"taskupdate",
-	"websearch",
-	"fetchurl",
-]);
+/** @deprecated Use `THINKING_LEVELS` from core/agent-schema.js. */
+export const VALID_THINKING_LEVELS: ReadonlySet<string> = THINKING_LEVELS;
 
-/** Valid pi thinking levels. */
-export const VALID_THINKING_LEVELS: Set<string> = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-/** Valid `session-mode:` values per pi's agent frontmatter spec. */
-export const VALID_SESSION_MODES: Set<string> = new Set(["standalone", "lineage-only"]);
+/** @deprecated Use `SESSION_MODES` from core/agent-schema.js. */
+export const VALID_SESSION_MODES: ReadonlySet<string> = SESSION_MODES;
 
 /** Valid `auto-exit:` values. */
 export const VALID_AUTO_EXIT: Set<string> = new Set(["true", "false"]);
@@ -279,7 +251,7 @@ export function checkAgentMappingSection(cwd: string): DiagnosticSection {
 	if (!config) {
 		items.push({
 			status: "info",
-			message: "No agents.json — all 42 roles use bundled defaults.",
+			message: `No agents.json — all ${VELPARI_ROLES.length} roles use bundled defaults.`,
 		});
 		return { title: "Agent mapping (agents.json)", items };
 	}
@@ -417,6 +389,20 @@ export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 
 import { readdirSync } from "node:fs";
 
+/** Minimum body length (chars) before the doctor warns it is too short. */
+const BODY_MIN_CHARS = 200;
+
+/**
+ * Normalize an agent body for copy-paste comparison: strip the frontmatter
+ * block, trim, and collapse all internal whitespace runs to one space.
+ */
+function normalizeAgentBody(content: string): string {
+	return content
+		.replace(/^---[\s\S]*?---\n?/, "")
+		.trim()
+		.replace(/\s+/g, " ");
+}
+
 /**
  * Per-file integrity audit of `.pi/agents/*.md`. Catches typos and
  * invalid frontmatter values that block scout startup but slip past
@@ -439,6 +425,19 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 	);
 	let errors = 0;
 	let warnings = 0;
+
+	// Pre-pass: normalized body → filenames. A body shared byte-for-byte
+	// (after trim + whitespace collapse) by two or more roles is a
+	// copy-paste (Issue 14: warning-only). Empty bodies are skipped here —
+	// they get their own per-file warning below.
+	const bodyOwners = new Map<string, string[]>();
+	for (const filename of files) {
+		const normalized = normalizeAgentBody(readFileSync(join(agentsDir, filename), "utf8"));
+		if (normalized.length === 0) continue;
+		const owners = bodyOwners.get(normalized);
+		if (owners) owners.push(filename);
+		else bodyOwners.set(normalized, [filename]);
+	}
 
 	for (const filename of files) {
 		const target = join(agentsDir, filename);
@@ -525,6 +524,27 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				message: `${filename}: body is empty after frontmatter.`,
 				suggestion: "Add at least one paragraph describing the agent's mandate.",
 			});
+		} else {
+			// 7a. Body is long enough to carry a mandate (Issue 14: warning-only).
+			if (body.length < BODY_MIN_CHARS) {
+				warnings++;
+				items.push({
+					status: "warning",
+					message: `${filename}: body is very short (${body.length} chars) — add the agent's mandate.`,
+					suggestion: `Describe the agent's mandate in at least ${BODY_MIN_CHARS} characters.`,
+				});
+			}
+			// 7b. Body is not a copy-paste of another role's body (warning-only).
+			const normalized = body.replace(/\s+/g, " ");
+			const twin = (bodyOwners.get(normalized) ?? []).find((owner) => owner !== filename);
+			if (twin) {
+				warnings++;
+				items.push({
+					status: "warning",
+					message: `${filename}: body is identical to \`${twin}\` — a copy-paste of another role.`,
+					suggestion: "Rewrite the body so this role's mandate is distinct from the twin agent.",
+				});
+			}
 		}
 	}
 
