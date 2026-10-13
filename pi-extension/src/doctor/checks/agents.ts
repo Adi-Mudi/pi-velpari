@@ -389,6 +389,20 @@ export function checkStageSkillsSection(cwd: string): DiagnosticSection {
 
 import { readdirSync } from "node:fs";
 
+/** Minimum body length (chars) before the doctor warns it is too short. */
+const BODY_MIN_CHARS = 200;
+
+/**
+ * Normalize an agent body for copy-paste comparison: strip the frontmatter
+ * block, trim, and collapse all internal whitespace runs to one space.
+ */
+function normalizeAgentBody(content: string): string {
+	return content
+		.replace(/^---[\s\S]*?---\n?/, "")
+		.trim()
+		.replace(/\s+/g, " ");
+}
+
 /**
  * Per-file integrity audit of `.pi/agents/*.md`. Catches typos and
  * invalid frontmatter values that block scout startup but slip past
@@ -411,6 +425,19 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 	);
 	let errors = 0;
 	let warnings = 0;
+
+	// Pre-pass: normalized body → filenames. A body shared byte-for-byte
+	// (after trim + whitespace collapse) by two or more roles is a
+	// copy-paste (Issue 14: warning-only). Empty bodies are skipped here —
+	// they get their own per-file warning below.
+	const bodyOwners = new Map<string, string[]>();
+	for (const filename of files) {
+		const normalized = normalizeAgentBody(readFileSync(join(agentsDir, filename), "utf8"));
+		if (normalized.length === 0) continue;
+		const owners = bodyOwners.get(normalized);
+		if (owners) owners.push(filename);
+		else bodyOwners.set(normalized, [filename]);
+	}
 
 	for (const filename of files) {
 		const target = join(agentsDir, filename);
@@ -497,6 +524,27 @@ export function checkAgentFileIntegrity(cwd: string): DiagnosticSection {
 				message: `${filename}: body is empty after frontmatter.`,
 				suggestion: "Add at least one paragraph describing the agent's mandate.",
 			});
+		} else {
+			// 7a. Body is long enough to carry a mandate (Issue 14: warning-only).
+			if (body.length < BODY_MIN_CHARS) {
+				warnings++;
+				items.push({
+					status: "warning",
+					message: `${filename}: body is very short (${body.length} chars) — add the agent's mandate.`,
+					suggestion: `Describe the agent's mandate in at least ${BODY_MIN_CHARS} characters.`,
+				});
+			}
+			// 7b. Body is not a copy-paste of another role's body (warning-only).
+			const normalized = body.replace(/\s+/g, " ");
+			const twin = (bodyOwners.get(normalized) ?? []).find((owner) => owner !== filename);
+			if (twin) {
+				warnings++;
+				items.push({
+					status: "warning",
+					message: `${filename}: body is identical to \`${twin}\` — a copy-paste of another role.`,
+					suggestion: "Rewrite the body so this role's mandate is distinct from the twin agent.",
+				});
+			}
 		}
 	}
 
