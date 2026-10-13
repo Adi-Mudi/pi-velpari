@@ -14,6 +14,11 @@
  *   (h) defer ⇒ not applied, audited `deferred`;
  *   (i) an `escalate` item renders the "Escalate (manual)" option;
  *   (j) excluding every item ⇒ nothing applied, aborted "nothing selected".
+ * P2 (D10 + D5):
+ *   (l) GATE C Done ⇒ `{action:"fixed"}`; (m) GATE C Re-plan ⇒ GATE B is
+ *   re-entered and the batch re-applies once, then GATE C again;
+ *   (n) GATE C Abort ⇒ `{action:"aborted"}`, no further repair writes;
+ *   (o) the gated path makes no un-prompted retry (the `select` count is pinned).
  *
  * Side-effect paths are injected (`runAuto` / `dispatchOne` spies), so
  * "zero writes on decline" is proven without touching the real store.
@@ -465,5 +470,132 @@ describe("runRepairSession", () => {
 		assert.equal(plan.items.length, 1, "only the included item is in the plan");
 		assert.equal(plan.items[0]?.message, "bookkeeping-advance: test item");
 		assert.match(fs.readFileSync(mdPath, "utf8"), /# Velpari Doctor — Fix Plan/);
+	});
+
+	it("(l) GATE C Done ⇒ {action:'fixed'} after one apply + one re-audit", async () => {
+		const { ui, selectCalls } = mockUi(["Build a fix plan", "Fix now (auto-safe)", "Done"], true);
+		let autoCalls = 0;
+		let reRunCalls = 0;
+		const source: RepairSessionSource = {
+			kind: "preflight",
+			findings: [finding("bookkeeping-advance", true)],
+		};
+		const outcome = await runRepairSession({
+			ui,
+			cwd: tmpDir,
+			projectName: "X",
+			source,
+			reRun: async () => {
+				reRunCalls++;
+				return { ok: true, actionableCount: 0 };
+			},
+			runAuto: async () => {
+				autoCalls++;
+			},
+		});
+		assert.deepEqual(outcome, { action: "fixed", remainingManual: 0 });
+		assert.equal(autoCalls, 1, "applied exactly once");
+		assert.equal(reRunCalls, 1, "exactly one re-audit");
+		assert.equal(selectCalls(), 3, "GATE A + feedback + GATE C");
+	});
+
+	it("(m) GATE C Re-plan ⇒ re-enters GATE B, re-applies once, then GATE C again", async () => {
+		const { ui, selectCalls, confirmCalls } = mockUi(
+			["Build a fix plan", "Fix now (auto-safe)", "Re-plan", "Done"],
+			true,
+		);
+		let autoCalls = 0;
+		let reRunCalls = 0;
+		const source: RepairSessionSource = {
+			kind: "preflight",
+			findings: [finding("bookkeeping-advance", true)],
+		};
+		const outcome = await runRepairSession({
+			ui,
+			cwd: tmpDir,
+			projectName: "X",
+			source,
+			reRun: async () => {
+				reRunCalls++;
+				return { ok: true, actionableCount: 0 };
+			},
+			runAuto: async () => {
+				autoCalls++;
+			},
+		});
+		assert.deepEqual(outcome, { action: "fixed", remainingManual: 0 });
+		assert.equal(confirmCalls(), 2, "GATE B re-entered once (re-confirm)");
+		assert.equal(autoCalls, 2, "the batch re-applied once");
+		assert.equal(reRunCalls, 2, "a fresh re-audit per apply");
+		assert.equal(selectCalls(), 4, "GATE A + feedback + GATE C(Re-plan) + GATE C(Done)");
+	});
+
+	it("(n) GATE C Abort ⇒ {action:'aborted'}, no further repair writes", async () => {
+		const { ui, confirmCalls } = mockUi(
+			["Build a fix plan", "Fix now (auto-safe)", "Manual step (`/velpari-*`)", "Abort"],
+			true,
+		);
+		let autoCalls = 0;
+		let dispatchCalls = 0;
+		let reRunCalls = 0;
+		const source: RepairSessionSource = {
+			kind: "preflight",
+			findings: [finding("bookkeeping-advance", true), finding("config-invalid", false)],
+		};
+		const outcome = await runRepairSession({
+			ui,
+			cwd: tmpDir,
+			projectName: "X",
+			source,
+			reRun: async () => {
+				reRunCalls++;
+				return { ok: false, actionableCount: 1 };
+			},
+			runAuto: async () => {
+				autoCalls++;
+			},
+			dispatchOne: async () => {
+				dispatchCalls++;
+			},
+		});
+		assert.deepEqual(outcome, { action: "aborted", reason: "user aborted at verify" });
+		assert.equal(autoCalls, 1, "the first apply ran");
+		assert.equal(dispatchCalls, 1, "the first manual dispatch ran");
+		assert.equal(reRunCalls, 1, "no second re-audit after Abort");
+		assert.equal(confirmCalls(), 1, "GATE B not re-entered");
+	});
+
+	it("(o) the gated path makes no un-prompted retry (select count pinned)", async () => {
+		// A dirty re-audit + "Done" must NOT trigger an automatic second apply.
+		const { ui, selectCalls } = mockUi(["Build a fix plan", "Fix now (auto-safe)", "Done"], true);
+		let autoCalls = 0;
+		let dispatchCalls = 0;
+		let reRunCalls = 0;
+		const source: RepairSessionSource = {
+			kind: "preflight",
+			findings: [finding("bookkeeping-advance", true), finding("config-invalid", false)],
+		};
+		const outcome = await runRepairSession({
+			ui,
+			cwd: tmpDir,
+			projectName: "X",
+			source,
+			reRun: async () => {
+				reRunCalls++;
+				return { ok: false, actionableCount: 2 };
+			},
+			runAuto: async () => {
+				autoCalls++;
+			},
+			dispatchOne: async () => {
+				dispatchCalls++;
+			},
+		});
+		assert.equal(outcome.action, "fixed");
+		assert.equal(reRunCalls, 1, "exactly one re-audit — no auto-retry");
+		assert.equal(autoCalls, 1, "exactly one auto batch");
+		assert.equal(dispatchCalls, 1, "exactly one manual dispatch");
+		// GATE A (1) + 2 feedback selects + GATE C (1) = 4; never more.
+		assert.equal(selectCalls(), 4, "prompt count pinned — no un-prompted retry");
 	});
 });

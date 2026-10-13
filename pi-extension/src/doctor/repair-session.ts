@@ -4,9 +4,9 @@
  * The gated counterpart to the one-confirm `runFixFlow` auto path
  * (`doctor/fix-flow.ts`, preserved unchanged as the explicit
  * `--velpari-auto-fix` entry point). This module runs the
- * `Analyze → Report → GATE A → Plan → GATE B → Apply → Verify` stage
- * machine: every gate blocks for the developer, and **no repair is applied
- * before GATE B** (decline at either gate = zero repair writes; the
+ * `Analyze → Report → GATE A → Plan → GATE B → Apply → Verify → GATE C`
+ * stage machine: every gate blocks for the developer, and **no repair is
+ * applied before GATE B** (decline at any gate = zero repair writes; the
  * reviewable fix-plan artifact is written during the Plan stage, after the
  * feedback pass and before GATE B).
  *
@@ -29,8 +29,16 @@
  *      ends with zero writes; confirm continues.
  *   6. Apply — `runAllSafeRemediates` (only when an auto-safe item is
  *      included) + `dispatchOne` per included manual item.
- *   7. Verify — `reRun()`; notify the result. (GATE C + the no-auto
- *      guarantee land in DGR P2; P0 stops here after one pass.)
+ *   7. Verify — `reRun()`; notify the result.
+ *   8. GATE C (DGR P2, D10/D5) — `select("Repair done — N item(s) remain",
+ *      [Done, Re-plan, Abort])`. "Done" ends; "Re-plan" re-enters GATE B
+ *      with the SAME included batch (a fresh developer decision — the gated
+ *      path NEVER auto-retries); "Abort" ends with `{action:"aborted"}`.
+ *
+ * D5 (no auto-progression): the gated path never loops on its own — the only
+ * way back to Apply is a fresh "Re-plan" decision at GATE C, which re-enters
+ * GATE B. The bounded `maxAttempts` loop lives ONLY in `fix-flow.ts` (the
+ * `--velpari-auto-fix` path, untouched).
  *
  * Non-interactive degrade (the `fix-flow.ts` precedent): if `ui.select`
  * is absent → `{action:"aborted", reason:"non-interactive"}` (never hang).
@@ -386,46 +394,75 @@ export async function runRepairSession(opts: RepairSessionOptions): Promise<Repa
 		(excluded.length > 0 ? `\n${excluded.length} item(s) excluded/deferred (recorded, not applied).` : "") +
 		`\n\nReviewable plan: ${FIX_PLAN_MD_PATH}`;
 
-	const confirmed = await opts.ui.confirm(`Apply ${batchLines.length} fix(es)?`, batchList);
-	if (!confirmed) {
-		return { action: "aborted", reason: "user declined batch" }; // zero writes
-	}
-
-	// Apply — the safe batch (skipped when no auto-safe item is included) then
-	// the included manual remainder.
 	const runAuto = opts.runAuto ?? (async () => runAllSafeRemediates({ cwd: opts.cwd, projectName: opts.projectName }));
-	if (includedAuto.length > 0) {
-		try {
-			await runAuto();
-		} catch (err) {
-			opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
-		}
-	}
 
-	if (opts.dispatchOne) {
-		for (const planned of includedManual) {
+	// GATE B → Apply → Verify → GATE C (D10 / D5).
+	//
+	// D5 (no auto-progression): the gated path NEVER retries on its own. The
+	// ONLY way back to Apply is a fresh "Re-plan" decision at GATE C, which
+	// re-enters GATE B (a new confirm on the SAME included batch — no new
+	// prompts beyond GATE B/C, no bounded auto-loop). The `maxAttempts` loop
+	// lives only in the `--velpari-auto-fix` path (`fix-flow.ts`, untouched).
+	for (;;) {
+		// GATE B — confirm the batch; decline = zero repair writes.
+		const confirmed = await opts.ui.confirm(`Apply ${batchLines.length} fix(es)?`, batchList);
+		if (!confirmed) {
+			return { action: "aborted", reason: "user declined batch" }; // zero writes
+		}
+
+		// Apply — the safe batch (skipped when no auto-safe item is included)
+		// then the included manual remainder.
+		if (includedAuto.length > 0) {
 			try {
-				await opts.dispatchOne(planned.item);
-				auditDecision(planned, opts.cwd, true);
+				await runAuto();
 			} catch (err) {
-				opts.ui.notify(`Fix dispatch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
-				auditDecision(planned, opts.cwd, false);
+				opts.ui.notify(`Auto-fix batch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
 			}
 		}
-	}
 
-	// Verify — one re-audit; P0 stops here (no retry loop).
-	const fresh = await opts.reRun();
-	const clean = fresh.ok && fresh.actionableCount === 0;
-	if (clean) {
-		opts.ui.notify("Repair complete — re-audit clean.", "info");
-	} else {
-		opts.ui.notify(
-			`${fresh.actionableCount} item(s) remain after the fixes — fix the manual items below, then re-run the command.`,
-			"warning",
-		);
-	}
+		if (opts.dispatchOne) {
+			for (const planned of includedManual) {
+				try {
+					await opts.dispatchOne(planned.item);
+					auditDecision(planned, opts.cwd, true);
+				} catch (err) {
+					opts.ui.notify(`Fix dispatch failed: ${(err as Error)?.message ?? String(err)}`, "warning");
+					auditDecision(planned, opts.cwd, false);
+				}
+			}
+		}
 
-	const remainingManual = clean ? 0 : includedManual.length;
-	return { action: "fixed", remainingManual };
+		// Verify — one re-audit, then present the delta.
+		const fresh = await opts.reRun();
+		const clean = fresh.ok && fresh.actionableCount === 0;
+		if (clean) {
+			opts.ui.notify("Repair complete — re-audit clean.", "info");
+		} else {
+			opts.ui.notify(
+				`${fresh.actionableCount} item(s) remain after the fixes — fix the manual items below, then re-run the command.`,
+				"warning",
+			);
+		}
+		const remainingManual = clean ? 0 : includedManual.length;
+
+		// Non-interactive degrade: no picker ⇒ stop after the first verify.
+		if (typeof opts.ui.select !== "function") {
+			return { action: "fixed", remainingManual };
+		}
+
+		// GATE C (D10) — the developer decides; the flow never decides for them.
+		const gateC = await opts.ui.select(`Repair done — ${fresh.actionableCount} item(s) remain`, [
+			"Done",
+			"Re-plan",
+			"Abort",
+		]);
+		if (gateC === null || gateC === undefined || gateC.startsWith("Abort")) {
+			return { action: "aborted", reason: "user aborted at verify" };
+		}
+		if (gateC.startsWith("Re-plan")) {
+			continue; // re-enters GATE B with the SAME included set (fresh decision)
+		}
+		// "Done" — or any unrecognized label: accept the current result.
+		return { action: "fixed", remainingManual };
+	}
 }
