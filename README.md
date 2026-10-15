@@ -179,6 +179,21 @@ On `/velpari-approve-brainstorm`, the handler fires a graceful close (sends a pr
 
 FR-52 web-research role anchor: `web-research` (the v3 name) is rejected for non-community sessions by the dispatcher, same as `web-search-agent` was in v1.x.
 
+## Discussion tracking (DDT)
+
+Developer discussions (decisions, clarifications, status rulings) are the single source of truth and are tracked automatically:
+
+- **`DISCUSSIONS.db`** (project root) — a separate, append-only SQLite database (built-in `node:sqlite`, zero deps). Every session that ends with a developer decision appends one row before ending. It is committed to git (the truth must survive) but is **user-removable at any time** — deleting it never touches artifacts or the store DB.
+- **`DISCUSSIONS.md`** (project root) — open points live HERE only, never in the DB (developer ruling 2026-10-15).
+
+```bash
+node scripts/discussion-log.mjs add --topic "RTM in SQL" --summary "verified already compliant" --kind clarification
+node scripts/discussion-log.mjs list --limit 10
+node scripts/discussion-log.mjs list --json      # machine-readable
+```
+
+Kinds: `decision` (default), `clarification`, `status`. The `open-point` kind is rejected on purpose. The rule that drives automatic updates lives in `AGENTS.md` → "Coding conventions → Discussion tracking (DDT)".
+
 ## Architecture
 
 `pi-extension/src/` follows the official 4-layer architecture: domain → stage-logic → presentation → composition. Each layer has a single concern and a strict dependency direction. See [`pi-extension/src/AGENTS.md`](pi-extension/src/AGENTS.md) for the contributor-facing contract.
