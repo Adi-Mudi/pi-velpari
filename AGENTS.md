@@ -198,6 +198,7 @@ Legacy flat `Doc/PRD*.md` etc. remain readable as fallback paths.
 
 ## Coding conventions
 
+- **Discussion tracking (DDT) — developer discussions are the source of truth.** (1) Every session that ends with developer decisions, clarifications, or status rulings MUST append one entry via `node scripts/discussion-log.mjs add --topic "..." --summary "..." [--decisions "..."] [--kind decision|clarification|status]` to `./DISCUSSIONS.db` at the project root BEFORE the session ends. (2) **Open points live in `DISCUSSIONS.md` only** — never in the DB; append each open point with date, status, and reason there. (3) `DISCUSSIONS.db` is a SEPARATE, user-removable file — deleting it never touches artifacts or the store DB. (4) `node scripts/discussion-log.mjs list [--limit N] [--json]` reads the history back in-session. The DB is committed (source of truth must survive).
 - TypeScript strict mode; prefer explicit types; export public interfaces from their modules.
 - `path.join` for all paths; atomic writes via `io/atomic-write.ts`; ESM imports with explicit `.js` extensions.
 - Keep command handlers thin. State logic → `state.ts`; prompt logic → `prompt.ts`. Don't mutate loaded state in place — use `advanceStage()` and `saveState()`.
