@@ -15,3 +15,10 @@ Doc/store/**/index.db-shm
 .vscode/
 .pi/tasks/
 .tmp-test/
+
+# DDT — single shared discussion DB (Option A). Lives as ONE real file at the
+# main checkout root; worktrees symlink to it. Never committed (binary SQLite
+# cannot be merged across parallel worktrees — see DISCUSSIONS.md).
+DISCUSSIONS.db
+DISCUSSIONS.db-wal
+DISCUSSIONS.db-shm

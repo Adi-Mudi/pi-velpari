@@ -183,14 +183,16 @@ FR-52 web-research role anchor: `web-research` (the v3 name) is rejected for non
 
 Developer discussions (decisions, clarifications, status rulings) are the single source of truth and are tracked automatically:
 
-- **`DISCUSSIONS.db`** (project root) — a separate, append-only SQLite database (built-in `node:sqlite`, zero deps). Every session that ends with a developer decision appends one row before ending. It is committed to git (the truth must survive) but is **user-removable at any time** — deleting it never touches artifacts or the store DB.
-- **`DISCUSSIONS.md`** (project root) — open points live HERE only, never in the DB (developer ruling 2026-10-15).
+- **`DISCUSSIONS.db`** (project root) — a **single shared** append-only SQLite database (built-in `node:sqlite`, zero deps). Every session that ends with a developer decision appends one row before ending. It is **gitignored** (never committed) and lives as ONE real file at the main checkout root; every git worktree **symlinks** to it (`ln -s ../pi-velpari/DISCUSSIONS.db DISCUSSIONS.db`). This is deliberate: a binary SQLite file cannot be merged across parallel worktrees — committing it would fork one copy per worktree and silently drop rows on merge. You can delete it at any time; it never touches artifacts or the store DB.
+- **`DISCUSSIONS.md`** (project root, committed) — open points live HERE only, never in the DB (developer ruling 2026-10-15). Being text, it merges cleanly across branches.
 
 ```bash
 node scripts/discussion-log.mjs add --topic "RTM in SQL" --summary "verified already compliant" --kind clarification
 node scripts/discussion-log.mjs list --limit 10
 node scripts/discussion-log.mjs list --json      # machine-readable
 ```
+
+**One-time worktree setup** (after `git worktree add`): `ln -s ../pi-velpari/DISCUSSIONS.db DISCUSSIONS.db` so the worktree shares the single DB.
 
 Kinds: `decision` (default), `clarification`, `status`. The `open-point` kind is rejected on purpose. The rule that drives automatic updates lives in `AGENTS.md` → "Coding conventions → Discussion tracking (DDT)".
 
