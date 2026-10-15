@@ -16,6 +16,17 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+/**
+ * The GATE-A feedback decision (DGR P1 — D4/D8).
+ *
+ * - `"applied"` — the item was included in the plan and applied (auto batch
+ *   or manual dispatch).
+ * - `"ignored"` — the developer chose "Ignore (accept the risk)"; the item is
+ *   recorded but never applied (a re-audit still shows it — never suppressed).
+ * - `"deferred"` — the developer chose "Defer"; recorded but never applied.
+ */
+export type FixDecision = "applied" | "ignored" | "deferred";
+
 /** One repair attempt. */
 export interface FixAuditEntry {
 	/** ISO-8601 timestamp of the attempt. */
@@ -26,6 +37,11 @@ export interface FixAuditEntry {
 	ok: boolean;
 	/** Files the remediate actually modified (empty when none / on failure). */
 	changedFiles: string[];
+	/**
+	 * The GATE-A feedback decision for this item (DGR P1). Optional and
+	 * backward-compatible: rows written before P1 have no `decision` field.
+	 */
+	decision?: FixDecision;
 }
 
 /** Project-root-relative location of the audit journal. */

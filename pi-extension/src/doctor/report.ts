@@ -28,6 +28,7 @@ import { PATHS } from "../core/constants.js";
 import { atomicWriteFile } from "../io/atomic-write.js";
 import { iconFor, type DiagnosticReport, type DiagnosticSection, type DiagnosticStatus } from "./_types.js";
 import { buildActionItemsSection } from "./action-items.js";
+import { impactFor } from "./impact.js";
 import { sectionId } from "./report-schema.js";
 
 /** Coarse buckets used by `opts.grouped`; additions fall to "Other". */
@@ -70,6 +71,8 @@ export interface RenderOptions {
 	grouped?: boolean;
 	/** Error-bearing sections first, then warnings, then the rest. */
 	severityFirst?: boolean;
+	/** Append a `→ Impact:` line (D7) under every item that carries a suggestion. */
+	impact?: boolean;
 	/** Hard cap; truncation appends `TRUNCATION_TAIL`. */
 	maxChars?: number;
 }
@@ -101,9 +104,9 @@ export function renderReport(report: DiagnosticReport, opts: RenderOptions = {})
 
 	const sections = opts.severityFirst ? sortBySeverity(report.sections) : report.sections;
 	if (opts.grouped) {
-		renderGrouped(lines, sections);
+		renderGrouped(lines, sections, opts.impact);
 	} else {
-		for (const section of sections) renderSection(lines, section);
+		for (const section of sections) renderSection(lines, section, 2, opts.impact);
 	}
 	return applyMaxChars(lines.join("\n"), opts.maxChars);
 }
@@ -117,7 +120,7 @@ export function formatDiagnosticReport(report: DiagnosticReport): string {
 }
 
 /** Render one section (and its items) at the given markdown heading level. */
-function renderSection(lines: string[], section: DiagnosticSection, level = 2): void {
+function renderSection(lines: string[], section: DiagnosticSection, level = 2, impact = false): void {
 	lines.push(`${"#".repeat(level)} ${section.title}`);
 	lines.push("");
 	for (const item of section.items) {
@@ -129,6 +132,7 @@ function renderSection(lines: string[], section: DiagnosticSection, level = 2): 
 		}
 		if (item.suggestion) {
 			lines.push(`   → Fix: ${item.suggestion}`);
+			if (impact) lines.push(`   → Impact: ${impactFor(sectionId(section), item)}`);
 		}
 	}
 	lines.push("");
@@ -158,7 +162,7 @@ function groupForSection(id: string): GroupName {
 }
 
 /** Render the grouped view: sections bucketed in fixed group order. */
-function renderGrouped(lines: string[], sections: DiagnosticSection[]): void {
+function renderGrouped(lines: string[], sections: DiagnosticSection[], impact = false): void {
 	const buckets = new Map<GroupName, DiagnosticSection[]>();
 	for (const section of sections) {
 		const group = groupForSection(sectionId(section));
@@ -173,7 +177,7 @@ function renderGrouped(lines: string[], sections: DiagnosticSection[]): void {
 		const counts = countStatuses(list);
 		lines.push(`## ${group} — ${list.length} section(s) · ${counts.error} error(s) · ${counts.warning} warning(s)`);
 		lines.push("");
-		for (const section of list) renderSection(lines, section, 3);
+		for (const section of list) renderSection(lines, section, 3, impact);
 	}
 }
 
