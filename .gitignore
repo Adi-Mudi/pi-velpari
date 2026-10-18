@@ -22,3 +22,9 @@ Doc/store/**/index.db-shm
 DISCUSSIONS.db
 DISCUSSIONS.db-wal
 DISCUSSIONS.db-shm
+
+# Rule 17 store layer (ported 2026-10-19): ONE combined store.db lives in the
+# in-project db-store worktree (branch db-store); `store` is a symlink to it.
+# The physical store.db is committed ONLY on the db-store branch.
+/store
+/db-store/
